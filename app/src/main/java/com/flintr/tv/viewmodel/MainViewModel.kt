@@ -102,61 +102,52 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun loadLiveStreams(categoryId: String? = null) {
+    private fun <T> loadData(
+        dataFlow: MutableStateFlow<List<T>>,
+        logName: String,
+        fetchCall: suspend (username: String, password: String) -> Result<List<T>>
+    ) {
         val credentials = credentialsRepository.getCredentials() ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            _liveStreams.value = emptyList() // Clear old content while loading
-            Log.d("MainViewModel", "Loading live streams for category: $categoryId")
-            repository.getLiveStreams(credentials.username, credentials.password, categoryId)
-                .onSuccess { 
-                    _liveStreams.value = it
+            dataFlow.value = emptyList() // Clear old content while loading
+            Log.d("MainViewModel", "Loading $logName")
+            
+            fetchCall(credentials.username, credentials.password)
+                .onSuccess { data ->
+                    dataFlow.value = data
                     _uiState.value = _uiState.value.copy(isLoading = false)
-                    Log.d("MainViewModel", "Live streams loaded successfully: ${it.size} streams")
+                    Log.d("MainViewModel", "$logName loaded successfully: ${data.size} items")
                 }
                 .onFailure { error ->
                     _uiState.value = _uiState.value.copy(isLoading = false, error = error.message)
-                    Log.e("MainViewModel", "Failed to load live streams", error)
+                    Log.e("MainViewModel", "Failed to load $logName", error)
                 }
         }
+    }
+
+    fun loadLiveStreams(categoryId: String? = null) {
+        loadData(
+            dataFlow = _liveStreams,
+            logName = "live streams for category: $categoryId",
+            fetchCall = { username, password -> repository.getLiveStreams(username, password, categoryId) }
+        )
     }
 
     fun loadVodStreams(categoryId: String? = null) {
-        val credentials = credentialsRepository.getCredentials() ?: return
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            _vodStreams.value = emptyList() // Clear old content while loading
-            Log.d("MainViewModel", "Loading VOD streams for category: $categoryId")
-            repository.getVodStreams(credentials.username, credentials.password, categoryId)
-                .onSuccess { 
-                    _vodStreams.value = it 
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                    Log.d("MainViewModel", "VOD streams loaded successfully: ${it.size} streams")
-                }
-                .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = error.message)
-                    Log.e("MainViewModel", "Failed to load VOD streams", error)
-                }
-        }
+        loadData(
+            dataFlow = _vodStreams,
+            logName = "VOD streams for category: $categoryId",
+            fetchCall = { username, password -> repository.getVodStreams(username, password, categoryId) }
+        )
     }
 
     fun loadSeries(categoryId: String? = null) {
-        val credentials = credentialsRepository.getCredentials() ?: return
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            _series.value = emptyList() // Clear old content while loading
-            Log.d("MainViewModel", "Loading series for category: $categoryId")
-            repository.getSeries(credentials.username, credentials.password, categoryId)
-                .onSuccess { 
-                    _series.value = it 
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                    Log.d("MainViewModel", "Series loaded successfully: ${it.size} series")
-                }
-                .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = error.message)
-                    Log.e("MainViewModel", "Failed to load series", error)
-                }
-        }
+        loadData(
+            dataFlow = _series,
+            logName = "series for category: $categoryId",
+            fetchCall = { username, password -> repository.getSeries(username, password, categoryId) }
+        )
     }
 
     fun loadSeriesInfo(seriesId: Int) {
