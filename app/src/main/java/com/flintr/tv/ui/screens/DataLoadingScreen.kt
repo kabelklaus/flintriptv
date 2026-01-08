@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -221,6 +222,30 @@ fun DataLoadingScreen(
 }
 
 @Composable
+private fun RotatingIcon(
+    modifier: Modifier = Modifier,
+    imageVector: ImageVector,
+    tint: Color
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "loadingRotationIcon")
+    val rotationAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+    Icon(
+        imageVector = imageVector,
+        contentDescription = null,
+        modifier = modifier.rotate(rotationAngle),
+        tint = tint
+    )
+}
+
+@Composable
 private fun StepItem(
     step: com.flintr.tv.viewmodel.LoadingStep,
     index: Int,
@@ -322,31 +347,21 @@ private fun StepItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (step.status != LoadingStatus.Pending) {
-                val infiniteTransition = rememberInfiniteTransition(label = "loadingRotation")
-                val rotationAngle by infiniteTransition.animateFloat(
-                    initialValue = 0f,
-                    targetValue = 360f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1000, easing = LinearEasing),
-                        repeatMode = RepeatMode.Restart
-                    ),
-                    label = "rotation"
-                )
-                
-                Icon(
-                    imageVector = statusIcon,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(statusIconSize)
-                        .then(
-                            if (step.status == LoadingStatus.Loading) {
-                                Modifier.rotate(rotationAngle)
-                            } else {
-                                Modifier
-                            }
-                        ),
-                    tint = statusIconColor
-                )
+                val iconModifier = Modifier.size(statusIconSize)
+                if (step.status == LoadingStatus.Loading) {
+                    RotatingIcon(
+                        modifier = iconModifier,
+                        imageVector = statusIcon,
+                        tint = statusIconColor
+                    )
+                } else {
+                    Icon(
+                        imageVector = statusIcon,
+                        contentDescription = null,
+                        modifier = iconModifier,
+                        tint = statusIconColor
+                    )
+                }
             }
 
             if (step.itemCount != null && step.status == LoadingStatus.Success) {

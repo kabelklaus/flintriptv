@@ -7,7 +7,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import android.util.Log
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
@@ -34,6 +37,7 @@ import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
 
 sealed class Screen(val route: String) {
+    object InitialRouting : Screen("initial_routing")
     object Login : Screen("login")
     object DataLoading : Screen("data_loading")
     object Main : Screen("main")
@@ -46,14 +50,11 @@ sealed class Screen(val route: String) {
 }
 
 @Composable
-fun AppNavigation(
+private fun InitialRoutingScreen(
     navController: NavHostController,
     credentialsRepository: CredentialsRepository,
-    cacheService: DataCacheService,
-    mainViewModel: MainViewModel = hiltViewModel(),
-    playerViewModel: PlayerViewModel = hiltViewModel()
+    cacheService: DataCacheService
 ) {
-    // Initial routing logic - determines where to navigate on app start
     LaunchedEffect(Unit) {
         val destination = if (credentialsRepository.hasCredentials()) {
             // Check if cache is valid, if yes go to Main, otherwise to DataLoading
@@ -68,14 +69,34 @@ fun AppNavigation(
         }
         
         navController.navigate(destination) {
-            popUpTo(0) { inclusive = true }
+            popUpTo(Screen.InitialRouting.route) { inclusive = true }
         }
     }
+    
+    // Minimal UI - empty box to prevent flicker
+    Box(modifier = Modifier.fillMaxSize())
+}
 
+@Composable
+fun AppNavigation(
+    navController: NavHostController,
+    credentialsRepository: CredentialsRepository,
+    cacheService: DataCacheService,
+    mainViewModel: MainViewModel = hiltViewModel(),
+    playerViewModel: PlayerViewModel = hiltViewModel()
+) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Login.route
+        startDestination = Screen.InitialRouting.route
     ) {
+        composable(Screen.InitialRouting.route) {
+            InitialRoutingScreen(
+                navController = navController,
+                credentialsRepository = credentialsRepository,
+                cacheService = cacheService
+            )
+        }
+
         composable(Screen.Login.route) {
             LoginScreen(
                 onLoginSuccess = {
