@@ -9,6 +9,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,16 +23,47 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
+import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
+import coil.compose.AsyncImagePainter
+import coil.compose.rememberAsyncImagePainter
+import androidx.compose.foundation.Image
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.theme.Dimensions
+import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.utils.ContentParser
+
+// Content Card dimensions (from Flutter AppTheme)
+private val ContentCardMaxCrossAxisExtent = 133.dp
+private val ContentCardAspectRatio = 0.67f // 2:3 format
+private val ContentCardHeight = ContentCardMaxCrossAxisExtent / ContentCardAspectRatio
+private val ContentCardBorderRadius = 8.dp // radiusMD
+private val ContentCardBorderWidth = 2.dp // categoryBorderWidth
+
+// Content Card Title Overlay (from Flutter AppTheme)
+private val ContentCardTitleOverlayPadding = 1.dp
+private val ContentCardTitleContainerPaddingH = 1.dp
+private val ContentCardTitleContainerPaddingV = 1.dp
+private val ContentCardTitleFontSize = 8.sp
+private val ContentCardTitleMaxLines = 2
+private val ContentCardTitleGradientAlpha = 0.7f
+private val ContentCardTitleBgAlpha = 0.75f
+
+// Content Card Colors (from Flutter AppTheme)
+private val ContentCardTextColor = Color.White
+private val ContentCardBgColor = Color.Black
+private val ContentCardTextFontWeight = FontWeight.Bold
 
 @Composable
 fun VODCard(
@@ -43,6 +77,9 @@ fun VODCard(
     var isFocused by remember { mutableStateOf(false) }
     val colors = appColors()
     
+    // Get rating from ContentParser
+    val rating = ContentParser.getRating(vod)
+    
     // Border color with animation
     val borderColor by animateColorAsState(
         targetValue = if (isSelected || isFocused) colors.accentColor else Color.Transparent,
@@ -55,7 +92,7 @@ fun VODCard(
         targetValue = when {
             isSelected -> colors.accentColorHoverBg
             isFocused -> colors.categoryHoverBg
-            else -> MaterialTheme.colorScheme.surface
+            else -> colors.bgCard
         },
         animationSpec = tween(durationMillis = 200),
         label = "backgroundColor"
@@ -68,15 +105,14 @@ fun VODCard(
         label = "shadowElevation"
     )
     
-    Column(
+    Card(
         modifier = modifier
-            .width(150.dp)
-            .height(250.dp)
+            .size(width = ContentCardMaxCrossAxisExtent, height = ContentCardHeight)
             .then(
                 if (isSelected) {
                     Modifier.shadow(
                         elevation = shadowElevation.dp,
-                        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
+                        shape = RoundedCornerShape(ContentCardBorderRadius),
                         spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
                         ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
                     )
@@ -85,15 +121,10 @@ fun VODCard(
                 }
             )
             .border(
-                width = Dimensions.listItemHoverBorderWidth,
+                width = ContentCardBorderWidth,
                 color = borderColor,
-                shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
+                shape = RoundedCornerShape(ContentCardBorderRadius)
             )
-            .background(
-                color = backgroundColor,
-                shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-            )
-            // Correct order: onFocusChanged -> focusable -> key handlers
             .onFocusChanged { focusState ->
                 val wasFocused = isFocused
                 isFocused = focusState.isFocused
@@ -116,26 +147,139 @@ fun VODCard(
                 onDown = null // Let Compose handle standard navigation
             )
             .onDpadCenter(onClick)
-            .clickable { onClick() }
+            .clickable { onClick() },
+        shape = RoundedCornerShape(ContentCardBorderRadius),
+        colors = CardDefaults.cardColors(
+            containerColor = backgroundColor
+        )
     ) {
-        AsyncImage(
-            model = vod.streamIcon ?: vod.cover,
-            contentDescription = vod.name,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp),
-            contentScale = ContentScale.Crop
-        )
-        Text(
-            text = vod.name,
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        val coverImageUrl = vod.streamIcon ?: vod.cover
+        
+        if (coverImageUrl != null && coverImageUrl.isNotEmpty()) {
+            // Card with cover image
+            val painter = rememberAsyncImagePainter(model = coverImageUrl)
+            val imageState = painter.state
+            
+            if (imageState is AsyncImagePainter.State.Error) {
+                // Fallback to text if image fails
+                buildTextFallback(vod.name, colors)
+            } else {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Image(
+                        painter = painter,
+                        contentDescription = vod.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                    
+                    // Rating badge at top right
+                    if (rating != null) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(
+                                    top = Dimensions.contentCardRatingBadgeTop,
+                                    end = Dimensions.contentCardRatingBadgeRight
+                                )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .background(
+                                        color = ContentCardBgColor.copy(alpha = Dimensions.contentCardRatingBgAlpha),
+                                        shape = RoundedCornerShape(Dimensions.radiusSM)
+                                    )
+                                    .padding(
+                                        horizontal = Dimensions.contentCardRatingBadgePaddingH,
+                                        vertical = Dimensions.contentCardRatingBadgePaddingV
+                                    ),
+                                horizontalArrangement = Arrangement.spacedBy(Dimensions.contentCardRatingSpacing),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(Dimensions.contentCardRatingIconSize),
+                                    tint = SharedColors.contentCardRatingIconColor
+                                )
+                                Text(
+                                    text = rating,
+                                    fontSize = ContentCardTitleFontSize,
+                                    color = ContentCardTextColor,
+                                    fontWeight = ContentCardTextFontWeight
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Title overlay at bottom (similar to Flutter ContentCard)
+                    // Outer container: positioned at bottom with padding and gradient
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .padding(ContentCardTitleOverlayPadding)
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        ContentCardBgColor.copy(alpha = ContentCardTitleGradientAlpha)
+                                    )
+                                )
+                            )
+                    ) {
+                        // Inner container: text background with padding
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    horizontal = Dimensions.contentCardTitleContainerPaddingH,
+                                    vertical = Dimensions.contentCardTitleContainerPaddingV
+                                )
+                                .background(
+                                    color = ContentCardBgColor.copy(alpha = ContentCardTitleBgAlpha),
+                                    shape = RoundedCornerShape(Dimensions.radiusXXS)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = vod.name,
+                                textAlign = TextAlign.Center,
+                                maxLines = ContentCardTitleMaxLines,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = ContentCardTitleFontSize,
+                                lineHeight = ContentCardTitleFontSize * 1.2f, // Compact line spacing for multi-line titles
+                                color = ContentCardTextColor,
+                                fontWeight = ContentCardTextFontWeight
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            // Fallback to text-only card
+            buildTextFallback(vod.name, colors)
+        }
     }
 }
 
+@Composable
+private fun buildTextFallback(
+    title: String,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(Dimensions.contentCardTextFallbackPadding),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = title,
+            textAlign = TextAlign.Center,
+            maxLines = Dimensions.contentCardTextFallbackMaxLines,
+            overflow = TextOverflow.Ellipsis,
+            fontSize = 8.sp, // contentCardTextFallbackFontSize
+            color = colors.textPrimary
+        )
+    }
+}

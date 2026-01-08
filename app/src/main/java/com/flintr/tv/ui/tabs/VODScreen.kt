@@ -53,7 +53,7 @@ fun VODContent(
     
     // Calculate columns based on grid width
     val columns = if (gridWidth > 0.dp) {
-        val cardWidth = 150.dp + Dimensions.contentCardCrossAxisSpacing
+        val cardWidth = Dimensions.contentCardMaxCrossAxisExtent + Dimensions.contentCardCrossAxisSpacing
         (gridWidth / cardWidth).toInt().coerceAtLeast(1)
     } else {
         1
@@ -71,7 +71,7 @@ fun VODContent(
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 150.dp),
+                columns = GridCells.Adaptive(minSize = Dimensions.contentCardMaxCrossAxisExtent),
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(focusRequester)

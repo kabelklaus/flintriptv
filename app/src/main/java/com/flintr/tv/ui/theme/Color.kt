@@ -42,6 +42,9 @@ object SharedColors {
     
     // Slate colors
     val slate400 = Color(0xFF94A3B8) // Used for categoryChannelCountText in both themes
+    
+    // Content Card colors
+    val contentCardRatingIconColor = Color(0xFFFFC107) // Material Amber
 }
 
 /**
