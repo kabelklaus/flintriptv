@@ -102,6 +102,7 @@ fun AppNavigation(
         composable(Screen.Login.route) {
             LoginScreen(
                 onLoginSuccess = {
+                    // Navigate to DataLoadingScreen after successful login
                     navController.navigate(Screen.DataLoading.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }

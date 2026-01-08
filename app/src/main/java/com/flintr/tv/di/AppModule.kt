@@ -15,6 +15,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
+import javax.annotation.Nullable
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -45,14 +46,15 @@ object AppModule {
     
     @Provides
     @Singleton
+    @Nullable
     fun provideRetrofit(
         okHttpClient: OkHttpClient,
         moshi: Moshi,
         credentialsRepository: CredentialsRepository
-    ): Retrofit {
+    ): Retrofit? {
         val baseUrl = credentialsRepository.getCredentials()?.serverUrl
             ?.let { if (it.endsWith("/")) it else "$it/" }
-            ?: throw IllegalStateException("Cannot provide Retrofit instance without a configured server URL. Please log in first.")
+            ?: return null
         
         return Retrofit.Builder()
             .baseUrl(baseUrl)
@@ -63,14 +65,20 @@ object AppModule {
     
     @Provides
     @Singleton
-    fun provideXtreamApiService(retrofit: Retrofit): XtreamApiService {
-        return retrofit.create(XtreamApiService::class.java)
+    @Nullable
+    fun provideXtreamApiService(@Nullable retrofit: Retrofit?): XtreamApiService? {
+        return retrofit?.create(XtreamApiService::class.java)
     }
     
     @Provides
     @Singleton
-    fun provideXtreamRepository(apiService: XtreamApiService): XtreamRepository {
-        return XtreamRepository(apiService)
+    fun provideXtreamRepository(
+        @Nullable apiService: XtreamApiService?,
+        credentialsRepository: CredentialsRepository,
+        okHttpClient: OkHttpClient,
+        moshi: Moshi
+    ): XtreamRepository {
+        return XtreamRepository(apiService, credentialsRepository, okHttpClient, moshi)
     }
     
     // Helper function to create Retrofit dynamically for login validation

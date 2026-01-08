@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.model.*
 import com.flintr.tv.data.repository.XtreamRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,7 +17,8 @@ import javax.inject.Inject
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val repository: XtreamRepository,
-    private val credentialsRepository: CredentialsRepository
+    private val credentialsRepository: CredentialsRepository,
+    private val cacheService: DataCacheService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -58,7 +60,27 @@ class MainViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             Log.d("MainViewModel", "Loading initial data...")
 
-            // Load server info
+            // Try to load from cache first
+            val cachedData = if (cacheService.isCacheValid()) {
+                cacheService.loadCachedData()
+            } else {
+                null
+            }
+
+            if (cachedData != null) {
+                Log.d("MainViewModel", "Loading data from cache")
+                _liveCategories.value = cachedData.liveCategories
+                _vodCategories.value = cachedData.vodCategories
+                _seriesCategories.value = cachedData.seriesCategories
+                // Don't load streams here - they will be loaded when a category is selected
+                // Streams are category-specific and should be loaded on demand
+                _uiState.value = _uiState.value.copy(isLoading = false)
+                Log.d("MainViewModel", "Categories loaded from cache successfully")
+            } else {
+                Log.d("MainViewModel", "Cache not available, loading from repository")
+            }
+
+            // Always load server info from repository (not cached)
             repository.getServerInfo(credentials.username, credentials.password)
                 .onSuccess { serverInfo ->
                     _uiState.value = _uiState.value.copy(serverInfo = serverInfo)
@@ -69,33 +91,35 @@ class MainViewModel @Inject constructor(
                     Log.e("MainViewModel", "Failed to load server info", error)
                 }
 
-            // Load categories
-            repository.getLiveCategories(credentials.username, credentials.password)
-                .onSuccess { 
-                    _liveCategories.value = it
-                    Log.d("MainViewModel", "Live categories loaded successfully: ${it.size} categories")
-                 }
-                .onFailure { 
-                    Log.e("MainViewModel", "Failed to load live categories", it)
-                }
+            // If cache was not available, load categories from repository
+            if (cachedData == null) {
+                repository.getLiveCategories(credentials.username, credentials.password)
+                    .onSuccess { 
+                        _liveCategories.value = it
+                        Log.d("MainViewModel", "Live categories loaded successfully: ${it.size} categories")
+                     }
+                    .onFailure { 
+                        Log.e("MainViewModel", "Failed to load live categories", it)
+                    }
 
-            repository.getVodCategories(credentials.username, credentials.password)
-                .onSuccess { 
-                    _vodCategories.value = it
-                    Log.d("MainViewModel", "VOD categories loaded successfully: ${it.size} categories")
-                }
-                .onFailure { 
-                    Log.e("MainViewModel", "Failed to load VOD categories", it)
-                }
+                repository.getVodCategories(credentials.username, credentials.password)
+                    .onSuccess { 
+                        _vodCategories.value = it
+                        Log.d("MainViewModel", "VOD categories loaded successfully: ${it.size} categories")
+                    }
+                    .onFailure { 
+                        Log.e("MainViewModel", "Failed to load VOD categories", it)
+                    }
 
-            repository.getSeriesCategories(credentials.username, credentials.password)
-                .onSuccess { 
-                    _seriesCategories.value = it
-                    Log.d("MainViewModel", "Series categories loaded successfully: ${it.size} categories")
-                }
-                .onFailure { 
-                    Log.e("MainViewModel", "Failed to load series categories", it)
-                }
+                repository.getSeriesCategories(credentials.username, credentials.password)
+                    .onSuccess { 
+                        _seriesCategories.value = it
+                        Log.d("MainViewModel", "Series categories loaded successfully: ${it.size} categories")
+                    }
+                    .onFailure { 
+                        Log.e("MainViewModel", "Failed to load series categories", it)
+                    }
+            }
 
             _uiState.value = _uiState.value.copy(isLoading = false)
             Log.d("MainViewModel", "Initial data loading finished.")
