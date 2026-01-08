@@ -30,6 +30,7 @@ import com.flintr.tv.ui.screens.EPGContent
 import com.flintr.tv.ui.screens.HomeDestination
 import com.flintr.tv.ui.screens.LoginScreen
 import com.flintr.tv.ui.screens.PlayerScreen
+import com.flintr.tv.ui.settings.SettingsScreen
 import com.flintr.tv.ui.tabs.LiveTVContent
 import com.flintr.tv.ui.tabs.VODContent
 import com.flintr.tv.ui.tabs.SeriesContent
@@ -41,6 +42,7 @@ sealed class Screen(val route: String) {
     object Login : Screen("login")
     object DataLoading : Screen("data_loading")
     object Main : Screen("main")
+    object Settings : Screen("settings")
     object Player : Screen("player/{streamUrl}") {
         fun createRoute(streamUrl: String): String {
             val encoded = java.net.URLEncoder.encode(streamUrl, "UTF-8")
@@ -125,6 +127,13 @@ fun AppNavigation(
             )
         }
         
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                focusRequester = remember { FocusRequester() },
+                onNavigateLeft = { navController.popBackStack() }
+            )
+        }
+        
         composable(
             route = Screen.Player.route,
             arguments = listOf(
@@ -168,6 +177,7 @@ fun MainContentScreen(
         is HomeDestination.VOD -> vodCategories
         is HomeDestination.Series -> seriesCategories
         is HomeDestination.EPG -> emptyList()
+        is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
     }
     
     LaunchedEffect(selectedDestination, categories) {
@@ -228,7 +238,14 @@ fun MainContentScreen(
     
     MainLayout(
         selectedDestination = selectedDestination,
-        onDestinationChange = { selectedDestination = it },
+        onDestinationChange = { destination ->
+            if (destination is HomeDestination.Settings) {
+                // Navigate to separate Settings screen
+                navController.navigate(Screen.Settings.route)
+            } else {
+                selectedDestination = destination
+            }
+        },
         showCategories = showCategories,
         categories = categories,
         selectedCategoryId = selectedCategoryId,
@@ -306,6 +323,11 @@ fun MainContentScreen(
                             navController.navigate(Screen.Player.createRoute(streamUrl))
                         }
                     )
+                }
+                is HomeDestination.Settings -> {
+                    // Settings navigates to separate screen, this should not be reached
+                    // but kept for exhaustiveness
+                    Box {}
                 }
             }
         }

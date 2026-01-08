@@ -44,6 +44,7 @@ sealed class HomeDestination {
     object VOD : HomeDestination()
     object Series : HomeDestination()
     object EPG : HomeDestination()
+    object Settings : HomeDestination()
 }
 
 @Composable
@@ -142,6 +143,18 @@ fun HomeSidebar(
                     destination = HomeDestination.EPG,
                     selectedDestination = selectedDestination,
                     onClick = { onNavigate(HomeDestination.EPG) },
+                    colors = colors,
+                    onNavigateRight = onNavigateRight
+                )
+            }
+            
+            item {
+                HomeSidebarItem(
+                    title = "Settings",
+                    icon = Icons.Default.Settings,
+                    destination = HomeDestination.Settings,
+                    selectedDestination = selectedDestination,
+                    onClick = { onNavigate(HomeDestination.Settings) },
                     colors = colors,
                     onNavigateRight = onNavigateRight
                 )
