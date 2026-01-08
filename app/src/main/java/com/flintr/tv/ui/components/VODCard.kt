@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -64,6 +63,9 @@ private val ContentCardTitleBgAlpha = 0.75f
 private val ContentCardTextColor = Color.White
 private val ContentCardBgColor = Color.Black
 private val ContentCardTextFontWeight = FontWeight.Bold
+
+// Content Card Title Line Height
+private const val ContentCardTitleLineHeightFactor = 1.2f
 
 @Composable
 fun VODCard(
@@ -153,111 +155,144 @@ fun VODCard(
             containerColor = backgroundColor
         )
     ) {
-        val coverImageUrl = vod.streamIcon ?: vod.cover
+        CardContent(
+            coverImageUrl = vod.streamIcon ?: vod.cover,
+            title = vod.name,
+            rating = rating,
+            colors = colors
+        )
+    }
+}
+
+@Composable
+private fun CardContent(
+    coverImageUrl: String?,
+    title: String,
+    rating: String?,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    if (!coverImageUrl.isNullOrEmpty()) {
+        // Card with cover image
+        val painter = rememberAsyncImagePainter(model = coverImageUrl)
+        val imageState = painter.state
         
-        if (coverImageUrl != null && coverImageUrl.isNotEmpty()) {
-            // Card with cover image
-            val painter = rememberAsyncImagePainter(model = coverImageUrl)
-            val imageState = painter.state
-            
-            if (imageState is AsyncImagePainter.State.Error) {
-                // Fallback to text if image fails
-                buildTextFallback(vod.name, colors)
-            } else {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    Image(
-                        painter = painter,
-                        contentDescription = vod.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                    
-                    // Rating badge at top right
-                    if (rating != null) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(
-                                    top = Dimensions.contentCardRatingBadgeTop,
-                                    end = Dimensions.contentCardRatingBadgeRight
-                                )
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .background(
-                                        color = ContentCardBgColor.copy(alpha = Dimensions.contentCardRatingBgAlpha),
-                                        shape = RoundedCornerShape(Dimensions.radiusSM)
-                                    )
-                                    .padding(
-                                        horizontal = Dimensions.contentCardRatingBadgePaddingH,
-                                        vertical = Dimensions.contentCardRatingBadgePaddingV
-                                    ),
-                                horizontalArrangement = Arrangement.spacedBy(Dimensions.contentCardRatingSpacing),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Star,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(Dimensions.contentCardRatingIconSize),
-                                    tint = SharedColors.contentCardRatingIconColor
-                                )
-                                Text(
-                                    text = rating,
-                                    fontSize = ContentCardTitleFontSize,
-                                    color = ContentCardTextColor,
-                                    fontWeight = ContentCardTextFontWeight
-                                )
-                            }
-                        }
-                    }
-                    
-                    // Title overlay at bottom (similar to Flutter ContentCard)
-                    // Outer container: positioned at bottom with padding and gradient
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.BottomCenter)
-                            .padding(ContentCardTitleOverlayPadding)
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        ContentCardBgColor.copy(alpha = ContentCardTitleGradientAlpha)
-                                    )
-                                )
-                            )
-                    ) {
-                        // Inner container: text background with padding
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    horizontal = Dimensions.contentCardTitleContainerPaddingH,
-                                    vertical = Dimensions.contentCardTitleContainerPaddingV
-                                )
-                                .background(
-                                    color = ContentCardBgColor.copy(alpha = ContentCardTitleBgAlpha),
-                                    shape = RoundedCornerShape(Dimensions.radiusXXS)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = vod.name,
-                                textAlign = TextAlign.Center,
-                                maxLines = ContentCardTitleMaxLines,
-                                overflow = TextOverflow.Ellipsis,
-                                fontSize = ContentCardTitleFontSize,
-                                lineHeight = ContentCardTitleFontSize * 1.2f, // Compact line spacing for multi-line titles
-                                color = ContentCardTextColor,
-                                fontWeight = ContentCardTextFontWeight
-                            )
-                        }
-                    }
-                }
-            }
+        if (imageState is AsyncImagePainter.State.Error) {
+            // Fallback to text if image fails
+            buildTextFallback(title, colors)
         } else {
-            // Fallback to text-only card
-            buildTextFallback(vod.name, colors)
+            Box(modifier = Modifier.fillMaxSize()) {
+                Image(
+                    painter = painter,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                
+                // Rating badge at top right
+                if (rating != null) {
+                    RatingBadge(
+                        rating = rating,
+                        modifier = Modifier.align(Alignment.TopEnd)
+                    )
+                }
+                
+                // Title overlay at bottom
+                TitleOverlay(
+                    title = title,
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            }
+        }
+    } else {
+        // Fallback to text-only card
+        buildTextFallback(title, colors)
+    }
+}
+
+@Composable
+private fun RatingBadge(
+    rating: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .padding(
+                top = Dimensions.contentCardRatingBadgeTop,
+                end = Dimensions.contentCardRatingBadgeRight
+            )
+    ) {
+        Row(
+            modifier = Modifier
+                .background(
+                    color = ContentCardBgColor.copy(alpha = Dimensions.contentCardRatingBgAlpha),
+                    shape = RoundedCornerShape(Dimensions.radiusSM)
+                )
+                .padding(
+                    horizontal = Dimensions.contentCardRatingBadgePaddingH,
+                    vertical = Dimensions.contentCardRatingBadgePaddingV
+                ),
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.contentCardRatingSpacing),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Star,
+                contentDescription = null,
+                modifier = Modifier.size(Dimensions.contentCardRatingIconSize),
+                tint = SharedColors.contentCardRatingIconColor
+            )
+            Text(
+                text = rating,
+                fontSize = ContentCardTitleFontSize,
+                color = ContentCardTextColor,
+                fontWeight = ContentCardTextFontWeight
+            )
+        }
+    }
+}
+
+@Composable
+private fun TitleOverlay(
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    // Outer container: positioned at bottom with padding and gradient
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(ContentCardTitleOverlayPadding)
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        ContentCardBgColor.copy(alpha = ContentCardTitleGradientAlpha)
+                    )
+                )
+            )
+    ) {
+        // Inner container: text background with padding
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = Dimensions.contentCardTitleContainerPaddingH,
+                    vertical = Dimensions.contentCardTitleContainerPaddingV
+                )
+                .background(
+                    color = ContentCardBgColor.copy(alpha = ContentCardTitleBgAlpha),
+                    shape = RoundedCornerShape(Dimensions.radiusXXS)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = title,
+                textAlign = TextAlign.Center,
+                maxLines = ContentCardTitleMaxLines,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = ContentCardTitleFontSize,
+                lineHeight = ContentCardTitleFontSize * ContentCardTitleLineHeightFactor,
+                color = ContentCardTextColor,
+                fontWeight = ContentCardTextFontWeight
+            )
         }
     }
 }
@@ -278,7 +313,7 @@ private fun buildTextFallback(
             textAlign = TextAlign.Center,
             maxLines = Dimensions.contentCardTextFallbackMaxLines,
             overflow = TextOverflow.Ellipsis,
-            fontSize = 8.sp, // contentCardTextFallbackFontSize
+            fontSize = ContentCardTitleFontSize,
             color = colors.textPrimary
         )
     }

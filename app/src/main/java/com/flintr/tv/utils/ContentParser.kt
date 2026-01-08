@@ -16,42 +16,23 @@ object ContentParser {
     fun getRating(item: Any?): String? {
         if (item == null) return null
         
-        when (item) {
-            is VodStream -> {
-                // Try rating first (usually 0-10 scale)
-                val rating = item.rating
-                if (rating != null) {
-                    val parsed = parseRating(rating)
-                    if (parsed != null) {
-                        return String.format("%.1f", parsed)
-                    }
-                }
-                
-                // Try rating_5based (0-5 scale, convert to 0-10)
-                val rating5 = item.rating5Based
-                if (rating5 != null) {
-                    return String.format("%.1f", rating5 * 2.0)
-                }
-                
-                // Note: VodStream doesn't have imdb_rating field in current model
-                // If needed, add it to the data model
+        // Extract rating fields using destructuring
+        val (rating: Any?, rating5Based: Double?) = when (item) {
+            is VodStream -> item.rating to item.rating5Based
+            is Series -> item.rating to item.rating5Based
+            else -> return null
+        }
+        
+        // Try rating first (usually 0-10 scale)
+        rating?.let { r ->
+            parseRating(r)?.let { parsed ->
+                return String.format("%.1f", parsed)
             }
-            is Series -> {
-                // Try rating first (usually 0-10 scale)
-                val rating = item.rating
-                if (rating != null) {
-                    val parsed = parseRating(rating)
-                    if (parsed != null) {
-                        return String.format("%.1f", parsed)
-                    }
-                }
-                
-                // Try rating_5based (0-5 scale, convert to 0-10)
-                val rating5 = item.rating5Based
-                if (rating5 != null) {
-                    return String.format("%.1f", rating5 * 2.0)
-                }
-            }
+        }
+        
+        // Try rating_5based (0-5 scale, convert to 0-10)
+        rating5Based?.let { r5 ->
+            return String.format("%.1f", r5 * 2.0)
         }
         
         return null
@@ -66,10 +47,7 @@ object ContentParser {
         
         return when (rating) {
             is Number -> rating.toDouble()
-            is String -> {
-                val parsed = rating.toDoubleOrNull()
-                parsed
-            }
+            is String -> rating.toDoubleOrNull()
             else -> null
         }
     }
