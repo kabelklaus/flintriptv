@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -38,8 +39,6 @@ import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
-
-private const val FOCUS_REQUEST_DELAY_MS = 50L
 
 sealed class HomeDestination {
     object LiveTV : HomeDestination()
@@ -66,32 +65,14 @@ fun HomeSidebar(
     val epgFocusRequester = remember { FocusRequester() }
     val settingsFocusRequester = remember { FocusRequester() }
     
-    // Map destinations to their focus requesters
-    val destinationToFocusRequester = remember {
-        mapOf(
-            HomeDestination.LiveTV to tvFocusRequester,
-            HomeDestination.VOD to moviesFocusRequester,
-            HomeDestination.Series to seriesFocusRequester,
-            HomeDestination.EPG to epgFocusRequester,
-            HomeDestination.Settings to settingsFocusRequester
-        )
-    }
+    // Track which item should receive focus
+    var pendingFocusDestination by remember { mutableStateOf<HomeDestination?>(null) }
     
     // Set focus on selected item when destination changes
     // This ensures that when a user clicks on "Movies" or navigates to a different tab,
     // the focus is set to the correct item in the navbar
     LaunchedEffect(selectedDestination) {
-        val itemFocusRequester = destinationToFocusRequester[selectedDestination]
-        if (itemFocusRequester != null) {
-            // Small delay to ensure UI is laid out
-            kotlinx.coroutines.delay(FOCUS_REQUEST_DELAY_MS)
-            try {
-                itemFocusRequester.requestFocus()
-                Log.i("TVFocus", "[MainNavbar] 🎯 Focus set to selected item: $selectedDestination")
-            } catch (e: IllegalStateException) {
-                Log.w("TVFocus", "[MainNavbar] ⚠️ FocusRequester not initialized yet for $selectedDestination")
-            }
-        }
+        pendingFocusDestination = selectedDestination
     }
     
     Column(
@@ -137,6 +118,7 @@ fun HomeSidebar(
                     icon = Icons.Default.Tv,
                     destination = HomeDestination.LiveTV,
                     selectedDestination = selectedDestination,
+                    pendingFocusDestination = pendingFocusDestination,
                     onClick = { onNavigate(HomeDestination.LiveTV) },
                     colors = colors,
                     focusRequester = tvFocusRequester,
@@ -150,6 +132,7 @@ fun HomeSidebar(
                     icon = Icons.Default.Movie,
                     destination = HomeDestination.VOD,
                     selectedDestination = selectedDestination,
+                    pendingFocusDestination = pendingFocusDestination,
                     onClick = { onNavigate(HomeDestination.VOD) },
                     colors = colors,
                     focusRequester = moviesFocusRequester,
@@ -163,6 +146,7 @@ fun HomeSidebar(
                     icon = Icons.Default.PlayArrow,
                     destination = HomeDestination.Series,
                     selectedDestination = selectedDestination,
+                    pendingFocusDestination = pendingFocusDestination,
                     onClick = { onNavigate(HomeDestination.Series) },
                     colors = colors,
                     focusRequester = seriesFocusRequester,
@@ -176,6 +160,7 @@ fun HomeSidebar(
                     icon = Icons.Default.Schedule,
                     destination = HomeDestination.EPG,
                     selectedDestination = selectedDestination,
+                    pendingFocusDestination = pendingFocusDestination,
                     onClick = { onNavigate(HomeDestination.EPG) },
                     colors = colors,
                     focusRequester = epgFocusRequester,
@@ -189,6 +174,7 @@ fun HomeSidebar(
                     icon = Icons.Default.Settings,
                     destination = HomeDestination.Settings,
                     selectedDestination = selectedDestination,
+                    pendingFocusDestination = pendingFocusDestination,
                     onClick = { onNavigate(HomeDestination.Settings) },
                     colors = colors,
                     focusRequester = settingsFocusRequester,
@@ -205,6 +191,7 @@ fun HomeSidebarItem(
     icon: ImageVector,
     destination: HomeDestination,
     selectedDestination: HomeDestination,
+    pendingFocusDestination: HomeDestination?,
     onClick: () -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors,
     modifier: Modifier = Modifier,
@@ -213,6 +200,12 @@ fun HomeSidebarItem(
 ) {
     val isSelected = destination == selectedDestination
     var isFocused by remember { mutableStateOf(false) }
+    var hasRequestedFocus by remember { mutableStateOf(false) }
+    
+    // Request focus when item is positioned and should receive focus
+    LaunchedEffect(pendingFocusDestination) {
+        hasRequestedFocus = false
+    }
     
     // Animation for background color
     val backgroundColor by animateColorAsState(
@@ -251,7 +244,7 @@ fun HomeSidebarItem(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            // Correct order: focusRequester -> onFocusChanged -> focusable -> key handlers
+            // Correct order: focusRequester -> onGloballyPositioned -> onFocusChanged -> focusable -> key handlers
             .then(
                 if (focusRequester != null) {
                     Modifier.focusRequester(focusRequester)
@@ -259,6 +252,20 @@ fun HomeSidebarItem(
                     Modifier
                 }
             )
+            .onGloballyPositioned {
+                // Request focus when item is positioned and should receive focus
+                if (focusRequester != null && 
+                    pendingFocusDestination == destination && 
+                    !hasRequestedFocus) {
+                    try {
+                        focusRequester.requestFocus()
+                        hasRequestedFocus = true
+                        Log.i("TVFocus", "[MainNavbar] 🎯 Focus set to selected item via onGloballyPositioned: $destination")
+                    } catch (e: IllegalStateException) {
+                        Log.w("TVFocus", "[MainNavbar] ⚠️ FocusRequester not initialized yet for $destination")
+                    }
+                }
+            }
             .onFocusChanged { focusState ->
                 val wasFocused = isFocused
                 isFocused = focusState.isFocused
