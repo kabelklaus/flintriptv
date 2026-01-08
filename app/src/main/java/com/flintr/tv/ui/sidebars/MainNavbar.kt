@@ -39,6 +39,8 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 
+private const val FOCUS_REQUEST_DELAY_MS = 50L
+
 sealed class HomeDestination {
     object LiveTV : HomeDestination()
     object VOD : HomeDestination()
@@ -82,7 +84,7 @@ fun HomeSidebar(
         val itemFocusRequester = destinationToFocusRequester[selectedDestination]
         if (itemFocusRequester != null) {
             // Small delay to ensure UI is laid out
-            kotlinx.coroutines.delay(50)
+            kotlinx.coroutines.delay(FOCUS_REQUEST_DELAY_MS)
             try {
                 itemFocusRequester.requestFocus()
                 Log.i("TVFocus", "[MainNavbar] 🎯 Focus set to selected item: $selectedDestination")

@@ -152,6 +152,18 @@ fun AppNavigation(
     }
 }
 
+private fun clearStreamsForDestination(
+    destination: HomeDestination,
+    viewModel: MainViewModel
+) {
+    when (destination) {
+        is HomeDestination.LiveTV -> viewModel.clearLiveStreams()
+        is HomeDestination.VOD -> viewModel.clearVodStreams()
+        is HomeDestination.Series -> viewModel.clearSeries()
+        else -> {}
+    }
+}
+
 @Composable
 fun MainContentScreen(
     navController: NavHostController,
@@ -251,19 +263,9 @@ fun MainContentScreen(
                 // Reset category selection and clear streams when switching tabs
                 selectedCategoryId = null
                 // Clear streams from old destination
-                when (selectedDestination) {
-                    is HomeDestination.LiveTV -> mainViewModel.clearLiveStreams()
-                    is HomeDestination.VOD -> mainViewModel.clearVodStreams()
-                    is HomeDestination.Series -> mainViewModel.clearSeries()
-                    else -> {}
-                }
+                clearStreamsForDestination(selectedDestination, mainViewModel)
                 // Clear streams from new destination to prevent showing old data
-                when (destination) {
-                    is HomeDestination.LiveTV -> mainViewModel.clearLiveStreams()
-                    is HomeDestination.VOD -> mainViewModel.clearVodStreams()
-                    is HomeDestination.Series -> mainViewModel.clearSeries()
-                    else -> {}
-                }
+                clearStreamsForDestination(destination, mainViewModel)
                 selectedDestination = destination
             }
         },
