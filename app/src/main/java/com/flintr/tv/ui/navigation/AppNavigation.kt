@@ -1,0 +1,240 @@
+package com.flintr.tv.ui.navigation
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import android.util.Log
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
+import com.flintr.tv.data.model.Episode
+import com.flintr.tv.data.model.EpgProgram
+import com.flintr.tv.data.model.LiveStream
+import com.flintr.tv.data.model.Series
+import com.flintr.tv.di.XtreamConfig
+import com.flintr.tv.ui.components.MainLayout
+import com.flintr.tv.ui.screens.EPGContent
+import com.flintr.tv.ui.screens.HomeDestination
+import com.flintr.tv.ui.screens.PlayerScreen
+import com.flintr.tv.ui.tabs.LiveTVContent
+import com.flintr.tv.ui.tabs.VODContent
+import com.flintr.tv.ui.tabs.SeriesContent
+import com.flintr.tv.viewmodel.MainViewModel
+import com.flintr.tv.viewmodel.PlayerViewModel
+
+sealed class Screen(val route: String) {
+    object Main : Screen("main")
+    object Player : Screen("player/{streamUrl}") {
+        fun createRoute(streamUrl: String): String {
+            val encoded = java.net.URLEncoder.encode(streamUrl, "UTF-8")
+            return "player/$encoded"
+        }
+    }
+}
+
+@Composable
+fun AppNavigation(
+    navController: NavHostController,
+    mainViewModel: MainViewModel = hiltViewModel(),
+    playerViewModel: PlayerViewModel = hiltViewModel()
+) {
+    NavHost(
+        navController = navController,
+        startDestination = Screen.Main.route
+    ) {
+        composable(Screen.Main.route) {
+            MainContentScreen(
+                navController = navController,
+                mainViewModel = mainViewModel
+            )
+        }
+        
+        composable(
+            route = Screen.Player.route,
+            arguments = listOf(
+                navArgument("streamUrl") {
+                    type = NavType.StringType
+                }
+            )
+        ) { backStackEntry ->
+            val streamUrl = backStackEntry.arguments?.getString("streamUrl") ?: ""
+            PlayerScreen(
+                streamUrl = streamUrl,
+                playerViewModel = playerViewModel,
+                onBack = { navController.popBackStack() }
+            )
+        }
+    }
+}
+
+@Composable
+fun MainContentScreen(
+    navController: NavHostController,
+    mainViewModel: MainViewModel
+) {
+    var selectedDestination by remember { mutableStateOf<HomeDestination>(HomeDestination.LiveTV) }
+    var selectedCategoryId by remember { mutableStateOf<String?>(null) }
+    
+    // Focus requesters for each panel
+    val navbarFocusRequester = remember { FocusRequester() }
+    val categorySidebarFocusRequester = remember { FocusRequester() }
+    val contentListFocusRequester = remember { FocusRequester() }
+    
+    val liveCategories by mainViewModel.liveCategories.collectAsState()
+    val vodCategories by mainViewModel.vodCategories.collectAsState()
+    val seriesCategories by mainViewModel.seriesCategories.collectAsState()
+    
+    // Select first category when destination changes or categories are loaded
+    val categories = when (selectedDestination) {
+        is HomeDestination.LiveTV -> liveCategories
+        is HomeDestination.VOD -> vodCategories
+        is HomeDestination.Series -> seriesCategories
+        is HomeDestination.EPG -> emptyList()
+    }
+    
+    LaunchedEffect(selectedDestination, categories) {
+        if (categories.isNotEmpty() && selectedCategoryId == null) {
+            selectedCategoryId = categories.first().categoryId
+        } else if (categories.isEmpty()) {
+            selectedCategoryId = null
+        } else if (selectedCategoryId != null && categories.none { it.categoryId == selectedCategoryId }) {
+            // Selected category no longer exists, select first one
+            selectedCategoryId = categories.first().categoryId
+        }
+    }
+    
+    val showCategories = selectedDestination is HomeDestination.LiveTV ||
+            selectedDestination is HomeDestination.VOD ||
+            selectedDestination is HomeDestination.Series
+    
+    // Set initial focus on Navbar when app starts
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(200) // Small delay to ensure UI is laid out
+        try {
+            navbarFocusRequester.requestFocus()
+            Log.i("TVFocus", "[MainContentScreen] 🎯 Initial focus set to NAVBAR")
+        } catch (e: IllegalStateException) {
+            Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
+        }
+    }
+    
+    // Focus navigation functions
+    fun moveFocusToNavbar() {
+        Log.i("TVFocus", "[MainContentScreen] 🎯 Requesting focus: NAVBAR")
+        try {
+            navbarFocusRequester.requestFocus()
+        } catch (e: IllegalStateException) {
+            Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
+        }
+    }
+    
+    fun moveFocusToCategorySidebar() {
+        Log.i("TVFocus", "[MainContentScreen] 🎯 Requesting focus: CATEGORY_SIDEBAR")
+        try {
+            categorySidebarFocusRequester.requestFocus()
+        } catch (e: IllegalStateException) {
+            Log.w("TVFocus", "[MainContentScreen] ⚠️ CategorySidebar FocusRequester not initialized yet")
+        }
+    }
+    
+    fun moveFocusToContentList() {
+        Log.i("TVFocus", "[MainContentScreen] 🎯 Requesting focus: CONTENT_LIST")
+        try {
+            contentListFocusRequester.requestFocus()
+        } catch (e: IllegalStateException) {
+            // FocusRequester not yet initialized - this can happen if called before content is loaded
+            // The content will request focus automatically when streams are loaded
+            Log.w("TVFocus", "[MainContentScreen] ⚠️ ContentList FocusRequester not initialized yet, will focus when content loads")
+        }
+    }
+    
+    MainLayout(
+        selectedDestination = selectedDestination,
+        onDestinationChange = { selectedDestination = it },
+        showCategories = showCategories,
+        categories = categories,
+        selectedCategoryId = selectedCategoryId,
+        onCategorySelected = { selectedCategoryId = it },
+        navbarFocusRequester = navbarFocusRequester,
+        categorySidebarFocusRequester = categorySidebarFocusRequester,
+        contentListFocusRequester = contentListFocusRequester,
+        onNavigateToNavbar = { moveFocusToNavbar() },
+        onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
+        onNavigateToContentList = { moveFocusToContentList() },
+        content = {
+            when (selectedDestination) {
+                is HomeDestination.LiveTV -> {
+                    LiveTVContent(
+                        viewModel = mainViewModel,
+                        selectedCategoryId = selectedCategoryId,
+                        focusRequester = contentListFocusRequester,
+                        onNavigateLeft = { moveFocusToCategorySidebar() },
+                        onChannelClick = { stream ->
+                            val streamUrl = stream.getStreamUrl(
+                                XtreamConfig.SERVER_URL,
+                                XtreamConfig.USERNAME,
+                                XtreamConfig.PASSWORD
+                            )
+                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                        }
+                    )
+                }
+                is HomeDestination.VOD -> {
+                    VODContent(
+                        viewModel = mainViewModel,
+                        selectedCategoryId = selectedCategoryId,
+                        focusRequester = contentListFocusRequester,
+                        onNavigateLeft = { moveFocusToCategorySidebar() },
+                        onVodClick = { vod ->
+                            val streamUrl = vod.getStreamUrl(
+                                XtreamConfig.SERVER_URL,
+                                XtreamConfig.USERNAME,
+                                XtreamConfig.PASSWORD
+                            )
+                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                        }
+                    )
+                }
+                is HomeDestination.Series -> {
+                    SeriesContent(
+                        viewModel = mainViewModel,
+                        selectedCategoryId = selectedCategoryId,
+                        focusRequester = contentListFocusRequester,
+                        onNavigateLeft = { moveFocusToCategorySidebar() },
+                        onEpisodeClick = { episode, series ->
+                            val streamUrl = episode.getStreamUrl(
+                                XtreamConfig.SERVER_URL,
+                                XtreamConfig.USERNAME,
+                                XtreamConfig.PASSWORD,
+                                series.seriesId
+                            )
+                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                        }
+                    )
+                }
+                is HomeDestination.EPG -> {
+                    EPGContent(
+                        viewModel = mainViewModel,
+                        onProgramClick = { program, stream ->
+                            val streamUrl = stream.getStreamUrl(
+                                XtreamConfig.SERVER_URL,
+                                XtreamConfig.USERNAME,
+                                XtreamConfig.PASSWORD
+                            )
+                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                        }
+                    )
+                }
+            }
+        }
+    )
+}
+
