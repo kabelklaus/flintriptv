@@ -20,8 +20,6 @@ import androidx.compose.ui.unit.dp
 import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.viewmodel.MainViewModel
-import java.text.SimpleDateFormat
-import java.util.*
 
 @Composable
 fun EPGContent(
