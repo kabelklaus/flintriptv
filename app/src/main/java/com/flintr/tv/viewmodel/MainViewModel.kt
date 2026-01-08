@@ -3,9 +3,9 @@ package com.flintr.tv.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.model.*
 import com.flintr.tv.data.repository.XtreamRepository
-import com.flintr.tv.di.XtreamConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,7 +15,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val repository: XtreamRepository
+    private val repository: XtreamRepository,
+    private val credentialsRepository: CredentialsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -47,12 +48,18 @@ class MainViewModel @Inject constructor(
     }
 
     private fun loadInitialData() {
+        val credentials = credentialsRepository.getCredentials()
+        if (credentials == null) {
+            Log.w("MainViewModel", "No credentials available, skipping initial data load")
+            return
+        }
+
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             Log.d("MainViewModel", "Loading initial data...")
 
             // Load server info
-            repository.getServerInfo(XtreamConfig.USERNAME, XtreamConfig.PASSWORD)
+            repository.getServerInfo(credentials.username, credentials.password)
                 .onSuccess { serverInfo ->
                     _uiState.value = _uiState.value.copy(serverInfo = serverInfo)
                     Log.d("MainViewModel", "Server info loaded successfully: $serverInfo")
@@ -63,7 +70,7 @@ class MainViewModel @Inject constructor(
                 }
 
             // Load categories
-            repository.getLiveCategories(XtreamConfig.USERNAME, XtreamConfig.PASSWORD)
+            repository.getLiveCategories(credentials.username, credentials.password)
                 .onSuccess { 
                     _liveCategories.value = it
                     Log.d("MainViewModel", "Live categories loaded successfully: ${it.size} categories")
@@ -72,7 +79,7 @@ class MainViewModel @Inject constructor(
                     Log.e("MainViewModel", "Failed to load live categories", it)
                 }
 
-            repository.getVodCategories(XtreamConfig.USERNAME, XtreamConfig.PASSWORD)
+            repository.getVodCategories(credentials.username, credentials.password)
                 .onSuccess { 
                     _vodCategories.value = it
                     Log.d("MainViewModel", "VOD categories loaded successfully: ${it.size} categories")
@@ -81,7 +88,7 @@ class MainViewModel @Inject constructor(
                     Log.e("MainViewModel", "Failed to load VOD categories", it)
                 }
 
-            repository.getSeriesCategories(XtreamConfig.USERNAME, XtreamConfig.PASSWORD)
+            repository.getSeriesCategories(credentials.username, credentials.password)
                 .onSuccess { 
                     _seriesCategories.value = it
                     Log.d("MainViewModel", "Series categories loaded successfully: ${it.size} categories")
@@ -96,10 +103,11 @@ class MainViewModel @Inject constructor(
     }
 
     fun loadLiveStreams(categoryId: String? = null) {
+        val credentials = credentialsRepository.getCredentials() ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             Log.d("MainViewModel", "Loading live streams for category: $categoryId")
-            repository.getLiveStreams(XtreamConfig.USERNAME, XtreamConfig.PASSWORD, categoryId)
+            repository.getLiveStreams(credentials.username, credentials.password, categoryId)
                 .onSuccess { 
                     _liveStreams.value = it
                     _uiState.value = _uiState.value.copy(isLoading = false)
@@ -113,9 +121,10 @@ class MainViewModel @Inject constructor(
     }
 
     fun loadVodStreams(categoryId: String? = null) {
+        val credentials = credentialsRepository.getCredentials() ?: return
         viewModelScope.launch {
             Log.d("MainViewModel", "Loading VOD streams for category: $categoryId")
-            repository.getVodStreams(XtreamConfig.USERNAME, XtreamConfig.PASSWORD, categoryId)
+            repository.getVodStreams(credentials.username, credentials.password, categoryId)
                 .onSuccess { 
                     _vodStreams.value = it 
                     Log.d("MainViewModel", "VOD streams loaded successfully: ${it.size} streams")
@@ -128,9 +137,10 @@ class MainViewModel @Inject constructor(
     }
 
     fun loadSeries(categoryId: String? = null) {
+        val credentials = credentialsRepository.getCredentials() ?: return
         viewModelScope.launch {
             Log.d("MainViewModel", "Loading series for category: $categoryId")
-            repository.getSeries(XtreamConfig.USERNAME, XtreamConfig.PASSWORD, categoryId)
+            repository.getSeries(credentials.username, credentials.password, categoryId)
                 .onSuccess { 
                     _series.value = it 
                     Log.d("MainViewModel", "Series loaded successfully: ${it.size} series")
@@ -143,9 +153,10 @@ class MainViewModel @Inject constructor(
     }
 
     fun loadSeriesInfo(seriesId: Int) {
+        val credentials = credentialsRepository.getCredentials() ?: return
         viewModelScope.launch {
             Log.d("MainViewModel", "Loading series info for series ID: $seriesId")
-            repository.getSeriesInfo(XtreamConfig.USERNAME, XtreamConfig.PASSWORD, seriesId)
+            repository.getSeriesInfo(credentials.username, credentials.password, seriesId)
                 .onSuccess { 
                     _selectedSeries.value = it 
                     Log.d("MainViewModel", "Series info loaded successfully for series ID: $seriesId")

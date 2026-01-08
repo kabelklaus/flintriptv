@@ -15,15 +15,19 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
-import com.flintr.tv.di.XtreamConfig
 import com.flintr.tv.ui.components.MainLayout
+import com.flintr.tv.ui.screens.DataLoadingScreen
 import com.flintr.tv.ui.screens.EPGContent
 import com.flintr.tv.ui.screens.HomeDestination
+import com.flintr.tv.ui.screens.LoginScreen
 import com.flintr.tv.ui.screens.PlayerScreen
+import com.flintr.tv.ui.screens.SplashScreen
 import com.flintr.tv.ui.tabs.LiveTVContent
 import com.flintr.tv.ui.tabs.VODContent
 import com.flintr.tv.ui.tabs.SeriesContent
@@ -31,6 +35,9 @@ import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
 
 sealed class Screen(val route: String) {
+    object Splash : Screen("splash")
+    object Login : Screen("login")
+    object DataLoading : Screen("data_loading")
     object Main : Screen("main")
     object Player : Screen("player/{streamUrl}") {
         fun createRoute(streamUrl: String): String {
@@ -43,17 +50,47 @@ sealed class Screen(val route: String) {
 @Composable
 fun AppNavigation(
     navController: NavHostController,
+    credentialsRepository: CredentialsRepository,
+    cacheService: DataCacheService,
     mainViewModel: MainViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Main.route
+        startDestination = Screen.Splash.route
     ) {
+        composable(Screen.Splash.route) {
+            SplashScreen(
+                navController = navController,
+                credentialsRepository = credentialsRepository,
+                cacheService = cacheService
+            )
+        }
+        composable(Screen.Login.route) {
+            LoginScreen(
+                onLoginSuccess = {
+                    navController.navigate(Screen.DataLoading.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(Screen.DataLoading.route) {
+            DataLoadingScreen(
+                onLoadingComplete = { cachedData ->
+                    navController.navigate(Screen.Main.route) {
+                        popUpTo(Screen.DataLoading.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         composable(Screen.Main.route) {
             MainContentScreen(
                 navController = navController,
-                mainViewModel = mainViewModel
+                mainViewModel = mainViewModel,
+                credentialsRepository = credentialsRepository
             )
         }
         
@@ -78,8 +115,10 @@ fun AppNavigation(
 @Composable
 fun MainContentScreen(
     navController: NavHostController,
-    mainViewModel: MainViewModel
+    mainViewModel: MainViewModel,
+    credentialsRepository: CredentialsRepository
 ) {
+    val credentials = credentialsRepository.getCredentials()
     var selectedDestination by remember { mutableStateOf<HomeDestination>(HomeDestination.LiveTV) }
     var selectedCategoryId by remember { mutableStateOf<String?>(null) }
     
@@ -178,10 +217,11 @@ fun MainContentScreen(
                         focusRequester = contentListFocusRequester,
                         onNavigateLeft = { moveFocusToCategorySidebar() },
                         onChannelClick = { stream ->
+                            val creds = credentials ?: return@LiveTVContent
                             val streamUrl = stream.getStreamUrl(
-                                XtreamConfig.SERVER_URL,
-                                XtreamConfig.USERNAME,
-                                XtreamConfig.PASSWORD
+                                creds.serverUrl,
+                                creds.username,
+                                creds.password
                             )
                             navController.navigate(Screen.Player.createRoute(streamUrl))
                         }
@@ -194,10 +234,11 @@ fun MainContentScreen(
                         focusRequester = contentListFocusRequester,
                         onNavigateLeft = { moveFocusToCategorySidebar() },
                         onVodClick = { vod ->
+                            val creds = credentials ?: return@VODContent
                             val streamUrl = vod.getStreamUrl(
-                                XtreamConfig.SERVER_URL,
-                                XtreamConfig.USERNAME,
-                                XtreamConfig.PASSWORD
+                                creds.serverUrl,
+                                creds.username,
+                                creds.password
                             )
                             navController.navigate(Screen.Player.createRoute(streamUrl))
                         }
@@ -210,10 +251,11 @@ fun MainContentScreen(
                         focusRequester = contentListFocusRequester,
                         onNavigateLeft = { moveFocusToCategorySidebar() },
                         onEpisodeClick = { episode, series ->
+                            val creds = credentials ?: return@SeriesContent
                             val streamUrl = episode.getStreamUrl(
-                                XtreamConfig.SERVER_URL,
-                                XtreamConfig.USERNAME,
-                                XtreamConfig.PASSWORD,
+                                creds.serverUrl,
+                                creds.username,
+                                creds.password,
                                 series.seriesId
                             )
                             navController.navigate(Screen.Player.createRoute(streamUrl))
@@ -224,10 +266,11 @@ fun MainContentScreen(
                     EPGContent(
                         viewModel = mainViewModel,
                         onProgramClick = { program, stream ->
+                            val creds = credentials ?: return@EPGContent
                             val streamUrl = stream.getStreamUrl(
-                                XtreamConfig.SERVER_URL,
-                                XtreamConfig.USERNAME,
-                                XtreamConfig.PASSWORD
+                                creds.serverUrl,
+                                creds.username,
+                                creds.password
                             )
                             navController.navigate(Screen.Player.createRoute(streamUrl))
                         }
