@@ -160,7 +160,12 @@ private fun clearStreamsForDestination(
         is HomeDestination.LiveTV -> viewModel.clearLiveStreams()
         is HomeDestination.VOD -> viewModel.clearVodStreams()
         is HomeDestination.Series -> viewModel.clearSeries()
-        else -> {}
+        is HomeDestination.EPG -> {
+            // EPG doesn't have streams to clear
+        }
+        is HomeDestination.Settings -> {
+            // Settings navigates to separate screen, no streams to clear
+        }
     }
 }
 
