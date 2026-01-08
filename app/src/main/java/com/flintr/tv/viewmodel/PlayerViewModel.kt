@@ -2,9 +2,9 @@ package com.flintr.tv.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.repository.XtreamRepository
-import com.flintr.tv.di.XtreamConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +14,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
-    private val repository: XtreamRepository
+    private val repository: XtreamRepository,
+    private val credentialsRepository: CredentialsRepository
 ) : ViewModel() {
     
     private val _epgPrograms = MutableStateFlow<List<EpgProgram>>(emptyList())
@@ -28,8 +29,9 @@ class PlayerViewModel @Inject constructor(
     }
     
     fun loadEpg(streamId: Int) {
+        val credentials = credentialsRepository.getCredentials() ?: return
         viewModelScope.launch {
-            repository.getEpg(XtreamConfig.USERNAME, XtreamConfig.PASSWORD, streamId)
+            repository.getEpg(credentials.username, credentials.password, streamId)
                 .onSuccess { _epgPrograms.value = it }
                 .onFailure { }
         }

@@ -7,13 +7,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.rememberNavController
+import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.ui.navigation.AppNavigation
 import com.flintr.tv.ui.theme.FlintRTVTheme
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @Inject
+    lateinit var credentialsRepository: CredentialsRepository
+
+    @Inject
+    lateinit var cacheService: DataCacheService
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -23,7 +33,11 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
-                    AppNavigation(navController = navController)
+                    AppNavigation(
+                        navController = navController,
+                        credentialsRepository = credentialsRepository,
+                        cacheService = cacheService
+                    )
                 }
             }
         }

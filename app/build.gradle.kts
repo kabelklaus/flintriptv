@@ -1,3 +1,4 @@
+import org.gradle.api.GradleException
 import java.util.Properties
 
 plugins {
@@ -29,14 +30,22 @@ android {
             val keystorePropertiesFile = rootProject.file("local.properties")
             if (keystorePropertiesFile.exists()) {
                 val keystoreProperties = Properties().apply {
-                    load(keystorePropertiesFile.inputStream())
+                    keystorePropertiesFile.inputStream().use(::load)
                 }
                 
-                val keystorePath = keystoreProperties.getProperty("keystore.path") ?: ""
-                storeFile = if (keystorePath.isNotEmpty()) rootProject.file(keystorePath) else null
-                storePassword = keystoreProperties.getProperty("keystore.password") ?: ""
-                keyAlias = keystoreProperties.getProperty("keystore.keyAlias") ?: ""
-                keyPassword = keystoreProperties.getProperty("keystore.keyPassword") ?: ""
+                val keystorePath = keystoreProperties.getProperty("keystore.path")
+                val storePwd = keystoreProperties.getProperty("keystore.password")
+                val keyAliasName = keystoreProperties.getProperty("keystore.keyAlias")
+                val keyPwd = keystoreProperties.getProperty("keystore.keyPassword")
+
+                if (keystorePath.isNullOrBlank() || storePwd.isNullOrBlank() || keyAliasName.isNullOrBlank() || keyPwd.isNullOrBlank()) {
+                    throw GradleException("For release builds, signing configuration is required. Please ensure 'keystore.path', 'keystore.password', 'keystore.keyAlias', and 'keystore.keyPassword' are set in 'local.properties'.")
+                }
+
+                storeFile = rootProject.file(keystorePath)
+                storePassword = storePwd
+                keyAlias = keyAliasName
+                keyPassword = keyPwd
             }
         }
     }
@@ -108,6 +117,9 @@ dependencies {
     
     // TV Support
     implementation(libs.leanback)
+    
+    // Security
+    implementation(libs.security.crypto)
     
     // Testing
     testImplementation(libs.junit)

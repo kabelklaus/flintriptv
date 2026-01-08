@@ -107,3 +107,6 @@ Thumbs.db
 *.orig
 *.bak
 *~
+
+# Examples directory
+examples/

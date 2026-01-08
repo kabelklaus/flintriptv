@@ -1,6 +1,7 @@
 package com.flintr.tv.di
 
 import com.flintr.tv.data.api.XtreamApiService
+import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -14,12 +15,6 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
-
-object XtreamConfig {
-    const val SERVER_URL = "http://line.anubtv.sbs"
-    const val USERNAME = "90f5932f4c"
-    const val PASSWORD = "71858fbbfd6e"
-}
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -50,9 +45,17 @@ object AppModule {
     
     @Provides
     @Singleton
-    fun provideRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit {
+    fun provideRetrofit(
+        okHttpClient: OkHttpClient,
+        moshi: Moshi,
+        credentialsRepository: CredentialsRepository
+    ): Retrofit {
+        val baseUrl = credentialsRepository.getCredentials()?.serverUrl
+            ?.let { if (it.endsWith("/")) it else "$it/" }
+            ?: "http://localhost/"
+        
         return Retrofit.Builder()
-            .baseUrl("${XtreamConfig.SERVER_URL}/")
+            .baseUrl(baseUrl)
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
@@ -68,6 +71,20 @@ object AppModule {
     @Singleton
     fun provideXtreamRepository(apiService: XtreamApiService): XtreamRepository {
         return XtreamRepository(apiService)
+    }
+    
+    // Helper function to create Retrofit dynamically for login validation
+    fun createRetrofitForUrl(
+        serverUrl: String,
+        okHttpClient: OkHttpClient,
+        moshi: Moshi
+    ): Retrofit {
+        val baseUrl = if (serverUrl.endsWith("/")) serverUrl else "$serverUrl/"
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
     }
 }
 
