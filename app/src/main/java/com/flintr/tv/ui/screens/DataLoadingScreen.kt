@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -321,10 +322,29 @@ private fun StepItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (step.status != LoadingStatus.Pending) {
+                val infiniteTransition = rememberInfiniteTransition(label = "loadingRotation")
+                val rotationAngle by infiniteTransition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 360f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1000, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "rotation"
+                )
+                
                 Icon(
                     imageVector = statusIcon,
                     contentDescription = null,
-                    modifier = Modifier.size(statusIconSize),
+                    modifier = Modifier
+                        .size(statusIconSize)
+                        .then(
+                            if (step.status == LoadingStatus.Loading) {
+                                Modifier.rotate(rotationAngle)
+                            } else {
+                                Modifier
+                            }
+                        ),
                     tint = statusIconColor
                 )
             }
