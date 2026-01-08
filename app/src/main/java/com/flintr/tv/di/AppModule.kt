@@ -52,7 +52,7 @@ object AppModule {
     ): Retrofit {
         val baseUrl = credentialsRepository.getCredentials()?.serverUrl
             ?.let { if (it.endsWith("/")) it else "$it/" }
-            ?: "http://localhost/"
+            ?: throw IllegalStateException("Cannot provide Retrofit instance without a configured server URL. Please log in first.")
         
         return Retrofit.Builder()
             .baseUrl(baseUrl)

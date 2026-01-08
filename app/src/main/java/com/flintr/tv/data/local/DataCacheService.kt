@@ -38,6 +38,9 @@ class DataCacheService @Inject constructor(
         private const val KEY_CACHE_LIVE_CATEGORIES = "iptv_cache_live_categories"
         private const val KEY_CACHE_VOD_CATEGORIES = "iptv_cache_vod_categories"
         private const val KEY_CACHE_SERIES_CATEGORIES = "iptv_cache_series_categories"
+        private const val KEY_CACHE_CHANNELS_COUNT = "iptv_cache_channels_count"
+        private const val KEY_CACHE_MOVIES_COUNT = "iptv_cache_movies_count"
+        private const val KEY_CACHE_SERIES_COUNT = "iptv_cache_series_count"
         private const val CACHE_VALIDITY_DURATION = 24 * 60 * 60 * 1000L // 24 hours in milliseconds
         private val ISO8601_FORMAT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US)
     }
@@ -59,7 +62,7 @@ class DataCacheService @Inject constructor(
             return false
         }
 
-        // Check if all required data exists and is not empty
+        // Check if all required data exists and is not empty using stored counts
         val channelsJson = sharedPreferences.getString(KEY_CACHE_CHANNELS, null)
         val moviesJson = sharedPreferences.getString(KEY_CACHE_MOVIES, null)
         val seriesJson = sharedPreferences.getString(KEY_CACHE_SERIES, null)
@@ -68,24 +71,32 @@ class DataCacheService @Inject constructor(
             return false
         }
 
-        // Try to parse to verify they're valid JSON and not empty
-        try {
-            val listType = Types.newParameterizedType(List::class.java, LiveStream::class.java)
-            val adapter = moshi.adapter<List<LiveStream>>(listType)
-            val channels = adapter.fromJson(channelsJson)
-            if (channels.isNullOrEmpty()) return false
+        // Check counts instead of parsing entire JSON - much faster
+        val channelsCount = sharedPreferences.getInt(KEY_CACHE_CHANNELS_COUNT, -1)
+        val moviesCount = sharedPreferences.getInt(KEY_CACHE_MOVIES_COUNT, -1)
+        val seriesCount = sharedPreferences.getInt(KEY_CACHE_SERIES_COUNT, -1)
 
-            val vodListType = Types.newParameterizedType(List::class.java, VodStream::class.java)
-            val vodAdapter = moshi.adapter<List<VodStream>>(vodListType)
-            val movies = vodAdapter.fromJson(moviesJson)
-            if (movies.isNullOrEmpty()) return false
+        if (channelsCount <= 0 || moviesCount <= 0 || seriesCount <= 0) {
+            // Fallback: if counts are missing (e.g., from old cache), verify JSON is valid
+            try {
+                val listType = Types.newParameterizedType(List::class.java, LiveStream::class.java)
+                val adapter = moshi.adapter<List<LiveStream>>(listType)
+                val channels = adapter.fromJson(channelsJson)
+                if (channels.isNullOrEmpty()) return false
 
-            val seriesListType = Types.newParameterizedType(List::class.java, Series::class.java)
-            val seriesAdapter = moshi.adapter<List<Series>>(seriesListType)
-            val series = seriesAdapter.fromJson(seriesJson)
-            if (series.isNullOrEmpty()) return false
-        } catch (e: Exception) {
-            return false
+                val vodListType = Types.newParameterizedType(List::class.java, VodStream::class.java)
+                val vodAdapter = moshi.adapter<List<VodStream>>(vodListType)
+                val movies = vodAdapter.fromJson(moviesJson)
+                if (movies.isNullOrEmpty()) return false
+
+                val seriesListType = Types.newParameterizedType(List::class.java, Series::class.java)
+                val seriesAdapter = moshi.adapter<List<Series>>(seriesListType)
+                val series = seriesAdapter.fromJson(seriesJson)
+                if (series.isNullOrEmpty()) return false
+            } catch (e: Exception) {
+                android.util.Log.e("DataCacheService", "Failed to validate cache JSON", e)
+                return false
+            }
         }
 
         return true
@@ -128,6 +139,9 @@ class DataCacheService @Inject constructor(
                 .putString(KEY_CACHE_LIVE_CATEGORIES, liveCategoriesJson)
                 .putString(KEY_CACHE_VOD_CATEGORIES, vodCategoriesJson)
                 .putString(KEY_CACHE_SERIES_CATEGORIES, seriesCategoriesJson)
+                .putInt(KEY_CACHE_CHANNELS_COUNT, channels.size)
+                .putInt(KEY_CACHE_MOVIES_COUNT, movies.size)
+                .putInt(KEY_CACHE_SERIES_COUNT, series.size)
                 .apply()
         } catch (e: Exception) {
             // Log error but don't crash

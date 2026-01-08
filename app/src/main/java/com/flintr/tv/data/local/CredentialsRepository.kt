@@ -30,9 +30,11 @@ class CredentialsRepository @Inject constructor(
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
-    private val KEY_SERVER_URL = "server_url"
-    private val KEY_USERNAME = "username"
-    private val KEY_PASSWORD = "password"
+    companion object {
+        private const val KEY_SERVER_URL = "server_url"
+        private const val KEY_USERNAME = "username"
+        private const val KEY_PASSWORD = "password"
+    }
 
     fun saveCredentials(credentials: Credentials) {
         sharedPreferences.edit()
@@ -55,7 +57,7 @@ class CredentialsRepository @Inject constructor(
     }
 
     fun hasCredentials(): Boolean {
-        return getCredentials() != null
+        return sharedPreferences.contains(KEY_SERVER_URL)
     }
 
     fun clearCredentials() {
