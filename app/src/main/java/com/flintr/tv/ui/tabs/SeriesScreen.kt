@@ -69,9 +69,8 @@ fun SeriesContent(
         items = series,
         isLoading = uiState.isLoading,
         focusRequester = focusRequester,
-        onNavigateLeft = onNavigateLeft,
         modifier = modifier,
-        content = { seriesItem, index, columnIndex, onFocusChanged ->
+        content = { seriesItem, _, columnIndex, onFocusChanged ->
             SeriesItem(
                 series = seriesItem,
                 isExpanded = expandedSeriesId == seriesItem.seriesId,

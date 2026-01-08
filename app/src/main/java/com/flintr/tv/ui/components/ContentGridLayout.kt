@@ -23,7 +23,6 @@ fun <T> ContentGridLayout(
     items: List<T>,
     isLoading: Boolean,
     focusRequester: FocusRequester,
-    onNavigateLeft: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     content: @Composable (item: T, index: Int, columnIndex: Int, onFocusChanged: ((Boolean) -> Unit)?) -> Unit
 ) {
@@ -70,7 +69,7 @@ fun <T> ContentGridLayout(
                         item,
                         index,
                         columnIndex,
-                        { isFocused ->
+                        { _ ->
                             // onFocusChanged is passed through to content composable
                             // No need to track focusedIndex here as it's unused
                         }

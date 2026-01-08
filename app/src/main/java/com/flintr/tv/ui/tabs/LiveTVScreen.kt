@@ -37,7 +37,6 @@ fun LiveTVContent(
         items = streams,
         isLoading = uiState.isLoading,
         focusRequester = focusRequester,
-        onNavigateLeft = onNavigateLeft,
         modifier = modifier,
         content = { stream, index, columnIndex, onFocusChanged ->
             LiveStreamCard(

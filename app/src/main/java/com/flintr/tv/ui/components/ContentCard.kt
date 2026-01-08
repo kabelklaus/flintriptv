@@ -70,6 +70,13 @@ private val ContentCardTextFontWeight = FontWeight.Bold
 // Content Card Title Line Height
 private const val ContentCardTitleLineHeightFactor = 1.2f
 
+private data class CardConfig(
+    val isSelected: Boolean = false,
+    val onFocusChanged: ((Boolean) -> Unit)? = null,
+    val onNavigateLeft: (() -> Unit)? = null,
+    val focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+)
+
 @Composable
 fun VODCard(
     vod: VodStream,
@@ -85,9 +92,11 @@ fun VODCard(
         rating = ContentParser.getRating(vod),
         onClick = onClick,
         modifier = modifier,
-        isSelected = isSelected,
-        onFocusChanged = onFocusChanged,
-        onNavigateLeft = onNavigateLeft
+        config = CardConfig(
+            isSelected = isSelected,
+            onFocusChanged = onFocusChanged,
+            onNavigateLeft = onNavigateLeft
+        )
     )
 }
 
@@ -106,9 +115,11 @@ fun VODCard(
         rating = ContentParser.getRating(series),
         onClick = onClick,
         modifier = modifier,
-        isSelected = isSelected,
-        onFocusChanged = onFocusChanged,
-        onNavigateLeft = onNavigateLeft
+        config = CardConfig(
+            isSelected = isSelected,
+            onFocusChanged = onFocusChanged,
+            onNavigateLeft = onNavigateLeft
+        )
     )
 }
 
@@ -119,17 +130,14 @@ private fun ContentCardInternal(
     rating: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isSelected: Boolean = false,
-    onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null,
-    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+    config: CardConfig = CardConfig()
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val colors = appColors()
     
     // Border color with animation
     val borderColor by animateColorAsState(
-        targetValue = if (isSelected || isFocused) colors.accentColor else Color.Transparent,
+        targetValue = if (config.isSelected || isFocused) colors.accentColor else Color.Transparent,
         animationSpec = tween(durationMillis = 200),
         label = "borderColor"
     )
@@ -137,7 +145,7 @@ private fun ContentCardInternal(
     // Background color with animation
     val backgroundColor by animateColorAsState(
         targetValue = when {
-            isSelected -> colors.accentColorHoverBg
+            config.isSelected -> colors.accentColorHoverBg
             isFocused -> colors.categoryHoverBg
             else -> colors.bgCard
         },
@@ -147,7 +155,7 @@ private fun ContentCardInternal(
     
     // Shadow elevation for selected items
     val shadowElevation by animateFloatAsState(
-        targetValue = if (isSelected) 4f else 0f,
+        targetValue = if (config.isSelected) 4f else 0f,
         animationSpec = tween(durationMillis = 200),
         label = "shadowElevation"
     )
@@ -156,7 +164,7 @@ private fun ContentCardInternal(
         modifier = modifier
             .size(width = ContentCardMaxCrossAxisExtent, height = ContentCardHeight)
             .then(
-                if (isSelected) {
+                if (config.isSelected) {
                     Modifier.shadow(
                         elevation = shadowElevation.dp,
                         shape = RoundedCornerShape(ContentCardBorderRadius),
@@ -173,8 +181,8 @@ private fun ContentCardInternal(
                 shape = RoundedCornerShape(ContentCardBorderRadius)
             )
             .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
+                if (config.focusRequester != null) {
+                    Modifier.focusRequester(config.focusRequester)
                 } else {
                     Modifier
                 }
@@ -183,14 +191,14 @@ private fun ContentCardInternal(
                 val wasFocused = isFocused
                 isFocused = focusState.isFocused
                 if (isFocused != wasFocused) {
-                    onFocusChanged?.invoke(isFocused)
+                    config.onFocusChanged?.invoke(isFocused)
                 }
             }
             .focusable()
             .onDpadDirection(
-                onLeft = if (onNavigateLeft != null) {
+                onLeft = if (config.onNavigateLeft != null) {
                     {
-                        onNavigateLeft()
+                        config.onNavigateLeft()
                         true
                     }
                 } else {
@@ -232,10 +240,12 @@ fun LiveStreamCard(
         rating = null,
         onClick = onClick,
         modifier = modifier,
-        isSelected = isSelected,
-        onFocusChanged = onFocusChanged,
-        onNavigateLeft = onNavigateLeft,
-        focusRequester = focusRequester
+        config = CardConfig(
+            isSelected = isSelected,
+            onFocusChanged = onFocusChanged,
+            onNavigateLeft = onNavigateLeft,
+            focusRequester = focusRequester
+        )
     )
 }
 

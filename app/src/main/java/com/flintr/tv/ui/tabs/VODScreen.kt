@@ -37,9 +37,8 @@ fun VODContent(
         items = streams,
         isLoading = uiState.isLoading,
         focusRequester = focusRequester,
-        onNavigateLeft = onNavigateLeft,
         modifier = modifier,
-        content = { vod, index, columnIndex, onFocusChanged ->
+        content = { vod, _, columnIndex, onFocusChanged ->
             VODCard(
                 vod = vod,
                 onClick = { onVodClick(vod) },
