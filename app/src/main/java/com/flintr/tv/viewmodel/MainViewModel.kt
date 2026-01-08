@@ -171,6 +171,19 @@ class MainViewModel @Inject constructor(
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
     }
+
+    fun clearLiveStreams() {
+        _liveStreams.value = emptyList()
+    }
+
+    fun clearVodStreams() {
+        _vodStreams.value = emptyList()
+    }
+
+    fun clearSeries() {
+        _series.value = emptyList()
+        _selectedSeries.value = null
+    }
 }
 
 data class MainUiState(
