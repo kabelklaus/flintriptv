@@ -1,4 +1,4 @@
-package com.flintr.tv.ui.components
+package com.flintr.tv.ui.sidebars
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -37,21 +37,18 @@ fun <T> ContentGridLayout(
         1
     }
     
-    Column(
+    Box(
         modifier = modifier.fillMaxSize()
     ) {
         if (isLoading) {
-            Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center)
+            )
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = Dimensions.contentCardMaxCrossAxisExtent),
                 modifier = Modifier
-                    .weight(1f)
+                    .fillMaxSize()
                     .focusRequester(focusRequester)
                     .onGloballyPositioned { coordinates ->
                         with(density) {
