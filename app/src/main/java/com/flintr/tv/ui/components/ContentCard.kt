@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -35,6 +36,8 @@ import androidx.compose.material.icons.filled.Star
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.Image
+import com.flintr.tv.data.model.LiveStream
+import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
@@ -67,6 +70,13 @@ private val ContentCardTextFontWeight = FontWeight.Bold
 // Content Card Title Line Height
 private const val ContentCardTitleLineHeightFactor = 1.2f
 
+private data class CardConfig(
+    val isSelected: Boolean = false,
+    val onFocusChanged: ((Boolean) -> Unit)? = null,
+    val onNavigateLeft: (() -> Unit)? = null,
+    val focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+)
+
 @Composable
 fun VODCard(
     vod: VodStream,
@@ -76,15 +86,58 @@ fun VODCard(
     onFocusChanged: ((Boolean) -> Unit)? = null,
     onNavigateLeft: (() -> Unit)? = null
 ) {
+    ContentCardInternal(
+        coverImageUrl = vod.streamIcon ?: vod.cover,
+        title = vod.name,
+        rating = ContentParser.getRating(vod),
+        onClick = onClick,
+        modifier = modifier,
+        config = CardConfig(
+            isSelected = isSelected,
+            onFocusChanged = onFocusChanged,
+            onNavigateLeft = onNavigateLeft
+        )
+    )
+}
+
+@Composable
+fun VODCard(
+    series: Series,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isSelected: Boolean = false,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
+    onNavigateLeft: (() -> Unit)? = null
+) {
+    ContentCardInternal(
+        coverImageUrl = series.cover,
+        title = series.name,
+        rating = ContentParser.getRating(series),
+        onClick = onClick,
+        modifier = modifier,
+        config = CardConfig(
+            isSelected = isSelected,
+            onFocusChanged = onFocusChanged,
+            onNavigateLeft = onNavigateLeft
+        )
+    )
+}
+
+@Composable
+private fun ContentCardInternal(
+    coverImageUrl: String?,
+    title: String,
+    rating: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    config: CardConfig = CardConfig()
+) {
     var isFocused by remember { mutableStateOf(false) }
     val colors = appColors()
     
-    // Get rating from ContentParser
-    val rating = ContentParser.getRating(vod)
-    
     // Border color with animation
     val borderColor by animateColorAsState(
-        targetValue = if (isSelected || isFocused) colors.accentColor else Color.Transparent,
+        targetValue = if (config.isSelected || isFocused) colors.accentColor else Color.Transparent,
         animationSpec = tween(durationMillis = 200),
         label = "borderColor"
     )
@@ -92,7 +145,7 @@ fun VODCard(
     // Background color with animation
     val backgroundColor by animateColorAsState(
         targetValue = when {
-            isSelected -> colors.accentColorHoverBg
+            config.isSelected -> colors.accentColorHoverBg
             isFocused -> colors.categoryHoverBg
             else -> colors.bgCard
         },
@@ -102,7 +155,7 @@ fun VODCard(
     
     // Shadow elevation for selected items
     val shadowElevation by animateFloatAsState(
-        targetValue = if (isSelected) 4f else 0f,
+        targetValue = if (config.isSelected) 4f else 0f,
         animationSpec = tween(durationMillis = 200),
         label = "shadowElevation"
     )
@@ -111,7 +164,7 @@ fun VODCard(
         modifier = modifier
             .size(width = ContentCardMaxCrossAxisExtent, height = ContentCardHeight)
             .then(
-                if (isSelected) {
+                if (config.isSelected) {
                     Modifier.shadow(
                         elevation = shadowElevation.dp,
                         shape = RoundedCornerShape(ContentCardBorderRadius),
@@ -127,18 +180,25 @@ fun VODCard(
                 color = borderColor,
                 shape = RoundedCornerShape(ContentCardBorderRadius)
             )
+            .then(
+                if (config.focusRequester != null) {
+                    Modifier.focusRequester(config.focusRequester)
+                } else {
+                    Modifier
+                }
+            )
             .onFocusChanged { focusState ->
                 val wasFocused = isFocused
                 isFocused = focusState.isFocused
                 if (isFocused != wasFocused) {
-                    onFocusChanged?.invoke(isFocused)
+                    config.onFocusChanged?.invoke(isFocused)
                 }
             }
             .focusable()
             .onDpadDirection(
-                onLeft = if (onNavigateLeft != null) {
+                onLeft = if (config.onNavigateLeft != null) {
                     {
-                        onNavigateLeft()
+                        config.onNavigateLeft()
                         true
                     }
                 } else {
@@ -156,12 +216,37 @@ fun VODCard(
         )
     ) {
         CardContent(
-            coverImageUrl = vod.streamIcon ?: vod.cover,
-            title = vod.name,
+            coverImageUrl = coverImageUrl,
+            title = title,
             rating = rating,
             colors = colors
         )
     }
+}
+
+@Composable
+fun LiveStreamCard(
+    stream: LiveStream,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isSelected: Boolean = false,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
+    onNavigateLeft: (() -> Unit)? = null,
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+) {
+    ContentCardInternal(
+        coverImageUrl = stream.streamIcon,
+        title = stream.name,
+        rating = null,
+        onClick = onClick,
+        modifier = modifier,
+        config = CardConfig(
+            isSelected = isSelected,
+            onFocusChanged = onFocusChanged,
+            onNavigateLeft = onNavigateLeft,
+            focusRequester = focusRequester
+        )
+    )
 }
 
 @Composable

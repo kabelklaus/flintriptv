@@ -47,7 +47,10 @@ object ContentParser {
         
         return when (rating) {
             is Number -> rating.toDouble()
-            is String -> rating.toDoubleOrNull()
+            is String -> {
+                val parsed = rating.toDoubleOrNull()
+                parsed
+            }
             else -> null
         }
     }

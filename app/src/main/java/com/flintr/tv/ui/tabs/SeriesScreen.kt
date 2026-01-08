@@ -8,12 +8,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,19 +24,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
+import com.flintr.tv.ui.components.ContentGridLayout
+import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
-import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.viewmodel.MainViewModel
 
 @Composable
@@ -69,50 +65,30 @@ fun SeriesContent(
     // Focus will be set manually when navigating from CategorySidebar
     // This keeps the focus on the Navbar when the app starts
     
-    Column(
-        modifier = modifier.fillMaxSize()
-    ) {
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier.weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(focusRequester)
-                    .focusable()
-                    .onDpadDirection(
-                        onLeft = {
-                            onNavigateLeft()
-                            true
-                        }
-                    )
-            ) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    items(series) { seriesItem ->
-                        SeriesItem(
-                            series = seriesItem,
-                            isExpanded = expandedSeriesId == seriesItem.seriesId,
-                            onExpand = { 
-                                expandedSeriesId = if (expandedSeriesId == seriesItem.seriesId) null else seriesItem.seriesId
-                            },
-                            onEpisodeClick = { episode ->
-                                onEpisodeClick(episode, seriesItem)
-                            }
-                        )
-                    }
+    ContentGridLayout(
+        items = series,
+        isLoading = uiState.isLoading,
+        focusRequester = focusRequester,
+        modifier = modifier,
+        content = { seriesItem, _, columnIndex, onFocusChanged ->
+            SeriesItem(
+                series = seriesItem,
+                isExpanded = expandedSeriesId == seriesItem.seriesId,
+                onExpand = { 
+                    expandedSeriesId = if (expandedSeriesId == seriesItem.seriesId) null else seriesItem.seriesId
+                },
+                onEpisodeClick = { episode ->
+                    onEpisodeClick(episode, seriesItem)
+                },
+                onFocusChanged = onFocusChanged,
+                onNavigateLeft = if (columnIndex == 0) {
+                    { onNavigateLeft() }
+                } else {
+                    null
                 }
-            }
+            )
         }
-    }
+    )
 }
 
 @Composable
@@ -121,109 +97,34 @@ fun SeriesItem(
     isExpanded: Boolean,
     onExpand: () -> Unit,
     onEpisodeClick: (Episode) -> Unit,
-    isSelected: Boolean = false
+    isSelected: Boolean = false,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
+    onNavigateLeft: (() -> Unit)? = null
 ) {
-    var isFocused by remember { mutableStateOf(false) }
-    val colors = appColors()
-    
-    // Border color with animation
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected || isFocused) colors.accentColor else Color.Transparent,
-        animationSpec = tween(durationMillis = 200),
-        label = "borderColor"
-    )
-    
-    // Background color with animation
-    val backgroundColor by animateColorAsState(
-        targetValue = when {
-            isSelected -> colors.accentColorHoverBg
-            isFocused -> colors.categoryHoverBg
-            else -> MaterialTheme.colorScheme.surface
-        },
-        animationSpec = tween(durationMillis = 200),
-        label = "backgroundColor"
-    )
-    
-    // Shadow elevation for selected items
-    val shadowElevation by animateFloatAsState(
-        targetValue = if (isSelected) 4f else 0f,
-        animationSpec = tween(durationMillis = 200),
-        label = "shadowElevation"
-    )
-    
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (isSelected) {
-                    Modifier.shadow(
-                        elevation = shadowElevation.dp,
-                        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
-                        spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
-                        ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            .background(
-                color = backgroundColor,
-                shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-            )
-            .then(
-                if (borderColor != Color.Transparent) {
-                    Modifier.border(
-                        width = Dimensions.listItemHoverBorderWidth,
-                        color = borderColor,
-                        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            // Correct order: onFocusChanged -> focusable -> key handlers
-            .onFocusChanged { focusState ->
-                isFocused = focusState.isFocused
-            }
-            .focusable()
-            .onDpadCenter(onExpand)
-            .clickable { onExpand() }
-            .padding(16.dp)
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            AsyncImage(
-                model = series.cover,
-                contentDescription = series.name,
-                modifier = Modifier.size(120.dp),
-                contentScale = ContentScale.Crop
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = series.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                series.plot?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                        maxLines = 3
-                    )
-                }
-            }
-        }
+        VODCard(
+            series = series,
+            onClick = onExpand,
+            isSelected = isSelected,
+            onFocusChanged = onFocusChanged,
+            onNavigateLeft = onNavigateLeft
+        )
         
         if (isExpanded && series.seasons != null) {
-            series.seasons.forEach { season ->
-                SeasonSection(
-                    season = season,
-                    seriesId = series.seriesId,
-                    onEpisodeClick = onEpisodeClick
-                )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp, start = 16.dp, end = 16.dp)
+            ) {
+                series.seasons.forEach { season ->
+                    SeasonSection(
+                        season = season,
+                        seriesId = series.seriesId,
+                        onEpisodeClick = onEpisodeClick
+                    )
+                }
             }
         }
     }
