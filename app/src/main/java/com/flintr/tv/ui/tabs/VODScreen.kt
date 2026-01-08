@@ -7,7 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import com.flintr.tv.data.model.VodStream
-import com.flintr.tv.ui.components.ContentGridLayout
+import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.viewmodel.MainViewModel
 

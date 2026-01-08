@@ -1,4 +1,4 @@
-package com.flintr.tv.ui.components
+package com.flintr.tv.ui.sidebars
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
