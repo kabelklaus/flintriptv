@@ -18,22 +18,45 @@ class XtreamRepository @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val moshi: Moshi
 ) {
+    companion object {
+        const val ERROR_API_SERVICE_NOT_AVAILABLE = "API service not available. Please log in first."
+    }
+    // Helper function to require API service or throw exception
+    private fun requireApiService(): XtreamApiService {
+        return getApiService() ?: throw Exception(ERROR_API_SERVICE_NOT_AVAILABLE)
+    }
+    
     // Lazy initialization of API service if not provided
     private fun getApiService(): XtreamApiService? {
         if (apiService != null) {
             return apiService
         }
         
-        // Create Retrofit dynamically if credentials are available
-        val credentials = credentialsRepository.getCredentials() ?: return null
+        val credentials = credentialsRepository.getCredentials()
+        if (credentials == null) {
+            // Invalidate cached service if user logs out
+            dynamicApiService = null
+            dynamicApiServiceBaseUrl = null
+            return null
+        }
+        
         val baseUrl = credentials.serverUrl.let { if (it.endsWith("/")) it else "$it/" }
+        
+        // Return cached service if it exists and baseUrl is the same
+        if (dynamicApiService != null && dynamicApiServiceBaseUrl == baseUrl) {
+            return dynamicApiService
+        }
+        
+        // Create Retrofit dynamically
         val retrofit = Retrofit.Builder()
             .baseUrl(baseUrl)
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
         
-        return retrofit.create(XtreamApiService::class.java)
+        dynamicApiService = retrofit.create(XtreamApiService::class.java)
+        dynamicApiServiceBaseUrl = baseUrl
+        return dynamicApiService
     }
     // In-memory cache
     private var cachedServerInfo: ServerInfo? = null
@@ -43,10 +66,14 @@ class XtreamRepository @Inject constructor(
     private var cachedVodStreams: List<VodStream>? = null
     private var cachedSeriesCategories: List<Category>? = null
     private var cachedSeries: List<Series>? = null
+    
+    // Caching for dynamically created API service
+    private var dynamicApiService: XtreamApiService? = null
+    private var dynamicApiServiceBaseUrl: String? = null
 
     suspend fun getServerInfo(username: String, password: String): Result<ServerInfo> {
         return try {
-            val service = getApiService() ?: return Result.failure(Exception("API service not available. Please log in first."))
+            val service = requireApiService()
             val response = service.getServerInfo(username, password)
             if (response.isSuccessful && response.body() != null) {
                 cachedServerInfo = response.body()
@@ -65,7 +92,7 @@ class XtreamRepository @Inject constructor(
                 return Result.success(cachedLiveCategories!!)
             }
 
-            val service = getApiService() ?: return Result.failure(Exception("API service not available. Please log in first."))
+            val service = requireApiService()
             val response = service.getLiveCategories(username, password)
             if (response.isSuccessful && response.body() != null) {
                 val categories = response.body()!!
@@ -81,7 +108,7 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getLiveStreams(username: String, password: String, categoryId: String? = null): Result<List<LiveStream>> {
         return try {
-            val service = getApiService() ?: return Result.failure(Exception("API service not available. Please log in first."))
+            val service = requireApiService()
             val response = if (categoryId != null) {
                 service.getLiveStreamsByCategory(username, password, "get_live_streams", categoryId)
             } else {
@@ -111,7 +138,7 @@ class XtreamRepository @Inject constructor(
                 return Result.success(cachedVodCategories!!)
             }
 
-            val service = getApiService() ?: return Result.failure(Exception("API service not available. Please log in first."))
+            val service = requireApiService()
             val response = service.getVodCategories(username, password)
             if (response.isSuccessful && response.body() != null) {
                 val categories = response.body()!!
@@ -127,7 +154,7 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getVodStreams(username: String, password: String, categoryId: String? = null): Result<List<VodStream>> {
         return try {
-            val service = getApiService() ?: return Result.failure(Exception("API service not available. Please log in first."))
+            val service = requireApiService()
             val response = if (categoryId != null) {
                 service.getVodStreamsByCategory(username, password, "get_vod_streams", categoryId)
             } else {
@@ -157,7 +184,7 @@ class XtreamRepository @Inject constructor(
                 return Result.success(cachedSeriesCategories!!)
             }
 
-            val service = getApiService() ?: return Result.failure(Exception("API service not available. Please log in first."))
+            val service = requireApiService()
             val response = service.getSeriesCategories(username, password)
             if (response.isSuccessful && response.body() != null) {
                 val categories = response.body()!!
@@ -173,7 +200,7 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getSeries(username: String, password: String, categoryId: String? = null): Result<List<Series>> {
         return try {
-            val service = getApiService() ?: return Result.failure(Exception("API service not available. Please log in first."))
+            val service = requireApiService()
             val response = if (categoryId != null) {
                 service.getSeriesByCategory(username, password, "get_series", categoryId)
             } else {
@@ -199,7 +226,7 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getSeriesInfo(username: String, password: String, seriesId: Int): Result<Series> {
         return try {
-            val service = getApiService() ?: return Result.failure(Exception("API service not available. Please log in first."))
+            val service = requireApiService()
             val response = service.getSeriesInfo(username, password, "get_series_info", seriesId)
             if (response.isSuccessful && response.body() != null) {
                 Result.success(response.body()!!)
@@ -213,7 +240,7 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getEpg(username: String, password: String, streamId: Int): Result<List<EpgProgram>> {
         return try {
-            val service = getApiService() ?: return Result.failure(Exception("API service not available. Please log in first."))
+            val service = requireApiService()
             val response = service.getShortEpg(username, password, "get_short_epg", streamId)
             if (response.isSuccessful && response.body() != null) {
                 val programs = response.body()!!.values.flatten()
@@ -228,7 +255,7 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getEpgList(username: String, password: String, streamIds: List<Int>): Result<List<EpgProgram>> {
         return try {
-            val service = getApiService() ?: return Result.failure(Exception("API service not available. Please log in first."))
+            val service = requireApiService()
             val idsString = streamIds.joinToString(",")
             val response = service.getShortEpgList(username, password, "get_short_epg", idsString)
             if (response.isSuccessful && response.body() != null) {
@@ -250,5 +277,7 @@ class XtreamRepository @Inject constructor(
         cachedVodStreams = null
         cachedSeriesCategories = null
         cachedSeries = null
+        dynamicApiService = null
+        dynamicApiServiceBaseUrl = null
     }
 }
