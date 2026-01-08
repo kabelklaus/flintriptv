@@ -106,6 +106,7 @@ class MainViewModel @Inject constructor(
         val credentials = credentialsRepository.getCredentials() ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _liveStreams.value = emptyList() // Clear old content while loading
             Log.d("MainViewModel", "Loading live streams for category: $categoryId")
             repository.getLiveStreams(credentials.username, credentials.password, categoryId)
                 .onSuccess { 
@@ -123,14 +124,17 @@ class MainViewModel @Inject constructor(
     fun loadVodStreams(categoryId: String? = null) {
         val credentials = credentialsRepository.getCredentials() ?: return
         viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _vodStreams.value = emptyList() // Clear old content while loading
             Log.d("MainViewModel", "Loading VOD streams for category: $categoryId")
             repository.getVodStreams(credentials.username, credentials.password, categoryId)
                 .onSuccess { 
                     _vodStreams.value = it 
+                    _uiState.value = _uiState.value.copy(isLoading = false)
                     Log.d("MainViewModel", "VOD streams loaded successfully: ${it.size} streams")
                 }
                 .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(error = error.message)
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = error.message)
                     Log.e("MainViewModel", "Failed to load VOD streams", error)
                 }
         }
@@ -139,14 +143,17 @@ class MainViewModel @Inject constructor(
     fun loadSeries(categoryId: String? = null) {
         val credentials = credentialsRepository.getCredentials() ?: return
         viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _series.value = emptyList() // Clear old content while loading
             Log.d("MainViewModel", "Loading series for category: $categoryId")
             repository.getSeries(credentials.username, credentials.password, categoryId)
                 .onSuccess { 
                     _series.value = it 
+                    _uiState.value = _uiState.value.copy(isLoading = false)
                     Log.d("MainViewModel", "Series loaded successfully: ${it.size} series")
                 }
                 .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(error = error.message)
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = error.message)
                     Log.e("MainViewModel", "Failed to load series", error)
                 }
         }
