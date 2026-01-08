@@ -173,7 +173,7 @@ fun ChannelCard(
             
             if (imageState is AsyncImagePainter.State.Error) {
                 // Fallback to text if image fails
-                _buildTextFallback(stream.name, colors)
+                buildTextFallback(stream.name, colors)
             } else {
                 Box(modifier = Modifier.fillMaxSize()) {
                     Image(
@@ -234,13 +234,13 @@ fun ChannelCard(
             }
         } else {
             // Fallback to text-only card
-            _buildTextFallback(stream.name, colors)
+            buildTextFallback(stream.name, colors)
         }
     }
 }
 
 @Composable
-private fun _buildTextFallback(
+private fun buildTextFallback(
     title: String,
     colors: com.flintr.tv.ui.theme.AppColors
 ) {

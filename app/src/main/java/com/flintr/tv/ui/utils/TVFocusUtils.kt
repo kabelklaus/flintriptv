@@ -2,14 +2,12 @@ package com.flintr.tv.ui.utils
 
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import com.flintr.tv.ui.theme.FocusHighlight
 import android.util.Log
 
 /**

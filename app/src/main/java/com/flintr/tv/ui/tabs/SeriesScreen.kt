@@ -51,7 +51,6 @@ fun SeriesContent(
     modifier: Modifier = Modifier
 ) {
     val series by viewModel.series.collectAsState()
-    val selectedSeries by viewModel.selectedSeries.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     
     var expandedSeriesId by remember { mutableStateOf<Int?>(null) }

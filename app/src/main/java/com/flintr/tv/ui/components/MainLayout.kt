@@ -11,7 +11,6 @@ import com.flintr.tv.data.model.Category
 import com.flintr.tv.ui.screens.HomeDestination
 import com.flintr.tv.ui.screens.HomeSidebar
 import com.flintr.tv.ui.sidebars.CategoryRow
-import com.flintr.tv.ui.theme.Dimensions
 
 @Composable
 fun MainLayout(
