@@ -1,7 +1,6 @@
 package com.flintr.tv.ui.screens
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.background
@@ -11,7 +10,6 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.shadow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
@@ -188,13 +186,6 @@ fun HomeSidebarItem(
         label = "borderColor"
     )
     
-    // Shadow elevation for selected items
-    val shadowElevation by animateFloatAsState(
-        targetValue = if (isSelected) 4f else 0f,
-        animationSpec = tween(durationMillis = 200),
-        label = "shadowElevation"
-    )
-    
     // Icon and text colors
     val iconColor = when {
         isSelected -> colors.accentColor
@@ -249,18 +240,6 @@ fun HomeSidebarItem(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(
-                    if (isSelected) {
-                        Modifier.shadow(
-                            elevation = shadowElevation.dp,
-                            shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
-                            spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
-                            ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
-                        )
-                    } else {
-                        Modifier
-                    }
-                )
                 .background(
                     color = backgroundColor,
                     shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
@@ -298,30 +277,6 @@ fun HomeSidebarItem(
                     fontWeight = FontWeight.W500,
                     color = textColor,
                     textAlign = TextAlign.Center
-                )
-            }
-        }
-        
-        // Vertical bar indicator for selected item
-        if (isSelected) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .fillMaxHeight()
-                    .width(Dimensions.navbarVerticalBarWidth),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(Dimensions.navbarVerticalBarWidth)
-                        .height(Dimensions.navbarVerticalBarHeight)
-                        .background(
-                            color = colors.accentColor,
-                            shape = RoundedCornerShape(
-                                topEnd = Dimensions.navbarVerticalBarRadius,
-                                bottomEnd = Dimensions.navbarVerticalBarRadius
-                            )
-                        )
                 )
             }
         }
