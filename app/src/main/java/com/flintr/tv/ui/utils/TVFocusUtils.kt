@@ -178,3 +178,21 @@ fun Modifier.onDpadDirection(
     }
 }
 
+/**
+ * Modifier for handling Back button press
+ * Intercepts Back key and calls the provided handler
+ */
+fun Modifier.onBackButton(
+    onBack: () -> Unit
+): Modifier {
+    return this.onKeyEvent { event ->
+        if (event.type == KeyEventType.KeyDown && event.key == Key.Back) {
+            Log.d("TVFocusUtils", "Back button pressed")
+            onBack()
+            true
+        } else {
+            false
+        }
+    }
+}
+

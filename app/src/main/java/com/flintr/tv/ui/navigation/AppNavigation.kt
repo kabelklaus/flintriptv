@@ -7,7 +7,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import android.util.Log
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
@@ -27,6 +30,7 @@ import com.flintr.tv.ui.screens.EPGContent
 import com.flintr.tv.ui.screens.HomeDestination
 import com.flintr.tv.ui.screens.LoginScreen
 import com.flintr.tv.ui.screens.PlayerScreen
+import com.flintr.tv.ui.settings.SettingsScreen
 import com.flintr.tv.ui.tabs.LiveTVContent
 import com.flintr.tv.ui.tabs.VODContent
 import com.flintr.tv.ui.tabs.SeriesContent
@@ -34,9 +38,11 @@ import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
 
 sealed class Screen(val route: String) {
+    object InitialRouting : Screen("initial_routing")
     object Login : Screen("login")
     object DataLoading : Screen("data_loading")
     object Main : Screen("main")
+    object Settings : Screen("settings")
     object Player : Screen("player/{streamUrl}") {
         fun createRoute(streamUrl: String): String {
             val encoded = java.net.URLEncoder.encode(streamUrl, "UTF-8")
@@ -46,14 +52,11 @@ sealed class Screen(val route: String) {
 }
 
 @Composable
-fun AppNavigation(
+private fun InitialRoutingScreen(
     navController: NavHostController,
     credentialsRepository: CredentialsRepository,
-    cacheService: DataCacheService,
-    mainViewModel: MainViewModel = hiltViewModel(),
-    playerViewModel: PlayerViewModel = hiltViewModel()
+    cacheService: DataCacheService
 ) {
-    // Initial routing logic - determines where to navigate on app start
     LaunchedEffect(Unit) {
         val destination = if (credentialsRepository.hasCredentials()) {
             // Check if cache is valid, if yes go to Main, otherwise to DataLoading
@@ -68,14 +71,34 @@ fun AppNavigation(
         }
         
         navController.navigate(destination) {
-            popUpTo(0) { inclusive = true }
+            popUpTo(Screen.InitialRouting.route) { inclusive = true }
         }
     }
+    
+    // Minimal UI - empty box to prevent flicker
+    Box(modifier = Modifier.fillMaxSize())
+}
 
+@Composable
+fun AppNavigation(
+    navController: NavHostController,
+    credentialsRepository: CredentialsRepository,
+    cacheService: DataCacheService,
+    mainViewModel: MainViewModel = hiltViewModel(),
+    playerViewModel: PlayerViewModel = hiltViewModel()
+) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Login.route
+        startDestination = Screen.InitialRouting.route
     ) {
+        composable(Screen.InitialRouting.route) {
+            InitialRoutingScreen(
+                navController = navController,
+                credentialsRepository = credentialsRepository,
+                cacheService = cacheService
+            )
+        }
+
         composable(Screen.Login.route) {
             LoginScreen(
                 onLoginSuccess = {
@@ -101,6 +124,13 @@ fun AppNavigation(
                 navController = navController,
                 mainViewModel = mainViewModel,
                 credentialsRepository = credentialsRepository
+            )
+        }
+        
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                focusRequester = remember { FocusRequester() },
+                onNavigateLeft = { navController.popBackStack() }
             )
         }
         
@@ -147,6 +177,7 @@ fun MainContentScreen(
         is HomeDestination.VOD -> vodCategories
         is HomeDestination.Series -> seriesCategories
         is HomeDestination.EPG -> emptyList()
+        is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
     }
     
     LaunchedEffect(selectedDestination, categories) {
@@ -207,7 +238,14 @@ fun MainContentScreen(
     
     MainLayout(
         selectedDestination = selectedDestination,
-        onDestinationChange = { selectedDestination = it },
+        onDestinationChange = { destination ->
+            if (destination is HomeDestination.Settings) {
+                // Navigate to separate Settings screen
+                navController.navigate(Screen.Settings.route)
+            } else {
+                selectedDestination = destination
+            }
+        },
         showCategories = showCategories,
         categories = categories,
         selectedCategoryId = selectedCategoryId,
@@ -285,6 +323,11 @@ fun MainContentScreen(
                             navController.navigate(Screen.Player.createRoute(streamUrl))
                         }
                     )
+                }
+                is HomeDestination.Settings -> {
+                    // Settings navigates to separate screen, this should not be reached
+                    // but kept for exhaustiveness
+                    Box {}
                 }
             }
         }
