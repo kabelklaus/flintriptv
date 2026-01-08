@@ -24,6 +24,12 @@ gradle-app.setting
 !gradle-wrapper.jar
 .gradletasknamecache
 
+# Cache directories
+.gradle/caches/
+.idea/caches/
+*.cache
+.caches/
+
 # Local configuration file (sdk path, etc)
 local.properties
 /local.properties
