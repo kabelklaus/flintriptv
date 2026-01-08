@@ -152,6 +152,18 @@ fun AppNavigation(
     }
 }
 
+private fun clearStreamsForDestination(
+    destination: HomeDestination,
+    viewModel: MainViewModel
+) {
+    when (destination) {
+        is HomeDestination.LiveTV -> viewModel.clearLiveStreams()
+        is HomeDestination.VOD -> viewModel.clearVodStreams()
+        is HomeDestination.Series -> viewModel.clearSeries()
+        else -> {}
+    }
+}
+
 @Composable
 fun MainContentScreen(
     navController: NavHostController,
@@ -180,14 +192,19 @@ fun MainContentScreen(
         is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
     }
     
-    LaunchedEffect(selectedDestination, categories) {
-        if (categories.isNotEmpty() && selectedCategoryId == null) {
-            selectedCategoryId = categories.first().categoryId
-        } else if (categories.isEmpty()) {
+    // Sort categories the same way as in CategoryRow for consistency
+    val sortedCategories = categories.sortedBy { it.categoryName }
+    
+    LaunchedEffect(selectedDestination, sortedCategories) {
+        if (sortedCategories.isEmpty()) {
             selectedCategoryId = null
-        } else if (selectedCategoryId != null && categories.none { it.categoryId == selectedCategoryId }) {
-            // Selected category no longer exists, select first one
-            selectedCategoryId = categories.first().categoryId
+        } else {
+            // Always select first category if none selected or selected category doesn't exist in current list
+            val currentCategoryExists = selectedCategoryId != null && 
+                sortedCategories.any { it.categoryId == selectedCategoryId }
+            if (!currentCategoryExists) {
+                selectedCategoryId = sortedCategories.first().categoryId
+            }
         }
     }
     
@@ -243,6 +260,12 @@ fun MainContentScreen(
                 // Navigate to separate Settings screen
                 navController.navigate(Screen.Settings.route)
             } else {
+                // Reset category selection and clear streams when switching tabs
+                selectedCategoryId = null
+                // Clear streams from old destination
+                clearStreamsForDestination(selectedDestination, mainViewModel)
+                // Clear streams from new destination to prevent showing old data
+                clearStreamsForDestination(destination, mainViewModel)
                 selectedDestination = destination
             }
         },

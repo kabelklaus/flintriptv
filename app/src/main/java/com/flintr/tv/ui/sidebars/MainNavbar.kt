@@ -39,6 +39,8 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 
+private const val FOCUS_REQUEST_DELAY_MS = 50L
+
 sealed class HomeDestination {
     object LiveTV : HomeDestination()
     object VOD : HomeDestination()
@@ -57,9 +59,39 @@ fun HomeSidebar(
 ) {
     val colors = appColors()
     
-    // Set focus on first item when sidebar is first displayed or when focus requester is triggered
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+    // Create individual focus requesters for each item
+    val tvFocusRequester = remember { FocusRequester() }
+    val moviesFocusRequester = remember { FocusRequester() }
+    val seriesFocusRequester = remember { FocusRequester() }
+    val epgFocusRequester = remember { FocusRequester() }
+    val settingsFocusRequester = remember { FocusRequester() }
+    
+    // Map destinations to their focus requesters
+    val destinationToFocusRequester = remember {
+        mapOf(
+            HomeDestination.LiveTV to tvFocusRequester,
+            HomeDestination.VOD to moviesFocusRequester,
+            HomeDestination.Series to seriesFocusRequester,
+            HomeDestination.EPG to epgFocusRequester,
+            HomeDestination.Settings to settingsFocusRequester
+        )
+    }
+    
+    // Set focus on selected item when destination changes
+    // This ensures that when a user clicks on "Movies" or navigates to a different tab,
+    // the focus is set to the correct item in the navbar
+    LaunchedEffect(selectedDestination) {
+        val itemFocusRequester = destinationToFocusRequester[selectedDestination]
+        if (itemFocusRequester != null) {
+            // Small delay to ensure UI is laid out
+            kotlinx.coroutines.delay(FOCUS_REQUEST_DELAY_MS)
+            try {
+                itemFocusRequester.requestFocus()
+                Log.i("TVFocus", "[MainNavbar] 🎯 Focus set to selected item: $selectedDestination")
+            } catch (e: IllegalStateException) {
+                Log.w("TVFocus", "[MainNavbar] ⚠️ FocusRequester not initialized yet for $selectedDestination")
+            }
+        }
     }
     
     Column(
@@ -107,7 +139,7 @@ fun HomeSidebar(
                     selectedDestination = selectedDestination,
                     onClick = { onNavigate(HomeDestination.LiveTV) },
                     colors = colors,
-                    focusRequester = focusRequester,
+                    focusRequester = tvFocusRequester,
                     onNavigateRight = onNavigateRight
                 )
             }
@@ -120,6 +152,7 @@ fun HomeSidebar(
                     selectedDestination = selectedDestination,
                     onClick = { onNavigate(HomeDestination.VOD) },
                     colors = colors,
+                    focusRequester = moviesFocusRequester,
                     onNavigateRight = onNavigateRight
                 )
             }
@@ -132,6 +165,7 @@ fun HomeSidebar(
                     selectedDestination = selectedDestination,
                     onClick = { onNavigate(HomeDestination.Series) },
                     colors = colors,
+                    focusRequester = seriesFocusRequester,
                     onNavigateRight = onNavigateRight
                 )
             }
@@ -144,6 +178,7 @@ fun HomeSidebar(
                     selectedDestination = selectedDestination,
                     onClick = { onNavigate(HomeDestination.EPG) },
                     colors = colors,
+                    focusRequester = epgFocusRequester,
                     onNavigateRight = onNavigateRight
                 )
             }
@@ -156,6 +191,7 @@ fun HomeSidebar(
                     selectedDestination = selectedDestination,
                     onClick = { onNavigate(HomeDestination.Settings) },
                     colors = colors,
+                    focusRequester = settingsFocusRequester,
                     onNavigateRight = onNavigateRight
                 )
             }
