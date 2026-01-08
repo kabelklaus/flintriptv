@@ -29,7 +29,6 @@ fun <T> ContentGridLayout(
 ) {
     val density = LocalDensity.current
     var gridWidth by remember { mutableStateOf(0.dp) }
-    var focusedIndex by remember { mutableStateOf(-1) }
     
     // Calculate columns based on grid width
     val columns = if (gridWidth > 0.dp) {
@@ -72,9 +71,8 @@ fun <T> ContentGridLayout(
                         index,
                         columnIndex,
                         { isFocused ->
-                            if (isFocused) {
-                                focusedIndex = index
-                            }
+                            // onFocusChanged is passed through to content composable
+                            // No need to track focusedIndex here as it's unused
                         }
                     )
                 }

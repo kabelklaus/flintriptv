@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.Star
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.Image
+import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.theme.Dimensions
@@ -77,92 +79,16 @@ fun VODCard(
     onFocusChanged: ((Boolean) -> Unit)? = null,
     onNavigateLeft: (() -> Unit)? = null
 ) {
-    var isFocused by remember { mutableStateOf(false) }
-    val colors = appColors()
-    
-    // Get rating from ContentParser
-    val rating = ContentParser.getRating(vod)
-    
-    // Border color with animation
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected || isFocused) colors.accentColor else Color.Transparent,
-        animationSpec = tween(durationMillis = 200),
-        label = "borderColor"
+    ContentCardInternal(
+        coverImageUrl = vod.streamIcon ?: vod.cover,
+        title = vod.name,
+        rating = ContentParser.getRating(vod),
+        onClick = onClick,
+        modifier = modifier,
+        isSelected = isSelected,
+        onFocusChanged = onFocusChanged,
+        onNavigateLeft = onNavigateLeft
     )
-    
-    // Background color with animation
-    val backgroundColor by animateColorAsState(
-        targetValue = when {
-            isSelected -> colors.accentColorHoverBg
-            isFocused -> colors.categoryHoverBg
-            else -> colors.bgCard
-        },
-        animationSpec = tween(durationMillis = 200),
-        label = "backgroundColor"
-    )
-    
-    // Shadow elevation for selected items
-    val shadowElevation by animateFloatAsState(
-        targetValue = if (isSelected) 4f else 0f,
-        animationSpec = tween(durationMillis = 200),
-        label = "shadowElevation"
-    )
-    
-    Card(
-        modifier = modifier
-            .size(width = ContentCardMaxCrossAxisExtent, height = ContentCardHeight)
-            .then(
-                if (isSelected) {
-                    Modifier.shadow(
-                        elevation = shadowElevation.dp,
-                        shape = RoundedCornerShape(ContentCardBorderRadius),
-                        spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
-                        ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            .border(
-                width = ContentCardBorderWidth,
-                color = borderColor,
-                shape = RoundedCornerShape(ContentCardBorderRadius)
-            )
-            .onFocusChanged { focusState ->
-                val wasFocused = isFocused
-                isFocused = focusState.isFocused
-                if (isFocused != wasFocused) {
-                    onFocusChanged?.invoke(isFocused)
-                }
-            }
-            .focusable()
-            .onDpadDirection(
-                onLeft = if (onNavigateLeft != null) {
-                    {
-                        onNavigateLeft()
-                        true
-                    }
-                } else {
-                    null // Let Compose handle standard navigation
-                },
-                onRight = null, // Let Compose handle standard navigation
-                onUp = null, // Let Compose handle standard navigation
-                onDown = null // Let Compose handle standard navigation
-            )
-            .onDpadCenter(onClick)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(ContentCardBorderRadius),
-        colors = CardDefaults.cardColors(
-            containerColor = backgroundColor
-        )
-    ) {
-        CardContent(
-            coverImageUrl = vod.streamIcon ?: vod.cover,
-            title = vod.name,
-            rating = rating,
-            colors = colors
-        )
-    }
 }
 
 @Composable
@@ -174,11 +100,31 @@ fun VODCard(
     onFocusChanged: ((Boolean) -> Unit)? = null,
     onNavigateLeft: (() -> Unit)? = null
 ) {
+    ContentCardInternal(
+        coverImageUrl = series.cover,
+        title = series.name,
+        rating = ContentParser.getRating(series),
+        onClick = onClick,
+        modifier = modifier,
+        isSelected = isSelected,
+        onFocusChanged = onFocusChanged,
+        onNavigateLeft = onNavigateLeft
+    )
+}
+
+@Composable
+private fun ContentCardInternal(
+    coverImageUrl: String?,
+    title: String,
+    rating: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isSelected: Boolean = false,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
+    onNavigateLeft: (() -> Unit)? = null
+) {
     var isFocused by remember { mutableStateOf(false) }
     val colors = appColors()
-    
-    // Get rating from ContentParser
-    val rating = ContentParser.getRating(series)
     
     // Border color with animation
     val borderColor by animateColorAsState(
@@ -254,9 +200,111 @@ fun VODCard(
         )
     ) {
         CardContent(
-            coverImageUrl = series.cover,
-            title = series.name,
+            coverImageUrl = coverImageUrl,
+            title = title,
             rating = rating,
+            colors = colors
+        )
+    }
+}
+
+@Composable
+fun LiveStreamCard(
+    stream: LiveStream,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    isSelected: Boolean = false,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
+    onNavigateLeft: (() -> Unit)? = null,
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val colors = appColors()
+    
+    // Border color with animation
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected || isFocused) colors.accentColor else Color.Transparent,
+        animationSpec = tween(durationMillis = 200),
+        label = "borderColor"
+    )
+    
+    // Background color with animation
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> colors.accentColorHoverBg
+            isFocused -> colors.categoryHoverBg
+            else -> colors.bgCard
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "backgroundColor"
+    )
+    
+    // Shadow elevation for selected items
+    val shadowElevation by animateFloatAsState(
+        targetValue = if (isSelected) 4f else 0f,
+        animationSpec = tween(durationMillis = 200),
+        label = "shadowElevation"
+    )
+    
+    Card(
+        modifier = modifier
+            .size(width = ContentCardMaxCrossAxisExtent, height = ContentCardHeight)
+            .then(
+                if (isSelected) {
+                    Modifier.shadow(
+                        elevation = shadowElevation.dp,
+                        shape = RoundedCornerShape(ContentCardBorderRadius),
+                        spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
+                        ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .border(
+                width = ContentCardBorderWidth,
+                color = borderColor,
+                shape = RoundedCornerShape(ContentCardBorderRadius)
+            )
+            .then(
+                if (focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                }
+            )
+            .onFocusChanged { focusState ->
+                val wasFocused = isFocused
+                isFocused = focusState.isFocused
+                if (isFocused != wasFocused) {
+                    onFocusChanged?.invoke(isFocused)
+                }
+            }
+            .focusable()
+            .onDpadDirection(
+                onLeft = if (onNavigateLeft != null) {
+                    {
+                        onNavigateLeft()
+                        true
+                    }
+                } else {
+                    null // Let Compose handle standard navigation
+                },
+                onRight = null, // Let Compose handle standard navigation
+                onUp = null, // Let Compose handle standard navigation
+                onDown = null // Let Compose handle standard navigation
+            )
+            .onDpadCenter(onClick)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(ContentCardBorderRadius),
+        colors = CardDefaults.cardColors(
+            containerColor = backgroundColor
+        )
+    ) {
+        CardContent(
+            coverImageUrl = stream.streamIcon,
+            title = stream.name,
+            rating = null,
             colors = colors
         )
     }
