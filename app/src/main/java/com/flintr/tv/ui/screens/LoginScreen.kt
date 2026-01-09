@@ -50,6 +50,9 @@ fun LoginScreen(
     val buttonFocusRequester = remember { FocusRequester() }
 
     val scrollState = rememberScrollState()
+    
+    // Track if initial focus has been set to prevent re-focusing on layout changes
+    var hasRequestedInitialFocus by remember { mutableStateOf(false) }
 
     // Fade-in animation on screen start
     var isVisible by remember { mutableStateOf(false) }
@@ -118,11 +121,14 @@ fun LoginScreen(
                         .fillMaxWidth()
                         .focusRequester(serverUrlFocusRequester)
                         .onGloballyPositioned {
-                            // Request focus when component is laid out
-                            try {
-                                serverUrlFocusRequester.requestFocus()
-                            } catch (e: IllegalStateException) {
-                                // Component not ready for focus yet
+                            // Request focus only once when component is first laid out
+                            if (!hasRequestedInitialFocus) {
+                                try {
+                                    serverUrlFocusRequester.requestFocus()
+                                    hasRequestedInitialFocus = true
+                                } catch (e: IllegalStateException) {
+                                    // Component not ready for focus yet
+                                }
                             }
                         },
                     singleLine = true,
