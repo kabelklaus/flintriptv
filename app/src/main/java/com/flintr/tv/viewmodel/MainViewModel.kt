@@ -49,6 +49,14 @@ class MainViewModel @Inject constructor(
         loadInitialData()
     }
 
+    /**
+     * Refresh data from cache
+     * Called after DataLoadingScreen successfully loads and caches data
+     */
+    fun refreshData() {
+        loadInitialData()
+    }
+
     private fun loadInitialData() {
         val credentials = credentialsRepository.getCredentials()
         if (credentials == null) {
