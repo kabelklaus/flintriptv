@@ -7,17 +7,23 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.shadow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -83,6 +89,8 @@ fun LoginScreen(
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
+            var passwordVisible by remember { mutableStateOf(false) }
+            
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -93,34 +101,45 @@ fun LoginScreen(
                     )
                     .padding(Dimensions.spacingXL),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+                verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
             ) {
-                Text(
-                    text = "Anmeldung",
-                    style = MaterialTheme.typography.headlineMedium
-                )
-
                 OutlinedTextField(
                     value = serverUrl,
                     onValueChange = { serverUrl = it },
-                    label = { Text("Server URL") },
+                    label = { Text("Serveradresse") },
                     placeholder = { Text("http://example.com") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Dns,
+                            contentDescription = null
+                        )
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusRequester(serverUrlFocusRequester),
+                        .focusRequester(serverUrlFocusRequester)
+                        .onGloballyPositioned {
+                            // Request focus when component is laid out
+                            try {
+                                serverUrlFocusRequester.requestFocus()
+                            } catch (e: IllegalStateException) {
+                                // Component not ready for focus yet
+                            }
+                        },
                     singleLine = true,
                     enabled = !uiState.isLoading,
                     shape = RoundedCornerShape(Dimensions.radiusMD),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = colors.accentColor,
                         unfocusedBorderColor = colors.cardBorder,
-                        focusedLabelColor = colors.textPrimary,
+                        focusedLabelColor = colors.accentColor,
                         unfocusedLabelColor = colors.textSecondary,
                         focusedTextColor = colors.textPrimary,
                         unfocusedTextColor = colors.textPrimary,
                         cursorColor = colors.accentColor,
                         focusedPlaceholderColor = colors.textSecondary,
-                        unfocusedPlaceholderColor = colors.textSecondary
+                        unfocusedPlaceholderColor = colors.textSecondary,
+                        focusedLeadingIconColor = colors.accentColor,
+                        unfocusedLeadingIconColor = colors.iconColor
                     )
                 )
 
@@ -129,6 +148,12 @@ fun LoginScreen(
                     onValueChange = { username = it },
                     label = { Text("Benutzername") },
                     placeholder = { Text("Ihr Benutzername") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null
+                        )
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(usernameFocusRequester),
@@ -138,13 +163,15 @@ fun LoginScreen(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = colors.accentColor,
                         unfocusedBorderColor = colors.cardBorder,
-                        focusedLabelColor = colors.textPrimary,
+                        focusedLabelColor = colors.accentColor,
                         unfocusedLabelColor = colors.textSecondary,
                         focusedTextColor = colors.textPrimary,
                         unfocusedTextColor = colors.textPrimary,
                         cursorColor = colors.accentColor,
                         focusedPlaceholderColor = colors.textSecondary,
-                        unfocusedPlaceholderColor = colors.textSecondary
+                        unfocusedPlaceholderColor = colors.textSecondary,
+                        focusedLeadingIconColor = colors.accentColor,
+                        unfocusedLeadingIconColor = colors.iconColor
                     )
                 )
 
@@ -153,23 +180,39 @@ fun LoginScreen(
                     onValueChange = { password = it },
                     label = { Text("Passwort") },
                     placeholder = { Text("Ihr Passwort") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null
+                        )
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = if (passwordVisible) "Passwort verbergen" else "Passwort anzeigen"
+                            )
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(passwordFocusRequester),
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     singleLine = true,
                     enabled = !uiState.isLoading,
                     shape = RoundedCornerShape(Dimensions.radiusMD),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = colors.accentColor,
                         unfocusedBorderColor = colors.cardBorder,
-                        focusedLabelColor = colors.textPrimary,
+                        focusedLabelColor = colors.accentColor,
                         unfocusedLabelColor = colors.textSecondary,
                         focusedTextColor = colors.textPrimary,
                         unfocusedTextColor = colors.textPrimary,
                         cursorColor = colors.accentColor,
                         focusedPlaceholderColor = colors.textSecondary,
-                        unfocusedPlaceholderColor = colors.textSecondary
+                        unfocusedPlaceholderColor = colors.textSecondary,
+                        focusedLeadingIconColor = colors.accentColor,
+                        unfocusedLeadingIconColor = colors.iconColor
                     )
                 )
 
@@ -190,38 +233,65 @@ fun LoginScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(Dimensions.spacingXL))
+                Spacer(modifier = Modifier.height(Dimensions.spacingMD))
 
                 var isButtonFocused by remember { mutableStateOf(false) }
                 
+                val isFormValid = serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+                
+                // Animated scale for focus
+                val scale by animateFloatAsState(
+                    targetValue = if (isButtonFocused && isFormValid) 1.02f else 1f,
+                    animationSpec = tween(durationMillis = 200),
+                    label = "buttonScale"
+                )
+                
                 Button(
                     onClick = {
-                        viewModel.login(serverUrl.trim(), username.trim(), password)
+                        if (isFormValid) {
+                            viewModel.login(serverUrl.trim(), username.trim(), password)
+                        }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .scale(scale)
                         .focusRequester(buttonFocusRequester)
                         .onFocusChanged { focusState ->
                             isButtonFocused = focusState.isFocused
                         }
                         .then(
-                            if (isButtonFocused) {
-                                Modifier.border(
-                                    width = 2.dp,
-                                    color = Color.White,
-                                    shape = RoundedCornerShape(Dimensions.radiusMD)
-                                )
+                            if (isButtonFocused && isFormValid) {
+                                Modifier
+                                    .border(
+                                        width = 2.dp,
+                                        color = Color.White,
+                                        shape = RoundedCornerShape(Dimensions.radiusMD)
+                                    )
+                                    .shadow(
+                                        elevation = 6.dp,
+                                        shape = RoundedCornerShape(Dimensions.radiusMD),
+                                        spotColor = colors.accentColor.copy(alpha = 0.4f)
+                                    )
                             } else {
                                 Modifier
                             }
                         ),
-                    enabled = !uiState.isLoading && serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
+                    enabled = !uiState.isLoading,
                     shape = RoundedCornerShape(Dimensions.radiusMD),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isButtonFocused) colors.accentColor else colors.buttonPrimary,
+                        containerColor = when {
+                            isButtonFocused && isFormValid -> colors.buttonPrimaryHover
+                            !isFormValid -> colors.buttonPrimary.copy(alpha = 0.6f)
+                            else -> colors.buttonPrimary
+                        },
                         contentColor = Color.White,
                         disabledContainerColor = colors.buttonPrimary.copy(alpha = 0.6f),
                         disabledContentColor = Color.White.copy(alpha = 0.6f)
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(
+                        defaultElevation = if (isButtonFocused && isFormValid) 6.dp else if (!isFormValid) 0.dp else 2.dp,
+                        pressedElevation = if (isButtonFocused && isFormValid) 8.dp else if (!isFormValid) 0.dp else 4.dp,
+                        disabledElevation = 0.dp
                     ),
                     contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
                 ) {
