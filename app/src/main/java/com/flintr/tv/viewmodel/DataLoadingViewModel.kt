@@ -122,7 +122,7 @@ class DataLoadingViewModel @Inject constructor(
         try {
             // Step 1: Load Live Streams
             updateStepStatus(0, LoadingStatus.Loading)
-            val liveStreamsResult = repository.getLiveStreams(credentials.username, credentials.password)
+            val liveStreamsResult = repository.loadLiveStreamsFromApi(credentials.username, credentials.password)
             val liveCategoriesResult = repository.getLiveCategories(credentials.username, credentials.password)
 
             val liveStreams = liveStreamsResult.getOrElse {
@@ -136,7 +136,7 @@ class DataLoadingViewModel @Inject constructor(
 
             // Step 2: Load VOD Streams
             updateStepStatus(1, LoadingStatus.Loading)
-            val vodStreamsResult = repository.getVodStreams(credentials.username, credentials.password)
+            val vodStreamsResult = repository.loadVodStreamsFromApi(credentials.username, credentials.password)
             val vodCategoriesResult = repository.getVodCategories(credentials.username, credentials.password)
 
             val vodStreams = vodStreamsResult.getOrElse {
@@ -150,7 +150,7 @@ class DataLoadingViewModel @Inject constructor(
 
             // Step 3: Load Series
             updateStepStatus(2, LoadingStatus.Loading)
-            val seriesResult = repository.getSeries(credentials.username, credentials.password)
+            val seriesResult = repository.loadSeriesFromApi(credentials.username, credentials.password)
             val seriesCategoriesResult = repository.getSeriesCategories(credentials.username, credentials.password)
 
             val series = seriesResult.getOrElse {
@@ -235,6 +235,89 @@ class DataLoadingViewModel @Inject constructor(
             cachedData = null
         )
         checkCacheAndLoad()
+    }
+
+    fun retryStep(stepIndex: Int) {
+        val credentials = credentialsRepository.getCredentials()
+        if (credentials == null) {
+            _uiState.value = _uiState.value.copy(
+                error = "Keine Anmeldedaten gefunden"
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                updateStepStatus(stepIndex, LoadingStatus.Loading, errorMessage = null)
+
+                val result = when (stepIndex) {
+                    0 -> repository.loadLiveStreamsFromApi(credentials.username, credentials.password)
+                    1 -> repository.loadVodStreamsFromApi(credentials.username, credentials.password)
+                    2 -> repository.loadSeriesFromApi(credentials.username, credentials.password)
+                    else -> Result.failure(IllegalArgumentException("Invalid step index: $stepIndex"))
+                }
+
+                result.onSuccess { data ->
+                    updateStepStatus(stepIndex, LoadingStatus.Success, data.size)
+                }.onFailure { error ->
+                    handleStepError(stepIndex, error)
+                    return@launch
+                }
+
+                // Update overall progress
+                val completedSteps = _uiState.value.steps.count { it.status == LoadingStatus.Success }
+                updateProgress(completedSteps, _uiState.value.steps.size)
+
+                // If all steps are now complete, gather all data and save to cache
+                if (_uiState.value.steps.all { it.status == LoadingStatus.Success }) {
+                    saveAllDataToCacheAndFinalize()
+                }
+            } catch (e: Exception) {
+                Log.e("DataLoadingViewModel", "Error retrying step $stepIndex", e)
+                handleStepError(stepIndex, e)
+            }
+        }
+    }
+
+    /**
+     * Saves all data to cache and finalizes the loading process.
+     * This should only be called when all loading steps are confirmed to be successful.
+     * It gathers all data from the repository's in-memory cache and writes the complete dataset to storage.
+     */
+    private suspend fun saveAllDataToCacheAndFinalize() {
+        val credentials = credentialsRepository.getCredentials() ?: return
+
+        // Since all steps are successful, their data is in the repository's in-memory cache
+        val liveStreams = repository.getLiveStreams(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val liveCategories = repository.getLiveCategories(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val vodStreams = repository.getVodStreams(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val vodCategories = repository.getVodCategories(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val series = repository.getSeries(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val seriesCategories = repository.getSeriesCategories(credentials.username, credentials.password).getOrNull() ?: emptyList()
+
+        val cachedData = CachedData(
+            channels = liveStreams,
+            movies = vodStreams,
+            series = series,
+            liveCategories = liveCategories,
+            vodCategories = vodCategories,
+            seriesCategories = seriesCategories
+        )
+
+        cacheService.saveCachedData(
+            channels = cachedData.channels,
+            movies = cachedData.movies,
+            series = cachedData.series,
+            liveCategories = cachedData.liveCategories,
+            vodCategories = cachedData.vodCategories,
+            seriesCategories = cachedData.seriesCategories
+        )
+
+        _uiState.value = _uiState.value.copy(
+            cachedData = cachedData,
+            isLoading = false,
+            loadingComplete = true
+        )
     }
 }
 
