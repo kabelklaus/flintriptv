@@ -78,11 +78,17 @@ private val ContentCardTextFontWeight = FontWeight.Bold
 // Content Card Title Line Height
 private const val ContentCardTitleLineHeightFactor = 1.2f
 
-private data class CardConfig(
+data class CardConfig(
     val isSelected: Boolean = false,
     val onFocusChanged: ((Boolean) -> Unit)? = null,
     val onNavigateLeft: (() -> Unit)? = null,
     val focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+)
+
+private data class ContentInfo(
+    val coverImageUrl: String?,
+    val title: String,
+    val rating: String?
 )
 
 private sealed class ContentType {
@@ -116,9 +122,11 @@ fun VODCard(
     onNavigateLeft: (() -> Unit)? = null
 ) {
     ContentCardInternal(
-        coverImageUrl = vod.streamIcon ?: vod.cover,
-        title = vod.name,
-        rating = ContentParser.getRating(vod),
+        contentInfo = ContentInfo(
+            coverImageUrl = vod.streamIcon ?: vod.cover,
+            title = vod.name,
+            rating = ContentParser.getRating(vod)
+        ),
         onClick = onClick,
         modifier = modifier,
         config = CardConfig(
@@ -142,9 +150,11 @@ fun VODCard(
     onNavigateLeft: (() -> Unit)? = null
 ) {
     ContentCardInternal(
-        coverImageUrl = series.cover,
-        title = series.name,
-        rating = ContentParser.getRating(series),
+        contentInfo = ContentInfo(
+            coverImageUrl = series.cover,
+            title = series.name,
+            rating = ContentParser.getRating(series)
+        ),
         onClick = onClick,
         modifier = modifier,
         config = CardConfig(
@@ -220,9 +230,7 @@ private fun buildCardModifier(
 
 @Composable
 private fun ContentCardInternal(
-    coverImageUrl: String?,
-    title: String,
-    rating: String?,
+    contentInfo: ContentInfo,
     onClick: () -> Unit,
     favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
@@ -258,27 +266,27 @@ private fun ContentCardInternal(
     // Unified click handler to avoid duplication
     val performClick: () -> Unit = {
         if (!showMenu && !longPressDetected) {
-            Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() aufgerufen (normaler Click)")
+            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - clickable() aufgerufen (normaler Click)")
             onClick()
         } else {
             if (showMenu) {
-                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() blockiert - Menü ist offen")
+                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - clickable() blockiert - Menü ist offen")
             } else {
-                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() verhindert (Long-Press wurde erkannt)")
+                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - clickable() verhindert (Long-Press wurde erkannt)")
             }
         }
     }
     
     // Log menu state changes
     LaunchedEffect(showMenu) {
-        Log.d("ContentCard", "[ContentCard] Card '$title' - showMenu State geändert: $showMenu")
+        Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - showMenu State geändert: $showMenu")
     }
     
     // Reset longPressDetected flag after a short delay
     LaunchedEffect(longPressDetected) {
         if (longPressDetected) {
             kotlinx.coroutines.delay(100)
-            Log.d("ContentCard", "[ContentCard] Card '$title' - Reset longPressDetected Flag")
+            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Reset longPressDetected Flag")
             longPressDetected = false
         }
     }
@@ -323,7 +331,7 @@ private fun ContentCardInternal(
             }
         },
         onLongPress = {
-            Log.d("ContentCard", "[ContentCard] Card '$title' - Long-Press Callback erhalten!")
+            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Long-Press Callback erhalten!")
             Log.d("ContentCard", "[ContentCard] Setze longPressDetected = true")
             longPressDetected = true
             Log.d("ContentCard", "[ContentCard] Setze showMenu = true")
@@ -331,9 +339,9 @@ private fun ContentCardInternal(
         },
         onNormalClick = {
             if (showMenu) {
-                Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() blockiert - Menü ist offen")
+                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - onNormalClick() blockiert - Menü ist offen")
             } else {
-                Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() aufgerufen (Timer abgebrochen)")
+                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - onNormalClick() aufgerufen (Timer abgebrochen)")
                 performClick()
             }
         },
@@ -348,9 +356,9 @@ private fun ContentCardInternal(
         )
     ) {
         CardContent(
-            coverImageUrl = coverImageUrl,
-            title = title,
-            rating = rating,
+            coverImageUrl = contentInfo.coverImageUrl,
+            title = contentInfo.title,
+            rating = contentInfo.rating,
             isFavorite = isFavorite,
             colors = colors
         )
@@ -375,12 +383,12 @@ private fun ContentCardInternal(
         isOpen = showMenu && menuOptions.isNotEmpty(),
         menuOptions = menuOptions,
         onDismiss = {
-            Log.d("ContentCard", "[ContentCard] Card '$title' - Menü onDismiss() aufgerufen")
+            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Menü onDismiss() aufgerufen")
             Log.d("ContentCard", "[ContentCard] Setze showMenu = false")
             showMenu = false
         },
         onOptionSelected = { index ->
-            Log.d("ContentCard", "[ContentCard] Card '$title' - Option $index wurde ausgewählt")
+            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Option $index wurde ausgewählt")
             if (contentType != null && favoriteId != null) {
                 coroutineScope.launch {
                     if (isFavorite) {
@@ -407,24 +415,18 @@ fun LiveStreamCard(
     onClick: () -> Unit,
     favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
-    isSelected: Boolean = false,
-    onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null,
-    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+    config: CardConfig = CardConfig()
 ) {
     ContentCardInternal(
-        coverImageUrl = stream.streamIcon,
-        title = stream.name,
-        rating = null,
+        contentInfo = ContentInfo(
+            coverImageUrl = stream.streamIcon,
+            title = stream.name,
+            rating = null
+        ),
         onClick = onClick,
         favoritesRepository = favoritesRepository,
         modifier = modifier,
-        config = CardConfig(
-            isSelected = isSelected,
-            onFocusChanged = onFocusChanged,
-            onNavigateLeft = onNavigateLeft,
-            focusRequester = focusRequester
-        ),
+        config = config,
         contentType = ContentType.Live(stream)
     )
 }

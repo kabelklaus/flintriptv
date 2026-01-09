@@ -38,6 +38,12 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.viewmodel.MainViewModel
 
+data class SeriesItemConfig(
+    val isExpanded: Boolean,
+    val onExpand: () -> Unit,
+    val onEpisodeClick: (Episode) -> Unit
+)
+
 @Composable
 fun SeriesContent(
     viewModel: MainViewModel,
@@ -76,13 +82,15 @@ fun SeriesContent(
             SeriesItem(
                 series = seriesItem,
                 favoritesRepository = favoritesRepository,
-                isExpanded = expandedSeriesId == seriesItem.seriesId,
-                onExpand = { 
-                    expandedSeriesId = if (expandedSeriesId == seriesItem.seriesId) null else seriesItem.seriesId
-                },
-                onEpisodeClick = { episode ->
-                    onEpisodeClick(episode, seriesItem)
-                },
+                config = SeriesItemConfig(
+                    isExpanded = expandedSeriesId == seriesItem.seriesId,
+                    onExpand = { 
+                        expandedSeriesId = if (expandedSeriesId == seriesItem.seriesId) null else seriesItem.seriesId
+                    },
+                    onEpisodeClick = { episode ->
+                        onEpisodeClick(episode, seriesItem)
+                    }
+                ),
                 onFocusChanged = onFocusChanged,
                 onNavigateLeft = if (columnIndex == 0) {
                     { onNavigateLeft() }
@@ -98,9 +106,7 @@ fun SeriesContent(
 fun SeriesItem(
     series: Series,
     favoritesRepository: FavoritesRepository,
-    isExpanded: Boolean,
-    onExpand: () -> Unit,
-    onEpisodeClick: (Episode) -> Unit,
+    config: SeriesItemConfig,
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     onNavigateLeft: (() -> Unit)? = null
@@ -110,14 +116,14 @@ fun SeriesItem(
     ) {
         VODCard(
             series = series,
-            onClick = onExpand,
+            onClick = config.onExpand,
             favoritesRepository = favoritesRepository,
             isSelected = isSelected,
             onFocusChanged = onFocusChanged,
             onNavigateLeft = onNavigateLeft
         )
         
-        if (isExpanded && series.seasons != null) {
+        if (config.isExpanded && series.seasons != null) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -127,7 +133,7 @@ fun SeriesItem(
                     SeasonSection(
                         season = season,
                         seriesId = series.seriesId,
-                        onEpisodeClick = onEpisodeClick
+                        onEpisodeClick = config.onEpisodeClick
                     )
                 }
             }
