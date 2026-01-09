@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.Icons
@@ -26,7 +27,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.delay
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
@@ -61,13 +61,6 @@ fun LoginScreen(
 
     LaunchedEffect(Unit) {
         isVisible = true
-        // Set initial focus on first input field for TV navigation
-        kotlinx.coroutines.delay(300) // Small delay to ensure UI is laid out
-        try {
-            serverUrlFocusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            // FocusRequester not yet initialized - will retry when UI is ready
-        }
     }
 
     // Navigate to data loading screen on successful login
@@ -96,9 +89,6 @@ fun LoginScreen(
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
-            var isServerUrlFocused by remember { mutableStateOf(false) }
-            var isUsernameFocused by remember { mutableStateOf(false) }
-            var isPasswordFocused by remember { mutableStateOf(false) }
             var passwordVisible by remember { mutableStateOf(false) }
             
             Column(
@@ -127,8 +117,13 @@ fun LoginScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(serverUrlFocusRequester)
-                        .onFocusChanged { focusState ->
-                            isServerUrlFocused = focusState.isFocused
+                        .onGloballyPositioned {
+                            // Request focus when component is laid out
+                            try {
+                                serverUrlFocusRequester.requestFocus()
+                            } catch (e: IllegalStateException) {
+                                // Component not ready for focus yet
+                            }
                         },
                     singleLine = true,
                     enabled = !uiState.isLoading,
@@ -161,10 +156,7 @@ fun LoginScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusRequester(usernameFocusRequester)
-                        .onFocusChanged { focusState ->
-                            isUsernameFocused = focusState.isFocused
-                        },
+                        .focusRequester(usernameFocusRequester),
                     singleLine = true,
                     enabled = !uiState.isLoading,
                     shape = RoundedCornerShape(Dimensions.radiusMD),
@@ -204,10 +196,7 @@ fun LoginScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusRequester(passwordFocusRequester)
-                        .onFocusChanged { focusState ->
-                            isPasswordFocused = focusState.isFocused
-                        },
+                        .focusRequester(passwordFocusRequester),
                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     singleLine = true,
                     enabled = !uiState.isLoading,
@@ -259,7 +248,7 @@ fun LoginScreen(
                 
                 Button(
                     onClick = {
-                        if (isFormValid && !uiState.isLoading) {
+                        if (isFormValid) {
                             viewModel.login(serverUrl.trim(), username.trim(), password)
                         }
                     },
