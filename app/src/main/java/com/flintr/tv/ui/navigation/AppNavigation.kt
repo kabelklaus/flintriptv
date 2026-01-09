@@ -113,6 +113,8 @@ fun AppNavigation(
         composable(Screen.DataLoading.route) {
             DataLoadingScreen(
                 onLoadingComplete = { cachedData ->
+                    // Refresh MainViewModel data after successful loading
+                    mainViewModel.refreshData()
                     navController.navigate(Screen.Main.route) {
                         popUpTo(Screen.DataLoading.route) { inclusive = true }
                     }

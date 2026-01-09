@@ -1,26 +1,27 @@
 package com.flintr.tv.ui.screens
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -44,13 +45,11 @@ fun DataLoadingScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
 
-    val scrollState = rememberScrollState()
-
     // Fade-in animation on screen start
     var isVisible by remember { mutableStateOf(false) }
     val alpha by animateFloatAsState(
         targetValue = if (isVisible) 1f else 0f,
-        animationSpec = tween(durationMillis = 400),
+        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
         label = "fadeIn"
     )
 
@@ -75,8 +74,7 @@ fun DataLoadingScreen(
             modifier = Modifier
                 .widthIn(max = if (isLandscape) 400.dp else 500.dp)
                 .fillMaxWidth()
-                .alpha(alpha)
-                .verticalScroll(scrollState),
+                .alpha(alpha),
             shape = RoundedCornerShape(Dimensions.radiusXL),
             colors = CardDefaults.cardColors(
                 containerColor = colors.bgCard
@@ -101,27 +99,50 @@ fun DataLoadingScreen(
             ) {
                 // Header
                 Text(
-                    text = "Daten werden geladen...",
+                    text = "Inhalte werden geladen",
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = if (isLandscape) 20.sp else MaterialTheme.typography.headlineMedium.fontSize
                     ),
-                    color = colors.textPrimary
+                    color = colors.textPrimary,
+                    textAlign = TextAlign.Center
                 )
 
                 // Subtitle
                 Text(
-                    text = "Bitte warten Sie...",
+                    text = "Bitte warten...",
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontSize = if (isLandscape) 14.sp else MaterialTheme.typography.bodyMedium.fontSize
                     ),
                     color = colors.textSecondary,
-                    modifier = Modifier.padding(top = Dimensions.spacingXS)
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = Dimensions.spacingXS / 2)
                 )
 
-                Spacer(modifier = Modifier.height(
-                    if (isLandscape) Dimensions.spacingMD else Dimensions.spacingXL
-                ))
+                Spacer(modifier = Modifier.height(Dimensions.spacingXS / 2))
+
+                // Progress Text (über der Progress Bar)
+                val completedSteps = uiState.steps.count { it.status == LoadingStatus.Success }
+                val totalSteps = uiState.steps.size
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Fortschritt",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = if (isLandscape) 12.sp else MaterialTheme.typography.bodySmall.fontSize
+                        ),
+                        color = colors.textSecondary
+                    )
+                    Text(
+                        text = "$completedSteps / $totalSteps",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = if (isLandscape) 12.sp else MaterialTheme.typography.bodySmall.fontSize
+                        ),
+                        color = colors.textSecondary
+                    )
+                }
 
                 // Progress Bar
                 LinearProgressIndicator(
@@ -134,21 +155,8 @@ fun DataLoadingScreen(
                     trackColor = colors.bgHover
                 )
 
-                // Progress Text
-                val completedSteps = uiState.steps.count { it.status == LoadingStatus.Success }
-                val totalSteps = uiState.steps.size
-                val numberFormat = NumberFormat.getNumberInstance(Locale.GERMAN)
-                Text(
-                    text = "${numberFormat.format(completedSteps)} von ${numberFormat.format(totalSteps)} abgeschlossen",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = if (isLandscape) 12.sp else MaterialTheme.typography.bodySmall.fontSize
-                    ),
-                    color = colors.textSecondary,
-                    modifier = Modifier.padding(top = Dimensions.spacingMD)
-                )
-
                 Spacer(modifier = Modifier.height(
-                    if (isLandscape) Dimensions.spacingMD else Dimensions.spacingLG
+                    if (isLandscape) Dimensions.spacingLG / 2 else Dimensions.spacingXL / 2
                 ))
 
                 // Steps
@@ -162,43 +170,19 @@ fun DataLoadingScreen(
                             index = index,
                             isLandscape = isLandscape,
                             colors = colors,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = Dimensions.spacingXS)
                         )
-                        if (index < uiState.steps.size - 1) {
-                            Spacer(modifier = Modifier.width(Dimensions.spacingXS))
-                        }
                     }
                 }
 
-                // Error Card
-                if (uiState.error != null) {
+                // Retry Button (nur bei Fehlern)
+                if (uiState.steps.any { it.status == LoadingStatus.Error }) {
                     Spacer(modifier = Modifier.height(
-                        if (isLandscape) Dimensions.spacingMD else Dimensions.spacingLG
+                        if (isLandscape) Dimensions.spacingLG else Dimensions.spacingXL
                     ))
 
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = colors.dangerBg
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(Dimensions.radiusMD)
-                    ) {
-                        Text(
-                            text = uiState.error ?: "",
-                            color = colors.dangerText,
-                            modifier = Modifier.padding(Dimensions.spacingMD),
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = if (isLandscape) 10.sp else MaterialTheme.typography.bodySmall.fontSize
-                            ),
-                            maxLines = 2
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(
-                        if (isLandscape) Dimensions.spacingMD else Dimensions.spacingLG
-                    ))
-
-                    // Retry Button
                     Button(
                         onClick = { viewModel.retry() },
                         modifier = Modifier.fillMaxWidth(),
@@ -222,30 +206,6 @@ fun DataLoadingScreen(
 }
 
 @Composable
-private fun RotatingIcon(
-    modifier: Modifier = Modifier,
-    imageVector: ImageVector,
-    tint: Color
-) {
-    val infiniteTransition = rememberInfiniteTransition(label = "loadingRotationIcon")
-    val rotationAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rotation"
-    )
-    Icon(
-        imageVector = imageVector,
-        contentDescription = null,
-        modifier = modifier.rotate(rotationAngle),
-        tint = tint
-    )
-}
-
-@Composable
 private fun StepItem(
     step: com.flintr.tv.viewmodel.LoadingStep,
     index: Int,
@@ -253,133 +213,154 @@ private fun StepItem(
     colors: com.flintr.tv.ui.theme.AppColors,
     modifier: Modifier = Modifier
 ) {
-    val iconSize = if (isLandscape) 24.dp else 32.dp
+    val iconSize = if (isLandscape) 48.dp else 56.dp // Größerer Container
+    val iconDisplaySize = if (isLandscape) 28.dp else 32.dp // Feste Icon-Größe
     val statusIconSize = if (isLandscape) 18.dp else 20.dp
-    val padding = if (isLandscape) Dimensions.spacingSM else Dimensions.spacingMD
     val iconLabelSpacing = if (isLandscape) Dimensions.spacingXS else Dimensions.spacingSM
+    val statusLabelSpacing = Dimensions.spacingXS
 
-    val (stepIcon, stepIconColor) = when (index) {
-        0 -> Icons.Filled.LiveTv to colors.textPrimary
-        1 -> Icons.Filled.Movie to colors.textPrimary
-        2 -> Icons.Filled.Tv to colors.textPrimary
-        else -> Icons.Filled.Info to colors.textPrimary
+    // Step Icon - gleiche Icons wie in MainNavbar.kt
+    val stepIcon: ImageVector = when (index) {
+        0 -> Icons.Default.Tv          // TV-Kanäle (wie MainNavbar "TV")
+        1 -> Icons.Default.Movie       // Filme (wie MainNavbar "Movies")
+        2 -> Icons.Default.PlayArrow   // Serien (wie MainNavbar "Series")
+        else -> Icons.Default.Info
     }
-
-    val statusData = when (step.status) {
-        LoadingStatus.Pending -> {
-            Triple(
-                Icons.Filled.Circle,
-                colors.textSecondary,
-                colors.bgCard
-            ) to colors.textSecondary
-        }
-        LoadingStatus.Loading -> {
-            Triple(
-                Icons.Filled.Refresh,
-                colors.accentColor,
-                colors.accentColor.copy(alpha = 0.1f)
-            ) to colors.textPrimary
-        }
-        LoadingStatus.Success -> {
-            val green = Color(0xFF4CAF50)
-            Triple(
-                Icons.Filled.CheckCircle,
-                green,
-                green.copy(alpha = 0.1f)
-            ) to colors.textPrimary
-        }
-        LoadingStatus.Error -> {
-            Triple(
-                Icons.Filled.Error,
-                colors.dangerText,
-                colors.dangerBg
-            ) to colors.dangerText
-        }
-    }
-    val (statusIcon, statusIconColor, statusBgColor) = statusData.first
-    val textColor = statusData.second
 
     Column(
-        modifier = modifier
-            .padding(padding),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Icon Container
+        // Icon Container (immer sichtbar, animierte Farben)
+        val (iconColor, iconBgColor) = when (step.status) {
+            LoadingStatus.Pending -> colors.textSecondary to colors.bgCard
+            LoadingStatus.Loading -> colors.accentColor to colors.accentColor.copy(alpha = 0.1f)
+            LoadingStatus.Success -> {
+                val green = Color(0xFF4CAF50)
+                green to green.copy(alpha = 0.1f)
+            }
+            LoadingStatus.Error -> colors.dangerText to colors.dangerBg
+        }
+        
+        val animatedIconColor by animateColorAsState(
+            targetValue = iconColor,
+            animationSpec = tween(300, easing = EaseInOut),
+            label = "iconColor"
+        )
+        
+        val animatedIconBgColor by animateColorAsState(
+            targetValue = iconBgColor,
+            animationSpec = tween(300, easing = EaseInOut),
+            label = "iconBgColor"
+        )
+        
         Box(
             modifier = Modifier
                 .size(iconSize)
-                .then(
-                    if (step.status == LoadingStatus.Loading || step.status == LoadingStatus.Success || step.status == LoadingStatus.Error) {
-                        Modifier
-                            .background(
-                                color = statusBgColor,
-                                shape = RoundedCornerShape(Dimensions.radiusMD)
-                            )
-                            .padding(padding)
-                    } else {
-                        Modifier
-                    }
+                .background(
+                    color = animatedIconBgColor,
+                    shape = RoundedCornerShape(Dimensions.radiusMD)
                 ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = stepIcon,
                 contentDescription = step.label,
-                modifier = Modifier.size(iconSize * 0.7f),
-                tint = stepIconColor
+                modifier = Modifier.size(iconDisplaySize),
+                tint = animatedIconColor
             )
         }
 
-        // Label
-        Text(
-            text = step.label,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontWeight = FontWeight.W500,
-                fontSize = if (isLandscape) 12.sp else MaterialTheme.typography.bodyMedium.fontSize
-            ),
-            color = textColor
-        )
+        Spacer(modifier = Modifier.height(iconLabelSpacing))
 
-        // Status Icon + Count
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingXS),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (step.status != LoadingStatus.Pending) {
-                val iconModifier = Modifier.size(statusIconSize)
-                if (step.status == LoadingStatus.Loading) {
-                    RotatingIcon(
-                        modifier = iconModifier,
-                        imageVector = statusIcon,
-                        tint = statusIconColor
-                    )
-                } else {
-                    Icon(
-                        imageVector = statusIcon,
-                        contentDescription = null,
-                        modifier = iconModifier,
-                        tint = statusIconColor
-                    )
-                }
+        // Label (animierte Textfarbe)
+        androidx.compose.animation.AnimatedContent(
+            targetState = step.status,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(300)) togetherWith
+                        fadeOut(animationSpec = tween(300))
+            },
+            label = "labelColor"
+        ) { status ->
+            val currentTextColor = when (status) {
+                LoadingStatus.Pending -> colors.textSecondary
+                LoadingStatus.Loading -> colors.textPrimary
+                LoadingStatus.Success -> colors.textPrimary
+                LoadingStatus.Error -> colors.dangerText
             }
+            
+            Text(
+                text = step.label,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.W500,
+                    fontSize = if (isLandscape) 12.sp else MaterialTheme.typography.bodyMedium.fontSize
+                ),
+                color = currentTextColor,
+                textAlign = TextAlign.Center
+            )
+        }
 
-            if (step.itemCount != null && step.status == LoadingStatus.Success) {
-                val countColor = if (step.status == LoadingStatus.Success) {
-                    Color(0xFF4CAF50)
-                } else {
-                    colors.textSecondary
+        Spacer(modifier = Modifier.height(statusLabelSpacing))
+
+        // Status Widget (animiert)
+        androidx.compose.animation.AnimatedContent(
+            targetState = step.status,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(300)) togetherWith
+                        fadeOut(animationSpec = tween(300))
+            },
+            label = "statusWidget"
+        ) { status ->
+            when (status) {
+                LoadingStatus.Pending -> {
+                    // Nicht sichtbar
+                    Spacer(modifier = Modifier.size(statusIconSize))
                 }
-                Text(
-                    text = step.itemCount.toString(),
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontWeight = FontWeight.W600,
-                        fontSize = if (isLandscape) 12.sp else MaterialTheme.typography.bodySmall.fontSize
-                    ),
-                    color = countColor
-                )
+                LoadingStatus.Loading -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(statusIconSize),
+                        strokeWidth = 2.dp,
+                        color = colors.accentColor
+                    )
+                }
+                LoadingStatus.Success -> {
+                    val green = Color(0xFF4CAF50)
+                    val numberFormat = NumberFormat.getNumberInstance(Locale.GERMAN)
+                    val formattedCount = step.itemCount?.let { numberFormat.format(it) } ?: "0"
+                    
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(
+                            if (isLandscape) 4.dp else Dimensions.spacingXS
+                        ),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val checkIcon: ImageVector = Icons.Default.CheckCircle
+                        Icon(
+                            imageVector = checkIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(statusIconSize),
+                            tint = green
+                        )
+                        Text(
+                            text = formattedCount,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.W600,
+                                fontSize = if (isLandscape) 12.sp else MaterialTheme.typography.bodySmall.fontSize
+                            ),
+                            color = green
+                        )
+                    }
+                }
+                LoadingStatus.Error -> {
+                    val errorIcon: ImageVector = Icons.Default.Error
+                    Icon(
+                        imageVector = errorIcon,
+                        contentDescription = null,
+                        modifier = Modifier.size(statusIconSize),
+                        tint = colors.dangerText
+                    )
+                }
             }
         }
     }
 }
-
