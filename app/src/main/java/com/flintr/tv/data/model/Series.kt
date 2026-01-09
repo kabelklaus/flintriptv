@@ -37,7 +37,24 @@ data class Series(
     val backdropPath: List<String>?,
     @Json(name = "seasons")
     val seasons: List<Season>?
-)
+) {
+    fun toFavoriteId(): String {
+        val encodedName = java.net.URLEncoder.encode(name, "UTF-8")
+        return "series:$seriesId:$encodedName"
+    }
+
+    fun toFavorite(metadata: Map<String, String?>? = null): Favorite {
+        val metadataWithCover = metadata?.toMutableMap() ?: mutableMapOf()
+        cover?.let { metadataWithCover["cover"] = it }
+        return Favorite.create(
+            id = toFavoriteId(),
+            type = "series",
+            streamId = seriesId,
+            name = name,
+            metadata = metadataWithCover
+        )
+    }
+}
 
 @JsonClass(generateAdapter = true)
 data class Season(

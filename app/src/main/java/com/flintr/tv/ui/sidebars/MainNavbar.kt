@@ -53,6 +53,7 @@ fun HomeSidebar(
     selectedDestination: HomeDestination,
     onNavigate: (HomeDestination) -> Unit,
     focusRequester: FocusRequester,
+    externalFocusRequested: Boolean = false,
     onNavigateRight: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -74,6 +75,9 @@ fun HomeSidebar(
     LaunchedEffect(selectedDestination) {
         pendingFocusDestination = selectedDestination
     }
+    
+    // When external focus is requested, the external focusRequester will be applied to the selected item
+    // The focus will be set automatically when the external requester is used
     
     Column(
         modifier = modifier
@@ -122,6 +126,7 @@ fun HomeSidebar(
                     onClick = { onNavigate(HomeDestination.LiveTV) },
                     colors = colors,
                     focusRequester = tvFocusRequester,
+                    externalFocusRequester = if (selectedDestination == HomeDestination.LiveTV && externalFocusRequested) focusRequester else null,
                     onNavigateRight = onNavigateRight
                 )
             }
@@ -136,6 +141,7 @@ fun HomeSidebar(
                     onClick = { onNavigate(HomeDestination.VOD) },
                     colors = colors,
                     focusRequester = moviesFocusRequester,
+                    externalFocusRequester = if (selectedDestination == HomeDestination.VOD && externalFocusRequested) focusRequester else null,
                     onNavigateRight = onNavigateRight
                 )
             }
@@ -150,6 +156,7 @@ fun HomeSidebar(
                     onClick = { onNavigate(HomeDestination.Series) },
                     colors = colors,
                     focusRequester = seriesFocusRequester,
+                    externalFocusRequester = if (selectedDestination == HomeDestination.Series && externalFocusRequested) focusRequester else null,
                     onNavigateRight = onNavigateRight
                 )
             }
@@ -164,6 +171,7 @@ fun HomeSidebar(
                     onClick = { onNavigate(HomeDestination.EPG) },
                     colors = colors,
                     focusRequester = epgFocusRequester,
+                    externalFocusRequester = if (selectedDestination == HomeDestination.EPG && externalFocusRequested) focusRequester else null,
                     onNavigateRight = onNavigateRight
                 )
             }
@@ -178,6 +186,7 @@ fun HomeSidebar(
                     onClick = { onNavigate(HomeDestination.Settings) },
                     colors = colors,
                     focusRequester = settingsFocusRequester,
+                    externalFocusRequester = if (selectedDestination == HomeDestination.Settings && externalFocusRequested) focusRequester else null,
                     onNavigateRight = onNavigateRight
                 )
             }
@@ -196,6 +205,7 @@ fun HomeSidebarItem(
     colors: com.flintr.tv.ui.theme.AppColors,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
+    externalFocusRequester: FocusRequester? = null,
     onNavigateRight: (() -> Unit)? = null
 ) {
     val isSelected = destination == selectedDestination
@@ -245,8 +255,11 @@ fun HomeSidebarItem(
         modifier = modifier
             .fillMaxWidth()
             // Correct order: focusRequester -> onGloballyPositioned -> onFocusChanged -> focusable -> key handlers
+            // Apply external focusRequester if provided (for selected item), otherwise use internal one
             .then(
-                if (focusRequester != null) {
+                if (externalFocusRequester != null) {
+                    Modifier.focusRequester(externalFocusRequester)
+                } else if (focusRequester != null) {
                     Modifier.focusRequester(focusRequester)
                 } else {
                     Modifier

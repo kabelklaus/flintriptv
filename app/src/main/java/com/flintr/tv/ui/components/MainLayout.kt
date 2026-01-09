@@ -4,6 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
@@ -29,6 +33,15 @@ fun MainLayout(
     content: @Composable () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Track if external focus was requested (from CategoryRow back to Navbar)
+    var externalFocusRequested by remember { mutableStateOf(false) }
+    
+    // Wrap onNavigateToNavbar to set externalFocusRequested flag
+    val wrappedOnNavigateToNavbar: () -> Unit = {
+        externalFocusRequested = true
+        onNavigateToNavbar()
+    }
+    
     Row(
         modifier = modifier
             .fillMaxSize()
@@ -37,8 +50,12 @@ fun MainLayout(
         // Left Sidebar: Navigation
         HomeSidebar(
             selectedDestination = selectedDestination,
-            onNavigate = onDestinationChange,
+            onNavigate = { destination ->
+                externalFocusRequested = false // Reset when destination changes via click
+                onDestinationChange(destination)
+            },
             focusRequester = navbarFocusRequester,
+            externalFocusRequested = externalFocusRequested,
             onNavigateRight = { onNavigateToCategorySidebar() },
             modifier = Modifier
                 .fillMaxHeight()
@@ -51,7 +68,7 @@ fun MainLayout(
                 selectedCategoryId = selectedCategoryId,
                 onCategorySelected = onCategorySelected,
                 focusRequester = categorySidebarFocusRequester,
-                onNavigateLeft = { onNavigateToNavbar() },
+                onNavigateLeft = { wrappedOnNavigateToNavbar() },
                 onNavigateRight = { onNavigateToContentList() },
                 modifier = Modifier
                     .width(240.dp)

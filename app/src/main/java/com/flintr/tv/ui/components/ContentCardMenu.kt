@@ -41,6 +41,7 @@ fun ContentCardMenu(
     val colors = appColors()
     var focusedIndex by remember { mutableStateOf(0) }
     var isMenuReady by remember { mutableStateOf(false) }
+    var ignoreKeyEvents by remember { mutableStateOf(true) }
     val focusRequesters = remember { menuOptions.indices.map { FocusRequester() } }
 
     // Combined LaunchedEffect: handle menu state and focus initialization
@@ -50,15 +51,22 @@ fun ContentCardMenu(
             Log.d("ContentCardMenu", "[Dialog] Menü wird geöffnet")
             Log.d("ContentCardMenu", "[Dialog] Anzahl Optionen: ${menuOptions.size}")
             isMenuReady = false
+            ignoreKeyEvents = true
             // Short delay to wait for next frame instead of long arbitrary delay
             delay(16)
             Log.d("ContentCardMenu", "[Focus] Menü ist jetzt bereit - setze isMenuReady = true")
             isMenuReady = true
             Log.d("ContentCardMenu", "[Focus] Setze Focus auf erstes Item (Index 0) nach Delay")
             focusRequesters.firstOrNull()?.requestFocus()
+            // Grace period: ignore key events for 500ms after menu opens to prevent
+            // the key event that triggered the long press from immediately selecting an option
+            delay(500)
+            ignoreKeyEvents = false
+            Log.d("ContentCardMenu", "[GracePeriod] Grace Period beendet - Key-Events werden jetzt verarbeitet")
         } else {
             Log.d("ContentCardMenu", "[State] isOpen = false")
             isMenuReady = false
+            ignoreKeyEvents = true
         }
     }
 
@@ -98,6 +106,7 @@ fun ContentCardMenu(
                         text = option,
                         isFocused = focusedIndex == index,
                         isEnabled = isMenuReady,
+                        ignoreKeyEvents = ignoreKeyEvents,
                         onClick = {
                             if (!isMenuReady) {
                                 Log.d("ContentCardMenu", "[Option] Option $index Klick ignoriert - Menü noch nicht bereit")
@@ -134,6 +143,7 @@ private fun MenuOptionItem(
     text: String,
     isFocused: Boolean,
     isEnabled: Boolean,
+    ignoreKeyEvents: Boolean,
     onClick: () -> Unit,
     focusRequester: FocusRequester,
     onFocusChanged: (Boolean) -> Unit,
@@ -169,7 +179,11 @@ private fun MenuOptionItem(
                     Modifier
                         .focusable()
                         .onDpadCenter {
-                            // Double-check: ignore clicks if menu is not ready (defensive programming)
+                            // Ignore clicks during grace period or if menu is not ready
+                            if (ignoreKeyEvents) {
+                                Log.d("ContentCardMenu", "[MenuItem] '$text' - onDpadCenter ignoriert (Grace Period aktiv)")
+                                return@onDpadCenter
+                            }
                             if (isEnabled) {
                                 onClick()
                             } else {

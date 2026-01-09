@@ -2,6 +2,7 @@ package com.flintr.tv.data.model
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import java.net.URLEncoder
 
 @JsonClass(generateAdapter = true)
 data class LiveStream(
@@ -34,5 +35,22 @@ data class LiveStream(
 ) {
     fun getStreamUrl(baseUrl: String, username: String, password: String): String {
         return "$baseUrl/live/$username/$password/$streamId.m3u8"
+    }
+
+    fun toFavoriteId(): String {
+        val encodedName = URLEncoder.encode(name, "UTF-8")
+        return "live:$streamId:$encodedName"
+    }
+
+    fun toFavorite(metadata: Map<String, String?>? = null): Favorite {
+        val metadataWithIcon = metadata?.toMutableMap() ?: mutableMapOf()
+        streamIcon?.let { metadataWithIcon["streamIcon"] = it }
+        return Favorite.create(
+            id = toFavoriteId(),
+            type = "live",
+            streamId = streamId,
+            name = name,
+            metadata = metadataWithIcon
+        )
     }
 }

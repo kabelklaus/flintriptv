@@ -2,6 +2,7 @@ package com.flintr.tv.data.model
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import java.net.URLEncoder
 
 @JsonClass(generateAdapter = true)
 data class VodStream(
@@ -55,6 +56,24 @@ data class VodStream(
     fun getStreamUrl(baseUrl: String, username: String, password: String): String {
         val extension = containerExtension ?: "mkv"
         return "$baseUrl/movie/$username/$password/$streamId.$extension"
+    }
+
+    fun toFavoriteId(): String {
+        val encodedName = URLEncoder.encode(name, "UTF-8")
+        return "movie:$streamId:$encodedName"
+    }
+
+    fun toFavorite(metadata: Map<String, String?>? = null): Favorite {
+        val metadataWithCover = metadata?.toMutableMap() ?: mutableMapOf()
+        cover?.let { metadataWithCover["cover"] = it }
+        streamIcon?.let { metadataWithCover["streamIcon"] = it }
+        return Favorite.create(
+            id = toFavoriteId(),
+            type = "movie",
+            streamId = streamId,
+            name = name,
+            metadata = metadataWithCover
+        )
     }
 }
 

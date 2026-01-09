@@ -38,6 +38,8 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.Image
 import android.util.Log
+import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.model.Favorite
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
@@ -47,6 +49,10 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.utils.ContentParser
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
 
 // Content Card dimensions (from Flutter AppTheme)
 private val ContentCardMaxCrossAxisExtent = 133.dp
@@ -72,12 +78,38 @@ private val ContentCardTextFontWeight = FontWeight.Bold
 // Content Card Title Line Height
 private const val ContentCardTitleLineHeightFactor = 1.2f
 
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface FavoritesRepositoryEntryPoint {
+    fun favoritesRepository(): FavoritesRepository
+}
+
 private data class CardConfig(
     val isSelected: Boolean = false,
     val onFocusChanged: ((Boolean) -> Unit)? = null,
     val onNavigateLeft: (() -> Unit)? = null,
     val focusRequester: androidx.compose.ui.focus.FocusRequester? = null
 )
+
+private sealed class ContentType {
+    abstract fun toFavoriteId(): String
+    abstract fun toFavorite(metadata: Map<String, String?>? = null): Favorite
+    
+    data class Live(val stream: LiveStream) : ContentType() {
+        override fun toFavoriteId(): String = stream.toFavoriteId()
+        override fun toFavorite(metadata: Map<String, String?>?): Favorite = stream.toFavorite(metadata)
+    }
+    
+    data class Movie(val vod: VodStream) : ContentType() {
+        override fun toFavoriteId(): String = vod.toFavoriteId()
+        override fun toFavorite(metadata: Map<String, String?>?): Favorite = vod.toFavorite(metadata)
+    }
+    
+    data class Series(val seriesData: com.flintr.tv.data.model.Series) : ContentType() {
+        override fun toFavoriteId(): String = seriesData.toFavoriteId()
+        override fun toFavorite(metadata: Map<String, String?>?): Favorite = seriesData.toFavorite(metadata)
+    }
+}
 
 @Composable
 fun VODCard(
@@ -86,8 +118,15 @@ fun VODCard(
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null
+    onNavigateLeft: (() -> Unit)? = null,
+    favoritesRepository: FavoritesRepository? = null
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repository = favoritesRepository ?: EntryPointAccessors.fromApplication(
+        context,
+        FavoritesRepositoryEntryPoint::class.java
+    ).favoritesRepository()
+    
     ContentCardInternal(
         coverImageUrl = vod.streamIcon ?: vod.cover,
         title = vod.name,
@@ -98,7 +137,9 @@ fun VODCard(
             isSelected = isSelected,
             onFocusChanged = onFocusChanged,
             onNavigateLeft = onNavigateLeft
-        )
+        ),
+        contentType = ContentType.Movie(vod),
+        favoritesRepository = repository
     )
 }
 
@@ -109,8 +150,15 @@ fun VODCard(
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null
+    onNavigateLeft: (() -> Unit)? = null,
+    favoritesRepository: FavoritesRepository? = null
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repository = favoritesRepository ?: EntryPointAccessors.fromApplication(
+        context,
+        FavoritesRepositoryEntryPoint::class.java
+    ).favoritesRepository()
+    
     ContentCardInternal(
         coverImageUrl = series.cover,
         title = series.name,
@@ -121,7 +169,9 @@ fun VODCard(
             isSelected = isSelected,
             onFocusChanged = onFocusChanged,
             onNavigateLeft = onNavigateLeft
-        )
+        ),
+        contentType = ContentType.Series(series),
+        favoritesRepository = repository
     )
 }
 
@@ -193,12 +243,29 @@ private fun ContentCardInternal(
     rating: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    config: CardConfig = CardConfig()
+    config: CardConfig = CardConfig(),
+    contentType: ContentType? = null,
+    favoritesRepository: FavoritesRepository? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var longPressDetected by remember { mutableStateOf(false) }
     val colors = appColors()
+    
+    // Check favorite status
+    val favoriteId = remember(contentType) {
+        contentType?.toFavoriteId()
+    }
+    var isFavorite by remember(favoriteId) {
+        mutableStateOf(favoriteId?.let { favoritesRepository?.isFavorite(it) ?: false } ?: false)
+    }
+    
+    // Update favorite status when menu opens or when favoriteId changes
+    LaunchedEffect(showMenu, favoriteId) {
+        if (favoriteId != null && favoritesRepository != null) {
+            isFavorite = favoritesRepository.isFavorite(favoriteId)
+        }
+    }
     
     // Unified click handler to avoid duplication
     val performClick: () -> Unit = {
@@ -296,14 +363,27 @@ private fun ContentCardInternal(
             coverImageUrl = coverImageUrl,
             title = title,
             rating = rating,
+            isFavorite = isFavorite,
             colors = colors
         )
     }
     
     // Menu dialog
+    val menuOptions = remember(isFavorite, contentType) {
+        if (contentType != null && favoritesRepository != null) {
+            if (isFavorite) {
+                listOf("Aus Favoriten entfernen")
+            } else {
+                listOf("Zu Favoriten hinzufügen")
+            }
+        } else {
+            emptyList()
+        }
+    }
+    
     ContentCardMenu(
-        isOpen = showMenu,
-        menuOptions = listOf("Option 1", "Option 2", "Option 3"),
+        isOpen = showMenu && menuOptions.isNotEmpty(),
+        menuOptions = menuOptions,
         onDismiss = {
             Log.d("ContentCard", "[ContentCard] Card '$title' - Menü onDismiss() aufgerufen")
             Log.d("ContentCard", "[ContentCard] Setze showMenu = false")
@@ -311,8 +391,20 @@ private fun ContentCardInternal(
         },
         onOptionSelected = { index ->
             Log.d("ContentCard", "[ContentCard] Card '$title' - Option $index wurde ausgewählt")
-            // Handle menu option selection
-            // TODO: Implement specific actions for each option
+            if (contentType != null && favoritesRepository != null && favoriteId != null) {
+                if (isFavorite) {
+                    // Remove from favorites
+                    favoritesRepository.removeFavorite(favoriteId)
+                    isFavorite = false
+                    Log.d("ContentCard", "[ContentCard] Favorit entfernt: $favoriteId")
+                } else {
+                    // Add to favorites
+                    val favorite = contentType.toFavorite()
+                    favoritesRepository.addFavorite(favorite)
+                    isFavorite = true
+                    Log.d("ContentCard", "[ContentCard] Favorit hinzugefügt: $favoriteId")
+                }
+            }
         }
     )
 }
@@ -325,8 +417,15 @@ fun LiveStreamCard(
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     onNavigateLeft: (() -> Unit)? = null,
-    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    favoritesRepository: FavoritesRepository? = null
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repository = favoritesRepository ?: EntryPointAccessors.fromApplication(
+        context,
+        FavoritesRepositoryEntryPoint::class.java
+    ).favoritesRepository()
+    
     ContentCardInternal(
         coverImageUrl = stream.streamIcon,
         title = stream.name,
@@ -338,7 +437,9 @@ fun LiveStreamCard(
             onFocusChanged = onFocusChanged,
             onNavigateLeft = onNavigateLeft,
             focusRequester = focusRequester
-        )
+        ),
+        contentType = ContentType.Live(stream),
+        favoritesRepository = repository
     )
 }
 
@@ -347,6 +448,7 @@ private fun CardContent(
     coverImageUrl: String?,
     title: String,
     rating: String?,
+    isFavorite: Boolean,
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
     if (!coverImageUrl.isNullOrEmpty()) {
@@ -366,6 +468,13 @@ private fun CardContent(
                     contentScale = ContentScale.Crop
                 )
                 
+                // Favorite badge at top left
+                if (isFavorite) {
+                    FavoriteBadge(
+                        modifier = Modifier.align(Alignment.TopStart)
+                    )
+                }
+                
                 // Rating badge at top right
                 if (rating != null) {
                     RatingBadge(
@@ -384,6 +493,39 @@ private fun CardContent(
     } else {
         // Fallback to text-only card
         buildTextFallback(title, colors)
+    }
+}
+
+@Composable
+private fun FavoriteBadge(
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .padding(
+                top = Dimensions.contentCardRatingBadgeTop,
+                start = Dimensions.contentCardRatingBadgeRight
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .background(
+                    color = ContentCardBgColor.copy(alpha = Dimensions.contentCardRatingBgAlpha),
+                    shape = RoundedCornerShape(Dimensions.radiusSM)
+                )
+                .padding(
+                    horizontal = Dimensions.contentCardRatingBadgePaddingH,
+                    vertical = Dimensions.contentCardRatingBadgePaddingV
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Star,
+                contentDescription = "Favorit",
+                modifier = Modifier.size(Dimensions.contentCardRatingIconSize),
+                tint = SharedColors.contentCardRatingIconColor
+            )
+        }
     }
 }
 

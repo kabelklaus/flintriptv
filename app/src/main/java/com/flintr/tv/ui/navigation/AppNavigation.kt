@@ -220,18 +220,7 @@ fun MainContentScreen(
             selectedDestination is HomeDestination.VOD ||
             selectedDestination is HomeDestination.Series
     
-    // Set initial focus on Navbar when app starts
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(200) // Small delay to ensure UI is laid out
-        try {
-            navbarFocusRequester.requestFocus()
-            Log.i("TVFocus", "[MainContentScreen] 🎯 Initial focus set to NAVBAR")
-        } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
-        }
-    }
-    
-    // Focus navigation functions
+    // Focus navigation functions (defined before LaunchedEffect to be available in closures)
     fun moveFocusToNavbar() {
         Log.i("TVFocus", "[MainContentScreen] 🎯 Requesting focus: NAVBAR")
         try {
@@ -258,6 +247,26 @@ fun MainContentScreen(
             // FocusRequester not yet initialized - this can happen if called before content is loaded
             // The content will request focus automatically when streams are loaded
             Log.w("TVFocus", "[MainContentScreen] ⚠️ ContentList FocusRequester not initialized yet, will focus when content loads")
+        }
+    }
+    
+    // Set initial focus on Navbar when app starts
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(200) // Small delay to ensure UI is laid out
+        try {
+            navbarFocusRequester.requestFocus()
+            Log.i("TVFocus", "[MainContentScreen] 🎯 Initial focus set to NAVBAR")
+        } catch (e: IllegalStateException) {
+            Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
+        }
+    }
+    
+    // When destination changes and categories are shown, move focus to CategoryRow
+    LaunchedEffect(selectedDestination) {
+        if (showCategories && sortedCategories.isNotEmpty()) {
+            kotlinx.coroutines.delay(100) // Small delay to ensure UI is laid out
+            moveFocusToCategorySidebar()
+            Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to $selectedDestination, focus moved to CategoryRow")
         }
     }
     
