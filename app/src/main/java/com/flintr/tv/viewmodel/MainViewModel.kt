@@ -228,15 +228,15 @@ class MainViewModel @Inject constructor(
             it.categoryId == series.categoryId 
         }
         
-        if (seriesCategory != null) {
-            // Load series for this category
-            loadSeries(seriesCategory.categoryId)
-            Log.d("MainViewModel", "Showing series from favorites: ${series.name}, category: ${seriesCategory.categoryName}")
-            return seriesCategory.categoryId
-        } else {
+        if (seriesCategory == null) {
             Log.w("MainViewModel", "Category not found for series: ${series.name}, categoryId: ${series.categoryId}")
             return null
         }
+        
+        // Load series for this category
+        loadSeries(seriesCategory.categoryId)
+        Log.d("MainViewModel", "Showing series from favorites: ${series.name}, category: ${seriesCategory.categoryName}")
+        return seriesCategory.categoryId
     }
 }
 

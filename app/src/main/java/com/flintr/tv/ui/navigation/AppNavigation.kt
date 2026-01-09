@@ -25,6 +25,7 @@ import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
+import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.components.MainLayout
 import com.flintr.tv.ui.screens.DataLoadingScreen
 import com.flintr.tv.ui.screens.EPGContent
@@ -36,6 +37,7 @@ import com.flintr.tv.ui.tabs.LiveTVContent
 import com.flintr.tv.ui.tabs.VODContent
 import com.flintr.tv.ui.tabs.SeriesContent
 import com.flintr.tv.ui.tabs.FavoritesContent
+import com.flintr.tv.ui.tabs.FavoritesContentParams
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
 
@@ -418,38 +420,47 @@ fun MainContentScreen(
                     )
                 }
                 is HomeDestination.Favorites -> {
-                    FavoritesContent(
-                        favoritesRepository = favoritesRepository,
-                        cacheService = cacheService,
-                        focusRequester = contentListFocusRequester,
-                        onNavigateLeft = { moveFocusToNavbar() },
-                        onLiveStreamClick = { stream ->
-                            val creds = credentials ?: return@FavoritesContent
+                    val onLiveStreamClick: (LiveStream) -> Unit = { stream ->
+                        val creds = credentials
+                        if (creds != null) {
                             val streamUrl = stream.getStreamUrl(
                                 creds.serverUrl,
                                 creds.username,
                                 creds.password
                             )
                             navController.navigate(Screen.Player.createRoute(streamUrl))
-                        },
-                        onVodClick = { vod ->
-                            val creds = credentials ?: return@FavoritesContent
+                        }
+                    }
+                    val onVodClick: (VodStream) -> Unit = { vod ->
+                        val creds = credentials
+                        if (creds != null) {
                             val streamUrl = vod.getStreamUrl(
                                 creds.serverUrl,
                                 creds.username,
                                 creds.password
                             )
                             navController.navigate(Screen.Player.createRoute(streamUrl))
-                        },
-                        onSeriesClick = { series ->
-                            // Navigate to Series tab
-                            selectedDestination = HomeDestination.Series
-                            // Use ViewModel to handle business logic
-                            val categoryId = mainViewModel.showSeriesFromFavorites(series)
-                            if (categoryId != null) {
-                                selectedCategoryId = categoryId
-                            }
                         }
+                    }
+                    val onSeriesClick: (Series) -> Unit = { series ->
+                        // Navigate to Series tab
+                        selectedDestination = HomeDestination.Series
+                        // Use ViewModel to handle business logic
+                        val categoryId = mainViewModel.showSeriesFromFavorites(series)
+                        if (categoryId != null) {
+                            selectedCategoryId = categoryId
+                        }
+                    }
+                    FavoritesContent(
+                        params = FavoritesContentParams(
+                            favoritesRepository = favoritesRepository,
+                            cacheService = cacheService,
+                            focusRequester = contentListFocusRequester,
+                            onNavigateLeft = { moveFocusToNavbar() },
+                            onLiveStreamClick = onLiveStreamClick,
+                            onVodClick = onVodClick,
+                            onSeriesClick = onSeriesClick
+                        )
                     )
                 }
                 is HomeDestination.Settings -> {

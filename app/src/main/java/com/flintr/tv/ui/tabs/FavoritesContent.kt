@@ -30,15 +30,138 @@ private sealed class FavoriteContentItem {
     data class SeriesItem(val series: Series, val favorite: Favorite) : FavoriteContentItem()
 }
 
+/**
+ * Parameters for FavoritesContent composable.
+ * Encapsulates all parameters to reduce function parameter count.
+ */
+data class FavoritesContentParams(
+    val favoritesRepository: FavoritesRepository,
+    val cacheService: DataCacheService,
+    val focusRequester: FocusRequester,
+    val onNavigateLeft: () -> Unit,
+    val onLiveStreamClick: (LiveStream) -> Unit,
+    val onVodClick: (VodStream) -> Unit,
+    val onSeriesClick: (Series) -> Unit
+)
+
+/**
+ * Data class to hold maps for efficient favorite matching.
+ */
+private data class FavoriteMaps(
+    val channelsMap: Map<Int, LiveStream>,
+    val moviesMap: Map<Int, VodStream>,
+    val seriesMap: Map<Int, Series>
+)
+
+/**
+ * Creates maps for O(1) lookups from cached data.
+ */
+private fun createFavoriteMaps(cachedData: com.flintr.tv.data.local.CachedData): FavoriteMaps {
+    return FavoriteMaps(
+        channelsMap = cachedData.channels.associateBy<LiveStream, Int> { it.streamId },
+        moviesMap = cachedData.movies.associateBy<VodStream, Int> { it.streamId },
+        seriesMap = cachedData.series.associateBy<Series, Int> { it.seriesId }
+    )
+}
+
+/**
+ * Matches a single favorite to its corresponding content item.
+ */
+private fun matchFavoriteToContentItem(
+    favorite: Favorite,
+    maps: FavoriteMaps
+): FavoriteContentItem? {
+    return when (favorite.type) {
+        FavoriteType.LIVE -> {
+            maps.channelsMap[favorite.streamId]?.let { stream ->
+                FavoriteContentItem.Live(stream, favorite)
+            } ?: run {
+                Log.w("FavoritesContent", "LiveStream not found for favorite: ${favorite.id}")
+                null
+            }
+        }
+        FavoriteType.MOVIE -> {
+            maps.moviesMap[favorite.streamId]?.let { vod ->
+                FavoriteContentItem.Movie(vod, favorite)
+            } ?: run {
+                Log.w("FavoritesContent", "VodStream not found for favorite: ${favorite.id}")
+                null
+            }
+        }
+        FavoriteType.SERIES -> {
+            maps.seriesMap[favorite.streamId]?.let { series ->
+                FavoriteContentItem.SeriesItem(series, favorite)
+            } ?: run {
+                Log.w("FavoritesContent", "Series not found for favorite: ${favorite.id}")
+                null
+            }
+        }
+    }
+}
+
+/**
+ * Creates the onNavigateLeft callback based on column index.
+ */
+private fun createOnNavigateLeft(
+    columnIndex: Int,
+    onNavigateLeft: () -> Unit
+): (() -> Unit)? {
+    return if (columnIndex == 0) {
+        { onNavigateLeft() }
+    } else {
+        null
+    }
+}
+
+/**
+ * Renders a favorite content item as a card.
+ */
+@Composable
+private fun renderFavoriteCard(
+    item: FavoriteContentItem,
+    index: Int,
+    columnIndex: Int,
+    params: FavoritesContentParams,
+    favoriteItems: List<FavoriteContentItem>,
+    onFocusChanged: ((Boolean) -> Unit)?
+) {
+    when (item) {
+        is FavoriteContentItem.Live -> {
+            LiveStreamCard(
+                stream = item.stream,
+                onClick = { params.onLiveStreamClick(item.stream) },
+                favoritesRepository = params.favoritesRepository,
+                config = CardConfig(
+                    focusRequester = if (index == 0 && favoriteItems.isNotEmpty()) params.focusRequester else null,
+                    onFocusChanged = onFocusChanged,
+                    onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft)
+                )
+            )
+        }
+        is FavoriteContentItem.Movie -> {
+            VODCard(
+                vod = item.vod,
+                onClick = { params.onVodClick(item.vod) },
+                favoritesRepository = params.favoritesRepository,
+                onFocusChanged = onFocusChanged,
+                onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft)
+            )
+        }
+        is FavoriteContentItem.SeriesItem -> {
+            VODCard(
+                series = item.series,
+                onClick = { params.onSeriesClick(item.series) },
+                favoritesRepository = params.favoritesRepository,
+                onFocusChanged = onFocusChanged,
+                onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft)
+            )
+        }
+    }
+}
+
 @Composable
 fun FavoritesContent(
-    favoritesRepository: FavoritesRepository,
-    cacheService: DataCacheService,
-    focusRequester: FocusRequester,
-    onNavigateLeft: () -> Unit,
-    onLiveStreamClick: (LiveStream) -> Unit,
-    onVodClick: (VodStream) -> Unit,
-    onSeriesClick: (Series) -> Unit,
+    params: FavoritesContentParams,
     modifier: Modifier = Modifier
 ) {
     var favorites by remember { mutableStateOf<List<Favorite>>(emptyList()) }
@@ -47,7 +170,7 @@ fun FavoritesContent(
     
     // Load favorites
     LaunchedEffect(Unit) {
-        favorites = favoritesRepository.getAllFavorites()
+        favorites = params.favoritesRepository.getAllFavorites()
         // isLoading bleibt true, bis Matching abgeschlossen ist
         Log.d("FavoritesContent", "Loaded ${favorites.size} favorites")
     }
@@ -62,45 +185,18 @@ fun FavoritesContent(
         
         // Perform all heavy operations on background thread
         val items = withContext(Dispatchers.IO) {
-            val cachedData = cacheService.loadCachedDataAsync()
+            val cachedData = params.cacheService.loadCachedDataAsync()
             if (cachedData == null) {
                 Log.w("FavoritesContent", "No cached data available")
                 return@withContext emptyList<FavoriteContentItem>()
             }
             
             // Create maps for O(1) lookups instead of O(n) searches
-            val channelsMap = cachedData.channels.associateBy { it.streamId }
-            val moviesMap = cachedData.movies.associateBy { it.streamId }
-            val seriesMap = cachedData.series.associateBy { it.seriesId }
+            val maps = createFavoriteMaps(cachedData)
             
             // Match favorites using map lookups (O(1) instead of O(n))
             favorites.mapNotNull { favorite ->
-                when (favorite.type) {
-                    FavoriteType.LIVE -> {
-                        channelsMap[favorite.streamId]?.let { stream ->
-                            FavoriteContentItem.Live(stream, favorite)
-                        } ?: run {
-                            Log.w("FavoritesContent", "LiveStream not found for favorite: ${favorite.id}")
-                            null
-                        }
-                    }
-                    FavoriteType.MOVIE -> {
-                        moviesMap[favorite.streamId]?.let { vod ->
-                            FavoriteContentItem.Movie(vod, favorite)
-                        } ?: run {
-                            Log.w("FavoritesContent", "VodStream not found for favorite: ${favorite.id}")
-                            null
-                        }
-                    }
-                    FavoriteType.SERIES -> {
-                        seriesMap[favorite.streamId]?.let { series ->
-                            FavoriteContentItem.SeriesItem(series, favorite)
-                        } ?: run {
-                            Log.w("FavoritesContent", "Series not found for favorite: ${favorite.id}")
-                            null
-                        }
-                    }
-                }
+                matchFavoriteToContentItem(favorite, maps)
             }
         }
         
@@ -115,57 +211,21 @@ fun FavoritesContent(
     ContentGridLayout(
         items = favoriteItems,
         isLoading = isLoading,
-        focusRequester = focusRequester,
+        focusRequester = params.focusRequester,
         modifier = modifier,
         onItemsRendered = {
             // Items are now rendered, loading is complete
             Log.d("FavoritesContent", "Items rendered, loading complete")
         },
         content = { item, index, columnIndex, onFocusChanged ->
-            when (item) {
-                is FavoriteContentItem.Live -> {
-                    LiveStreamCard(
-                        stream = item.stream,
-                        onClick = { onLiveStreamClick(item.stream) },
-                        favoritesRepository = favoritesRepository,
-                        config = CardConfig(
-                            focusRequester = if (index == 0 && favoriteItems.isNotEmpty()) focusRequester else null,
-                            onFocusChanged = onFocusChanged,
-                            onNavigateLeft = if (columnIndex == 0) {
-                                { onNavigateLeft() }
-                            } else {
-                                null
-                            }
-                        )
-                    )
-                }
-                is FavoriteContentItem.Movie -> {
-                    VODCard(
-                        vod = item.vod,
-                        onClick = { onVodClick(item.vod) },
-                        favoritesRepository = favoritesRepository,
-                        onFocusChanged = onFocusChanged,
-                        onNavigateLeft = if (columnIndex == 0) {
-                            { onNavigateLeft() }
-                        } else {
-                            null
-                        }
-                    )
-                }
-                is FavoriteContentItem.SeriesItem -> {
-                    VODCard(
-                        series = item.series,
-                        onClick = { onSeriesClick(item.series) },
-                        favoritesRepository = favoritesRepository,
-                        onFocusChanged = onFocusChanged,
-                        onNavigateLeft = if (columnIndex == 0) {
-                            { onNavigateLeft() }
-                        } else {
-                            null
-                        }
-                    )
-                }
-            }
+            renderFavoriteCard(
+                item = item,
+                index = index,
+                columnIndex = columnIndex,
+                params = params,
+                favoriteItems = favoriteItems,
+                onFocusChanged = onFocusChanged
+            )
         }
     )
 }
