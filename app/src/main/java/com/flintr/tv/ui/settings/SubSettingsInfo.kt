@@ -34,7 +34,6 @@ import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.flintr.tv.data.model.UpdateInfo
 import com.flintr.tv.viewmodel.UpdateViewModel
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.collectAsState
