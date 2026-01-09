@@ -1,19 +1,26 @@
 package com.flintr.tv.di
 
+import android.content.Context
+import com.flintr.tv.data.api.GitHubApiService
 import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.repository.UpdateRepository
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.utils.UpdateDownloadService
+import com.flintr.tv.utils.UpdateInstaller
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
+import javax.inject.Named
 import javax.inject.Singleton
 import javax.annotation.Nullable
 
@@ -47,6 +54,7 @@ object AppModule {
     @Provides
     @Singleton
     @Nullable
+    @Named("Xtream")
     fun provideRetrofit(
         okHttpClient: OkHttpClient,
         moshi: Moshi,
@@ -66,7 +74,7 @@ object AppModule {
     @Provides
     @Singleton
     @Nullable
-    fun provideXtreamApiService(@Nullable retrofit: Retrofit?): XtreamApiService? {
+    fun provideXtreamApiService(@Nullable @Named("Xtream") retrofit: Retrofit?): XtreamApiService? {
         return retrofit?.create(XtreamApiService::class.java)
     }
     
@@ -93,6 +101,82 @@ object AppModule {
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
+    }
+    
+    @Provides
+    @Singleton
+    @Named("GitHub")
+    fun provideGitHubOkHttpClient(): OkHttpClient {
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.BODY
+        }
+        
+        // Add Authorization header interceptor for GitHub API
+        val authInterceptor = okhttp3.Interceptor { chain ->
+            val originalRequest = chain.request()
+            val token = com.flintr.tv.BuildConfig.GITHUB_TOKEN
+            val authenticatedRequest = originalRequest.newBuilder()
+                .header("Authorization", "token $token")
+                .header("Accept", "application/vnd.github.v3+json")
+                .build()
+            chain.proceed(authenticatedRequest)
+        }
+        
+        return OkHttpClient.Builder()
+            .addInterceptor(authInterceptor)
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+    
+    @Provides
+    @Singleton
+    @Named("GitHub")
+    fun provideGitHubRetrofit(
+        @Named("GitHub") gitHubOkHttpClient: OkHttpClient,
+        moshi: Moshi
+    ): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl("https://api.github.com/")
+            .client(gitHubOkHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+    }
+    
+    @Provides
+    @Singleton
+    fun provideGitHubApiService(
+        @Named("GitHub") retrofit: Retrofit
+    ): GitHubApiService {
+        return retrofit.create(GitHubApiService::class.java)
+    }
+    
+    @Provides
+    @Singleton
+    fun provideUpdateRepository(
+        gitHubApiService: GitHubApiService
+    ): UpdateRepository {
+        return UpdateRepository(gitHubApiService)
+    }
+    
+    @Provides
+    @Singleton
+    fun provideUpdateDownloadService(
+        @Named("GitHub") gitHubOkHttpClient: OkHttpClient,
+        @ApplicationContext context: Context
+    ): UpdateDownloadService {
+        // Use GitHub OkHttpClient for authenticated downloads
+        return UpdateDownloadService(gitHubOkHttpClient, context)
+    }
+    
+    @Provides
+    @Singleton
+    fun provideUpdateInstaller(
+        @ApplicationContext context: Context
+    ): UpdateInstaller {
+        return UpdateInstaller(context)
     }
 }
 

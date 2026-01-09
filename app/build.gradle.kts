@@ -19,10 +19,26 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        buildConfigField("String", "GITHUB_REPO_OWNER", "\"kabelklaus\"")
+        buildConfigField("String", "GITHUB_REPO_NAME", "\"flintriptv\"")
+        
+        // GitHub token: from environment variable (CI/CD) or local.properties (local builds)
+        val localPropertiesFile = rootProject.file("local.properties")
+        val githubToken = System.getenv("GITHUB_TOKEN")
+            ?: if (localPropertiesFile.exists()) {
+                val props = Properties().apply {
+                    localPropertiesFile.inputStream().use(::load)
+                }
+                props.getProperty("github.token", "")
+            } else {
+                ""
+            }
+        buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
     }
 
     signingConfigs {
@@ -69,6 +85,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

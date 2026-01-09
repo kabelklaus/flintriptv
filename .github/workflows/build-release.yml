@@ -91,8 +91,9 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             ~/.gradle/build-cache
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-${{ runner.os }}-java17-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
+            gradle-${{ runner.os }}-java17-
             gradle-${{ runner.os }}-
 
       - name: Setup signing key
@@ -120,6 +121,7 @@ jobs:
         run: ./gradlew assembleRelease
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true
+          GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
 
       - name: Upload APK artifact
         if: steps.should_release.outputs.should_release == 'true'
@@ -132,7 +134,7 @@ jobs:
       - name: Rename artifacts
         if: steps.should_release.outputs.should_release == 'true'
         run: |
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/app-v${{ steps.version.outputs.name }}.apk
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/flintrTV-v${{ steps.version.outputs.name }}.apk
 
       - name: Extract PR title from commit
         if: steps.should_release.outputs.should_release == 'true'
@@ -177,7 +179,7 @@ jobs:
             ### Downloads
             - **APK**: Für direkte Installation auf Android-Geräten
           files: |
-            app/build/outputs/apk/release/app-v${{ steps.version.outputs.name }}.apk
+            app/build/outputs/apk/release/flintrTV-v${{ steps.version.outputs.name }}.apk
           draft: false
           prerelease: false
         env:

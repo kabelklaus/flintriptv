@@ -3,11 +3,8 @@ package com.flintr.tv.ui.settings
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,8 +22,10 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import android.util.Log
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
@@ -34,27 +33,34 @@ import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.flintr.tv.viewmodel.UpdateViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.runtime.collectAsState
 
 @Composable
 fun SettingsInfo(
     onBack: () -> Unit,
     onNavigateLeft: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: UpdateViewModel = hiltViewModel()
 ) {
     val colors = appColors()
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    val coroutineScope = rememberCoroutineScope()
     
     // Package info state
     var packageInfo by remember { mutableStateOf<PackageInfoData?>(null) }
-    var isCheckingUpdates by remember { mutableStateOf(false) }
-    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    
+    // ViewModel state
+    val isCheckingUpdates by viewModel.isCheckingUpdates.collectAsState()
+    val updateInfo by viewModel.updateInfo.collectAsState()
+    val downloadProgress by viewModel.downloadProgress.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
     
     // Focus requesters
     val checkUpdatesButtonFocusRequester = remember { FocusRequester() }
+    val downloadButtonFocusRequester = remember { FocusRequester() }
     
     // Load package info
     LaunchedEffect(Unit) {
@@ -89,7 +95,7 @@ fun SettingsInfo(
             ) {
                 // Version Section
                 SettingsCard(
-                    title = "Version",
+                    title = stringResource(R.string.version),
                     icon = Icons.Default.Info,
                     colors = colors
                 ) {
@@ -98,28 +104,28 @@ fun SettingsInfo(
                     ) {
                         packageInfo?.let { info ->
                             InfoRow(
-                                label = "App Name",
+                                label = stringResource(R.string.app_name_label),
                                 value = info.appName,
                                 colors = colors
                             )
                             InfoRow(
-                                label = "Version",
+                                label = stringResource(R.string.version_label),
                                 value = info.versionName,
                                 colors = colors
                             )
                             InfoRow(
-                                label = "Build Number",
+                                label = stringResource(R.string.build_number),
                                 value = info.versionCode.toString(),
                                 colors = colors
                             )
                             InfoRow(
-                                label = "Package Name",
+                                label = stringResource(R.string.package_name),
                                 value = info.packageName,
                                 colors = colors
                             )
                         } ?: run {
                             Text(
-                                text = "Lade Informationen...",
+                                text = stringResource(R.string.loading_info),
                                 fontSize = FontSizes.fontSizeXL,
                                 color = colors.textSecondary
                             )
@@ -129,7 +135,7 @@ fun SettingsInfo(
                 
                 // Update Section
                 SettingsCard(
-                    title = "Updates",
+                    title = stringResource(R.string.updates),
                     icon = Icons.Default.SystemUpdate,
                     colors = colors
                 ) {
@@ -141,16 +147,8 @@ fun SettingsInfo(
                         
                         Button(
                             onClick = {
-                                isCheckingUpdates = true
-                                // Mock update check
-                                coroutineScope.launch {
-                                    kotlinx.coroutines.delay(2000) // Simulate API call
-                                    isCheckingUpdates = false
-                                    updateInfo = UpdateInfo(
-                                        hasUpdate = true,
-                                        stableVersion = "1.1.0",
-                                        betaVersion = "1.1.0-beta.1"
-                                    )
+                                packageInfo?.let { info ->
+                                    viewModel.checkForUpdates(info.versionName)
                                 }
                             },
                             modifier = Modifier
@@ -195,25 +193,97 @@ fun SettingsInfo(
                                 )
                                 Spacer(modifier = Modifier.width(Dimensions.spacingXS))
                                 Text(
-                                    text = "Suche nach Updates...",
+                                    text = stringResource(R.string.checking_for_updates),
                                     fontSize = FontSizes.fontSizeXL,
                                     fontWeight = FontWeight.W600
                                 )
                             } else {
                                 Text(
-                                    text = "Nach Updates suchen",
+                                    text = stringResource(R.string.check_for_updates),
                                     fontSize = FontSizes.fontSizeXL,
                                     fontWeight = FontWeight.W600
                                 )
                             }
                         }
                         
-                        // Update Info Display
-                        updateInfo?.let { info ->
-                            if (info.hasUpdate) {
+                        // Error Message
+                        errorMessage?.let { error ->
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = colors.errorColor.copy(alpha = 0.1f)
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(Dimensions.radiusMD)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(Dimensions.spacingMD),
+                                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Error,
+                                        contentDescription = null,
+                                        tint = colors.errorColor,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = error,
+                                        color = colors.textPrimary,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+                        }
+                        
+                        // Download Progress
+                        downloadProgress?.let { progress ->
+                            if (!progress.isComplete && progress.error == null) {
                                 Card(
                                     colors = CardDefaults.cardColors(
-                                        containerColor = Color(0xFF10B981).copy(alpha = 0.1f)
+                                        containerColor = colors.bgHover
+                                    ),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(Dimensions.radiusMD)
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(Dimensions.spacingMD),
+                                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(20.dp),
+                                                progress = progress.progress,
+                                                color = colors.accentColor
+                                            )
+                                            Text(
+                                                text = stringResource(R.string.download_progress, (progress.progress * 100).toInt()),
+                                                color = colors.textPrimary,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        LinearProgressIndicator(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            progress = progress.progress,
+                                            color = colors.accentColor
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Update Info Display
+                        updateInfo?.let { info ->
+                            if (info.hasUpdate && info.downloadUrl != null) {
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = colors.successGreen.copy(alpha = 0.1f)
                                     ),
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(Dimensions.radiusMD)
@@ -231,11 +301,11 @@ fun SettingsInfo(
                                             Icon(
                                                 imageVector = Icons.Default.SystemUpdate,
                                                 contentDescription = null,
-                                                tint = Color(0xFF10B981)
+                                                tint = colors.successGreen
                                             )
                                             Text(
-                                                text = "Updates verfügbar",
-                                                color = Color(0xFF10B981),
+                                                text = stringResource(R.string.updates_available),
+                                                color = colors.successGreen,
                                                 fontWeight = FontWeight.W600,
                                                 style = MaterialTheme.typography.bodyMedium
                                             )
@@ -243,22 +313,57 @@ fun SettingsInfo(
                                         
                                         if (info.stableVersion != null) {
                                             Text(
-                                                text = "Stable: ${info.stableVersion}",
+                                                text = stringResource(R.string.version_info, info.stableVersion),
                                                 color = colors.textPrimary,
                                                 style = MaterialTheme.typography.bodySmall
                                             )
                                         }
                                         
-                                        if (info.betaVersion != null) {
+                                        // Download Button
+                                        var isDownloadButtonFocused by remember { mutableStateOf(false) }
+                                        
+                                        Button(
+                                            onClick = {
+                                                info.downloadUrl?.let { url ->
+                                                    info.stableVersion?.let { version ->
+                                                        viewModel.downloadUpdate(url, version)
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .focusRequester(downloadButtonFocusRequester)
+                                                .onFocusChanged { focusState ->
+                                                    isDownloadButtonFocused = focusState.isFocused
+                                                }
+                                                .then(
+                                                    if (isDownloadButtonFocused) {
+                                                        Modifier.border(
+                                                            width = 2.dp,
+                                                            color = Color.White,
+                                                            shape = RoundedCornerShape(Dimensions.radiusMD)
+                                                        )
+                                                    } else {
+                                                        Modifier
+                                                    }
+                                                ),
+                                            enabled = downloadProgress?.isComplete != true && downloadProgress?.error == null,
+                                            shape = RoundedCornerShape(Dimensions.radiusMD),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (isDownloadButtonFocused) colors.buttonPrimaryHover else colors.buttonPrimary,
+                                                contentColor = Color.White
+                                            ),
+                                            contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
+                                        ) {
                                             Text(
-                                                text = "Beta: ${info.betaVersion}",
-                                                color = colors.textPrimary,
-                                                style = MaterialTheme.typography.bodySmall
+                                                text = stringResource(R.string.download_and_install_update),
+                                                fontSize = FontSizes.fontSizeXL,
+                                                fontWeight = FontWeight.W600
                                             )
                                         }
                                     }
                                 }
-                            } else {
+                            } else if (!info.hasUpdate) {
                                 Card(
                                     colors = CardDefaults.cardColors(
                                         containerColor = colors.bgHover
@@ -280,7 +385,7 @@ fun SettingsInfo(
                                             modifier = Modifier.size(20.dp)
                                         )
                                         Text(
-                                            text = "Sie verwenden die neueste Version",
+                                            text = stringResource(R.string.latest_version),
                                             color = colors.textPrimary,
                                             style = MaterialTheme.typography.bodyMedium
                                         )
@@ -293,12 +398,12 @@ fun SettingsInfo(
                 
                 // About Section
                 SettingsCard(
-                    title = "Über",
+                    title = stringResource(R.string.about),
                     icon = Icons.Default.Info,
                     colors = colors
                 ) {
                     Text(
-                        text = "IPTV Player App",
+                        text = stringResource(R.string.app_name_info),
                         fontSize = FontSizes.fontSizeXL,
                         color = colors.textPrimary
                     )
@@ -360,7 +465,7 @@ private suspend fun loadPackageInfo(context: Context): PackageInfoData? = withCo
             }
         )
     } catch (e: Exception) {
-        e.printStackTrace()
+        Log.e("SubSettingsInfo", "Failed to load package info", e)
         null
     }
 }
@@ -370,12 +475,6 @@ data class PackageInfoData(
     val packageName: String,
     val versionName: String,
     val versionCode: Int
-)
-
-data class UpdateInfo(
-    val hasUpdate: Boolean,
-    val stableVersion: String? = null,
-    val betaVersion: String? = null
 )
 
 @Composable
