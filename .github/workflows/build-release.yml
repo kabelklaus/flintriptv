@@ -134,7 +134,7 @@ jobs:
       - name: Rename artifacts
         if: steps.should_release.outputs.should_release == 'true'
         run: |
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/app-v${{ steps.version.outputs.name }}.apk
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/flintrTV-v${{ steps.version.outputs.name }}.apk
 
       - name: Extract PR title from commit
         if: steps.should_release.outputs.should_release == 'true'
@@ -179,7 +179,7 @@ jobs:
             ### Downloads
             - **APK**: Für direkte Installation auf Android-Geräten
           files: |
-            app/build/outputs/apk/release/app-v${{ steps.version.outputs.name }}.apk
+            app/build/outputs/apk/release/flintrTV-v${{ steps.version.outputs.name }}.apk
           draft: false
           prerelease: false
         env:
