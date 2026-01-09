@@ -6,6 +6,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.components.VODCard
@@ -16,6 +17,7 @@ fun VODContent(
     viewModel: MainViewModel,
     selectedCategoryId: String?,
     focusRequester: FocusRequester,
+    favoritesRepository: FavoritesRepository,
     onNavigateLeft: () -> Unit,
     onVodClick: (VodStream) -> Unit,
     modifier: Modifier = Modifier
@@ -42,6 +44,7 @@ fun VODContent(
             VODCard(
                 vod = vod,
                 onClick = { onVodClick(vod) },
+                favoritesRepository = favoritesRepository,
                 onFocusChanged = onFocusChanged,
                 onNavigateLeft = if (columnIndex == 0) {
                     { onNavigateLeft() }

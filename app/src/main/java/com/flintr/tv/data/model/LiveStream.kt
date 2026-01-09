@@ -47,7 +47,7 @@ data class LiveStream(
         streamIcon?.let { metadataWithIcon["streamIcon"] = it }
         return Favorite.create(
             id = toFavoriteId(),
-            type = "live",
+            type = FavoriteType.LIVE,
             streamId = streamId,
             name = name,
             metadata = metadataWithIcon

@@ -27,6 +27,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
@@ -42,6 +43,7 @@ fun SeriesContent(
     viewModel: MainViewModel,
     selectedCategoryId: String?,
     focusRequester: FocusRequester,
+    favoritesRepository: FavoritesRepository,
     onNavigateLeft: () -> Unit,
     onEpisodeClick: (Episode, Series) -> Unit,
     modifier: Modifier = Modifier
@@ -73,6 +75,7 @@ fun SeriesContent(
         content = { seriesItem, _, columnIndex, onFocusChanged ->
             SeriesItem(
                 series = seriesItem,
+                favoritesRepository = favoritesRepository,
                 isExpanded = expandedSeriesId == seriesItem.seriesId,
                 onExpand = { 
                     expandedSeriesId = if (expandedSeriesId == seriesItem.seriesId) null else seriesItem.seriesId
@@ -94,6 +97,7 @@ fun SeriesContent(
 @Composable
 fun SeriesItem(
     series: Series,
+    favoritesRepository: FavoritesRepository,
     isExpanded: Boolean,
     onExpand: () -> Unit,
     onEpisodeClick: (Episode) -> Unit,
@@ -107,6 +111,7 @@ fun SeriesItem(
         VODCard(
             series = series,
             onClick = onExpand,
+            favoritesRepository = favoritesRepository,
             isSelected = isSelected,
             onFocusChanged = onFocusChanged,
             onNavigateLeft = onNavigateLeft

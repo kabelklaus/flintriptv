@@ -103,29 +103,31 @@ fun ContentCardMenu(
                 // Menu options
                 menuOptions.forEachIndexed { index, option ->
                     MenuOptionItem(
-                        text = option,
-                        isFocused = focusedIndex == index,
-                        isEnabled = isMenuReady,
-                        ignoreKeyEvents = ignoreKeyEvents,
-                        onClick = {
-                            if (!isMenuReady) {
-                                Log.d("ContentCardMenu", "[Option] Option $index Klick ignoriert - Menü noch nicht bereit")
-                                return@MenuOptionItem
+                        config = MenuOptionItemConfig(
+                            text = option,
+                            isFocused = focusedIndex == index,
+                            isEnabled = isMenuReady,
+                            ignoreKeyEvents = ignoreKeyEvents,
+                            focusRequester = focusRequesters[index],
+                            onClick = {
+                                if (!isMenuReady) {
+                                    Log.d("ContentCardMenu", "[Option] Option $index Klick ignoriert - Menü noch nicht bereit")
+                                    return@MenuOptionItemConfig
+                                }
+                                Log.d("ContentCardMenu", "[Option] Option $index ausgewählt: '$option'")
+                                Log.d("ContentCardMenu", "[Callback] Rufe onOptionSelected($index) auf")
+                                onOptionSelected(index)
+                                Log.d("ContentCardMenu", "[Dialog] Menü wird nach Option-Auswahl geschlossen")
+                                onDismiss()
+                            },
+                            onFocusChanged = { isFocused ->
+                                if (isFocused) {
+                                    val previousIndex = focusedIndex
+                                    focusedIndex = index
+                                    Log.d("ContentCardMenu", "[Focus] Focus gewechselt: Index $previousIndex -> $index ('$option')")
+                                }
                             }
-                            Log.d("ContentCardMenu", "[Option] Option $index ausgewählt: '$option'")
-                            Log.d("ContentCardMenu", "[Callback] Rufe onOptionSelected($index) auf")
-                            onOptionSelected(index)
-                            Log.d("ContentCardMenu", "[Dialog] Menü wird nach Option-Auswahl geschlossen")
-                            onDismiss()
-                        },
-                        focusRequester = focusRequesters[index],
-                        onFocusChanged = { isFocused ->
-                            if (isFocused) {
-                                val previousIndex = focusedIndex
-                                focusedIndex = index
-                                Log.d("ContentCardMenu", "[Focus] Focus gewechselt: Index $previousIndex -> $index ('$option')")
-                            }
-                        },
+                        ),
                         colors = colors
                     )
 
@@ -138,31 +140,35 @@ fun ContentCardMenu(
     }
 }
 
+private data class MenuOptionItemConfig(
+    val text: String,
+    val isFocused: Boolean,
+    val isEnabled: Boolean,
+    val ignoreKeyEvents: Boolean,
+    val focusRequester: FocusRequester,
+    val onClick: () -> Unit,
+    val onFocusChanged: (Boolean) -> Unit
+)
+
 @Composable
 private fun MenuOptionItem(
-    text: String,
-    isFocused: Boolean,
-    isEnabled: Boolean,
-    ignoreKeyEvents: Boolean,
-    onClick: () -> Unit,
-    focusRequester: FocusRequester,
-    onFocusChanged: (Boolean) -> Unit,
+    config: MenuOptionItemConfig,
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
     // Log focus changes
-    LaunchedEffect(isFocused) {
-        if (isFocused) {
-            Log.d("ContentCardMenu", "[MenuItem] '$text' hat jetzt Focus")
+    LaunchedEffect(config.isFocused) {
+        if (config.isFocused) {
+            Log.d("ContentCardMenu", "[MenuItem] '${config.text}' hat jetzt Focus")
         }
     }
     val backgroundColor by animateColorAsState(
-        targetValue = if (isFocused) colors.accentColorHoverBg else Color.Transparent,
+        targetValue = if (config.isFocused) colors.accentColorHoverBg else Color.Transparent,
         animationSpec = tween(durationMillis = 200),
         label = "menuItemBackground"
     )
 
     val borderColor by animateColorAsState(
-        targetValue = if (isFocused) colors.accentColor else Color.Transparent,
+        targetValue = if (config.isFocused) colors.accentColor else Color.Transparent,
         animationSpec = tween(durationMillis = 200),
         label = "menuItemBorder"
     )
@@ -170,24 +176,24 @@ private fun MenuOptionItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .focusRequester(focusRequester)
+            .focusRequester(config.focusRequester)
             .onFocusChanged { focusState ->
-                onFocusChanged(focusState.isFocused)
+                config.onFocusChanged(focusState.isFocused)
             }
             .then(
-                if (isEnabled) {
+                if (config.isEnabled) {
                     Modifier
                         .focusable()
                         .onDpadCenter {
                             // Ignore clicks during grace period or if menu is not ready
-                            if (ignoreKeyEvents) {
-                                Log.d("ContentCardMenu", "[MenuItem] '$text' - onDpadCenter ignoriert (Grace Period aktiv)")
+                            if (config.ignoreKeyEvents) {
+                                Log.d("ContentCardMenu", "[MenuItem] '${config.text}' - onDpadCenter ignoriert (Grace Period aktiv)")
                                 return@onDpadCenter
                             }
-                            if (isEnabled) {
-                                onClick()
+                            if (config.isEnabled) {
+                                config.onClick()
                             } else {
-                                Log.d("ContentCardMenu", "[MenuItem] '$text' - onDpadCenter ignoriert (isEnabled = false)")
+                                Log.d("ContentCardMenu", "[MenuItem] '${config.text}' - onDpadCenter ignoriert (isEnabled = false)")
                             }
                         }
                 } else {
@@ -204,7 +210,7 @@ private fun MenuOptionItem(
         )
     ) {
         Text(
-            text = text,
+            text = config.text,
             style = MaterialTheme.typography.bodyLarge,
             color = colors.textPrimary,
             modifier = Modifier

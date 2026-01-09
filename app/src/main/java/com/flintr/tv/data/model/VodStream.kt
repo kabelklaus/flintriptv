@@ -69,7 +69,7 @@ data class VodStream(
         streamIcon?.let { metadataWithCover["streamIcon"] = it }
         return Favorite.create(
             id = toFavoriteId(),
-            type = "movie",
+            type = FavoriteType.MOVIE,
             streamId = streamId,
             name = name,
             metadata = metadataWithCover

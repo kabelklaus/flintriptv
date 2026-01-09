@@ -2,6 +2,7 @@ package com.flintr.tv.data.model
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import java.net.URLEncoder
 
 @JsonClass(generateAdapter = true)
 data class Series(
@@ -39,7 +40,7 @@ data class Series(
     val seasons: List<Season>?
 ) {
     fun toFavoriteId(): String {
-        val encodedName = java.net.URLEncoder.encode(name, "UTF-8")
+        val encodedName = URLEncoder.encode(name, "UTF-8")
         return "series:$seriesId:$encodedName"
     }
 
@@ -48,7 +49,7 @@ data class Series(
         cover?.let { metadataWithCover["cover"] = it }
         return Favorite.create(
             id = toFavoriteId(),
-            type = "series",
+            type = FavoriteType.SERIES,
             streamId = seriesId,
             name = name,
             metadata = metadataWithCover

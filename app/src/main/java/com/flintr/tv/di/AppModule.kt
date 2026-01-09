@@ -2,7 +2,6 @@ package com.flintr.tv.di
 
 import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.CredentialsRepository
-import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory

@@ -20,6 +20,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
+import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.LiveStream
@@ -84,6 +85,7 @@ fun AppNavigation(
     navController: NavHostController,
     credentialsRepository: CredentialsRepository,
     cacheService: DataCacheService,
+    favoritesRepository: FavoritesRepository,
     mainViewModel: MainViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
@@ -126,7 +128,8 @@ fun AppNavigation(
             MainContentScreen(
                 navController = navController,
                 mainViewModel = mainViewModel,
-                credentialsRepository = credentialsRepository
+                credentialsRepository = credentialsRepository,
+                favoritesRepository = favoritesRepository
             )
         }
         
@@ -176,7 +179,8 @@ private fun clearStreamsForDestination(
 fun MainContentScreen(
     navController: NavHostController,
     mainViewModel: MainViewModel,
-    credentialsRepository: CredentialsRepository
+    credentialsRepository: CredentialsRepository,
+    favoritesRepository: FavoritesRepository
 ) {
     val credentials = credentialsRepository.getCredentials()
     var selectedDestination by remember { mutableStateOf<HomeDestination>(HomeDestination.LiveTV) }
@@ -303,6 +307,7 @@ fun MainContentScreen(
                         viewModel = mainViewModel,
                         selectedCategoryId = selectedCategoryId,
                         focusRequester = contentListFocusRequester,
+                        favoritesRepository = favoritesRepository,
                         onNavigateLeft = { moveFocusToCategorySidebar() },
                         onChannelClick = { stream ->
                             val creds = credentials ?: return@LiveTVContent
@@ -320,6 +325,7 @@ fun MainContentScreen(
                         viewModel = mainViewModel,
                         selectedCategoryId = selectedCategoryId,
                         focusRequester = contentListFocusRequester,
+                        favoritesRepository = favoritesRepository,
                         onNavigateLeft = { moveFocusToCategorySidebar() },
                         onVodClick = { vod ->
                             val creds = credentials ?: return@VODContent
@@ -337,6 +343,7 @@ fun MainContentScreen(
                         viewModel = mainViewModel,
                         selectedCategoryId = selectedCategoryId,
                         focusRequester = contentListFocusRequester,
+                        favoritesRepository = favoritesRepository,
                         onNavigateLeft = { moveFocusToCategorySidebar() },
                         onEpisodeClick = { episode, series ->
                             val creds = credentials ?: return@SeriesContent

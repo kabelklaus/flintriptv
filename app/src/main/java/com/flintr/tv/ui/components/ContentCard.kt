@@ -49,10 +49,10 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.utils.ContentParser
-import dagger.hilt.android.EntryPointAccessors
-import dagger.hilt.EntryPoint
-import dagger.hilt.InstallIn
-import dagger.hilt.components.SingletonComponent
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.res.stringResource
+import com.flintr.tv.R
+import kotlinx.coroutines.launch
 
 // Content Card dimensions (from Flutter AppTheme)
 private val ContentCardMaxCrossAxisExtent = 133.dp
@@ -77,12 +77,6 @@ private val ContentCardTextFontWeight = FontWeight.Bold
 
 // Content Card Title Line Height
 private const val ContentCardTitleLineHeightFactor = 1.2f
-
-@EntryPoint
-@InstallIn(SingletonComponent::class)
-interface FavoritesRepositoryEntryPoint {
-    fun favoritesRepository(): FavoritesRepository
-}
 
 private data class CardConfig(
     val isSelected: Boolean = false,
@@ -115,18 +109,12 @@ private sealed class ContentType {
 fun VODCard(
     vod: VodStream,
     onClick: () -> Unit,
+    favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null,
-    favoritesRepository: FavoritesRepository? = null
+    onNavigateLeft: (() -> Unit)? = null
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val repository = favoritesRepository ?: EntryPointAccessors.fromApplication(
-        context,
-        FavoritesRepositoryEntryPoint::class.java
-    ).favoritesRepository()
-    
     ContentCardInternal(
         coverImageUrl = vod.streamIcon ?: vod.cover,
         title = vod.name,
@@ -139,7 +127,7 @@ fun VODCard(
             onNavigateLeft = onNavigateLeft
         ),
         contentType = ContentType.Movie(vod),
-        favoritesRepository = repository
+        favoritesRepository = favoritesRepository
     )
 }
 
@@ -147,18 +135,12 @@ fun VODCard(
 fun VODCard(
     series: Series,
     onClick: () -> Unit,
+    favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null,
-    favoritesRepository: FavoritesRepository? = null
+    onNavigateLeft: (() -> Unit)? = null
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val repository = favoritesRepository ?: EntryPointAccessors.fromApplication(
-        context,
-        FavoritesRepositoryEntryPoint::class.java
-    ).favoritesRepository()
-    
     ContentCardInternal(
         coverImageUrl = series.cover,
         title = series.name,
@@ -171,7 +153,7 @@ fun VODCard(
             onNavigateLeft = onNavigateLeft
         ),
         contentType = ContentType.Series(series),
-        favoritesRepository = repository
+        favoritesRepository = favoritesRepository
     )
 }
 
@@ -242,27 +224,33 @@ private fun ContentCardInternal(
     title: String,
     rating: String?,
     onClick: () -> Unit,
+    favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
     config: CardConfig = CardConfig(),
-    contentType: ContentType? = null,
-    favoritesRepository: FavoritesRepository? = null
+    contentType: ContentType? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var longPressDetected by remember { mutableStateOf(false) }
     val colors = appColors()
+    val coroutineScope = rememberCoroutineScope()
     
     // Check favorite status
     val favoriteId = remember(contentType) {
         contentType?.toFavoriteId()
     }
-    var isFavorite by remember(favoriteId) {
-        mutableStateOf(favoriteId?.let { favoritesRepository?.isFavorite(it) ?: false } ?: false)
+    var isFavorite by remember { mutableStateOf(false) }
+    
+    // Asynchronously load favorite status when favoriteId changes
+    LaunchedEffect(favoriteId) {
+        if (favoriteId != null) {
+            isFavorite = favoritesRepository.isFavorite(favoriteId)
+        }
     }
     
-    // Update favorite status when menu opens or when favoriteId changes
-    LaunchedEffect(showMenu, favoriteId) {
-        if (favoriteId != null && favoritesRepository != null) {
+    // Update favorite status when menu opens
+    LaunchedEffect(showMenu) {
+        if (showMenu && favoriteId != null) {
             isFavorite = favoritesRepository.isFavorite(favoriteId)
         }
     }
@@ -369,12 +357,14 @@ private fun ContentCardInternal(
     }
     
     // Menu dialog
-    val menuOptions = remember(isFavorite, contentType) {
-        if (contentType != null && favoritesRepository != null) {
+    val removeFromFavoritesText = stringResource(R.string.remove_from_favorites)
+    val addToFavoritesText = stringResource(R.string.add_to_favorites)
+    val menuOptions = remember(isFavorite, contentType, removeFromFavoritesText, addToFavoritesText) {
+        if (contentType != null) {
             if (isFavorite) {
-                listOf("Aus Favoriten entfernen")
+                listOf(removeFromFavoritesText)
             } else {
-                listOf("Zu Favoriten hinzufügen")
+                listOf(addToFavoritesText)
             }
         } else {
             emptyList()
@@ -391,18 +381,20 @@ private fun ContentCardInternal(
         },
         onOptionSelected = { index ->
             Log.d("ContentCard", "[ContentCard] Card '$title' - Option $index wurde ausgewählt")
-            if (contentType != null && favoritesRepository != null && favoriteId != null) {
-                if (isFavorite) {
-                    // Remove from favorites
-                    favoritesRepository.removeFavorite(favoriteId)
-                    isFavorite = false
-                    Log.d("ContentCard", "[ContentCard] Favorit entfernt: $favoriteId")
-                } else {
-                    // Add to favorites
-                    val favorite = contentType.toFavorite()
-                    favoritesRepository.addFavorite(favorite)
-                    isFavorite = true
-                    Log.d("ContentCard", "[ContentCard] Favorit hinzugefügt: $favoriteId")
+            if (contentType != null && favoriteId != null) {
+                coroutineScope.launch {
+                    if (isFavorite) {
+                        // Remove from favorites
+                        favoritesRepository.removeFavorite(favoriteId)
+                        isFavorite = false
+                        Log.d("ContentCard", "[ContentCard] Favorit entfernt: $favoriteId")
+                    } else {
+                        // Add to favorites
+                        val favorite = contentType.toFavorite()
+                        favoritesRepository.addFavorite(favorite)
+                        isFavorite = true
+                        Log.d("ContentCard", "[ContentCard] Favorit hinzugefügt: $favoriteId")
+                    }
                 }
             }
         }
@@ -413,24 +405,19 @@ private fun ContentCardInternal(
 fun LiveStreamCard(
     stream: LiveStream,
     onClick: () -> Unit,
+    favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     onNavigateLeft: (() -> Unit)? = null,
-    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
-    favoritesRepository: FavoritesRepository? = null
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val repository = favoritesRepository ?: EntryPointAccessors.fromApplication(
-        context,
-        FavoritesRepositoryEntryPoint::class.java
-    ).favoritesRepository()
-    
     ContentCardInternal(
         coverImageUrl = stream.streamIcon,
         title = stream.name,
         rating = null,
         onClick = onClick,
+        favoritesRepository = favoritesRepository,
         modifier = modifier,
         config = CardConfig(
             isSelected = isSelected,
@@ -438,8 +425,7 @@ fun LiveStreamCard(
             onNavigateLeft = onNavigateLeft,
             focusRequester = focusRequester
         ),
-        contentType = ContentType.Live(stream),
-        favoritesRepository = repository
+        contentType = ContentType.Live(stream)
     )
 }
 
