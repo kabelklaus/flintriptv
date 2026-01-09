@@ -24,6 +24,7 @@ fun <T> ContentGridLayout(
     isLoading: Boolean,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
+    onItemsRendered: (() -> Unit)? = null,
     content: @Composable (item: T, index: Int, columnIndex: Int, onFocusChanged: ((Boolean) -> Unit)?) -> Unit
 ) {
     val density = LocalDensity.current
@@ -53,6 +54,10 @@ fun <T> ContentGridLayout(
                     .onGloballyPositioned { coordinates ->
                         with(density) {
                             gridWidth = coordinates.size.width.toDp()
+                        }
+                        // Notify that items are rendered when grid is positioned and has items
+                        if (items.isNotEmpty() && coordinates.size.width > 0 && coordinates.size.height > 0) {
+                            onItemsRendered?.invoke()
                         }
                     },
                 contentPadding = PaddingValues(Dimensions.contentCardGridPadding),

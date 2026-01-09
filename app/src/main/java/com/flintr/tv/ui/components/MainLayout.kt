@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.ui.screens.HomeDestination
@@ -30,6 +31,9 @@ fun MainLayout(
     onNavigateToNavbar: () -> Unit,
     onNavigateToCategorySidebar: () -> Unit,
     onNavigateToContentList: () -> Unit,
+    onNavbarReady: (() -> Unit)? = null,
+    onCategorySidebarReady: (() -> Unit)? = null,
+    onContentListReady: (() -> Unit)? = null,
     content: @Composable () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -63,6 +67,12 @@ fun MainLayout(
             },
             modifier = Modifier
                 .fillMaxHeight()
+                .onGloballyPositioned {
+                    // Notify when navbar is ready
+                    if (it.size.width > 0 && it.size.height > 0) {
+                        onNavbarReady?.invoke()
+                    }
+                }
         )
         
         // Middle Column: Categories (if applicable)
@@ -77,6 +87,12 @@ fun MainLayout(
                 modifier = Modifier
                     .width(240.dp)
                     .fillMaxHeight()
+                    .onGloballyPositioned {
+                        // Notify when category sidebar is ready
+                        if (it.size.width > 0 && it.size.height > 0) {
+                            onCategorySidebarReady?.invoke()
+                        }
+                    }
             )
         } else {
             // Empty space for EPG or other screens without categories
@@ -93,6 +109,12 @@ fun MainLayout(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
+                .onGloballyPositioned {
+                    // Notify when content area is ready
+                    if (it.size.width > 0 && it.size.height > 0) {
+                        onContentListReady?.invoke()
+                    }
+                }
         ) {
             content()
         }

@@ -151,7 +151,11 @@ class DataCacheService @Inject constructor(
         }
     }
 
-    fun loadCachedData(): CachedData? {
+    /**
+     * Internal helper function that loads cached data from SharedPreferences.
+     * This contains the common logic used by both loadCachedData() and loadCachedDataAsync().
+     */
+    private fun loadCachedDataInternal(): CachedData? {
         try {
             val channelsJson = sharedPreferences.getString(KEY_CACHE_CHANNELS, null)
             val moviesJson = sharedPreferences.getString(KEY_CACHE_MOVIES, null)
@@ -196,53 +200,16 @@ class DataCacheService @Inject constructor(
         }
     }
 
+    fun loadCachedData(): CachedData? {
+        return loadCachedDataInternal()
+    }
+
     /**
      * Loads cached data asynchronously on a background thread.
      * Use this instead of loadCachedData() to avoid blocking the main thread.
      */
     suspend fun loadCachedDataAsync(): CachedData? = withContext(Dispatchers.IO) {
-        try {
-            val channelsJson = sharedPreferences.getString(KEY_CACHE_CHANNELS, null)
-            val moviesJson = sharedPreferences.getString(KEY_CACHE_MOVIES, null)
-            val seriesJson = sharedPreferences.getString(KEY_CACHE_SERIES, null)
-            val liveCategoriesJson = sharedPreferences.getString(KEY_CACHE_LIVE_CATEGORIES, null)
-            val vodCategoriesJson = sharedPreferences.getString(KEY_CACHE_VOD_CATEGORIES, null)
-            val seriesCategoriesJson = sharedPreferences.getString(KEY_CACHE_SERIES_CATEGORIES, null)
-
-            if (channelsJson.isNullOrBlank() || moviesJson.isNullOrBlank() || seriesJson.isNullOrBlank()) {
-                return@withContext null
-            }
-
-            val listType = Types.newParameterizedType(List::class.java, LiveStream::class.java)
-            val adapter = moshi.adapter<List<LiveStream>>(listType)
-            val channels = adapter.fromJson(channelsJson) ?: return@withContext null
-
-            val vodListType = Types.newParameterizedType(List::class.java, VodStream::class.java)
-            val vodAdapter = moshi.adapter<List<VodStream>>(vodListType)
-            val movies = vodAdapter.fromJson(moviesJson) ?: return@withContext null
-
-            val seriesListType = Types.newParameterizedType(List::class.java, Series::class.java)
-            val seriesAdapter = moshi.adapter<List<Series>>(seriesListType)
-            val series = seriesAdapter.fromJson(seriesJson) ?: return@withContext null
-
-            val categoryListType = Types.newParameterizedType(List::class.java, Category::class.java)
-            val categoryAdapter = moshi.adapter<List<Category>>(categoryListType)
-            val liveCategories = liveCategoriesJson?.let { categoryAdapter.fromJson(it) } ?: emptyList()
-            val vodCategories = vodCategoriesJson?.let { categoryAdapter.fromJson(it) } ?: emptyList()
-            val seriesCategories = seriesCategoriesJson?.let { categoryAdapter.fromJson(it) } ?: emptyList()
-
-            return@withContext CachedData(
-                channels = channels,
-                movies = movies,
-                series = series,
-                liveCategories = liveCategories,
-                vodCategories = vodCategories,
-                seriesCategories = seriesCategories
-            )
-        } catch (e: Exception) {
-            android.util.Log.e("DataCacheService", "Failed to load cache", e)
-            return@withContext null
-        }
+        loadCachedDataInternal()
     }
 
     fun clearCache() {

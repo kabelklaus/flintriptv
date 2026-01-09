@@ -107,14 +107,9 @@ fun FavoritesContent(
         favoriteItems = items
         Log.d("FavoritesContent", "Matched ${items.size} favorites with cached data")
         
-        // Wait for Compose to render the items before hiding loading indicator
-        // Use withContext(Dispatchers.Main) to ensure we're on the main thread
-        // and delay to allow rendering to complete
-        // Based on logs, rendering takes ~700ms, so we wait longer to be safe
-        withContext(Dispatchers.Main) {
-            kotlinx.coroutines.delay(800) // Give Compose time to render the cards
-            isLoading = false // Matching abgeschlossen und items gerendert = fertig
-        }
+        // Set isLoading to false immediately after data is ready
+        // The loading indicator will be hidden when items are actually rendered (via onItemsRendered)
+        isLoading = false
     }
     
     ContentGridLayout(
@@ -122,6 +117,10 @@ fun FavoritesContent(
         isLoading = isLoading,
         focusRequester = focusRequester,
         modifier = modifier,
+        onItemsRendered = {
+            // Items are now rendered, loading is complete
+            Log.d("FavoritesContent", "Items rendered, loading complete")
+        },
         content = { item, index, columnIndex, onFocusChanged ->
             when (item) {
                 is FavoriteContentItem.Live -> {

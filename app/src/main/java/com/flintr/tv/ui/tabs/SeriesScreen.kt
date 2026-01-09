@@ -91,12 +91,15 @@ fun SeriesContent(
                         onEpisodeClick(episode, seriesItem)
                     }
                 ),
-                onFocusChanged = onFocusChanged,
-                onNavigateLeft = if (columnIndex == 0) {
-                    { onNavigateLeft() }
-                } else {
-                    null
-                }
+                cardConfig = com.flintr.tv.ui.components.CardConfig(
+                    isSelected = false,
+                    onFocusChanged = onFocusChanged,
+                    onNavigateLeft = if (columnIndex == 0) {
+                        { onNavigateLeft() }
+                    } else {
+                        null
+                    }
+                )
             )
         }
     )
@@ -107,9 +110,7 @@ fun SeriesItem(
     series: Series,
     favoritesRepository: FavoritesRepository,
     config: SeriesItemConfig,
-    isSelected: Boolean = false,
-    onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null
+    cardConfig: com.flintr.tv.ui.components.CardConfig = com.flintr.tv.ui.components.CardConfig()
 ) {
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -118,9 +119,9 @@ fun SeriesItem(
             series = series,
             onClick = config.onExpand,
             favoritesRepository = favoritesRepository,
-            isSelected = isSelected,
-            onFocusChanged = onFocusChanged,
-            onNavigateLeft = onNavigateLeft
+            isSelected = cardConfig.isSelected,
+            onFocusChanged = cardConfig.onFocusChanged,
+            onNavigateLeft = cardConfig.onNavigateLeft
         )
         
         if (config.isExpanded && series.seasons != null) {

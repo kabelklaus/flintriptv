@@ -261,30 +261,22 @@ fun MainContentScreen(
         }
     }
     
-    // Set initial focus on Navbar when app starts
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(200) // Small delay to ensure UI is laid out
-        try {
-            navbarFocusRequester.requestFocus()
-            Log.i("TVFocus", "[MainContentScreen] 🎯 Initial focus set to NAVBAR")
-        } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
-        }
+    // Track if initial focus has been set
+    var initialFocusSet by remember { mutableStateOf(false) }
+    var pendingFocusDestination by remember { mutableStateOf<HomeDestination?>(null) }
+    var categorySidebarFocusSet by remember { mutableStateOf(false) }
+    var contentListFocusSet by remember { mutableStateOf(false) }
+    
+    // When destination changes, track which focus should be requested and reset flags
+    LaunchedEffect(selectedDestination) {
+        pendingFocusDestination = selectedDestination
+        categorySidebarFocusSet = false
+        contentListFocusSet = false
     }
     
+    // Set initial focus on Navbar when app starts (via onNavbarReady callback)
     // When destination changes and categories are shown, move focus to CategoryRow
     // For Favorites (no categories), move focus directly to content list
-    LaunchedEffect(selectedDestination) {
-        if (selectedDestination is HomeDestination.Favorites) {
-            kotlinx.coroutines.delay(100) // Small delay to ensure UI is laid out
-            moveFocusToContentList()
-            Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to Favorites, focus moved to ContentList")
-        } else if (showCategories && sortedCategories.isNotEmpty()) {
-            kotlinx.coroutines.delay(100) // Small delay to ensure UI is laid out
-            moveFocusToCategorySidebar()
-            Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to $selectedDestination, focus moved to CategoryRow")
-        }
-    }
     
     MainLayout(
         selectedDestination = selectedDestination,
@@ -312,6 +304,48 @@ fun MainContentScreen(
         onNavigateToNavbar = { moveFocusToNavbar() },
         onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
         onNavigateToContentList = { moveFocusToContentList() },
+        onNavbarReady = {
+            // Set initial focus on Navbar when app starts
+            if (!initialFocusSet) {
+                try {
+                    navbarFocusRequester.requestFocus()
+                    initialFocusSet = true
+                    Log.i("TVFocus", "[MainContentScreen] 🎯 Initial focus set to NAVBAR via onGloballyPositioned")
+                } catch (e: IllegalStateException) {
+                    Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
+                }
+            }
+        },
+        onCategorySidebarReady = {
+            // When destination changes and categories are shown, move focus to CategoryRow
+            // Only do this once per destination change to avoid infinite loops
+            if (!categorySidebarFocusSet &&
+                pendingFocusDestination != null && 
+                pendingFocusDestination !is HomeDestination.Favorites &&
+                showCategories && sortedCategories.isNotEmpty()) {
+                try {
+                    moveFocusToCategorySidebar()
+                    categorySidebarFocusSet = true
+                    Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to $pendingFocusDestination, focus moved to CategoryRow via onGloballyPositioned")
+                } catch (e: IllegalStateException) {
+                    Log.w("TVFocus", "[MainContentScreen] ⚠️ CategorySidebar FocusRequester not initialized yet")
+                }
+            }
+        },
+        onContentListReady = {
+            // For Favorites (no categories), move focus directly to content list
+            // Only do this once per destination change to avoid infinite loops
+            if (!contentListFocusSet &&
+                pendingFocusDestination is HomeDestination.Favorites) {
+                try {
+                    moveFocusToContentList()
+                    contentListFocusSet = true
+                    Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to Favorites, focus moved to ContentList via onGloballyPositioned")
+                } catch (e: IllegalStateException) {
+                    Log.w("TVFocus", "[MainContentScreen] ⚠️ ContentList FocusRequester not initialized yet")
+                }
+            }
+        },
         content = {
             when (selectedDestination) {
                 is HomeDestination.LiveTV -> {
@@ -408,17 +442,12 @@ fun MainContentScreen(
                             navController.navigate(Screen.Player.createRoute(streamUrl))
                         },
                         onSeriesClick = { series ->
-                            // Navigate to Series tab and expand the series
+                            // Navigate to Series tab
                             selectedDestination = HomeDestination.Series
-                            // Load series info to show episodes
-                            mainViewModel.loadSeriesInfo(series.seriesId)
-                            // Find and select the category for this series
-                            val seriesCategory = seriesCategories.find { 
-                                it.categoryId == series.categoryId 
-                            }
-                            if (seriesCategory != null) {
-                                selectedCategoryId = seriesCategory.categoryId
-                                mainViewModel.loadSeries(seriesCategory.categoryId)
+                            // Use ViewModel to handle business logic
+                            val categoryId = mainViewModel.showSeriesFromFavorites(series)
+                            if (categoryId != null) {
+                                selectedCategoryId = categoryId
                             }
                         }
                     )
