@@ -81,7 +81,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '11'  # Match project's Java version
+          java-version: '17'  # Android Gradle Plugin 8.13.2 requires Java 17
 
       - name: Cache Gradle
         if: steps.should_release.outputs.should_release == 'true'
