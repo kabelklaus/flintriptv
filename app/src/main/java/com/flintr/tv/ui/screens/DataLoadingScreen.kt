@@ -9,8 +9,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +38,11 @@ import com.flintr.tv.viewmodel.DataLoadingViewModel
 import com.flintr.tv.viewmodel.LoadingStatus
 import java.text.NumberFormat
 import java.util.Locale
+
+private const val STATUS_ANIMATION_DURATION_MS = 300
+
+private val CheckIcon = Icons.Default.CheckCircle
+private val ErrorIcon = Icons.Default.Error
 
 @Composable
 fun DataLoadingScreen(
@@ -236,21 +245,20 @@ private fun StepItem(
             LoadingStatus.Pending -> colors.textSecondary to colors.bgCard
             LoadingStatus.Loading -> colors.accentColor to colors.accentColor.copy(alpha = 0.1f)
             LoadingStatus.Success -> {
-                val green = Color(0xFF4CAF50)
-                green to green.copy(alpha = 0.1f)
+                colors.successColor to colors.successColor.copy(alpha = 0.1f)
             }
             LoadingStatus.Error -> colors.dangerText to colors.dangerBg
         }
         
         val animatedIconColor by animateColorAsState(
             targetValue = iconColor,
-            animationSpec = tween(300, easing = EaseInOut),
+            animationSpec = tween(STATUS_ANIMATION_DURATION_MS, easing = EaseInOut),
             label = "iconColor"
         )
         
         val animatedIconBgColor by animateColorAsState(
             targetValue = iconBgColor,
-            animationSpec = tween(300, easing = EaseInOut),
+            animationSpec = tween(STATUS_ANIMATION_DURATION_MS, easing = EaseInOut),
             label = "iconBgColor"
         )
         
@@ -274,11 +282,11 @@ private fun StepItem(
         Spacer(modifier = Modifier.height(iconLabelSpacing))
 
         // Label (animierte Textfarbe)
-        androidx.compose.animation.AnimatedContent(
+        AnimatedContent(
             targetState = step.status,
             transitionSpec = {
-                fadeIn(animationSpec = tween(300)) togetherWith
-                        fadeOut(animationSpec = tween(300))
+                fadeIn(animationSpec = tween(STATUS_ANIMATION_DURATION_MS)) togetherWith
+                        fadeOut(animationSpec = tween(STATUS_ANIMATION_DURATION_MS))
             },
             label = "labelColor"
         ) { status ->
@@ -303,11 +311,11 @@ private fun StepItem(
         Spacer(modifier = Modifier.height(statusLabelSpacing))
 
         // Status Widget (animiert)
-        androidx.compose.animation.AnimatedContent(
+        AnimatedContent(
             targetState = step.status,
             transitionSpec = {
-                fadeIn(animationSpec = tween(300)) togetherWith
-                        fadeOut(animationSpec = tween(300))
+                fadeIn(animationSpec = tween(STATUS_ANIMATION_DURATION_MS)) togetherWith
+                        fadeOut(animationSpec = tween(STATUS_ANIMATION_DURATION_MS))
             },
             label = "statusWidget"
         ) { status ->
@@ -324,8 +332,7 @@ private fun StepItem(
                     )
                 }
                 LoadingStatus.Success -> {
-                    val green = Color(0xFF4CAF50)
-                    val numberFormat = NumberFormat.getNumberInstance(Locale.GERMAN)
+                    val numberFormat = remember { NumberFormat.getNumberInstance(Locale.GERMAN) }
                     val formattedCount = step.itemCount?.let { numberFormat.format(it) } ?: "0"
                     
                     Row(
@@ -334,12 +341,11 @@ private fun StepItem(
                         ),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val checkIcon: ImageVector = Icons.Default.CheckCircle
                         Icon(
-                            imageVector = checkIcon,
+                            imageVector = CheckIcon,
                             contentDescription = null,
                             modifier = Modifier.size(statusIconSize),
-                            tint = green
+                            tint = colors.successColor
                         )
                         Text(
                             text = formattedCount,
@@ -347,14 +353,13 @@ private fun StepItem(
                                 fontWeight = FontWeight.W600,
                                 fontSize = if (isLandscape) 12.sp else MaterialTheme.typography.bodySmall.fontSize
                             ),
-                            color = green
+                            color = colors.successColor
                         )
                     }
                 }
                 LoadingStatus.Error -> {
-                    val errorIcon: ImageVector = Icons.Default.Error
                     Icon(
-                        imageVector = errorIcon,
+                        imageVector = ErrorIcon,
                         contentDescription = null,
                         modifier = Modifier.size(statusIconSize),
                         tint = colors.dangerText
