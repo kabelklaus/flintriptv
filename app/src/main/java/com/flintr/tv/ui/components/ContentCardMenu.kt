@@ -32,41 +32,33 @@ import kotlinx.coroutines.delay
 @Composable
 fun ContentCardMenu(
     isOpen: Boolean,
+    menuOptions: List<String>,
     onDismiss: () -> Unit,
     onOptionSelected: (Int) -> Unit
 ) {
     if (!isOpen) return
 
     val colors = appColors()
-    val menuOptions = remember { listOf("Option 1", "Option 2", "Option 3") }
     var focusedIndex by remember { mutableStateOf(0) }
     var isMenuReady by remember { mutableStateOf(false) }
     val focusRequesters = remember { menuOptions.indices.map { FocusRequester() } }
 
-    // Focus first item when dialog opens, with delay to prevent event from triggering immediately
-    LaunchedEffect(isOpen) {
-        if (isOpen) {
-            Log.d("ContentCardMenu", "[Dialog] Menü wird geöffnet")
-            Log.d("ContentCardMenu", "[Dialog] Anzahl Optionen: ${menuOptions.size}")
-            isMenuReady = false
-            // Delay to prevent the D-Pad event that opened the menu from immediately triggering the first item
-            // Increased to 600ms to ensure the KeyUp from long-press is fully processed
-            delay(600)
-            Log.d("ContentCardMenu", "[Focus] Menü ist jetzt bereit - setze isMenuReady = true")
-            isMenuReady = true
-            Log.d("ContentCardMenu", "[Focus] Setze Focus auf erstes Item (Index 0) nach Delay")
-            focusRequesters[0].requestFocus()
-        } else {
-            isMenuReady = false
-        }
-    }
-    
-    // Log when menu state changes
+    // Combined LaunchedEffect: handle menu state and focus initialization
     LaunchedEffect(isOpen) {
         if (isOpen) {
             Log.d("ContentCardMenu", "[State] isOpen = true")
+            Log.d("ContentCardMenu", "[Dialog] Menü wird geöffnet")
+            Log.d("ContentCardMenu", "[Dialog] Anzahl Optionen: ${menuOptions.size}")
+            isMenuReady = false
+            // Short delay to wait for next frame instead of long arbitrary delay
+            delay(16)
+            Log.d("ContentCardMenu", "[Focus] Menü ist jetzt bereit - setze isMenuReady = true")
+            isMenuReady = true
+            Log.d("ContentCardMenu", "[Focus] Setze Focus auf erstes Item (Index 0) nach Delay")
+            focusRequesters.firstOrNull()?.requestFocus()
         } else {
             Log.d("ContentCardMenu", "[State] isOpen = false")
+            isMenuReady = false
         }
     }
 

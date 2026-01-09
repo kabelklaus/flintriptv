@@ -126,6 +126,67 @@ fun VODCard(
 }
 
 @Composable
+private fun buildCardModifier(
+    baseModifier: Modifier,
+    config: CardConfig,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    borderColor: Color,
+    shadowElevation: Float,
+    isFocused: Boolean,
+    onFocusChanged: (androidx.compose.ui.focus.FocusState) -> Unit,
+    onLongPress: () -> Unit,
+    onNormalClick: () -> Unit,
+    performClick: () -> Unit
+): Modifier {
+    return baseModifier
+        .size(width = ContentCardMaxCrossAxisExtent, height = ContentCardHeight)
+        .then(
+            if (config.isSelected) {
+                Modifier.shadow(
+                    elevation = shadowElevation.dp,
+                    shape = RoundedCornerShape(ContentCardBorderRadius),
+                    spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
+                    ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
+                )
+            } else {
+                Modifier
+            }
+        )
+        .border(
+            width = ContentCardBorderWidth,
+            color = borderColor,
+            shape = RoundedCornerShape(ContentCardBorderRadius)
+        )
+        .then(
+            if (config.focusRequester != null) {
+                Modifier.focusRequester(config.focusRequester)
+            } else {
+                Modifier
+            }
+        )
+        .onFocusChanged(onFocusChanged)
+        .focusable()
+        .onDpadDirection(
+            onLeft = if (config.onNavigateLeft != null) {
+                {
+                    config.onNavigateLeft()
+                    true
+                }
+            } else {
+                null
+            },
+            onRight = null,
+            onUp = null,
+            onDown = null
+        )
+        .onLongPress(
+            onLongPress = onLongPress,
+            onNormalClick = onNormalClick
+        )
+        .clickable { performClick() }
+}
+
+@Composable
 private fun ContentCardInternal(
     coverImageUrl: String?,
     title: String,
@@ -138,6 +199,20 @@ private fun ContentCardInternal(
     var showMenu by remember { mutableStateOf(false) }
     var longPressDetected by remember { mutableStateOf(false) }
     val colors = appColors()
+    
+    // Unified click handler to avoid duplication
+    val performClick: () -> Unit = {
+        if (!showMenu && !longPressDetected) {
+            Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() aufgerufen (normaler Click)")
+            onClick()
+        } else {
+            if (showMenu) {
+                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() blockiert - Menü ist offen")
+            } else {
+                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() verhindert (Long-Press wurde erkannt)")
+            }
+        }
+    }
     
     // Log menu state changes
     LaunchedEffect(showMenu) {
@@ -178,82 +253,40 @@ private fun ContentCardInternal(
         label = "shadowElevation"
     )
     
-    Card(
-        modifier = modifier
-            .size(width = ContentCardMaxCrossAxisExtent, height = ContentCardHeight)
-            .then(
-                if (config.isSelected) {
-                    Modifier.shadow(
-                        elevation = shadowElevation.dp,
-                        shape = RoundedCornerShape(ContentCardBorderRadius),
-                        spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
-                        ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            .border(
-                width = ContentCardBorderWidth,
-                color = borderColor,
-                shape = RoundedCornerShape(ContentCardBorderRadius)
-            )
-            .then(
-                if (config.focusRequester != null) {
-                    Modifier.focusRequester(config.focusRequester)
-                } else {
-                    Modifier
-                }
-            )
-            .onFocusChanged { focusState ->
-                val wasFocused = isFocused
-                isFocused = focusState.isFocused
-                if (isFocused != wasFocused) {
-                    config.onFocusChanged?.invoke(isFocused)
-                }
+    val cardModifier = buildCardModifier(
+        baseModifier = modifier,
+        config = config,
+        colors = colors,
+        borderColor = borderColor,
+        shadowElevation = shadowElevation,
+        isFocused = isFocused,
+        onFocusChanged = { focusState ->
+            val wasFocused = isFocused
+            isFocused = focusState.isFocused
+            if (isFocused != wasFocused) {
+                config.onFocusChanged?.invoke(isFocused)
             }
-            .focusable()
-            .onDpadDirection(
-                onLeft = if (config.onNavigateLeft != null) {
-                    {
-                        config.onNavigateLeft()
-                        true
-                    }
-                } else {
-                    null // Let Compose handle standard navigation
-                },
-                onRight = null, // Let Compose handle standard navigation
-                onUp = null, // Let Compose handle standard navigation
-                onDown = null // Let Compose handle standard navigation
-            )
-            .onLongPress(
-                onLongPress = {
-                    Log.d("ContentCard", "[ContentCard] Card '$title' - Long-Press Callback erhalten!")
-                    Log.d("ContentCard", "[ContentCard] Setze longPressDetected = true")
-                    longPressDetected = true
-                    Log.d("ContentCard", "[ContentCard] Setze showMenu = true")
-                    showMenu = true
-                },
-                onNormalClick = {
-                    if (showMenu) {
-                        Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() blockiert - Menü ist offen")
-                    } else {
-                        Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() aufgerufen (Timer abgebrochen)")
-                        onClick()
-                    }
-                }
-            )
-            .clickable { 
-                // Fallback for mouse/touch clicks (not D-Pad)
-                if (showMenu) {
-                    Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() blockiert - Menü ist offen")
-                } else if (longPressDetected) {
-                    Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() verhindert (Long-Press wurde erkannt)")
-                } else {
-                    Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() aufgerufen (normaler Click)")
-                    onClick() 
-                }
-            },
+        },
+        onLongPress = {
+            Log.d("ContentCard", "[ContentCard] Card '$title' - Long-Press Callback erhalten!")
+            Log.d("ContentCard", "[ContentCard] Setze longPressDetected = true")
+            longPressDetected = true
+            Log.d("ContentCard", "[ContentCard] Setze showMenu = true")
+            showMenu = true
+        },
+        onNormalClick = {
+            if (showMenu) {
+                Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() blockiert - Menü ist offen")
+            } else {
+                Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() aufgerufen (Timer abgebrochen)")
+                performClick()
+            }
+        },
+        performClick = performClick
+    )
+    
+    Card(
+        modifier = cardModifier,
         shape = RoundedCornerShape(ContentCardBorderRadius),
         colors = CardDefaults.cardColors(
             containerColor = backgroundColor
@@ -270,6 +303,7 @@ private fun ContentCardInternal(
     // Menu dialog
     ContentCardMenu(
         isOpen = showMenu,
+        menuOptions = listOf("Option 1", "Option 2", "Option 3"),
         onDismiss = {
             Log.d("ContentCard", "[ContentCard] Card '$title' - Menü onDismiss() aufgerufen")
             Log.d("ContentCard", "[ContentCard] Setze showMenu = false")

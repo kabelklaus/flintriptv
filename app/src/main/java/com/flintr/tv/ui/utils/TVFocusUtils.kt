@@ -201,6 +201,36 @@ fun Modifier.onBackButton(
 }
 
 /**
+ * Internal state class for long press handling
+ */
+private class LongPressState {
+    var longPressJob: Job? = null
+    var timerStartTime: Long? = null
+    var longPressSuccess: Boolean = false
+    var blockUntilTime: Long? = null
+    var consumeNextKeyUp: Boolean = false
+    
+    fun isInBlockingPeriod(now: Long): Boolean {
+        return blockUntilTime != null && now < blockUntilTime!!
+    }
+    
+    fun reset() {
+        longPressJob?.cancel()
+        longPressJob = null
+        timerStartTime = null
+        longPressSuccess = false
+        blockUntilTime = null
+        consumeNextKeyUp = false
+    }
+    
+    fun resetTimer() {
+        longPressJob?.cancel()
+        longPressJob = null
+        timerStartTime = null
+    }
+}
+
+/**
  * Composable modifier for handling long press (300ms) on D-Pad Center/Enter
  * Detects when D-Pad Center or Enter is held down for 300ms
  * 
@@ -216,106 +246,113 @@ fun Modifier.onLongPress(
     onNormalClick: (() -> Unit)? = null,
     durationMillis: Long = 300L
 ): Modifier {
-    var longPressJob by remember { mutableStateOf<Job?>(null) }
-    var timerStartTime by remember { mutableStateOf<Long?>(null) }
-    var longPressSuccess by remember { mutableStateOf(false) }
-    var blockUntilTime by remember { mutableStateOf<Long?>(null) }
-    var consumeNextKeyUp by remember { mutableStateOf(false) }
+    val state = remember { LongPressState() }
     val coroutineScope = rememberCoroutineScope()
     
     return this.onKeyEvent { event ->
         when (event.key) {
             Key.DirectionCenter, Key.Enter -> {
-                // Check if we're in blocking period after successful long press
                 val now = System.currentTimeMillis()
-                if (blockUntilTime != null && now < blockUntilTime!!) {
-                    val remaining = blockUntilTime!! - now
+                if (state.isInBlockingPeriod(now)) {
+                    val remaining = state.blockUntilTime!! - now
                     Log.d("ContentCardLongPress", "[Block] Event ignoriert - Blocking-Periode aktiv (noch ${remaining}ms)")
-                    true // Consume event during blocking period
+                    true
                 } else {
                     when (event.type) {
-                        KeyEventType.KeyDown -> {
-                            val keyName = TVFocusUtils.getKeyName(event.key)
-                            Log.d("ContentCardLongPress", "[KeyDown] $keyName gedrückt - Starte Long-Press Timer (${durationMillis}ms)")
-                            
-                            // Reset success flag, blocking period and consume flag
-                            longPressSuccess = false
-                            blockUntilTime = null
-                            consumeNextKeyUp = false
-                            
-                            // Cancel existing timer if any
-                            val existingJob = longPressJob
-                            if (existingJob != null && existingJob.isActive) {
-                                Log.d("ContentCardLongPress", "[KeyDown] Vorheriger Timer wird abgebrochen")
-                                existingJob.cancel()
-                            }
-                            
-                            // Start long press timer
-                            timerStartTime = System.currentTimeMillis()
-                            longPressJob = coroutineScope.launch {
-                                Log.d("ContentCardLongPress", "[Timer] Timer gestartet, warte ${durationMillis}ms...")
-                                delay(durationMillis)
-                                val elapsed = System.currentTimeMillis() - (timerStartTime ?: 0)
-                                Log.d("ContentCardLongPress", "[Timer] ✅ Long-Press erkannt! (${elapsed}ms vergangen)")
-                                Log.d("ContentCardLongPress", "[Callback] Rufe onLongPress() auf")
-                                longPressSuccess = true
-                                consumeNextKeyUp = true // Consume next KeyUp to prevent normal click
-                                // Block events for 800ms after successful long press
-                                blockUntilTime = System.currentTimeMillis() + 800
-                                Log.d("ContentCardLongPress", "[Block] Blocking-Periode gestartet (800ms)")
-                                Log.d("ContentCardLongPress", "[Block] consumeNextKeyUp Flag gesetzt - nächster KeyUp wird konsumiert")
-                                onLongPress()
-                            }
-                            true // Consume event to prevent onDpadCenter from handling it immediately
-                        }
-                        KeyEventType.KeyUp -> {
-                            val keyName = TVFocusUtils.getKeyName(event.key)
-                            val elapsed = timerStartTime?.let { System.currentTimeMillis() - it } ?: 0
-                            
-                            // Always consume KeyUp if consumeNextKeyUp flag is set (even after blocking period)
-                            if (consumeNextKeyUp) {
-                                Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - consumeNextKeyUp Flag aktiv, verhindere normalen Click")
-                                longPressJob?.cancel()
-                                longPressJob = null
-                                timerStartTime = null
-                                consumeNextKeyUp = false // Reset flag after consuming
-                                longPressSuccess = false
-                                blockUntilTime = null
-                                true // Consume event to prevent normal click
-                            } else if (longPressSuccess || (blockUntilTime != null && now < blockUntilTime!!)) {
-                                Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Long-Press war erfolgreich, verhindere normalen Click")
-                                longPressJob?.cancel()
-                                longPressJob = null
-                                timerStartTime = null
-                                if (!longPressSuccess) {
-                                    // Still in blocking period, keep it active
-                                } else {
-                                    longPressSuccess = false
-                                }
-                                true // Consume event to prevent normal click
-                            } else if (longPressJob != null && longPressJob!!.isActive) {
-                                Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Timer wird abgebrochen (zu früh)")
-                                longPressJob?.cancel()
-                                longPressJob = null
-                                timerStartTime = null
-                                // Trigger normal click if callback provided
-                                if (onNormalClick != null) {
-                                    Log.d("ContentCardLongPress", "[KeyUp] Rufe onNormalClick() auf (Timer abgebrochen)")
-                                    onNormalClick()
-                                    true // Consume event since we handled it
-                                } else {
-                                    false // Let normal click work via other handlers
-                                }
-                            } else {
-                                Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Kein aktiver Timer")
-                                false // Let normal click work
-                            }
-                        }
+                        KeyEventType.KeyDown -> handleKeyDown(event, state, coroutineScope, durationMillis, onLongPress)
+                        KeyEventType.KeyUp -> handleKeyUp(event, state, now, onNormalClick)
                         else -> false
                     }
                 }
             }
             else -> false
+        }
+    }
+}
+
+/**
+ * Handle KeyDown event for long press detection
+ */
+private fun handleKeyDown(
+    event: androidx.compose.ui.input.key.KeyEvent,
+    state: LongPressState,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    durationMillis: Long,
+    onLongPress: () -> Unit
+): Boolean {
+    val keyName = TVFocusUtils.getKeyName(event.key)
+    Log.d("ContentCardLongPress", "[KeyDown] $keyName gedrückt - Starte Long-Press Timer (${durationMillis}ms)")
+    
+    // Reset state
+    state.longPressSuccess = false
+    state.blockUntilTime = null
+    state.consumeNextKeyUp = false
+    
+    // Cancel existing timer if any
+    val existingJob = state.longPressJob
+    if (existingJob != null && existingJob.isActive) {
+        Log.d("ContentCardLongPress", "[KeyDown] Vorheriger Timer wird abgebrochen")
+        existingJob.cancel()
+    }
+    
+    // Start long press timer
+    state.timerStartTime = System.currentTimeMillis()
+    state.longPressJob = coroutineScope.launch {
+        Log.d("ContentCardLongPress", "[Timer] Timer gestartet, warte ${durationMillis}ms...")
+        delay(durationMillis)
+        val elapsed = System.currentTimeMillis() - (state.timerStartTime ?: 0)
+        Log.d("ContentCardLongPress", "[Timer] ✅ Long-Press erkannt! (${elapsed}ms vergangen)")
+        Log.d("ContentCardLongPress", "[Callback] Rufe onLongPress() auf")
+        state.longPressSuccess = true
+        state.consumeNextKeyUp = true
+        state.blockUntilTime = System.currentTimeMillis() + 800
+        Log.d("ContentCardLongPress", "[Block] Blocking-Periode gestartet (800ms)")
+        Log.d("ContentCardLongPress", "[Block] consumeNextKeyUp Flag gesetzt - nächster KeyUp wird konsumiert")
+        onLongPress()
+    }
+    return true
+}
+
+/**
+ * Handle KeyUp event for long press detection
+ */
+private fun handleKeyUp(
+    event: androidx.compose.ui.input.key.KeyEvent,
+    state: LongPressState,
+    now: Long,
+    onNormalClick: (() -> Unit)?
+): Boolean {
+    val keyName = TVFocusUtils.getKeyName(event.key)
+    val elapsed = state.timerStartTime?.let { System.currentTimeMillis() - it } ?: 0
+    
+    return when {
+        state.consumeNextKeyUp -> {
+            Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - consumeNextKeyUp Flag aktiv, verhindere normalen Click")
+            state.reset()
+            true
+        }
+        state.longPressSuccess || state.isInBlockingPeriod(now) -> {
+            Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Long-Press war erfolgreich, verhindere normalen Click")
+            state.resetTimer()
+            if (state.longPressSuccess) {
+                state.longPressSuccess = false
+            }
+            true
+        }
+        state.longPressJob != null && state.longPressJob!!.isActive -> {
+            Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Timer wird abgebrochen (zu früh)")
+            state.resetTimer()
+            if (onNormalClick != null) {
+                Log.d("ContentCardLongPress", "[KeyUp] Rufe onNormalClick() auf (Timer abgebrochen)")
+                onNormalClick()
+                true
+            } else {
+                false
+            }
+        }
+        else -> {
+            Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Kein aktiver Timer")
+            false
         }
     }
 }
