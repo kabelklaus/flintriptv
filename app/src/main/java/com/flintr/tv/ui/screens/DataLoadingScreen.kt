@@ -179,6 +179,7 @@ fun DataLoadingScreen(
                             index = index,
                             isLandscape = isLandscape,
                             colors = colors,
+                            onRetry = { viewModel.retryStep(index) },
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(horizontal = Dimensions.spacingXS)
@@ -186,8 +187,9 @@ fun DataLoadingScreen(
                     }
                 }
 
-                // Retry Button (nur bei Fehlern)
-                if (uiState.steps.any { it.status == LoadingStatus.Error }) {
+                // Global Retry Button (nur bei Fehlern, wenn mehrere Schritte fehlgeschlagen sind)
+                val errorCount = uiState.steps.count { it.status == LoadingStatus.Error }
+                if (errorCount > 1) {
                     Spacer(modifier = Modifier.height(
                         if (isLandscape) Dimensions.spacingLG else Dimensions.spacingXL
                     ))
@@ -203,7 +205,7 @@ fun DataLoadingScreen(
                         contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
                     ) {
                         Text(
-                            text = "Erneut versuchen",
+                            text = "Alle erneut versuchen",
                             fontSize = FontSizes.fontSizeXL,
                             fontWeight = FontWeight.W600
                         )
@@ -220,6 +222,7 @@ private fun StepItem(
     index: Int,
     isLandscape: Boolean,
     colors: com.flintr.tv.ui.theme.AppColors,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val iconSize = if (isLandscape) 48.dp else 56.dp // Größerer Container
@@ -358,12 +361,32 @@ private fun StepItem(
                     }
                 }
                 LoadingStatus.Error -> {
-                    Icon(
-                        imageVector = ErrorIcon,
-                        contentDescription = null,
-                        modifier = Modifier.size(statusIconSize),
-                        tint = colors.dangerText
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
+                    ) {
+                        Icon(
+                            imageVector = ErrorIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(statusIconSize),
+                            tint = colors.dangerText
+                        )
+                        TextButton(
+                            onClick = onRetry,
+                            contentPadding = PaddingValues(horizontal = Dimensions.spacingSM, vertical = Dimensions.spacingXS),
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = colors.dangerText
+                            )
+                        ) {
+                            Text(
+                                text = "Wiederholen",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = if (isLandscape) 10.sp else 11.sp,
+                                    fontWeight = FontWeight.W600
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }

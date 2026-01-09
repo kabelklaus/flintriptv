@@ -122,7 +122,7 @@ class DataLoadingViewModel @Inject constructor(
         try {
             // Step 1: Load Live Streams
             updateStepStatus(0, LoadingStatus.Loading)
-            val liveStreamsResult = repository.getLiveStreams(credentials.username, credentials.password)
+            val liveStreamsResult = repository.loadLiveStreamsFromApi(credentials.username, credentials.password)
             val liveCategoriesResult = repository.getLiveCategories(credentials.username, credentials.password)
 
             val liveStreams = liveStreamsResult.getOrElse {
@@ -136,7 +136,7 @@ class DataLoadingViewModel @Inject constructor(
 
             // Step 2: Load VOD Streams
             updateStepStatus(1, LoadingStatus.Loading)
-            val vodStreamsResult = repository.getVodStreams(credentials.username, credentials.password)
+            val vodStreamsResult = repository.loadVodStreamsFromApi(credentials.username, credentials.password)
             val vodCategoriesResult = repository.getVodCategories(credentials.username, credentials.password)
 
             val vodStreams = vodStreamsResult.getOrElse {
@@ -150,7 +150,7 @@ class DataLoadingViewModel @Inject constructor(
 
             // Step 3: Load Series
             updateStepStatus(2, LoadingStatus.Loading)
-            val seriesResult = repository.getSeries(credentials.username, credentials.password)
+            val seriesResult = repository.loadSeriesFromApi(credentials.username, credentials.password)
             val seriesCategoriesResult = repository.getSeriesCategories(credentials.username, credentials.password)
 
             val series = seriesResult.getOrElse {
@@ -235,6 +235,128 @@ class DataLoadingViewModel @Inject constructor(
             cachedData = null
         )
         checkCacheAndLoad()
+    }
+
+    fun retryStep(stepIndex: Int) {
+        val credentials = credentialsRepository.getCredentials()
+        if (credentials == null) {
+            _uiState.value = _uiState.value.copy(
+                error = "Keine Anmeldedaten gefunden"
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                updateStepStatus(stepIndex, LoadingStatus.Loading, errorMessage = null)
+                
+                when (stepIndex) {
+                    0 -> {
+                        // Load Live Streams
+                        val liveStreamsResult = repository.loadLiveStreamsFromApi(credentials.username, credentials.password)
+                        val liveCategoriesResult = repository.getLiveCategories(credentials.username, credentials.password)
+                        
+                        val liveStreams = liveStreamsResult.getOrElse {
+                            handleStepError(stepIndex, it)
+                            return@launch
+                        }
+                        
+                        val liveCategories = liveCategoriesResult.getOrNull() ?: emptyList()
+                        updateStepStatus(stepIndex, LoadingStatus.Success, liveStreams.size)
+                        
+                        // Update cache if other steps are also loaded
+                        updateCacheIfComplete(liveStreams, liveCategories)
+                    }
+                    1 -> {
+                        // Load VOD Streams
+                        val vodStreamsResult = repository.loadVodStreamsFromApi(credentials.username, credentials.password)
+                        val vodCategoriesResult = repository.getVodCategories(credentials.username, credentials.password)
+                        
+                        val vodStreams = vodStreamsResult.getOrElse {
+                            handleStepError(stepIndex, it)
+                            return@launch
+                        }
+                        
+                        val vodCategories = vodCategoriesResult.getOrNull() ?: emptyList()
+                        updateStepStatus(stepIndex, LoadingStatus.Success, vodStreams.size)
+                        
+                        // Update cache if other steps are also loaded
+                        updateCacheIfComplete(vodStreams = vodStreams, vodCategories = vodCategories)
+                    }
+                    2 -> {
+                        // Load Series
+                        val seriesResult = repository.loadSeriesFromApi(credentials.username, credentials.password)
+                        val seriesCategoriesResult = repository.getSeriesCategories(credentials.username, credentials.password)
+                        
+                        val series = seriesResult.getOrElse {
+                            handleStepError(stepIndex, it)
+                            return@launch
+                        }
+                        
+                        val seriesCategories = seriesCategoriesResult.getOrNull() ?: emptyList()
+                        updateStepStatus(stepIndex, LoadingStatus.Success, series.size)
+                        
+                        // Update cache if other steps are also loaded
+                        updateCacheIfComplete(series = series, seriesCategories = seriesCategories)
+                    }
+                }
+                
+                // Update overall progress
+                val completedSteps = _uiState.value.steps.count { it.status == LoadingStatus.Success }
+                updateProgress(completedSteps, _uiState.value.steps.size)
+                
+                // Check if all steps are complete
+                if (_uiState.value.steps.all { it.status == LoadingStatus.Success }) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        loadingComplete = true
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("DataLoadingViewModel", "Error retrying step $stepIndex", e)
+                handleStepError(stepIndex, e)
+            }
+        }
+    }
+
+    private suspend fun updateCacheIfComplete(
+        liveStreams: List<LiveStream>? = null,
+        liveCategories: List<Category>? = null,
+        vodStreams: List<VodStream>? = null,
+        vodCategories: List<Category>? = null,
+        series: List<Series>? = null,
+        seriesCategories: List<Category>? = null
+    ) {
+        // Get current cached data or use provided data
+        val currentCachedData = _uiState.value.cachedData
+        val finalLiveStreams = liveStreams ?: currentCachedData?.channels ?: emptyList()
+        val finalLiveCategories = liveCategories ?: currentCachedData?.liveCategories ?: emptyList()
+        val finalVodStreams = vodStreams ?: currentCachedData?.movies ?: emptyList()
+        val finalVodCategories = vodCategories ?: currentCachedData?.vodCategories ?: emptyList()
+        val finalSeries = series ?: currentCachedData?.series ?: emptyList()
+        val finalSeriesCategories = seriesCategories ?: currentCachedData?.seriesCategories ?: emptyList()
+        
+        // Save to cache
+        cacheService.saveCachedData(
+            channels = finalLiveStreams,
+            movies = finalVodStreams,
+            series = finalSeries,
+            liveCategories = finalLiveCategories,
+            vodCategories = finalVodCategories,
+            seriesCategories = finalSeriesCategories
+        )
+        
+        // Update cached data in state
+        val updatedCachedData = CachedData(
+            channels = finalLiveStreams,
+            movies = finalVodStreams,
+            series = finalSeries,
+            liveCategories = finalLiveCategories,
+            vodCategories = finalVodCategories,
+            seriesCategories = finalSeriesCategories
+        )
+        
+        _uiState.value = _uiState.value.copy(cachedData = updatedCachedData)
     }
 }
 

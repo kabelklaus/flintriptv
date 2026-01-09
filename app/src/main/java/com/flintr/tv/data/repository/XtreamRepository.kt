@@ -2,6 +2,7 @@ package com.flintr.tv.data.repository
 
 import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.model.*
 import com.squareup.moshi.Moshi
 import okhttp3.OkHttpClient
@@ -16,7 +17,8 @@ class XtreamRepository @Inject constructor(
     @Nullable private val apiService: XtreamApiService?,
     private val credentialsRepository: CredentialsRepository,
     private val okHttpClient: OkHttpClient,
-    private val moshi: Moshi
+    private val moshi: Moshi,
+    private val cacheService: DataCacheService
 ) {
     companion object {
         const val ERROR_API_SERVICE_NOT_AVAILABLE = "API service not available. Please log in first."
@@ -108,21 +110,48 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getLiveStreams(username: String, password: String, categoryId: String? = null): Result<List<LiveStream>> {
         return try {
-            val service = requireApiService()
-            val response = if (categoryId != null) {
-                service.getLiveStreamsByCategory(username, password, "get_live_streams", categoryId)
-            } else {
-                if (cachedLiveStreams != null) {
-                    return Result.success(cachedLiveStreams!!)
+            // Try to get from cache first
+            val allStreams = when {
+                // First check in-memory cache
+                cachedLiveStreams != null -> cachedLiveStreams!!
+                // Then check persistent cache
+                cacheService.isCacheValid() -> {
+                    val cachedData = cacheService.loadCachedData()
+                    if (cachedData != null) {
+                        // Fill in-memory cache for next time
+                        cachedLiveStreams = cachedData.channels
+                        cachedData.channels
+                    } else {
+                        null
+                    }
                 }
-                service.getLiveStreams(username, password)
+                else -> null
             }
 
+            // If we have cached data, filter by categoryId if needed
+            if (allStreams != null) {
+                val filteredStreams = if (categoryId != null) {
+                    allStreams.filter { it.categoryId == categoryId }
+                } else {
+                    allStreams
+                }
+                return Result.success(filteredStreams)
+            }
+
+            // No cache available - return error (no API calls allowed)
+            Result.failure(Exception("No cache available. Please load data first."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun loadLiveStreamsFromApi(username: String, password: String): Result<List<LiveStream>> {
+        return try {
+            val service = requireApiService()
+            val response = service.getLiveStreams(username, password)
             if (response.isSuccessful && response.body() != null) {
                 val streams = response.body()!!
-                if (categoryId == null) {
-                    cachedLiveStreams = streams
-                }
+                cachedLiveStreams = streams
                 Result.success(streams)
             } else {
                 Result.failure(Exception("Failed to get live streams: ${response.code()}"))
@@ -154,21 +183,48 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getVodStreams(username: String, password: String, categoryId: String? = null): Result<List<VodStream>> {
         return try {
-            val service = requireApiService()
-            val response = if (categoryId != null) {
-                service.getVodStreamsByCategory(username, password, "get_vod_streams", categoryId)
-            } else {
-                if (cachedVodStreams != null) {
-                    return Result.success(cachedVodStreams!!)
+            // Try to get from cache first
+            val allStreams = when {
+                // First check in-memory cache
+                cachedVodStreams != null -> cachedVodStreams!!
+                // Then check persistent cache
+                cacheService.isCacheValid() -> {
+                    val cachedData = cacheService.loadCachedData()
+                    if (cachedData != null) {
+                        // Fill in-memory cache for next time
+                        cachedVodStreams = cachedData.movies
+                        cachedData.movies
+                    } else {
+                        null
+                    }
                 }
-                service.getVodStreams(username, password)
+                else -> null
             }
 
+            // If we have cached data, filter by categoryId if needed
+            if (allStreams != null) {
+                val filteredStreams = if (categoryId != null) {
+                    allStreams.filter { it.categoryId == categoryId }
+                } else {
+                    allStreams
+                }
+                return Result.success(filteredStreams)
+            }
+
+            // No cache available - return error (no API calls allowed)
+            Result.failure(Exception("No cache available. Please load data first."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun loadVodStreamsFromApi(username: String, password: String): Result<List<VodStream>> {
+        return try {
+            val service = requireApiService()
+            val response = service.getVodStreams(username, password)
             if (response.isSuccessful && response.body() != null) {
                 val streams = response.body()!!
-                if (categoryId == null) {
-                    cachedVodStreams = streams
-                }
+                cachedVodStreams = streams
                 Result.success(streams)
             } else {
                 Result.failure(Exception("Failed to get VOD streams: ${response.code()}"))
@@ -200,21 +256,48 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getSeries(username: String, password: String, categoryId: String? = null): Result<List<Series>> {
         return try {
-            val service = requireApiService()
-            val response = if (categoryId != null) {
-                service.getSeriesByCategory(username, password, "get_series", categoryId)
-            } else {
-                if (cachedSeries != null) {
-                    return Result.success(cachedSeries!!)
+            // Try to get from cache first
+            val allSeries = when {
+                // First check in-memory cache
+                cachedSeries != null -> cachedSeries!!
+                // Then check persistent cache
+                cacheService.isCacheValid() -> {
+                    val cachedData = cacheService.loadCachedData()
+                    if (cachedData != null) {
+                        // Fill in-memory cache for next time
+                        cachedSeries = cachedData.series
+                        cachedData.series
+                    } else {
+                        null
+                    }
                 }
-                service.getSeries(username, password)
+                else -> null
             }
 
+            // If we have cached data, filter by categoryId if needed
+            if (allSeries != null) {
+                val filteredSeries = if (categoryId != null) {
+                    allSeries.filter { it.categoryId == categoryId }
+                } else {
+                    allSeries
+                }
+                return Result.success(filteredSeries)
+            }
+
+            // No cache available - return error (no API calls allowed)
+            Result.failure(Exception("No cache available. Please load data first."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun loadSeriesFromApi(username: String, password: String): Result<List<Series>> {
+        return try {
+            val service = requireApiService()
+            val response = service.getSeries(username, password)
             if (response.isSuccessful && response.body() != null) {
                 val series = response.body()!!
-                if (categoryId == null) {
-                    cachedSeries = series
-                }
+                cachedSeries = series
                 Result.success(series)
             } else {
                 Result.failure(Exception("Failed to get series: ${response.code()}"))

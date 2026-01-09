@@ -4,6 +4,7 @@ import android.content.Context
 import com.flintr.tv.data.api.GitHubApiService
 import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.repository.UpdateRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.utils.UpdateDownloadService
@@ -84,9 +85,10 @@ object AppModule {
         @Nullable apiService: XtreamApiService?,
         credentialsRepository: CredentialsRepository,
         okHttpClient: OkHttpClient,
-        moshi: Moshi
+        moshi: Moshi,
+        cacheService: DataCacheService
     ): XtreamRepository {
-        return XtreamRepository(apiService, credentialsRepository, okHttpClient, moshi)
+        return XtreamRepository(apiService, credentialsRepository, okHttpClient, moshi, cacheService)
     }
     
     // Helper function to create Retrofit dynamically for login validation
