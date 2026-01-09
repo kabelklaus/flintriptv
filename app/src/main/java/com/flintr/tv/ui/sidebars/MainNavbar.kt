@@ -46,6 +46,7 @@ sealed class HomeDestination {
     object VOD : HomeDestination()
     object Series : HomeDestination()
     object EPG : HomeDestination()
+    object Favorites : HomeDestination()
     object Settings : HomeDestination()
 }
 
@@ -61,7 +62,7 @@ fun HomeSidebar(
     onNavigate: (HomeDestination) -> Unit,
     focusRequester: FocusRequester,
     externalFocusRequested: Boolean = false,
-    onNavigateRight: () -> Unit,
+    onNavigateRight: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val colors = appColors()
@@ -72,6 +73,7 @@ fun HomeSidebar(
             NavItem("Movies", Icons.Default.Movie, HomeDestination.VOD),
             NavItem("Series", Icons.Default.PlayArrow, HomeDestination.Series),
             NavItem("EPG", Icons.Default.Schedule, HomeDestination.EPG),
+            NavItem("Favoriten", Icons.Default.Favorite, HomeDestination.Favorites),
             NavItem("Settings", Icons.Default.Settings, HomeDestination.Settings)
         )
     }

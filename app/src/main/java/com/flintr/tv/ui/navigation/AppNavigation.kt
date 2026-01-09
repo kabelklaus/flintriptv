@@ -35,6 +35,7 @@ import com.flintr.tv.ui.settings.SettingsScreen
 import com.flintr.tv.ui.tabs.LiveTVContent
 import com.flintr.tv.ui.tabs.VODContent
 import com.flintr.tv.ui.tabs.SeriesContent
+import com.flintr.tv.ui.tabs.FavoritesContent
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
 
@@ -129,7 +130,8 @@ fun AppNavigation(
                 navController = navController,
                 mainViewModel = mainViewModel,
                 credentialsRepository = credentialsRepository,
-                favoritesRepository = favoritesRepository
+                favoritesRepository = favoritesRepository,
+                cacheService = cacheService
             )
         }
         
@@ -169,6 +171,9 @@ private fun clearStreamsForDestination(
         is HomeDestination.EPG -> {
             // EPG doesn't have streams to clear
         }
+        is HomeDestination.Favorites -> {
+            // Favorites doesn't have streams to clear
+        }
         is HomeDestination.Settings -> {
             // Settings navigates to separate screen, no streams to clear
         }
@@ -180,7 +185,8 @@ fun MainContentScreen(
     navController: NavHostController,
     mainViewModel: MainViewModel,
     credentialsRepository: CredentialsRepository,
-    favoritesRepository: FavoritesRepository
+    favoritesRepository: FavoritesRepository,
+    cacheService: DataCacheService
 ) {
     val credentials = credentialsRepository.getCredentials()
     var selectedDestination by remember { mutableStateOf<HomeDestination>(HomeDestination.LiveTV) }
@@ -201,6 +207,7 @@ fun MainContentScreen(
         is HomeDestination.VOD -> vodCategories
         is HomeDestination.Series -> seriesCategories
         is HomeDestination.EPG -> emptyList()
+        is HomeDestination.Favorites -> emptyList() // Favorites doesn't have categories
         is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
     }
     
@@ -266,8 +273,13 @@ fun MainContentScreen(
     }
     
     // When destination changes and categories are shown, move focus to CategoryRow
+    // For Favorites (no categories), move focus directly to content list
     LaunchedEffect(selectedDestination) {
-        if (showCategories && sortedCategories.isNotEmpty()) {
+        if (selectedDestination is HomeDestination.Favorites) {
+            kotlinx.coroutines.delay(100) // Small delay to ensure UI is laid out
+            moveFocusToContentList()
+            Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to Favorites, focus moved to ContentList")
+        } else if (showCategories && sortedCategories.isNotEmpty()) {
             kotlinx.coroutines.delay(100) // Small delay to ensure UI is laid out
             moveFocusToCategorySidebar()
             Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to $selectedDestination, focus moved to CategoryRow")
@@ -368,6 +380,46 @@ fun MainContentScreen(
                                 creds.password
                             )
                             navController.navigate(Screen.Player.createRoute(streamUrl))
+                        }
+                    )
+                }
+                is HomeDestination.Favorites -> {
+                    FavoritesContent(
+                        favoritesRepository = favoritesRepository,
+                        cacheService = cacheService,
+                        focusRequester = contentListFocusRequester,
+                        onNavigateLeft = { moveFocusToNavbar() },
+                        onLiveStreamClick = { stream ->
+                            val creds = credentials ?: return@FavoritesContent
+                            val streamUrl = stream.getStreamUrl(
+                                creds.serverUrl,
+                                creds.username,
+                                creds.password
+                            )
+                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                        },
+                        onVodClick = { vod ->
+                            val creds = credentials ?: return@FavoritesContent
+                            val streamUrl = vod.getStreamUrl(
+                                creds.serverUrl,
+                                creds.username,
+                                creds.password
+                            )
+                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                        },
+                        onSeriesClick = { series ->
+                            // Navigate to Series tab and expand the series
+                            selectedDestination = HomeDestination.Series
+                            // Load series info to show episodes
+                            mainViewModel.loadSeriesInfo(series.seriesId)
+                            // Find and select the category for this series
+                            val seriesCategory = seriesCategories.find { 
+                                it.categoryId == series.categoryId 
+                            }
+                            if (seriesCategory != null) {
+                                selectedCategoryId = seriesCategory.categoryId
+                                mainViewModel.loadSeries(seriesCategory.categoryId)
+                            }
                         }
                     )
                 }

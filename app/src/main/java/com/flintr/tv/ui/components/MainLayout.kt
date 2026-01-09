@@ -56,7 +56,11 @@ fun MainLayout(
             },
             focusRequester = navbarFocusRequester,
             externalFocusRequested = externalFocusRequested,
-            onNavigateRight = { onNavigateToCategorySidebar() },
+            onNavigateRight = if (showCategories) {
+                { onNavigateToCategorySidebar() }
+            } else {
+                null // Favorites, EPG, Settings haben keine Kategorien
+            },
             modifier = Modifier
                 .fillMaxHeight()
         )

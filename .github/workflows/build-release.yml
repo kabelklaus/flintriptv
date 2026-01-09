@@ -1,0 +1,185 @@
+name: Build & Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-release:
+    name: Build APK & Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Extract version from build.gradle.kts
+        id: version
+        run: |
+          # Extrahiere versionName und versionCode aus app/build.gradle.kts
+          # Unterstützt sowohl versionName = "1.0" als auch versionName="1.0"
+          VERSION_NAME=$(grep -E '^\s*versionName\s*=' app/build.gradle.kts | sed -E 's/.*versionName\s*=\s*"([^"]+)".*/\1/' | head -1)
+          BUILD_NUMBER=$(grep -E '^\s*versionCode\s*=' app/build.gradle.kts | sed -E 's/.*versionCode\s*=\s*([0-9]+).*/\1/' | head -1)
+          
+          if [ -z "$VERSION_NAME" ] || [ -z "$BUILD_NUMBER" ]; then
+            echo "❌ Failed to extract version information"
+            exit 1
+          fi
+          
+          echo "name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "build=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION_NAME (Build $BUILD_NUMBER)"
+
+      - name: Check if release should be created
+        id: should_release
+        run: |
+          CURRENT_VERSION="${{ steps.version.outputs.name }}"
+          
+          LAST_TAG=$(git tag -l 'v*' --sort=-version:refname | grep -v -- '-beta' | head -n 1 || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ No previous release found, creating first release"
+            exit 0
+          fi
+          
+          LAST_VERSION=$(echo "$LAST_TAG" | sed 's/^v//' | sed 's/-.*$//')
+          
+          echo "Last version: $LAST_VERSION"
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Parse version components (handles missing patch version)
+          LAST_MAJOR=$(echo "$LAST_VERSION" | cut -d'.' -f1)
+          LAST_MINOR=$(echo "$LAST_VERSION" | cut -d'.' -f2)
+          LAST_PATCH=$(echo "$LAST_VERSION" | cut -d'.' -f3)
+          LAST_PATCH=${LAST_PATCH:-0}
+          
+          CURRENT_MAJOR=$(echo "$CURRENT_VERSION" | cut -d'.' -f1)
+          CURRENT_MINOR=$(echo "$CURRENT_VERSION" | cut -d'.' -f2)
+          CURRENT_PATCH=$(echo "$CURRENT_VERSION" | cut -d'.' -f3)
+          CURRENT_PATCH=${CURRENT_PATCH:-0}
+          
+          if [ "$CURRENT_MAJOR" -gt "$LAST_MAJOR" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ Major version update detected ($LAST_VERSION → $CURRENT_VERSION)"
+          elif [ "$CURRENT_MAJOR" -eq "$LAST_MAJOR" ] && [ "$CURRENT_MINOR" -gt "$LAST_MINOR" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ Minor version update detected ($LAST_VERSION → $CURRENT_VERSION)"
+          else
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ Patch version update detected ($LAST_VERSION → $CURRENT_VERSION), creating release"
+          fi
+
+      - name: Setup Java
+        if: steps.should_release.outputs.should_release == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'  # Match project's Java version
+
+      - name: Cache Gradle
+        if: steps.should_release.outputs.should_release == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.gradle/build-cache
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Setup signing key
+        if: steps.should_release.outputs.should_release == 'true'
+        run: |
+          # Erstelle Keystore-Datei (.jks Format)
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/flintrtv-release.jks
+          
+          # Erstelle local.properties (wie in build.gradle.kts erwartet)
+          cat > local.properties << EOF
+          keystore.path=app/flintrtv-release.jks
+          keystore.password=${{ secrets.KEYSTORE_PASSWORD }}
+          keystore.keyAlias=${{ secrets.KEY_ALIAS }}
+          keystore.keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+          
+          echo "✅ Signing key configured"
+
+      - name: Grant execute permission for gradlew
+        if: steps.should_release.outputs.should_release == 'true'
+        run: chmod +x gradlew
+
+      - name: Build Release APK
+        if: steps.should_release.outputs.should_release == 'true'
+        run: ./gradlew assembleRelease
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true
+
+      - name: Upload APK artifact
+        if: steps.should_release.outputs.should_release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
+
+      - name: Rename artifacts
+        if: steps.should_release.outputs.should_release == 'true'
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/app-v${{ steps.version.outputs.name }}.apk
+
+      - name: Extract PR title from commit
+        if: steps.should_release.outputs.should_release == 'true'
+        id: pr_title
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          
+          # Try to extract PR number from merge commit
+          if echo "$COMMIT_MSG" | grep -q "Merge pull request"; then
+            PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP 'Merge pull request #\K\d+' | head -1)
+            if [ -n "$PR_NUMBER" ]; then
+              PR_TITLE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER" | \
+                jq -r '.title // empty')
+              if [ -n "$PR_TITLE" ] && [ "$PR_TITLE" != "null" ] && [ "$PR_TITLE" != "" ]; then
+                echo "title=$PR_TITLE" >> $GITHUB_OUTPUT
+                echo "✅ Found PR title: $PR_TITLE"
+                exit 0
+              fi
+            fi
+          fi
+          
+          # Fallback: Use first line of commit message
+          TITLE=$(echo "$COMMIT_MSG" | head -1 | sed 's/^Merge pull request #[0-9]* from [^ ]* //' | sed 's/^Merge branch.*//')
+          if [ -z "$TITLE" ] || [ "$TITLE" = "" ]; then
+            TITLE="Release v${{ steps.version.outputs.name }}"
+          fi
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "📝 Using commit message: $TITLE"
+
+      - name: Create GitHub Release
+        if: steps.should_release.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.name }}
+          name: Release v${{ steps.version.outputs.name }}
+          body: |
+            ## ${{ steps.pr_title.outputs.title }}
+            
+            Build: ${{ steps.version.outputs.build }}
+            
+            ### Downloads
+            - **APK**: Für direkte Installation auf Android-Geräten
+          files: |
+            app/build/outputs/apk/release/app-v${{ steps.version.outputs.name }}.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
