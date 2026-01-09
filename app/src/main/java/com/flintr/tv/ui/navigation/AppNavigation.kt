@@ -20,6 +20,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
+import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.LiveStream
@@ -84,6 +85,7 @@ fun AppNavigation(
     navController: NavHostController,
     credentialsRepository: CredentialsRepository,
     cacheService: DataCacheService,
+    favoritesRepository: FavoritesRepository,
     mainViewModel: MainViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
@@ -126,7 +128,8 @@ fun AppNavigation(
             MainContentScreen(
                 navController = navController,
                 mainViewModel = mainViewModel,
-                credentialsRepository = credentialsRepository
+                credentialsRepository = credentialsRepository,
+                favoritesRepository = favoritesRepository
             )
         }
         
@@ -176,7 +179,8 @@ private fun clearStreamsForDestination(
 fun MainContentScreen(
     navController: NavHostController,
     mainViewModel: MainViewModel,
-    credentialsRepository: CredentialsRepository
+    credentialsRepository: CredentialsRepository,
+    favoritesRepository: FavoritesRepository
 ) {
     val credentials = credentialsRepository.getCredentials()
     var selectedDestination by remember { mutableStateOf<HomeDestination>(HomeDestination.LiveTV) }
@@ -220,18 +224,7 @@ fun MainContentScreen(
             selectedDestination is HomeDestination.VOD ||
             selectedDestination is HomeDestination.Series
     
-    // Set initial focus on Navbar when app starts
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(200) // Small delay to ensure UI is laid out
-        try {
-            navbarFocusRequester.requestFocus()
-            Log.i("TVFocus", "[MainContentScreen] 🎯 Initial focus set to NAVBAR")
-        } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
-        }
-    }
-    
-    // Focus navigation functions
+    // Focus navigation functions (defined before LaunchedEffect to be available in closures)
     fun moveFocusToNavbar() {
         Log.i("TVFocus", "[MainContentScreen] 🎯 Requesting focus: NAVBAR")
         try {
@@ -258,6 +251,26 @@ fun MainContentScreen(
             // FocusRequester not yet initialized - this can happen if called before content is loaded
             // The content will request focus automatically when streams are loaded
             Log.w("TVFocus", "[MainContentScreen] ⚠️ ContentList FocusRequester not initialized yet, will focus when content loads")
+        }
+    }
+    
+    // Set initial focus on Navbar when app starts
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(200) // Small delay to ensure UI is laid out
+        try {
+            navbarFocusRequester.requestFocus()
+            Log.i("TVFocus", "[MainContentScreen] 🎯 Initial focus set to NAVBAR")
+        } catch (e: IllegalStateException) {
+            Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
+        }
+    }
+    
+    // When destination changes and categories are shown, move focus to CategoryRow
+    LaunchedEffect(selectedDestination) {
+        if (showCategories && sortedCategories.isNotEmpty()) {
+            kotlinx.coroutines.delay(100) // Small delay to ensure UI is laid out
+            moveFocusToCategorySidebar()
+            Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to $selectedDestination, focus moved to CategoryRow")
         }
     }
     
@@ -294,6 +307,7 @@ fun MainContentScreen(
                         viewModel = mainViewModel,
                         selectedCategoryId = selectedCategoryId,
                         focusRequester = contentListFocusRequester,
+                        favoritesRepository = favoritesRepository,
                         onNavigateLeft = { moveFocusToCategorySidebar() },
                         onChannelClick = { stream ->
                             val creds = credentials ?: return@LiveTVContent
@@ -311,6 +325,7 @@ fun MainContentScreen(
                         viewModel = mainViewModel,
                         selectedCategoryId = selectedCategoryId,
                         focusRequester = contentListFocusRequester,
+                        favoritesRepository = favoritesRepository,
                         onNavigateLeft = { moveFocusToCategorySidebar() },
                         onVodClick = { vod ->
                             val creds = credentials ?: return@VODContent
@@ -328,6 +343,7 @@ fun MainContentScreen(
                         viewModel = mainViewModel,
                         selectedCategoryId = selectedCategoryId,
                         focusRequester = contentListFocusRequester,
+                        favoritesRepository = favoritesRepository,
                         onNavigateLeft = { moveFocusToCategorySidebar() },
                         onEpisodeClick = { episode, series ->
                             val creds = credentials ?: return@SeriesContent

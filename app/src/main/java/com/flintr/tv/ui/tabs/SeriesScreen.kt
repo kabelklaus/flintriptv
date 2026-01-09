@@ -27,6 +27,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
@@ -37,11 +38,18 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.viewmodel.MainViewModel
 
+data class SeriesItemConfig(
+    val isExpanded: Boolean,
+    val onExpand: () -> Unit,
+    val onEpisodeClick: (Episode) -> Unit
+)
+
 @Composable
 fun SeriesContent(
     viewModel: MainViewModel,
     selectedCategoryId: String?,
     focusRequester: FocusRequester,
+    favoritesRepository: FavoritesRepository,
     onNavigateLeft: () -> Unit,
     onEpisodeClick: (Episode, Series) -> Unit,
     modifier: Modifier = Modifier
@@ -73,13 +81,16 @@ fun SeriesContent(
         content = { seriesItem, _, columnIndex, onFocusChanged ->
             SeriesItem(
                 series = seriesItem,
-                isExpanded = expandedSeriesId == seriesItem.seriesId,
-                onExpand = { 
-                    expandedSeriesId = if (expandedSeriesId == seriesItem.seriesId) null else seriesItem.seriesId
-                },
-                onEpisodeClick = { episode ->
-                    onEpisodeClick(episode, seriesItem)
-                },
+                favoritesRepository = favoritesRepository,
+                config = SeriesItemConfig(
+                    isExpanded = expandedSeriesId == seriesItem.seriesId,
+                    onExpand = { 
+                        expandedSeriesId = if (expandedSeriesId == seriesItem.seriesId) null else seriesItem.seriesId
+                    },
+                    onEpisodeClick = { episode ->
+                        onEpisodeClick(episode, seriesItem)
+                    }
+                ),
                 onFocusChanged = onFocusChanged,
                 onNavigateLeft = if (columnIndex == 0) {
                     { onNavigateLeft() }
@@ -94,9 +105,8 @@ fun SeriesContent(
 @Composable
 fun SeriesItem(
     series: Series,
-    isExpanded: Boolean,
-    onExpand: () -> Unit,
-    onEpisodeClick: (Episode) -> Unit,
+    favoritesRepository: FavoritesRepository,
+    config: SeriesItemConfig,
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     onNavigateLeft: (() -> Unit)? = null
@@ -106,13 +116,14 @@ fun SeriesItem(
     ) {
         VODCard(
             series = series,
-            onClick = onExpand,
+            onClick = config.onExpand,
+            favoritesRepository = favoritesRepository,
             isSelected = isSelected,
             onFocusChanged = onFocusChanged,
             onNavigateLeft = onNavigateLeft
         )
         
-        if (isExpanded && series.seasons != null) {
+        if (config.isExpanded && series.seasons != null) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -122,7 +133,7 @@ fun SeriesItem(
                     SeasonSection(
                         season = season,
                         seriesId = series.seriesId,
-                        onEpisodeClick = onEpisodeClick
+                        onEpisodeClick = config.onEpisodeClick
                     )
                 }
             }

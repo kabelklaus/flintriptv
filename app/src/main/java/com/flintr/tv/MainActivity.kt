@@ -11,6 +11,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.rememberNavController
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
+import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.ui.navigation.AppNavigation
 import com.flintr.tv.ui.theme.FlintRTVTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -24,6 +25,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var cacheService: DataCacheService
 
+    @Inject
+    lateinit var favoritesRepository: FavoritesRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -36,7 +40,8 @@ class MainActivity : ComponentActivity() {
                     AppNavigation(
                         navController = navController,
                         credentialsRepository = credentialsRepository,
-                        cacheService = cacheService
+                        cacheService = cacheService,
+                        favoritesRepository = favoritesRepository
                     )
                 }
             }

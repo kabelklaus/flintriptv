@@ -6,7 +6,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.LiveStream
+import com.flintr.tv.ui.components.CardConfig
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.components.LiveStreamCard
 import com.flintr.tv.viewmodel.MainViewModel
@@ -16,6 +18,7 @@ fun LiveTVContent(
     viewModel: MainViewModel,
     selectedCategoryId: String?,
     focusRequester: FocusRequester,
+    favoritesRepository: FavoritesRepository,
     onNavigateLeft: () -> Unit,
     onChannelClick: (LiveStream) -> Unit,
     modifier: Modifier = Modifier
@@ -42,13 +45,16 @@ fun LiveTVContent(
             LiveStreamCard(
                 stream = stream,
                 onClick = { onChannelClick(stream) },
-                focusRequester = if (index == 0 && streams.isNotEmpty()) focusRequester else null,
-                onFocusChanged = onFocusChanged,
-                onNavigateLeft = if (columnIndex == 0) {
-                    { onNavigateLeft() }
-                } else {
-                    null
-                }
+                favoritesRepository = favoritesRepository,
+                config = CardConfig(
+                    focusRequester = if (index == 0 && streams.isNotEmpty()) focusRequester else null,
+                    onFocusChanged = onFocusChanged,
+                    onNavigateLeft = if (columnIndex == 0) {
+                        { onNavigateLeft() }
+                    } else {
+                        null
+                    }
+                )
             )
         }
     )

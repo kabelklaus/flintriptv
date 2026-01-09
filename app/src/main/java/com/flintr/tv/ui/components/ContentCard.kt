@@ -38,6 +38,8 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.Image
 import android.util.Log
+import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.model.Favorite
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
@@ -47,6 +49,10 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.utils.ContentParser
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.res.stringResource
+import com.flintr.tv.R
+import kotlinx.coroutines.launch
 
 // Content Card dimensions (from Flutter AppTheme)
 private val ContentCardMaxCrossAxisExtent = 133.dp
@@ -72,33 +78,64 @@ private val ContentCardTextFontWeight = FontWeight.Bold
 // Content Card Title Line Height
 private const val ContentCardTitleLineHeightFactor = 1.2f
 
-private data class CardConfig(
+data class CardConfig(
     val isSelected: Boolean = false,
     val onFocusChanged: ((Boolean) -> Unit)? = null,
     val onNavigateLeft: (() -> Unit)? = null,
     val focusRequester: androidx.compose.ui.focus.FocusRequester? = null
 )
 
+private data class ContentInfo(
+    val coverImageUrl: String?,
+    val title: String,
+    val rating: String?
+)
+
+private sealed class ContentType {
+    abstract fun toFavoriteId(): String
+    abstract fun toFavorite(metadata: Map<String, String?>? = null): Favorite
+    
+    data class Live(val stream: LiveStream) : ContentType() {
+        override fun toFavoriteId(): String = stream.toFavoriteId()
+        override fun toFavorite(metadata: Map<String, String?>?): Favorite = stream.toFavorite(metadata)
+    }
+    
+    data class Movie(val vod: VodStream) : ContentType() {
+        override fun toFavoriteId(): String = vod.toFavoriteId()
+        override fun toFavorite(metadata: Map<String, String?>?): Favorite = vod.toFavorite(metadata)
+    }
+    
+    data class Series(val seriesData: com.flintr.tv.data.model.Series) : ContentType() {
+        override fun toFavoriteId(): String = seriesData.toFavoriteId()
+        override fun toFavorite(metadata: Map<String, String?>?): Favorite = seriesData.toFavorite(metadata)
+    }
+}
+
 @Composable
 fun VODCard(
     vod: VodStream,
     onClick: () -> Unit,
+    favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     onNavigateLeft: (() -> Unit)? = null
 ) {
     ContentCardInternal(
-        coverImageUrl = vod.streamIcon ?: vod.cover,
-        title = vod.name,
-        rating = ContentParser.getRating(vod),
+        contentInfo = ContentInfo(
+            coverImageUrl = vod.streamIcon ?: vod.cover,
+            title = vod.name,
+            rating = ContentParser.getRating(vod)
+        ),
         onClick = onClick,
         modifier = modifier,
         config = CardConfig(
             isSelected = isSelected,
             onFocusChanged = onFocusChanged,
             onNavigateLeft = onNavigateLeft
-        )
+        ),
+        contentType = ContentType.Movie(vod),
+        favoritesRepository = favoritesRepository
     )
 }
 
@@ -106,22 +143,27 @@ fun VODCard(
 fun VODCard(
     series: Series,
     onClick: () -> Unit,
+    favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
     onNavigateLeft: (() -> Unit)? = null
 ) {
     ContentCardInternal(
-        coverImageUrl = series.cover,
-        title = series.name,
-        rating = ContentParser.getRating(series),
+        contentInfo = ContentInfo(
+            coverImageUrl = series.cover,
+            title = series.name,
+            rating = ContentParser.getRating(series)
+        ),
         onClick = onClick,
         modifier = modifier,
         config = CardConfig(
             isSelected = isSelected,
             onFocusChanged = onFocusChanged,
             onNavigateLeft = onNavigateLeft
-        )
+        ),
+        contentType = ContentType.Series(series),
+        favoritesRepository = favoritesRepository
     )
 }
 
@@ -188,42 +230,63 @@ private fun buildCardModifier(
 
 @Composable
 private fun ContentCardInternal(
-    coverImageUrl: String?,
-    title: String,
-    rating: String?,
+    contentInfo: ContentInfo,
     onClick: () -> Unit,
+    favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
-    config: CardConfig = CardConfig()
+    config: CardConfig = CardConfig(),
+    contentType: ContentType? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var longPressDetected by remember { mutableStateOf(false) }
     val colors = appColors()
+    val coroutineScope = rememberCoroutineScope()
+    
+    // Check favorite status
+    val favoriteId = remember(contentType) {
+        contentType?.toFavoriteId()
+    }
+    var isFavorite by remember { mutableStateOf(false) }
+    
+    // Asynchronously load favorite status when favoriteId changes
+    LaunchedEffect(favoriteId) {
+        if (favoriteId != null) {
+            isFavorite = favoritesRepository.isFavorite(favoriteId)
+        }
+    }
+    
+    // Update favorite status when menu opens
+    LaunchedEffect(showMenu) {
+        if (showMenu && favoriteId != null) {
+            isFavorite = favoritesRepository.isFavorite(favoriteId)
+        }
+    }
     
     // Unified click handler to avoid duplication
     val performClick: () -> Unit = {
         if (!showMenu && !longPressDetected) {
-            Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() aufgerufen (normaler Click)")
+            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - clickable() aufgerufen (normaler Click)")
             onClick()
         } else {
             if (showMenu) {
-                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() blockiert - Menü ist offen")
+                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - clickable() blockiert - Menü ist offen")
             } else {
-                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() verhindert (Long-Press wurde erkannt)")
+                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - clickable() verhindert (Long-Press wurde erkannt)")
             }
         }
     }
     
     // Log menu state changes
     LaunchedEffect(showMenu) {
-        Log.d("ContentCard", "[ContentCard] Card '$title' - showMenu State geändert: $showMenu")
+        Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - showMenu State geändert: $showMenu")
     }
     
     // Reset longPressDetected flag after a short delay
     LaunchedEffect(longPressDetected) {
         if (longPressDetected) {
             kotlinx.coroutines.delay(100)
-            Log.d("ContentCard", "[ContentCard] Card '$title' - Reset longPressDetected Flag")
+            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Reset longPressDetected Flag")
             longPressDetected = false
         }
     }
@@ -268,7 +331,7 @@ private fun ContentCardInternal(
             }
         },
         onLongPress = {
-            Log.d("ContentCard", "[ContentCard] Card '$title' - Long-Press Callback erhalten!")
+            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Long-Press Callback erhalten!")
             Log.d("ContentCard", "[ContentCard] Setze longPressDetected = true")
             longPressDetected = true
             Log.d("ContentCard", "[ContentCard] Setze showMenu = true")
@@ -276,9 +339,9 @@ private fun ContentCardInternal(
         },
         onNormalClick = {
             if (showMenu) {
-                Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() blockiert - Menü ist offen")
+                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - onNormalClick() blockiert - Menü ist offen")
             } else {
-                Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() aufgerufen (Timer abgebrochen)")
+                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - onNormalClick() aufgerufen (Timer abgebrochen)")
                 performClick()
             }
         },
@@ -293,26 +356,55 @@ private fun ContentCardInternal(
         )
     ) {
         CardContent(
-            coverImageUrl = coverImageUrl,
-            title = title,
-            rating = rating,
+            coverImageUrl = contentInfo.coverImageUrl,
+            title = contentInfo.title,
+            rating = contentInfo.rating,
+            isFavorite = isFavorite,
             colors = colors
         )
     }
     
     // Menu dialog
+    val removeFromFavoritesText = stringResource(R.string.remove_from_favorites)
+    val addToFavoritesText = stringResource(R.string.add_to_favorites)
+    val menuOptions = remember(isFavorite, contentType, removeFromFavoritesText, addToFavoritesText) {
+        if (contentType != null) {
+            if (isFavorite) {
+                listOf(removeFromFavoritesText)
+            } else {
+                listOf(addToFavoritesText)
+            }
+        } else {
+            emptyList()
+        }
+    }
+    
     ContentCardMenu(
-        isOpen = showMenu,
-        menuOptions = listOf("Option 1", "Option 2", "Option 3"),
+        isOpen = showMenu && menuOptions.isNotEmpty(),
+        menuOptions = menuOptions,
         onDismiss = {
-            Log.d("ContentCard", "[ContentCard] Card '$title' - Menü onDismiss() aufgerufen")
+            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Menü onDismiss() aufgerufen")
             Log.d("ContentCard", "[ContentCard] Setze showMenu = false")
             showMenu = false
         },
         onOptionSelected = { index ->
-            Log.d("ContentCard", "[ContentCard] Card '$title' - Option $index wurde ausgewählt")
-            // Handle menu option selection
-            // TODO: Implement specific actions for each option
+            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Option $index wurde ausgewählt")
+            if (contentType != null && favoriteId != null) {
+                coroutineScope.launch {
+                    if (isFavorite) {
+                        // Remove from favorites
+                        favoritesRepository.removeFavorite(favoriteId)
+                        isFavorite = false
+                        Log.d("ContentCard", "[ContentCard] Favorit entfernt: $favoriteId")
+                    } else {
+                        // Add to favorites
+                        val favorite = contentType.toFavorite()
+                        favoritesRepository.addFavorite(favorite)
+                        isFavorite = true
+                        Log.d("ContentCard", "[ContentCard] Favorit hinzugefügt: $favoriteId")
+                    }
+                }
+            }
         }
     )
 }
@@ -321,24 +413,21 @@ private fun ContentCardInternal(
 fun LiveStreamCard(
     stream: LiveStream,
     onClick: () -> Unit,
+    favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
-    isSelected: Boolean = false,
-    onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null,
-    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+    config: CardConfig = CardConfig()
 ) {
     ContentCardInternal(
-        coverImageUrl = stream.streamIcon,
-        title = stream.name,
-        rating = null,
+        contentInfo = ContentInfo(
+            coverImageUrl = stream.streamIcon,
+            title = stream.name,
+            rating = null
+        ),
         onClick = onClick,
+        favoritesRepository = favoritesRepository,
         modifier = modifier,
-        config = CardConfig(
-            isSelected = isSelected,
-            onFocusChanged = onFocusChanged,
-            onNavigateLeft = onNavigateLeft,
-            focusRequester = focusRequester
-        )
+        config = config,
+        contentType = ContentType.Live(stream)
     )
 }
 
@@ -347,6 +436,7 @@ private fun CardContent(
     coverImageUrl: String?,
     title: String,
     rating: String?,
+    isFavorite: Boolean,
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
     if (!coverImageUrl.isNullOrEmpty()) {
@@ -366,6 +456,13 @@ private fun CardContent(
                     contentScale = ContentScale.Crop
                 )
                 
+                // Favorite badge at top left
+                if (isFavorite) {
+                    FavoriteBadge(
+                        modifier = Modifier.align(Alignment.TopStart)
+                    )
+                }
+                
                 // Rating badge at top right
                 if (rating != null) {
                     RatingBadge(
@@ -384,6 +481,39 @@ private fun CardContent(
     } else {
         // Fallback to text-only card
         buildTextFallback(title, colors)
+    }
+}
+
+@Composable
+private fun FavoriteBadge(
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .padding(
+                top = Dimensions.contentCardRatingBadgeTop,
+                start = Dimensions.contentCardRatingBadgeRight
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .background(
+                    color = ContentCardBgColor.copy(alpha = Dimensions.contentCardRatingBgAlpha),
+                    shape = RoundedCornerShape(Dimensions.radiusSM)
+                )
+                .padding(
+                    horizontal = Dimensions.contentCardRatingBadgePaddingH,
+                    vertical = Dimensions.contentCardRatingBadgePaddingV
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Star,
+                contentDescription = "Favorit",
+                modifier = Modifier.size(Dimensions.contentCardRatingIconSize),
+                tint = SharedColors.contentCardRatingIconColor
+            )
+        }
     }
 }
 

@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -48,29 +49,39 @@ sealed class HomeDestination {
     object Settings : HomeDestination()
 }
 
+private data class NavItem(
+    val title: String,
+    val icon: ImageVector,
+    val destination: HomeDestination
+)
+
 @Composable
 fun HomeSidebar(
     selectedDestination: HomeDestination,
     onNavigate: (HomeDestination) -> Unit,
     focusRequester: FocusRequester,
+    externalFocusRequested: Boolean = false,
     onNavigateRight: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = appColors()
     
-    // Create individual focus requesters for each item
-    val tvFocusRequester = remember { FocusRequester() }
-    val moviesFocusRequester = remember { FocusRequester() }
-    val seriesFocusRequester = remember { FocusRequester() }
-    val epgFocusRequester = remember { FocusRequester() }
-    val settingsFocusRequester = remember { FocusRequester() }
+    val navItems = remember {
+        listOf(
+            NavItem("TV", Icons.Default.Tv, HomeDestination.LiveTV),
+            NavItem("Movies", Icons.Default.Movie, HomeDestination.VOD),
+            NavItem("Series", Icons.Default.PlayArrow, HomeDestination.Series),
+            NavItem("EPG", Icons.Default.Schedule, HomeDestination.EPG),
+            NavItem("Settings", Icons.Default.Settings, HomeDestination.Settings)
+        )
+    }
     
-    // Track which item should receive focus
+    val focusRequesters = remember(navItems.size) {
+        List(navItems.size) { FocusRequester() }
+    }
+    
     var pendingFocusDestination by remember { mutableStateOf<HomeDestination?>(null) }
     
-    // Set focus on selected item when destination changes
-    // This ensures that when a user clicks on "Movies" or navigates to a different tab,
-    // the focus is set to the correct item in the navbar
     LaunchedEffect(selectedDestination) {
         pendingFocusDestination = selectedDestination
     }
@@ -81,26 +92,8 @@ fun HomeSidebar(
             .fillMaxHeight()
             .background(SharedColors.navSidebarBg)
     ) {
-        // Logo at top
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    top = Dimensions.navbarLogoTopPadding,
-                    bottom = Dimensions.navbarLogoBottomPadding
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            // Logo placeholder - replace with actual logo when available
-            Icon(
-                imageVector = Icons.Default.Tv,
-                contentDescription = "Logo",
-                modifier = Modifier.size(Dimensions.navbarLogoSize),
-                tint = Color.White
-            )
-        }
+        NavbarLogo()
         
-        // Main navigation sections
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -112,76 +105,60 @@ fun HomeSidebar(
                 Spacer(modifier = Modifier.height(Dimensions.spacingSM))
             }
             
-            item {
+            items(navItems.size) { index ->
+                val navItem = navItems[index]
                 HomeSidebarItem(
-                    title = "TV",
-                    icon = Icons.Default.Tv,
-                    destination = HomeDestination.LiveTV,
+                    title = navItem.title,
+                    icon = navItem.icon,
+                    destination = navItem.destination,
                     selectedDestination = selectedDestination,
                     pendingFocusDestination = pendingFocusDestination,
-                    onClick = { onNavigate(HomeDestination.LiveTV) },
+                    onClick = { onNavigate(navItem.destination) },
                     colors = colors,
-                    focusRequester = tvFocusRequester,
-                    onNavigateRight = onNavigateRight
-                )
-            }
-            
-            item {
-                HomeSidebarItem(
-                    title = "Movies",
-                    icon = Icons.Default.Movie,
-                    destination = HomeDestination.VOD,
-                    selectedDestination = selectedDestination,
-                    pendingFocusDestination = pendingFocusDestination,
-                    onClick = { onNavigate(HomeDestination.VOD) },
-                    colors = colors,
-                    focusRequester = moviesFocusRequester,
-                    onNavigateRight = onNavigateRight
-                )
-            }
-            
-            item {
-                HomeSidebarItem(
-                    title = "Series",
-                    icon = Icons.Default.PlayArrow,
-                    destination = HomeDestination.Series,
-                    selectedDestination = selectedDestination,
-                    pendingFocusDestination = pendingFocusDestination,
-                    onClick = { onNavigate(HomeDestination.Series) },
-                    colors = colors,
-                    focusRequester = seriesFocusRequester,
-                    onNavigateRight = onNavigateRight
-                )
-            }
-            
-            item {
-                HomeSidebarItem(
-                    title = "EPG",
-                    icon = Icons.Default.Schedule,
-                    destination = HomeDestination.EPG,
-                    selectedDestination = selectedDestination,
-                    pendingFocusDestination = pendingFocusDestination,
-                    onClick = { onNavigate(HomeDestination.EPG) },
-                    colors = colors,
-                    focusRequester = epgFocusRequester,
-                    onNavigateRight = onNavigateRight
-                )
-            }
-            
-            item {
-                HomeSidebarItem(
-                    title = "Settings",
-                    icon = Icons.Default.Settings,
-                    destination = HomeDestination.Settings,
-                    selectedDestination = selectedDestination,
-                    pendingFocusDestination = pendingFocusDestination,
-                    onClick = { onNavigate(HomeDestination.Settings) },
-                    colors = colors,
-                    focusRequester = settingsFocusRequester,
+                    focusRequester = focusRequesters[index],
+                    externalFocusRequester = getExternalFocusRequester(
+                        selectedDestination = selectedDestination,
+                        destination = navItem.destination,
+                        externalFocusRequested = externalFocusRequested,
+                        focusRequester = focusRequester
+                    ),
                     onNavigateRight = onNavigateRight
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun NavbarLogo() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                top = Dimensions.navbarLogoTopPadding,
+                bottom = Dimensions.navbarLogoBottomPadding
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.Tv,
+            contentDescription = "Logo",
+            modifier = Modifier.size(Dimensions.navbarLogoSize),
+            tint = Color.White
+        )
+    }
+}
+
+private fun getExternalFocusRequester(
+    selectedDestination: HomeDestination,
+    destination: HomeDestination,
+    externalFocusRequested: Boolean,
+    focusRequester: FocusRequester
+): FocusRequester? {
+    return if (selectedDestination == destination && externalFocusRequested) {
+        focusRequester
+    } else {
+        null
     }
 }
 
@@ -196,6 +173,7 @@ fun HomeSidebarItem(
     colors: com.flintr.tv.ui.theme.AppColors,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
+    externalFocusRequester: FocusRequester? = null,
     onNavigateRight: (() -> Unit)? = null
 ) {
     val isSelected = destination == selectedDestination
@@ -245,8 +223,11 @@ fun HomeSidebarItem(
         modifier = modifier
             .fillMaxWidth()
             // Correct order: focusRequester -> onGloballyPositioned -> onFocusChanged -> focusable -> key handlers
+            // Apply external focusRequester if provided (for selected item), otherwise use internal one
             .then(
-                if (focusRequester != null) {
+                if (externalFocusRequester != null) {
+                    Modifier.focusRequester(externalFocusRequester)
+                } else if (focusRequester != null) {
                     Modifier.focusRequester(focusRequester)
                 } else {
                     Modifier
