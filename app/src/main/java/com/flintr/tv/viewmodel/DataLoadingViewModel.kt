@@ -249,68 +249,28 @@ class DataLoadingViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 updateStepStatus(stepIndex, LoadingStatus.Loading, errorMessage = null)
-                
-                when (stepIndex) {
-                    0 -> {
-                        // Load Live Streams
-                        val liveStreamsResult = repository.loadLiveStreamsFromApi(credentials.username, credentials.password)
-                        val liveCategoriesResult = repository.getLiveCategories(credentials.username, credentials.password)
-                        
-                        val liveStreams = liveStreamsResult.getOrElse {
-                            handleStepError(stepIndex, it)
-                            return@launch
-                        }
-                        
-                        val liveCategories = liveCategoriesResult.getOrNull() ?: emptyList()
-                        updateStepStatus(stepIndex, LoadingStatus.Success, liveStreams.size)
-                        
-                        // Update cache if other steps are also loaded
-                        updateCacheIfComplete(liveStreams, liveCategories)
-                    }
-                    1 -> {
-                        // Load VOD Streams
-                        val vodStreamsResult = repository.loadVodStreamsFromApi(credentials.username, credentials.password)
-                        val vodCategoriesResult = repository.getVodCategories(credentials.username, credentials.password)
-                        
-                        val vodStreams = vodStreamsResult.getOrElse {
-                            handleStepError(stepIndex, it)
-                            return@launch
-                        }
-                        
-                        val vodCategories = vodCategoriesResult.getOrNull() ?: emptyList()
-                        updateStepStatus(stepIndex, LoadingStatus.Success, vodStreams.size)
-                        
-                        // Update cache if other steps are also loaded
-                        updateCacheIfComplete(vodStreams = vodStreams, vodCategories = vodCategories)
-                    }
-                    2 -> {
-                        // Load Series
-                        val seriesResult = repository.loadSeriesFromApi(credentials.username, credentials.password)
-                        val seriesCategoriesResult = repository.getSeriesCategories(credentials.username, credentials.password)
-                        
-                        val series = seriesResult.getOrElse {
-                            handleStepError(stepIndex, it)
-                            return@launch
-                        }
-                        
-                        val seriesCategories = seriesCategoriesResult.getOrNull() ?: emptyList()
-                        updateStepStatus(stepIndex, LoadingStatus.Success, series.size)
-                        
-                        // Update cache if other steps are also loaded
-                        updateCacheIfComplete(series = series, seriesCategories = seriesCategories)
-                    }
+
+                val result = when (stepIndex) {
+                    0 -> repository.loadLiveStreamsFromApi(credentials.username, credentials.password)
+                    1 -> repository.loadVodStreamsFromApi(credentials.username, credentials.password)
+                    2 -> repository.loadSeriesFromApi(credentials.username, credentials.password)
+                    else -> Result.failure(IllegalArgumentException("Invalid step index: $stepIndex"))
                 }
-                
+
+                result.onSuccess { data ->
+                    updateStepStatus(stepIndex, LoadingStatus.Success, data.size)
+                }.onFailure { error ->
+                    handleStepError(stepIndex, error)
+                    return@launch
+                }
+
                 // Update overall progress
                 val completedSteps = _uiState.value.steps.count { it.status == LoadingStatus.Success }
                 updateProgress(completedSteps, _uiState.value.steps.size)
-                
-                // Check if all steps are complete
+
+                // If all steps are now complete, gather all data and save to cache
                 if (_uiState.value.steps.all { it.status == LoadingStatus.Success }) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        loadingComplete = true
-                    )
+                    saveAllDataToCacheAndFinalize()
                 }
             } catch (e: Exception) {
                 Log.e("DataLoadingViewModel", "Error retrying step $stepIndex", e)
@@ -319,44 +279,45 @@ class DataLoadingViewModel @Inject constructor(
         }
     }
 
-    private suspend fun updateCacheIfComplete(
-        liveStreams: List<LiveStream>? = null,
-        liveCategories: List<Category>? = null,
-        vodStreams: List<VodStream>? = null,
-        vodCategories: List<Category>? = null,
-        series: List<Series>? = null,
-        seriesCategories: List<Category>? = null
-    ) {
-        // Get current cached data or use provided data
-        val currentCachedData = _uiState.value.cachedData
-        val finalLiveStreams = liveStreams ?: currentCachedData?.channels ?: emptyList()
-        val finalLiveCategories = liveCategories ?: currentCachedData?.liveCategories ?: emptyList()
-        val finalVodStreams = vodStreams ?: currentCachedData?.movies ?: emptyList()
-        val finalVodCategories = vodCategories ?: currentCachedData?.vodCategories ?: emptyList()
-        val finalSeries = series ?: currentCachedData?.series ?: emptyList()
-        val finalSeriesCategories = seriesCategories ?: currentCachedData?.seriesCategories ?: emptyList()
-        
-        // Save to cache
+    /**
+     * Saves all data to cache and finalizes the loading process.
+     * This should only be called when all loading steps are confirmed to be successful.
+     * It gathers all data from the repository's in-memory cache and writes the complete dataset to storage.
+     */
+    private suspend fun saveAllDataToCacheAndFinalize() {
+        val credentials = credentialsRepository.getCredentials() ?: return
+
+        // Since all steps are successful, their data is in the repository's in-memory cache
+        val liveStreams = repository.getLiveStreams(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val liveCategories = repository.getLiveCategories(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val vodStreams = repository.getVodStreams(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val vodCategories = repository.getVodCategories(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val series = repository.getSeries(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val seriesCategories = repository.getSeriesCategories(credentials.username, credentials.password).getOrNull() ?: emptyList()
+
+        val cachedData = CachedData(
+            channels = liveStreams,
+            movies = vodStreams,
+            series = series,
+            liveCategories = liveCategories,
+            vodCategories = vodCategories,
+            seriesCategories = seriesCategories
+        )
+
         cacheService.saveCachedData(
-            channels = finalLiveStreams,
-            movies = finalVodStreams,
-            series = finalSeries,
-            liveCategories = finalLiveCategories,
-            vodCategories = finalVodCategories,
-            seriesCategories = finalSeriesCategories
+            channels = cachedData.channels,
+            movies = cachedData.movies,
+            series = cachedData.series,
+            liveCategories = cachedData.liveCategories,
+            vodCategories = cachedData.vodCategories,
+            seriesCategories = cachedData.seriesCategories
         )
-        
-        // Update cached data in state
-        val updatedCachedData = CachedData(
-            channels = finalLiveStreams,
-            movies = finalVodStreams,
-            series = finalSeries,
-            liveCategories = finalLiveCategories,
-            vodCategories = finalVodCategories,
-            seriesCategories = finalSeriesCategories
+
+        _uiState.value = _uiState.value.copy(
+            cachedData = cachedData,
+            isLoading = false,
+            loadingComplete = true
         )
-        
-        _uiState.value = _uiState.value.copy(cachedData = updatedCachedData)
     }
 }
 
