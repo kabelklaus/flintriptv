@@ -14,6 +14,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,14 +37,15 @@ import androidx.compose.material.icons.filled.Star
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.Image
+import android.util.Log
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.utils.ContentParser
 
 // Content Card dimensions (from Flutter AppTheme)
@@ -133,7 +135,23 @@ private fun ContentCardInternal(
     config: CardConfig = CardConfig()
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var longPressDetected by remember { mutableStateOf(false) }
     val colors = appColors()
+    
+    // Log menu state changes
+    LaunchedEffect(showMenu) {
+        Log.d("ContentCard", "[ContentCard] Card '$title' - showMenu State geändert: $showMenu")
+    }
+    
+    // Reset longPressDetected flag after a short delay
+    LaunchedEffect(longPressDetected) {
+        if (longPressDetected) {
+            kotlinx.coroutines.delay(100)
+            Log.d("ContentCard", "[ContentCard] Card '$title' - Reset longPressDetected Flag")
+            longPressDetected = false
+        }
+    }
     
     // Border color with animation
     val borderColor by animateColorAsState(
@@ -208,8 +226,34 @@ private fun ContentCardInternal(
                 onUp = null, // Let Compose handle standard navigation
                 onDown = null // Let Compose handle standard navigation
             )
-            .onDpadCenter(onClick)
-            .clickable { onClick() },
+            .onLongPress(
+                onLongPress = {
+                    Log.d("ContentCard", "[ContentCard] Card '$title' - Long-Press Callback erhalten!")
+                    Log.d("ContentCard", "[ContentCard] Setze longPressDetected = true")
+                    longPressDetected = true
+                    Log.d("ContentCard", "[ContentCard] Setze showMenu = true")
+                    showMenu = true
+                },
+                onNormalClick = {
+                    if (showMenu) {
+                        Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() blockiert - Menü ist offen")
+                    } else {
+                        Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() aufgerufen (Timer abgebrochen)")
+                        onClick()
+                    }
+                }
+            )
+            .clickable { 
+                // Fallback for mouse/touch clicks (not D-Pad)
+                if (showMenu) {
+                    Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() blockiert - Menü ist offen")
+                } else if (longPressDetected) {
+                    Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() verhindert (Long-Press wurde erkannt)")
+                } else {
+                    Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() aufgerufen (normaler Click)")
+                    onClick() 
+                }
+            },
         shape = RoundedCornerShape(ContentCardBorderRadius),
         colors = CardDefaults.cardColors(
             containerColor = backgroundColor
@@ -222,6 +266,21 @@ private fun ContentCardInternal(
             colors = colors
         )
     }
+    
+    // Menu dialog
+    ContentCardMenu(
+        isOpen = showMenu,
+        onDismiss = {
+            Log.d("ContentCard", "[ContentCard] Card '$title' - Menü onDismiss() aufgerufen")
+            Log.d("ContentCard", "[ContentCard] Setze showMenu = false")
+            showMenu = false
+        },
+        onOptionSelected = { index ->
+            Log.d("ContentCard", "[ContentCard] Card '$title' - Option $index wurde ausgewählt")
+            // Handle menu option selection
+            // TODO: Implement specific actions for each option
+        }
+    )
 }
 
 @Composable
