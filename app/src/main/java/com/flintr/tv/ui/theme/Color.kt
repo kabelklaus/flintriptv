@@ -14,8 +14,10 @@ object SharedColors {
     
     // Semantic colors
     val blocked = Color(0xFFEF4444)
+    val error = Color(0xFFEF4444) // Error color (same as blocked)
     val proBadge = Color(0xFF9334E6)
     val success = Color(0xFF4CAF50)
+    val successGreen = Color(0xFF10B981) // Success green for updates
     
     // Avatar colors
     val avatarPlaceholder = Color(0xFF9AA0A6)
@@ -86,6 +88,8 @@ object LightColors {
     val dangerBorder = Color(0xFFFECACA)
     val dangerText = Color(0xFF7F1D1D)
     val successColor = SharedColors.success
+    val errorColor = SharedColors.error
+    val successGreen = SharedColors.successGreen
     
     // Button colors
     val buttonPrimary = SharedColors.primary
@@ -170,6 +174,8 @@ object DarkColors {
     val dangerBorder = Color(0x73F87171) // rgba(248, 113, 113, 0.45)
     val dangerText = Color(0xFFFECACA)
     val successColor = SharedColors.success
+    val errorColor = SharedColors.error
+    val successGreen = SharedColors.successGreen
     
     // Button colors
     val buttonPrimary = SharedColors.primary

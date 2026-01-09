@@ -4,7 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.flowOn
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -92,7 +92,7 @@ class UpdateDownloadService @Inject constructor(
             outputFile.delete()
             emit(DownloadProgress(0, 0, false, e))
         }
-    }
+    }.flowOn(Dispatchers.IO)
     
     fun getDownloadedApkFile(version: String): File? {
         val fileName = "app-v$version.apk"

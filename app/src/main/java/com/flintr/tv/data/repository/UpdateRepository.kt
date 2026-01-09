@@ -11,51 +11,46 @@ class UpdateRepository @Inject constructor(
     private val gitHubApiService: GitHubApiService
 ) {
     
-    suspend fun checkForUpdates(currentVersion: String): UpdateInfo? {
-        return try {
-            val response = gitHubApiService.getLatestRelease(
-                owner = BuildConfig.GITHUB_REPO_OWNER,
-                repo = BuildConfig.GITHUB_REPO_NAME
-            )
-            
-            if (response.isSuccessful && response.body() != null) {
-                val release = response.body()!!
-                
-                // Skip pre-releases
-                if (release.prerelease) {
-                    return UpdateInfo(
-                        hasUpdate = false,
-                        stableVersion = null,
-                        betaVersion = null,
-                        downloadUrl = null
-                    )
-                }
-                
-                // Extract version from tag (remove 'v' prefix if present)
-                val releaseVersion = release.tagName.removePrefix("v")
-                
-                // Compare versions
-                val hasUpdate = compareVersions(currentVersion, releaseVersion) < 0
-                
-                // Find APK asset
-                val apkAsset = release.assets.firstOrNull { asset ->
-                    asset.name.endsWith(".apk", ignoreCase = true) &&
-                    asset.contentType == "application/vnd.android.package-archive"
-                }
-                
-                UpdateInfo(
-                    hasUpdate = hasUpdate,
-                    stableVersion = if (hasUpdate) releaseVersion else null,
-                    betaVersion = null,
-                    downloadUrl = apkAsset?.browserDownloadUrl
-                )
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
+    suspend fun checkForUpdates(currentVersion: String): UpdateInfo {
+        val response = gitHubApiService.getLatestRelease(
+            owner = BuildConfig.GITHUB_REPO_OWNER,
+            repo = BuildConfig.GITHUB_REPO_NAME
+        )
+        
+        if (!response.isSuccessful || response.body() == null) {
+            throw Exception("Failed to fetch release: HTTP ${response.code()}")
         }
+        
+        val release = response.body()!!
+        
+        // Skip pre-releases
+        if (release.prerelease) {
+            return UpdateInfo(
+                hasUpdate = false,
+                stableVersion = null,
+                betaVersion = null,
+                downloadUrl = null
+            )
+        }
+        
+        // Extract version from tag (remove 'v' prefix if present)
+        val releaseVersion = release.tagName.removePrefix("v")
+        
+        // Compare versions
+        val hasUpdate = compareVersions(currentVersion, releaseVersion) < 0
+        
+        // Find APK asset
+        val apkAsset = release.assets.firstOrNull { asset ->
+            asset.name.endsWith(".apk", ignoreCase = true) &&
+            asset.contentType == "application/vnd.android.package-archive"
+        }
+        
+        return UpdateInfo(
+            hasUpdate = hasUpdate,
+            stableVersion = if (hasUpdate) releaseVersion else null,
+            betaVersion = null,
+            downloadUrl = apkAsset?.browserDownloadUrl
+        )
     }
     
     /**

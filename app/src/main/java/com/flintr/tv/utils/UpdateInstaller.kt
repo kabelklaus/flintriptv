@@ -5,10 +5,10 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileInputStream
-import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,7 +31,7 @@ class UpdateInstaller @Inject constructor(
                 installWithIntent(apkFile)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("UpdateInstaller", "Failed to install APK", e)
             false
         }
     }
@@ -57,7 +57,7 @@ class UpdateInstaller @Inject constructor(
             context.startActivity(intent)
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("UpdateInstaller", "Failed to install APK", e)
             false
         }
     }
@@ -106,7 +106,7 @@ class UpdateInstaller @Inject constructor(
             
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("UpdateInstaller", "Failed to install APK with PackageInstaller", e)
             // Fallback to Intent method
             installWithIntent(apkFile)
         }

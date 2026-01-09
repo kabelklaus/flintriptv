@@ -21,6 +21,15 @@ class UpdateViewModel @Inject constructor(
     val installer: UpdateInstaller
 ) : ViewModel() {
     
+    companion object {
+        // Error messages - defined as constants for maintainability
+        // TODO: Consider using a StringProvider via DI for localization support
+        private const val ERROR_CHECKING_UPDATES = "Fehler beim Prüfen auf Updates: %s"
+        private const val ERROR_DOWNLOAD = "Download-Fehler: %s"
+        private const val ERROR_INSTALLATION_FAILED = "Installation fehlgeschlagen"
+        private const val ERROR_APK_NOT_FOUND = "APK-Datei nicht gefunden"
+    }
+    
     private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
     val updateInfo: StateFlow<UpdateInfo?> = _updateInfo.asStateFlow()
     
@@ -42,7 +51,7 @@ class UpdateViewModel @Inject constructor(
                 val info = updateRepository.checkForUpdates(currentVersion)
                 _updateInfo.value = info
             } catch (e: Exception) {
-                _errorMessage.value = "Fehler beim Prüfen auf Updates: ${e.message}"
+                _errorMessage.value = String.format(ERROR_CHECKING_UPDATES, e.message ?: "Unknown error")
             } finally {
                 _isCheckingUpdates.value = false
             }
@@ -61,7 +70,7 @@ class UpdateViewModel @Inject constructor(
                     // Install automatically after download
                     installUpdate(version)
                 } else if (progress.error != null) {
-                    _errorMessage.value = "Download-Fehler: ${progress.error.message}"
+                    _errorMessage.value = String.format(ERROR_DOWNLOAD, progress.error.message ?: "Unknown error")
                 }
             }
         }
@@ -73,10 +82,10 @@ class UpdateViewModel @Inject constructor(
             if (apkFile != null) {
                 val success = installer.installApk(apkFile)
                 if (!success) {
-                    _errorMessage.value = "Installation fehlgeschlagen"
+                    _errorMessage.value = ERROR_INSTALLATION_FAILED
                 }
             } else {
-                _errorMessage.value = "APK-Datei nicht gefunden"
+                _errorMessage.value = ERROR_APK_NOT_FOUND
             }
         }
     }

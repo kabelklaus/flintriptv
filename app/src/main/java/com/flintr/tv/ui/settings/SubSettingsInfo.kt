@@ -25,8 +25,10 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import android.util.Log
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
@@ -34,7 +36,6 @@ import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.flintr.tv.data.model.UpdateInfo
 import com.flintr.tv.viewmodel.UpdateViewModel
@@ -51,7 +52,6 @@ fun SettingsInfo(
     val colors = appColors()
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    val coroutineScope = rememberCoroutineScope()
     
     // Package info state
     var packageInfo by remember { mutableStateOf<PackageInfoData?>(null) }
@@ -99,7 +99,7 @@ fun SettingsInfo(
             ) {
                 // Version Section
                 SettingsCard(
-                    title = "Version",
+                    title = stringResource(R.string.version),
                     icon = Icons.Default.Info,
                     colors = colors
                 ) {
@@ -108,28 +108,28 @@ fun SettingsInfo(
                     ) {
                         packageInfo?.let { info ->
                             InfoRow(
-                                label = "App Name",
+                                label = stringResource(R.string.app_name_label),
                                 value = info.appName,
                                 colors = colors
                             )
                             InfoRow(
-                                label = "Version",
+                                label = stringResource(R.string.version_label),
                                 value = info.versionName,
                                 colors = colors
                             )
                             InfoRow(
-                                label = "Build Number",
+                                label = stringResource(R.string.build_number),
                                 value = info.versionCode.toString(),
                                 colors = colors
                             )
                             InfoRow(
-                                label = "Package Name",
+                                label = stringResource(R.string.package_name),
                                 value = info.packageName,
                                 colors = colors
                             )
                         } ?: run {
                             Text(
-                                text = "Lade Informationen...",
+                                text = stringResource(R.string.loading_info),
                                 fontSize = FontSizes.fontSizeXL,
                                 color = colors.textSecondary
                             )
@@ -139,7 +139,7 @@ fun SettingsInfo(
                 
                 // Update Section
                 SettingsCard(
-                    title = "Updates",
+                    title = stringResource(R.string.updates),
                     icon = Icons.Default.SystemUpdate,
                     colors = colors
                 ) {
@@ -197,13 +197,13 @@ fun SettingsInfo(
                                 )
                                 Spacer(modifier = Modifier.width(Dimensions.spacingXS))
                                 Text(
-                                    text = "Suche nach Updates...",
+                                    text = stringResource(R.string.checking_for_updates),
                                     fontSize = FontSizes.fontSizeXL,
                                     fontWeight = FontWeight.W600
                                 )
                             } else {
                                 Text(
-                                    text = "Nach Updates suchen",
+                                    text = stringResource(R.string.check_for_updates),
                                     fontSize = FontSizes.fontSizeXL,
                                     fontWeight = FontWeight.W600
                                 )
@@ -214,7 +214,7 @@ fun SettingsInfo(
                         errorMessage?.let { error ->
                             Card(
                                 colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFFEF4444).copy(alpha = 0.1f)
+                                    containerColor = colors.errorColor.copy(alpha = 0.1f)
                                 ),
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(Dimensions.radiusMD)
@@ -229,7 +229,7 @@ fun SettingsInfo(
                                     Icon(
                                         imageVector = Icons.Default.Error,
                                         contentDescription = null,
-                                        tint = Color(0xFFEF4444),
+                                        tint = colors.errorColor,
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Text(
@@ -267,7 +267,7 @@ fun SettingsInfo(
                                                 color = colors.accentColor
                                             )
                                             Text(
-                                                text = "Download: ${(progress.progress * 100).toInt()}%",
+                                                text = stringResource(R.string.download_progress, (progress.progress * 100).toInt()),
                                                 color = colors.textPrimary,
                                                 style = MaterialTheme.typography.bodySmall
                                             )
@@ -287,7 +287,7 @@ fun SettingsInfo(
                             if (info.hasUpdate && info.downloadUrl != null) {
                                 Card(
                                     colors = CardDefaults.cardColors(
-                                        containerColor = Color(0xFF10B981).copy(alpha = 0.1f)
+                                        containerColor = colors.successGreen.copy(alpha = 0.1f)
                                     ),
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(Dimensions.radiusMD)
@@ -305,11 +305,11 @@ fun SettingsInfo(
                                             Icon(
                                                 imageVector = Icons.Default.SystemUpdate,
                                                 contentDescription = null,
-                                                tint = Color(0xFF10B981)
+                                                tint = colors.successGreen
                                             )
                                             Text(
-                                                text = "Updates verfügbar",
-                                                color = Color(0xFF10B981),
+                                                text = stringResource(R.string.updates_available),
+                                                color = colors.successGreen,
                                                 fontWeight = FontWeight.W600,
                                                 style = MaterialTheme.typography.bodyMedium
                                             )
@@ -317,7 +317,7 @@ fun SettingsInfo(
                                         
                                         if (info.stableVersion != null) {
                                             Text(
-                                                text = "Version: ${info.stableVersion}",
+                                                text = stringResource(R.string.version_info, info.stableVersion),
                                                 color = colors.textPrimary,
                                                 style = MaterialTheme.typography.bodySmall
                                             )
@@ -360,7 +360,7 @@ fun SettingsInfo(
                                             contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
                                         ) {
                                             Text(
-                                                text = "Update herunterladen und installieren",
+                                                text = stringResource(R.string.download_and_install_update),
                                                 fontSize = FontSizes.fontSizeXL,
                                                 fontWeight = FontWeight.W600
                                             )
@@ -389,7 +389,7 @@ fun SettingsInfo(
                                             modifier = Modifier.size(20.dp)
                                         )
                                         Text(
-                                            text = "Sie verwenden die neueste Version",
+                                            text = stringResource(R.string.latest_version),
                                             color = colors.textPrimary,
                                             style = MaterialTheme.typography.bodyMedium
                                         )
@@ -402,12 +402,12 @@ fun SettingsInfo(
                 
                 // About Section
                 SettingsCard(
-                    title = "Über",
+                    title = stringResource(R.string.about),
                     icon = Icons.Default.Info,
                     colors = colors
                 ) {
                     Text(
-                        text = "IPTV Player App",
+                        text = stringResource(R.string.app_name_info),
                         fontSize = FontSizes.fontSizeXL,
                         color = colors.textPrimary
                     )
@@ -469,7 +469,7 @@ private suspend fun loadPackageInfo(context: Context): PackageInfoData? = withCo
             }
         )
     } catch (e: Exception) {
-        e.printStackTrace()
+        Log.e("SubSettingsInfo", "Failed to load package info", e)
         null
     }
 }
