@@ -6,6 +6,8 @@ import com.flintr.tv.data.model.*
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
@@ -149,7 +151,11 @@ class DataCacheService @Inject constructor(
         }
     }
 
-    fun loadCachedData(): CachedData? {
+    /**
+     * Internal helper function that loads cached data from SharedPreferences.
+     * This contains the common logic used by both loadCachedData() and loadCachedDataAsync().
+     */
+    private fun loadCachedDataInternal(): CachedData? {
         try {
             val channelsJson = sharedPreferences.getString(KEY_CACHE_CHANNELS, null)
             val moviesJson = sharedPreferences.getString(KEY_CACHE_MOVIES, null)
@@ -192,6 +198,18 @@ class DataCacheService @Inject constructor(
             android.util.Log.e("DataCacheService", "Failed to load cache", e)
             return null
         }
+    }
+
+    fun loadCachedData(): CachedData? {
+        return loadCachedDataInternal()
+    }
+
+    /**
+     * Loads cached data asynchronously on a background thread.
+     * Use this instead of loadCachedData() to avoid blocking the main thread.
+     */
+    suspend fun loadCachedDataAsync(): CachedData? = withContext(Dispatchers.IO) {
+        loadCachedDataInternal()
     }
 
     fun clearCache() {

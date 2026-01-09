@@ -214,6 +214,30 @@ class MainViewModel @Inject constructor(
         _series.value = emptyList()
         _selectedSeries.value = null
     }
+
+    /**
+     * Shows a series from favorites by loading its info and the series list for its category.
+     * Returns the categoryId that should be selected in the UI, or null if the category was not found.
+     */
+    fun showSeriesFromFavorites(series: Series): String? {
+        // Load series info to show episodes
+        loadSeriesInfo(series.seriesId)
+        
+        // Find the category for this series
+        val seriesCategory = _seriesCategories.value.find { 
+            it.categoryId == series.categoryId 
+        }
+        
+        if (seriesCategory == null) {
+            Log.w("MainViewModel", "Category not found for series: ${series.name}, categoryId: ${series.categoryId}")
+            return null
+        }
+        
+        // Load series for this category
+        loadSeries(seriesCategory.categoryId)
+        Log.d("MainViewModel", "Showing series from favorites: ${series.name}, category: ${seriesCategory.categoryName}")
+        return seriesCategory.categoryId
+    }
 }
 
 data class MainUiState(

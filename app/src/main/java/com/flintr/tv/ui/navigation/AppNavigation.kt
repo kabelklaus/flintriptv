@@ -25,6 +25,7 @@ import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
+import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.components.MainLayout
 import com.flintr.tv.ui.screens.DataLoadingScreen
 import com.flintr.tv.ui.screens.EPGContent
@@ -35,6 +36,8 @@ import com.flintr.tv.ui.settings.SettingsScreen
 import com.flintr.tv.ui.tabs.LiveTVContent
 import com.flintr.tv.ui.tabs.VODContent
 import com.flintr.tv.ui.tabs.SeriesContent
+import com.flintr.tv.ui.tabs.FavoritesContent
+import com.flintr.tv.ui.tabs.FavoritesContentParams
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
 
@@ -129,7 +132,8 @@ fun AppNavigation(
                 navController = navController,
                 mainViewModel = mainViewModel,
                 credentialsRepository = credentialsRepository,
-                favoritesRepository = favoritesRepository
+                favoritesRepository = favoritesRepository,
+                cacheService = cacheService
             )
         }
         
@@ -169,6 +173,9 @@ private fun clearStreamsForDestination(
         is HomeDestination.EPG -> {
             // EPG doesn't have streams to clear
         }
+        is HomeDestination.Favorites -> {
+            // Favorites doesn't have streams to clear
+        }
         is HomeDestination.Settings -> {
             // Settings navigates to separate screen, no streams to clear
         }
@@ -180,7 +187,8 @@ fun MainContentScreen(
     navController: NavHostController,
     mainViewModel: MainViewModel,
     credentialsRepository: CredentialsRepository,
-    favoritesRepository: FavoritesRepository
+    favoritesRepository: FavoritesRepository,
+    cacheService: DataCacheService
 ) {
     val credentials = credentialsRepository.getCredentials()
     var selectedDestination by remember { mutableStateOf<HomeDestination>(HomeDestination.LiveTV) }
@@ -201,6 +209,7 @@ fun MainContentScreen(
         is HomeDestination.VOD -> vodCategories
         is HomeDestination.Series -> seriesCategories
         is HomeDestination.EPG -> emptyList()
+        is HomeDestination.Favorites -> emptyList() // Favorites doesn't have categories
         is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
     }
     
@@ -254,25 +263,22 @@ fun MainContentScreen(
         }
     }
     
-    // Set initial focus on Navbar when app starts
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(200) // Small delay to ensure UI is laid out
-        try {
-            navbarFocusRequester.requestFocus()
-            Log.i("TVFocus", "[MainContentScreen] 🎯 Initial focus set to NAVBAR")
-        } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
-        }
+    // Track if initial focus has been set
+    var initialFocusSet by remember { mutableStateOf(false) }
+    var pendingFocusDestination by remember { mutableStateOf<HomeDestination?>(null) }
+    var categorySidebarFocusSet by remember { mutableStateOf(false) }
+    var contentListFocusSet by remember { mutableStateOf(false) }
+    
+    // When destination changes, track which focus should be requested and reset flags
+    LaunchedEffect(selectedDestination) {
+        pendingFocusDestination = selectedDestination
+        categorySidebarFocusSet = false
+        contentListFocusSet = false
     }
     
+    // Set initial focus on Navbar when app starts (via onNavbarReady callback)
     // When destination changes and categories are shown, move focus to CategoryRow
-    LaunchedEffect(selectedDestination) {
-        if (showCategories && sortedCategories.isNotEmpty()) {
-            kotlinx.coroutines.delay(100) // Small delay to ensure UI is laid out
-            moveFocusToCategorySidebar()
-            Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to $selectedDestination, focus moved to CategoryRow")
-        }
-    }
+    // For Favorites (no categories), move focus directly to content list
     
     MainLayout(
         selectedDestination = selectedDestination,
@@ -300,6 +306,48 @@ fun MainContentScreen(
         onNavigateToNavbar = { moveFocusToNavbar() },
         onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
         onNavigateToContentList = { moveFocusToContentList() },
+        onNavbarReady = {
+            // Set initial focus on Navbar when app starts
+            if (!initialFocusSet) {
+                try {
+                    navbarFocusRequester.requestFocus()
+                    initialFocusSet = true
+                    Log.i("TVFocus", "[MainContentScreen] 🎯 Initial focus set to NAVBAR via onGloballyPositioned")
+                } catch (e: IllegalStateException) {
+                    Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
+                }
+            }
+        },
+        onCategorySidebarReady = {
+            // When destination changes and categories are shown, move focus to CategoryRow
+            // Only do this once per destination change to avoid infinite loops
+            if (!categorySidebarFocusSet &&
+                pendingFocusDestination != null && 
+                pendingFocusDestination !is HomeDestination.Favorites &&
+                showCategories && sortedCategories.isNotEmpty()) {
+                try {
+                    moveFocusToCategorySidebar()
+                    categorySidebarFocusSet = true
+                    Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to $pendingFocusDestination, focus moved to CategoryRow via onGloballyPositioned")
+                } catch (e: IllegalStateException) {
+                    Log.w("TVFocus", "[MainContentScreen] ⚠️ CategorySidebar FocusRequester not initialized yet")
+                }
+            }
+        },
+        onContentListReady = {
+            // For Favorites (no categories), move focus directly to content list
+            // Only do this once per destination change to avoid infinite loops
+            if (!contentListFocusSet &&
+                pendingFocusDestination is HomeDestination.Favorites) {
+                try {
+                    moveFocusToContentList()
+                    contentListFocusSet = true
+                    Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to Favorites, focus moved to ContentList via onGloballyPositioned")
+                } catch (e: IllegalStateException) {
+                    Log.w("TVFocus", "[MainContentScreen] ⚠️ ContentList FocusRequester not initialized yet")
+                }
+            }
+        },
         content = {
             when (selectedDestination) {
                 is HomeDestination.LiveTV -> {
@@ -369,6 +417,50 @@ fun MainContentScreen(
                             )
                             navController.navigate(Screen.Player.createRoute(streamUrl))
                         }
+                    )
+                }
+                is HomeDestination.Favorites -> {
+                    val onLiveStreamClick: (LiveStream) -> Unit = { stream ->
+                        val creds = credentials
+                        if (creds != null) {
+                            val streamUrl = stream.getStreamUrl(
+                                creds.serverUrl,
+                                creds.username,
+                                creds.password
+                            )
+                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                        }
+                    }
+                    val onVodClick: (VodStream) -> Unit = { vod ->
+                        val creds = credentials
+                        if (creds != null) {
+                            val streamUrl = vod.getStreamUrl(
+                                creds.serverUrl,
+                                creds.username,
+                                creds.password
+                            )
+                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                        }
+                    }
+                    val onSeriesClick: (Series) -> Unit = { series ->
+                        // Navigate to Series tab
+                        selectedDestination = HomeDestination.Series
+                        // Use ViewModel to handle business logic
+                        val categoryId = mainViewModel.showSeriesFromFavorites(series)
+                        if (categoryId != null) {
+                            selectedCategoryId = categoryId
+                        }
+                    }
+                    FavoritesContent(
+                        params = FavoritesContentParams(
+                            favoritesRepository = favoritesRepository,
+                            cacheService = cacheService,
+                            focusRequester = contentListFocusRequester,
+                            onNavigateLeft = { moveFocusToNavbar() },
+                            onLiveStreamClick = onLiveStreamClick,
+                            onVodClick = onVodClick,
+                            onSeriesClick = onSeriesClick
+                        )
                     )
                 }
                 is HomeDestination.Settings -> {

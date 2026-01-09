@@ -85,6 +85,19 @@ data class CardConfig(
     val focusRequester: androidx.compose.ui.focus.FocusRequester? = null
 )
 
+private data class CardVisualState(
+    val borderColor: Color,
+    val shadowElevation: Float,
+    val isFocused: Boolean
+)
+
+private data class CardInteractionHandlers(
+    val onFocusChanged: (androidx.compose.ui.focus.FocusState) -> Unit,
+    val onLongPress: () -> Unit,
+    val onNormalClick: () -> Unit,
+    val performClick: () -> Unit
+)
+
 private data class ContentInfo(
     val coverImageUrl: String?,
     val title: String,
@@ -172,20 +185,15 @@ private fun buildCardModifier(
     baseModifier: Modifier,
     config: CardConfig,
     colors: com.flintr.tv.ui.theme.AppColors,
-    borderColor: Color,
-    shadowElevation: Float,
-    isFocused: Boolean,
-    onFocusChanged: (androidx.compose.ui.focus.FocusState) -> Unit,
-    onLongPress: () -> Unit,
-    onNormalClick: () -> Unit,
-    performClick: () -> Unit
+    visualState: CardVisualState,
+    handlers: CardInteractionHandlers
 ): Modifier {
     return baseModifier
         .size(width = ContentCardMaxCrossAxisExtent, height = ContentCardHeight)
         .then(
             if (config.isSelected) {
                 Modifier.shadow(
-                    elevation = shadowElevation.dp,
+                    elevation = visualState.shadowElevation.dp,
                     shape = RoundedCornerShape(ContentCardBorderRadius),
                     spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
                     ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
@@ -196,7 +204,7 @@ private fun buildCardModifier(
         )
         .border(
             width = ContentCardBorderWidth,
-            color = borderColor,
+            color = visualState.borderColor,
             shape = RoundedCornerShape(ContentCardBorderRadius)
         )
         .then(
@@ -206,7 +214,7 @@ private fun buildCardModifier(
                 Modifier
             }
         )
-        .onFocusChanged(onFocusChanged)
+        .onFocusChanged(handlers.onFocusChanged)
         .focusable()
         .onDpadDirection(
             onLeft = if (config.onNavigateLeft != null) {
@@ -222,10 +230,10 @@ private fun buildCardModifier(
             onDown = null
         )
         .onLongPress(
-            onLongPress = onLongPress,
-            onNormalClick = onNormalClick
+            onLongPress = handlers.onLongPress,
+            onNormalClick = handlers.onNormalClick
         )
-        .clickable { performClick() }
+        .clickable { handlers.performClick() }
 }
 
 @Composable
@@ -320,32 +328,36 @@ private fun ContentCardInternal(
         baseModifier = modifier,
         config = config,
         colors = colors,
-        borderColor = borderColor,
-        shadowElevation = shadowElevation,
-        isFocused = isFocused,
-        onFocusChanged = { focusState ->
-            val wasFocused = isFocused
-            isFocused = focusState.isFocused
-            if (isFocused != wasFocused) {
-                config.onFocusChanged?.invoke(isFocused)
-            }
-        },
-        onLongPress = {
-            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Long-Press Callback erhalten!")
-            Log.d("ContentCard", "[ContentCard] Setze longPressDetected = true")
-            longPressDetected = true
-            Log.d("ContentCard", "[ContentCard] Setze showMenu = true")
-            showMenu = true
-        },
-        onNormalClick = {
-            if (showMenu) {
-                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - onNormalClick() blockiert - Menü ist offen")
-            } else {
-                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - onNormalClick() aufgerufen (Timer abgebrochen)")
-                performClick()
-            }
-        },
-        performClick = performClick
+        visualState = CardVisualState(
+            borderColor = borderColor,
+            shadowElevation = shadowElevation,
+            isFocused = isFocused
+        ),
+        handlers = CardInteractionHandlers(
+            onFocusChanged = { focusState ->
+                val wasFocused = isFocused
+                isFocused = focusState.isFocused
+                if (isFocused != wasFocused) {
+                    config.onFocusChanged?.invoke(isFocused)
+                }
+            },
+            onLongPress = {
+                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Long-Press Callback erhalten!")
+                Log.d("ContentCard", "[ContentCard] Setze longPressDetected = true")
+                longPressDetected = true
+                Log.d("ContentCard", "[ContentCard] Setze showMenu = true")
+                showMenu = true
+            },
+            onNormalClick = {
+                if (showMenu) {
+                    Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - onNormalClick() blockiert - Menü ist offen")
+                } else {
+                    Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - onNormalClick() aufgerufen (Timer abgebrochen)")
+                    performClick()
+                }
+            },
+            performClick = performClick
+        )
     )
     
     Card(
