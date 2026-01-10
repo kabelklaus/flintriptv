@@ -40,6 +40,7 @@ import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.ui.utils.safeRequestFocus
 
 sealed class HomeDestination {
     object LiveTV : HomeDestination()
@@ -181,10 +182,23 @@ fun HomeSidebarItem(
     val isSelected = destination == selectedDestination
     var isFocused by remember { mutableStateOf(false) }
     var hasRequestedFocus by remember { mutableStateOf(false) }
+    var isPositioned by remember { mutableStateOf(false) }
     
     // Request focus when item is positioned and should receive focus
     LaunchedEffect(pendingFocusDestination) {
         hasRequestedFocus = false
+        isPositioned = false
+    }
+    
+    // Request focus with delay after positioning to ensure FocusRequester is ready
+    LaunchedEffect(isPositioned, pendingFocusDestination) {
+        if (isPositioned && 
+            focusRequester != null && 
+            pendingFocusDestination == destination && 
+            !hasRequestedFocus) {
+            hasRequestedFocus = true
+            focusRequester.safeRequestFocus("[MainNavbar]", destination.toString())
+        }
     }
     
     // Animation for background color
@@ -236,17 +250,11 @@ fun HomeSidebarItem(
                 }
             )
             .onGloballyPositioned {
-                // Request focus when item is positioned and should receive focus
+                // Signal that item is positioned - focus will be requested via LaunchedEffect
                 if (focusRequester != null && 
                     pendingFocusDestination == destination && 
-                    !hasRequestedFocus) {
-                    try {
-                        focusRequester.requestFocus()
-                        hasRequestedFocus = true
-                        Log.i("TVFocus", "[MainNavbar] 🎯 Focus set to selected item via onGloballyPositioned: $destination")
-                    } catch (e: IllegalStateException) {
-                        Log.w("TVFocus", "[MainNavbar] ⚠️ FocusRequester not initialized yet for $destination")
-                    }
+                    !isPositioned) {
+                    isPositioned = true
                 }
             }
             .onFocusChanged { focusState ->

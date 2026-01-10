@@ -40,6 +40,7 @@ import com.flintr.tv.ui.tabs.FavoritesContent
 import com.flintr.tv.ui.tabs.FavoritesContentParams
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
+import com.flintr.tv.ui.utils.safeRequestFocus
 
 sealed class Screen(val route: String) {
     object InitialRouting : Screen("initial_routing")
@@ -54,6 +55,8 @@ sealed class Screen(val route: String) {
         }
     }
 }
+
+private const val LOG_TAG_MAIN_CONTENT_SCREEN = "[MainContentScreen]"
 
 @Composable
 private fun InitialRoutingScreen(
@@ -235,31 +238,31 @@ fun MainContentScreen(
     
     // Focus navigation functions (defined before LaunchedEffect to be available in closures)
     fun moveFocusToNavbar() {
-        Log.i("TVFocus", "[MainContentScreen] 🎯 Requesting focus: NAVBAR")
+        Log.i("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN 🎯 Requesting focus: NAVBAR")
         try {
             navbarFocusRequester.requestFocus()
         } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
+            Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ Navbar FocusRequester not initialized yet")
         }
     }
     
     fun moveFocusToCategorySidebar() {
-        Log.i("TVFocus", "[MainContentScreen] 🎯 Requesting focus: CATEGORY_SIDEBAR")
+        Log.i("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN 🎯 Requesting focus: CATEGORY_SIDEBAR")
         try {
             categorySidebarFocusRequester.requestFocus()
         } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "[MainContentScreen] ⚠️ CategorySidebar FocusRequester not initialized yet")
+            Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ CategorySidebar FocusRequester not initialized yet")
         }
     }
     
     fun moveFocusToContentList() {
-        Log.i("TVFocus", "[MainContentScreen] 🎯 Requesting focus: CONTENT_LIST")
+        Log.i("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN 🎯 Requesting focus: CONTENT_LIST")
         try {
             contentListFocusRequester.requestFocus()
         } catch (e: IllegalStateException) {
             // FocusRequester not yet initialized - this can happen if called before content is loaded
             // The content will request focus automatically when streams are loaded
-            Log.w("TVFocus", "[MainContentScreen] ⚠️ ContentList FocusRequester not initialized yet, will focus when content loads")
+            Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ ContentList FocusRequester not initialized yet, will focus when content loads")
         }
     }
     
@@ -269,11 +272,48 @@ fun MainContentScreen(
     var categorySidebarFocusSet by remember { mutableStateOf(false) }
     var contentListFocusSet by remember { mutableStateOf(false) }
     
+    // State flags to trigger focus requests after components are ready
+    var navbarReady by remember { mutableStateOf(false) }
+    var categorySidebarReady by remember { mutableStateOf(false) }
+    var contentListReady by remember { mutableStateOf(false) }
+    
     // When destination changes, track which focus should be requested and reset flags
     LaunchedEffect(selectedDestination) {
         pendingFocusDestination = selectedDestination
         categorySidebarFocusSet = false
         contentListFocusSet = false
+        categorySidebarReady = false
+        contentListReady = false
+    }
+    
+    // Set initial focus on Navbar when ready
+    LaunchedEffect(navbarReady) {
+        if (navbarReady && !initialFocusSet) {
+            initialFocusSet = true
+            navbarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "NAVBAR")
+        }
+    }
+    
+    // Set focus on CategorySidebar when ready and conditions are met
+    LaunchedEffect(categorySidebarReady, pendingFocusDestination, showCategories, sortedCategories.size) {
+        if (categorySidebarReady && 
+            !categorySidebarFocusSet &&
+            pendingFocusDestination != null && 
+            pendingFocusDestination !is HomeDestination.Favorites &&
+            showCategories && sortedCategories.isNotEmpty()) {
+            categorySidebarFocusSet = true
+            categorySidebarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
+        }
+    }
+    
+    // Set focus on ContentList when ready and conditions are met
+    LaunchedEffect(contentListReady, pendingFocusDestination) {
+        if (contentListReady && 
+            !contentListFocusSet &&
+            pendingFocusDestination is HomeDestination.Favorites) {
+            contentListFocusSet = true
+            contentListFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CONTENT_LIST")
+        }
     }
     
     // Set initial focus on Navbar when app starts (via onNavbarReady callback)
@@ -307,46 +347,16 @@ fun MainContentScreen(
         onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
         onNavigateToContentList = { moveFocusToContentList() },
         onNavbarReady = {
-            // Set initial focus on Navbar when app starts
-            if (!initialFocusSet) {
-                try {
-                    navbarFocusRequester.requestFocus()
-                    initialFocusSet = true
-                    Log.i("TVFocus", "[MainContentScreen] 🎯 Initial focus set to NAVBAR via onGloballyPositioned")
-                } catch (e: IllegalStateException) {
-                    Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
-                }
-            }
+            // Signal that navbar is ready for focus
+            navbarReady = true
         },
         onCategorySidebarReady = {
-            // When destination changes and categories are shown, move focus to CategoryRow
-            // Only do this once per destination change to avoid infinite loops
-            if (!categorySidebarFocusSet &&
-                pendingFocusDestination != null && 
-                pendingFocusDestination !is HomeDestination.Favorites &&
-                showCategories && sortedCategories.isNotEmpty()) {
-                try {
-                    moveFocusToCategorySidebar()
-                    categorySidebarFocusSet = true
-                    Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to $pendingFocusDestination, focus moved to CategoryRow via onGloballyPositioned")
-                } catch (e: IllegalStateException) {
-                    Log.w("TVFocus", "[MainContentScreen] ⚠️ CategorySidebar FocusRequester not initialized yet")
-                }
-            }
+            // Signal that category sidebar is ready for focus
+            categorySidebarReady = true
         },
         onContentListReady = {
-            // For Favorites (no categories), move focus directly to content list
-            // Only do this once per destination change to avoid infinite loops
-            if (!contentListFocusSet &&
-                pendingFocusDestination is HomeDestination.Favorites) {
-                try {
-                    moveFocusToContentList()
-                    contentListFocusSet = true
-                    Log.i("TVFocus", "[MainContentScreen] 🎯 Destination changed to Favorites, focus moved to ContentList via onGloballyPositioned")
-                } catch (e: IllegalStateException) {
-                    Log.w("TVFocus", "[MainContentScreen] ⚠️ ContentList FocusRequester not initialized yet")
-                }
-            }
+            // Signal that content list is ready for focus
+            contentListReady = true
         },
         content = {
             when (selectedDestination) {
