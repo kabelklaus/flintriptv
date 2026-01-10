@@ -510,7 +510,7 @@ private fun handleTouchDown(
     
     // Start long press timer
     touchState.timerStartTime = System.currentTimeMillis()
-        touchState.job = coroutineScope.launch {
+    touchState.job = coroutineScope.launch {
         Log.d("ContentCardLongPress", "[TouchTimer] Timer gestartet, warte ${durationMillis}ms...")
         delay(durationMillis)
         val elapsed = System.currentTimeMillis() - (touchState.timerStartTime ?: 0)
