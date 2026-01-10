@@ -21,16 +21,24 @@ import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.ui.PlayerView
+import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.ui.theme.black
 import com.flintr.tv.viewmodel.PlayerViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
 fun PlayerScreen(
     streamUrl: String,
+    contentType: String,
+    streamId: Int?,
+    seriesId: Int?,
+    episodeId: Int?,
+    title: String?,
     playerViewModel: PlayerViewModel,
+    watchProgressService: WatchProgressService,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -38,6 +46,12 @@ fun PlayerScreen(
     val coroutineScope = rememberCoroutineScope()
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isInitializing by remember { mutableStateOf(true) }
+    var hasRestoredProgress by remember { mutableStateOf(false) }
+    
+    // Log stream info on load
+    LaunchedEffect(streamUrl, contentType, streamId, seriesId, episodeId) {
+        Log.d("PlayerScreen", "Loading stream - contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId, title: $title, streamUrl: $streamUrl")
+    }
     
     val exoPlayer = remember {
         // Configure LoadControl with optimized buffer settings to prevent main thread blocking
@@ -120,6 +134,7 @@ fun PlayerScreen(
                 Log.d("PlayerScreen", "Playback state changed to $stateString")
             }
         }
+        
         exoPlayer.addListener(listener)
 
         // Prepare player asynchronously to avoid blocking main thread
@@ -143,6 +158,80 @@ fun PlayerScreen(
             prepareJob.cancel()
             exoPlayer.removeListener(listener)
             exoPlayer.release()
+        }
+    }
+    
+    // Restore watch progress when player is ready
+    LaunchedEffect(exoPlayer.playbackState) {
+        if (exoPlayer.playbackState == Player.STATE_READY && 
+            !hasRestoredProgress &&
+            contentType != "live" &&
+            ((contentType == "movie" && streamId != null) ||
+             (contentType == "series" && seriesId != null && episodeId != null))) {
+            
+            coroutineScope.launch {
+                val savedPosition = watchProgressService.getProgress(
+                    contentType = contentType,
+                    streamId = streamId,
+                    seriesId = seriesId,
+                    episodeId = episodeId
+                )
+                
+                if (savedPosition != null) {
+                    val duration = exoPlayer.duration
+                    if (duration > 0 && savedPosition < duration) {
+                        Log.d("PlayerScreen", "Restoring watch progress: position=${savedPosition}ms (${savedPosition / 1000}s), duration=${duration}ms (${duration / 1000}s)")
+                        // Wait a bit for player to be fully ready
+                        delay(500)
+                        exoPlayer.seekTo(savedPosition)
+                        hasRestoredProgress = true
+                        Log.d("PlayerScreen", "Watch progress restored successfully")
+                    } else {
+                        Log.d("PlayerScreen", "Skipping progress restore: savedPosition ($savedPosition) >= duration ($duration) or duration invalid")
+                        hasRestoredProgress = true
+                    }
+                } else {
+                    Log.d("PlayerScreen", "No saved progress found for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId")
+                    hasRestoredProgress = true
+                }
+            }
+        }
+    }
+    
+    // Auto-save progress every 10 seconds
+    LaunchedEffect(contentType, streamId, seriesId, episodeId, title) {
+        if (contentType == "live") {
+            return@LaunchedEffect // Skip live streams
+        }
+        
+        if (contentType == "movie" && streamId == null) {
+            return@LaunchedEffect // Skip if required IDs are missing
+        }
+        
+        if (contentType == "series" && (seriesId == null || episodeId == null)) {
+            return@LaunchedEffect // Skip if required IDs are missing
+        }
+        
+        while (true) {
+            delay(10000) // 10 seconds
+            
+            val position = exoPlayer.currentPosition
+            val duration = exoPlayer.duration
+            
+            if (position > 0 && duration > 0) {
+                val titleToSave = title ?: "Unknown"
+                coroutineScope.launch {
+                    watchProgressService.saveProgress(
+                        contentType = contentType,
+                        streamId = streamId,
+                        seriesId = seriesId,
+                        episodeId = episodeId,
+                        position = position,
+                        duration = duration,
+                        title = titleToSave
+                    )
+                }
+            }
         }
     }
 

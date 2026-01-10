@@ -5,6 +5,7 @@ import com.flintr.tv.data.api.GitHubApiService
 import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
+import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.repository.UpdateRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.utils.UpdateDownloadService
@@ -213,6 +214,15 @@ object AppModule {
         @ApplicationContext context: Context
     ): UpdateInstaller {
         return UpdateInstaller(context)
+    }
+    
+    @Provides
+    @Singleton
+    fun provideWatchProgressService(
+        @ApplicationContext context: Context,
+        moshi: Moshi
+    ): WatchProgressService {
+        return WatchProgressService(context, moshi)
     }
 }
 
