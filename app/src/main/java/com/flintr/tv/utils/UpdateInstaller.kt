@@ -2,13 +2,11 @@ package com.flintr.tv.utils
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.content.FileProvider
 import java.io.File
-import java.io.FileInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,18 +20,9 @@ class UpdateInstaller @Inject constructor(
             return false
         }
         
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Use PackageInstaller for Android 8.0+
-                installWithPackageInstaller(apkFile)
-            } else {
-                // Use Intent for older versions
-                installWithIntent(apkFile)
-            }
-        } catch (e: Exception) {
-            Log.e("UpdateInstaller", "Failed to install APK", e)
-            false
-        }
+        // Always use Intent-based installation to show system installation dialog
+        // PackageInstaller is for silent installations (requires special permissions)
+        return installWithIntent(apkFile)
     }
     
     private fun installWithIntent(apkFile: File): Boolean {
@@ -59,56 +48,6 @@ class UpdateInstaller @Inject constructor(
         } catch (e: Exception) {
             Log.e("UpdateInstaller", "Failed to install APK", e)
             false
-        }
-    }
-    
-    @Suppress("DEPRECATION")
-    private fun installWithPackageInstaller(apkFile: File): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-            return installWithIntent(apkFile)
-        }
-        
-        return try {
-            val packageInstaller = context.packageManager.packageInstaller
-            val sessionParams = PackageInstaller.SessionParams(
-                PackageInstaller.SessionParams.MODE_FULL_INSTALL
-            )
-            
-            val sessionId = packageInstaller.createSession(sessionParams)
-            val session = packageInstaller.openSession(sessionId)
-            
-            val inputStream = FileInputStream(apkFile)
-            val outputStream = session.openWrite("package", 0, -1)
-            
-            val buffer = ByteArray(65536)
-            var bytesRead: Int
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                outputStream.write(buffer, 0, bytesRead)
-            }
-            
-            session.fsync(outputStream)
-            inputStream.close()
-            outputStream.close()
-            
-            // Create install intent (optional - installation works without receiver)
-            val intent = Intent("com.flintr.tv.INSTALL_COMPLETE").apply {
-                setPackage(context.packageName)
-            }
-            val pendingIntent = android.app.PendingIntent.getBroadcast(
-                context,
-                0,
-                intent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-            )
-            
-            session.commit(pendingIntent.intentSender)
-            session.close()
-            
-            true
-        } catch (e: Exception) {
-            Log.e("UpdateInstaller", "Failed to install APK with PackageInstaller", e)
-            // Fallback to Intent method
-            installWithIntent(apkFile)
         }
     }
 }

@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -35,7 +34,7 @@ import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onDpadCenter
+import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.viewmodel.MainViewModel
 
 data class SeriesItemConfig(
@@ -247,8 +246,7 @@ fun EpisodeCard(
                 isFocused = focusState.isFocused
             }
             .focusable()
-            .onDpadCenter(onClick)
-            .clickable { onClick() }
+            .onClick(onClick)
             .padding(8.dp),
         contentAlignment = Alignment.Center
     ) {

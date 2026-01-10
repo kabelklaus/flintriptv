@@ -1,5 +1,6 @@
 package com.flintr.tv.ui.utils
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.*
@@ -18,9 +19,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Utility functions for TV focus handling
+ * Utility functions for TV and touch interaction handling
  */
-object TVFocusUtils {
+object InteractionUtils {
     
     /**
      * Get readable key name for logging
@@ -140,6 +141,67 @@ fun Modifier.onDpadCenter(
 }
 
 /**
+ * Unified modifier for handling clicks from both Key (D-Pad Center/Enter) and Touch events
+ * This is the recommended way to handle clicks in TV apps that also support touch displays
+ * 
+ * @param onClick Called when the component is clicked via Key or Touch
+ * @param enabled Whether the click handler is enabled (default: true)
+ */
+fun Modifier.onClick(
+    onClick: () -> Unit,
+    enabled: Boolean = true
+): Modifier {
+    return if (enabled) {
+        this
+            .onDpadCenter(onClick)
+            .clickable(onClick = onClick)
+    } else {
+        this
+    }
+}
+
+/**
+ * Data class for D-Pad direction handlers
+ */
+private data class DpadHandlers(
+    val onLeft: (() -> Boolean)? = null,
+    val onRight: (() -> Boolean)? = null,
+    val onUp: (() -> Boolean)? = null,
+    val onDown: (() -> Boolean)? = null
+) {
+    fun hasAnyHandler(): Boolean {
+        return onLeft != null || onRight != null || onUp != null || onDown != null
+    }
+}
+
+/**
+ * Handle a single D-Pad key event
+ */
+private fun handleDpadKeyEvent(
+    key: Key,
+    handlers: DpadHandlers
+): Boolean {
+    return when (key) {
+        Key.DirectionLeft -> invokeHandler(handlers.onLeft, "D-Pad Left pressed")
+        Key.DirectionRight -> invokeHandler(handlers.onRight, "D-Pad Right pressed")
+        Key.DirectionUp -> invokeHandler(handlers.onUp, "D-Pad Up pressed")
+        Key.DirectionDown -> invokeHandler(handlers.onDown, "D-Pad Down pressed")
+        else -> false
+    }
+}
+
+/**
+ * Invoke a D-Pad handler if it exists
+ */
+private fun invokeHandler(handler: (() -> Boolean)?, logMessage: String): Boolean {
+    if (handler == null) {
+        return false
+    }
+    Log.d("TVFocusUtils", logMessage)
+    return handler.invoke()
+}
+
+/**
  * Modifier for handling D-Pad direction keys (Left, Right, Up, Down)
  * Returns true if the key event was handled, false otherwise
  * 
@@ -153,57 +215,21 @@ fun Modifier.onDpadDirection(
     onUp: (() -> Boolean)? = null,
     onDown: (() -> Boolean)? = null
 ): Modifier {
-    // Only apply onKeyEvent if at least one handler is provided
-    val hasHandlers = onLeft != null || onRight != null || onUp != null || onDown != null
+    val handlers = DpadHandlers(onLeft, onRight, onUp, onDown)
     
-    return if (hasHandlers) {
-        this.onKeyEvent { event ->
-            if (event.type == KeyEventType.KeyDown) {
-                val handled = when (event.key) {
-                    Key.DirectionLeft -> {
-                        if (onLeft != null) {
-                            Log.d("TVFocusUtils", "D-Pad Left pressed")
-                            onLeft.invoke()
-                        } else {
-                            false
-                        }
-                    }
-                    Key.DirectionRight -> {
-                        if (onRight != null) {
-                            Log.d("TVFocusUtils", "D-Pad Right pressed")
-                            onRight.invoke()
-                        } else {
-                            false
-                        }
-                    }
-                    Key.DirectionUp -> {
-                        if (onUp != null) {
-                            Log.d("TVFocusUtils", "D-Pad Up pressed")
-                            onUp.invoke()
-                        } else {
-                            false
-                        }
-                    }
-                    Key.DirectionDown -> {
-                        if (onDown != null) {
-                            Log.d("TVFocusUtils", "D-Pad Down pressed")
-                            onDown.invoke()
-                        } else {
-                            false
-                        }
-                    }
-                    else -> false
-                }
-                // Only consume event if handler explicitly returns true
-                // If false, let Compose handle default navigation
-                handled
-            } else {
-                false
-            }
-        }
-    } else {
+    if (!handlers.hasAnyHandler()) {
         // No handlers, don't intercept events at all
-        this
+        return this
+    }
+    
+    return this.onKeyEvent { event ->
+        if (event.type != KeyEventType.KeyDown) {
+            return@onKeyEvent false
+        }
+        
+        // Only consume event if handler explicitly returns true
+        // If false, let Compose handle default navigation
+        handleDpadKeyEvent(event.key, handlers)
     }
 }
 
@@ -398,7 +424,7 @@ private fun handleKeyDown(
     durationMillis: Long,
     onLongPress: () -> Unit
 ): Boolean {
-    val keyName = TVFocusUtils.getKeyName(event.key)
+    val keyName = InteractionUtils.getKeyName(event.key)
     Log.d("ContentCardLongPress", "[KeyDown] $keyName gedrückt - Starte Long-Press Timer (${durationMillis}ms)")
     
     val keyState = state.keyState
@@ -442,7 +468,7 @@ private fun handleKeyUp(
     now: Long,
     onNormalClick: (() -> Unit)?
 ): Boolean {
-    val keyName = TVFocusUtils.getKeyName(event.key)
+    val keyName = InteractionUtils.getKeyName(event.key)
     val keyState = state.keyState
     val elapsed = keyState.timerStartTime?.let { System.currentTimeMillis() - it } ?: 0
     
@@ -477,7 +503,14 @@ private fun handleKeyUp(
         }
         else -> {
             Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Kein aktiver Timer")
-            false
+            // Fallback: Call onNormalClick if no timer was active (edge case)
+            if (onNormalClick != null) {
+                Log.d("InteractionUtils", "🔵 SHORT PRESS KEY (Fallback - kein Timer)")
+                onNormalClick()
+                true
+            } else {
+                false
+            }
         }
     }
 }
@@ -571,8 +604,14 @@ private fun handleTouchUp(
         }
         else -> {
             Log.d("ContentCardLongPress", "[TouchUp] Touch losgelassen nach ${elapsed}ms - Kein aktiver Timer")
-            false
+            // Fallback: Call onNormalClick if no timer was active (edge case)
+            if (onNormalClick != null) {
+                Log.d("InteractionUtils", "🔵 SHORT PRESS TOUCH (Fallback - kein Timer)")
+                onNormalClick()
+                true
+            } else {
+                false
+            }
         }
     }
 }
-

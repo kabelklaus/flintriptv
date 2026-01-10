@@ -4,7 +4,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -27,7 +26,7 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onDpadCenter
+import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import androidx.compose.ui.focus.focusRequester
 
@@ -207,8 +206,7 @@ fun CategoryChip(
                     null // Let Compose handle standard navigation
                 }
             )
-            .onDpadCenter(onClick)
-            .clickable { onClick() }
+            .onClick(onClick)
             .padding(all = Dimensions.listItemHoverPadding),
         contentAlignment = Alignment.CenterStart
     ) {

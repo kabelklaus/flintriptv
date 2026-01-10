@@ -22,7 +22,7 @@ import android.util.Log
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onBackButton
-import com.flintr.tv.ui.utils.onDpadCenter
+import com.flintr.tv.ui.utils.onClick
 import kotlinx.coroutines.delay
 
 /**
@@ -184,18 +184,18 @@ private fun MenuOptionItem(
                 if (config.isEnabled) {
                     Modifier
                         .focusable()
-                        .onDpadCenter {
-                            // Ignore clicks during grace period or if menu is not ready
-                            if (config.ignoreKeyEvents) {
-                                Log.d("ContentCardMenu", "[MenuItem] '${config.text}' - onDpadCenter ignoriert (Grace Period aktiv)")
-                                return@onDpadCenter
-                            }
-                            if (config.isEnabled) {
+                        .onClick(
+                            onClick = {
+                                // Ignore clicks during grace period or if menu is not ready
+                                if (config.ignoreKeyEvents) {
+                                    Log.d("ContentCardMenu", "[MenuItem] '${config.text}' - onClick ignoriert (Grace Period aktiv)")
+                                    return@onClick
+                                }
+                                Log.d("ContentCardMenu", "[MenuItem] '${config.text}' - onClick aufgerufen")
                                 config.onClick()
-                            } else {
-                                Log.d("ContentCardMenu", "[MenuItem] '${config.text}' - onDpadCenter ignoriert (isEnabled = false)")
-                            }
-                        }
+                            },
+                            enabled = config.isEnabled
+                        )
                 } else {
                     Modifier // Not focusable until menu is ready
                 }
