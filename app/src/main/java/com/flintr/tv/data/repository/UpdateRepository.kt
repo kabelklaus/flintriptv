@@ -48,17 +48,14 @@ class UpdateRepository @Inject constructor(
         }
         
         // Use API URL for private repos (with token), browser_download_url for public repos
-        val downloadUrl = if (apkAsset != null) {
-            val hasToken = BuildConfig.GITHUB_TOKEN.isNotEmpty()
-            if (hasToken && apkAsset.url != null) {
+        val downloadUrl = apkAsset?.run {
+            if (BuildConfig.GITHUB_TOKEN.isNotEmpty() && url != null) {
                 // Use API URL for authenticated downloads (private repos)
-                apkAsset.url
+                url
             } else {
                 // Use browser_download_url for public repos
-                apkAsset.browserDownloadUrl
+                browserDownloadUrl
             }
-        } else {
-            null
         }
         
         return UpdateInfo(
