@@ -47,11 +47,25 @@ class UpdateRepository @Inject constructor(
             asset.contentType == "application/vnd.android.package-archive"
         }
         
+        // Use API URL for private repos (with token), browser_download_url for public repos
+        val downloadUrl = if (apkAsset != null) {
+            val hasToken = BuildConfig.GITHUB_TOKEN.isNotEmpty()
+            if (hasToken && apkAsset.url != null) {
+                // Use API URL for authenticated downloads (private repos)
+                apkAsset.url
+            } else {
+                // Use browser_download_url for public repos
+                apkAsset.browserDownloadUrl
+            }
+        } else {
+            null
+        }
+        
         return UpdateInfo(
             hasUpdate = hasUpdate,
             stableVersion = if (hasUpdate) releaseVersion else null,
             betaVersion = null,
-            downloadUrl = apkAsset?.browserDownloadUrl
+            downloadUrl = downloadUrl
         )
     }
     

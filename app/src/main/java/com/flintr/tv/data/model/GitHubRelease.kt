@@ -21,6 +21,8 @@ data class GitHubRelease(
 data class GitHubAsset(
     @Json(name = "name")
     val name: String,
+    @Json(name = "url")
+    val url: String? = null,
     @Json(name = "browser_download_url")
     val browserDownloadUrl: String,
     @Json(name = "content_type")
