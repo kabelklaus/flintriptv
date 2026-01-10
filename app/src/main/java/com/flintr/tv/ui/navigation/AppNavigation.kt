@@ -21,6 +21,7 @@ import androidx.navigation.navArgument
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.LiveStream
@@ -32,6 +33,7 @@ import com.flintr.tv.ui.screens.EPGContent
 import com.flintr.tv.ui.screens.HomeDestination
 import com.flintr.tv.ui.screens.LoginScreen
 import com.flintr.tv.ui.screens.PlayerScreen
+import com.flintr.tv.ui.screens.StreamInfo
 import com.flintr.tv.ui.settings.SettingsScreen
 import com.flintr.tv.ui.tabs.LiveTVContent
 import com.flintr.tv.ui.tabs.VODContent
@@ -48,10 +50,27 @@ sealed class Screen(val route: String) {
     object DataLoading : Screen("data_loading")
     object Main : Screen("main")
     object Settings : Screen("settings")
-    object Player : Screen("player/{streamUrl}") {
+    object Player : Screen("player/{streamUrl}/{contentType}/{streamId}/{seriesId}/{episodeId}/{title}") {
         fun createRoute(streamUrl: String): String {
             val encoded = java.net.URLEncoder.encode(streamUrl, "UTF-8")
-            return "player/$encoded"
+            val encodedTitle = java.net.URLEncoder.encode("", "UTF-8")
+            return "player/$encoded/live/-1/-1/-1/$encodedTitle"
+        }
+        
+        fun createRouteForMovie(streamUrl: String, streamId: Int, title: String): String {
+            val encodedUrl = java.net.URLEncoder.encode(streamUrl, "UTF-8")
+            val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+            return "player/$encodedUrl/movie/$streamId/-1/-1/$encodedTitle"
+        }
+        
+        fun createRouteForSeries(streamUrl: String, seriesId: Int, episodeId: Int, title: String): String {
+            val encodedUrl = java.net.URLEncoder.encode(streamUrl, "UTF-8")
+            val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+            return "player/$encodedUrl/series/-1/$seriesId/$episodeId/$encodedTitle"
+        }
+        
+        fun createRouteForLive(streamUrl: String): String {
+            return createRoute(streamUrl)
         }
     }
 }
@@ -92,6 +111,7 @@ fun AppNavigation(
     credentialsRepository: CredentialsRepository,
     cacheService: DataCacheService,
     favoritesRepository: FavoritesRepository,
+    watchProgressService: WatchProgressService,
     mainViewModel: MainViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
@@ -152,13 +172,51 @@ fun AppNavigation(
             arguments = listOf(
                 navArgument("streamUrl") {
                     type = NavType.StringType
+                },
+                navArgument("contentType") {
+                    type = NavType.StringType
+                    defaultValue = "live"
+                },
+                navArgument("streamId") {
+                    type = NavType.StringType
+                    defaultValue = "-1"
+                },
+                navArgument("seriesId") {
+                    type = NavType.StringType
+                    defaultValue = "-1"
+                },
+                navArgument("episodeId") {
+                    type = NavType.StringType
+                    defaultValue = "-1"
+                },
+                navArgument("title") {
+                    type = NavType.StringType
+                    defaultValue = ""
                 }
             )
         ) { backStackEntry ->
             val streamUrl = backStackEntry.arguments?.getString("streamUrl") ?: ""
+            val contentType = backStackEntry.arguments?.getString("contentType") ?: "live"
+            val streamIdStr = backStackEntry.arguments?.getString("streamId") ?: "-1"
+            val seriesIdStr = backStackEntry.arguments?.getString("seriesId") ?: "-1"
+            val episodeIdStr = backStackEntry.arguments?.getString("episodeId") ?: "-1"
+            val title = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("title") ?: "", "UTF-8")
+            
+            val streamId = streamIdStr.toIntOrNull()?.takeIf { it >= 0 }
+            val seriesId = seriesIdStr.toIntOrNull()?.takeIf { it >= 0 }
+            val episodeId = episodeIdStr.toIntOrNull()?.takeIf { it >= 0 }
+            
             PlayerScreen(
-                streamUrl = streamUrl,
+                streamInfo = StreamInfo(
+                    streamUrl = streamUrl,
+                    contentType = contentType,
+                    streamId = streamId,
+                    seriesId = seriesId,
+                    episodeId = episodeId,
+                    title = title.takeIf { it.isNotEmpty() }
+                ),
                 playerViewModel = playerViewModel,
+                watchProgressService = watchProgressService,
                 onBack = { navController.popBackStack() }
             )
         }
@@ -374,7 +432,7 @@ fun MainContentScreen(
                                 creds.username,
                                 creds.password
                             )
-                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                            navController.navigate(Screen.Player.createRouteForLive(streamUrl))
                         }
                     )
                 }
@@ -392,7 +450,7 @@ fun MainContentScreen(
                                 creds.username,
                                 creds.password
                             )
-                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                            navController.navigate(Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name))
                         }
                     )
                 }
@@ -411,7 +469,7 @@ fun MainContentScreen(
                                 creds.password,
                                 series.seriesId
                             )
-                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                            navController.navigate(Screen.Player.createRouteForSeries(streamUrl, series.seriesId, episode.id, episode.title))
                         }
                     )
                 }
@@ -425,7 +483,7 @@ fun MainContentScreen(
                                 creds.username,
                                 creds.password
                             )
-                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                            navController.navigate(Screen.Player.createRouteForLive(streamUrl))
                         }
                     )
                 }
@@ -438,7 +496,7 @@ fun MainContentScreen(
                                 creds.username,
                                 creds.password
                             )
-                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                            navController.navigate(Screen.Player.createRouteForLive(streamUrl))
                         }
                     }
                     val onVodClick: (VodStream) -> Unit = { vod ->
@@ -449,7 +507,7 @@ fun MainContentScreen(
                                 creds.username,
                                 creds.password
                             )
-                            navController.navigate(Screen.Player.createRoute(streamUrl))
+                            navController.navigate(Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name))
                         }
                     }
                     val onSeriesClick: (Series) -> Unit = { series ->
