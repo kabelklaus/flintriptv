@@ -22,6 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -181,10 +182,30 @@ fun HomeSidebarItem(
     val isSelected = destination == selectedDestination
     var isFocused by remember { mutableStateOf(false) }
     var hasRequestedFocus by remember { mutableStateOf(false) }
+    var isPositioned by remember { mutableStateOf(false) }
     
     // Request focus when item is positioned and should receive focus
     LaunchedEffect(pendingFocusDestination) {
         hasRequestedFocus = false
+        isPositioned = false
+    }
+    
+    // Request focus with delay after positioning to ensure FocusRequester is ready
+    LaunchedEffect(isPositioned, pendingFocusDestination) {
+        if (isPositioned && 
+            focusRequester != null && 
+            pendingFocusDestination == destination && 
+            !hasRequestedFocus) {
+            // Small delay to ensure FocusRequester is fully initialized
+            delay(50)
+            try {
+                focusRequester?.requestFocus()
+                hasRequestedFocus = true
+                Log.i("TVFocus", "[MainNavbar] 🎯 Focus set to selected item via LaunchedEffect: $destination")
+            } catch (e: IllegalStateException) {
+                Log.w("TVFocus", "[MainNavbar] ⚠️ FocusRequester not initialized yet for $destination")
+            }
+        }
     }
     
     // Animation for background color
@@ -236,17 +257,11 @@ fun HomeSidebarItem(
                 }
             )
             .onGloballyPositioned {
-                // Request focus when item is positioned and should receive focus
+                // Signal that item is positioned - focus will be requested via LaunchedEffect
                 if (focusRequester != null && 
                     pendingFocusDestination == destination && 
-                    !hasRequestedFocus) {
-                    try {
-                        focusRequester.requestFocus()
-                        hasRequestedFocus = true
-                        Log.i("TVFocus", "[MainNavbar] 🎯 Focus set to selected item via onGloballyPositioned: $destination")
-                    } catch (e: IllegalStateException) {
-                        Log.w("TVFocus", "[MainNavbar] ⚠️ FocusRequester not initialized yet for $destination")
-                    }
+                    !isPositioned) {
+                    isPositioned = true
                 }
             }
             .onFocusChanged { focusState ->

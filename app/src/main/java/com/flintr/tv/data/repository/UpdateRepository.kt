@@ -17,11 +17,13 @@ class UpdateRepository @Inject constructor(
             repo = BuildConfig.GITHUB_REPO_NAME
         )
         
-        if (!response.isSuccessful || response.body() == null) {
+        // Read body only once to prevent OkHttp connection leak
+        val release = response.body()
+        if (!response.isSuccessful || release == null) {
+            // Close error body if present
+            response.errorBody()?.close()
             throw Exception("Failed to fetch release: HTTP ${response.code()}")
         }
-        
-        val release = response.body()!!
         
         // Skip pre-releases
         if (release.prerelease) {
