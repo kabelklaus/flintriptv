@@ -165,12 +165,27 @@ object AppModule {
     
     @Provides
     @Singleton
+    @Named("Download")
+    fun provideDownloadOkHttpClient(): OkHttpClient {
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.BODY
+        }
+        
+        return OkHttpClient.Builder()
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+    
+    @Provides
+    @Singleton
     fun provideUpdateDownloadService(
-        @Named("GitHub") gitHubOkHttpClient: OkHttpClient,
+        @Named("Download") downloadOkHttpClient: OkHttpClient,
         @ApplicationContext context: Context
     ): UpdateDownloadService {
-        // Use GitHub OkHttpClient for authenticated downloads
-        return UpdateDownloadService(gitHubOkHttpClient, context)
+        return UpdateDownloadService(downloadOkHttpClient, context)
     }
     
     @Provides
