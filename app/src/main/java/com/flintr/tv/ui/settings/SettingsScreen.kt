@@ -32,7 +32,7 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onBackButton
-import com.flintr.tv.ui.utils.onDpadCenter
+import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 
 sealed class SettingsDestination {
@@ -277,8 +277,7 @@ private fun SettingsCategoryCard(
             .onBackButton {
                 onNavigateLeft?.invoke()
             }
-            .onDpadCenter(onClick)
-            .clickable { onClick() }
+            .onClick(onClick)
     ) {
         Box(
             modifier = Modifier

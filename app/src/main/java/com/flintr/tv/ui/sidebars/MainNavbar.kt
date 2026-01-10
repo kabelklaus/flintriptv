@@ -38,7 +38,7 @@ import android.util.Log
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onDpadCenter
+import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.safeRequestFocus
 
@@ -280,8 +280,7 @@ fun HomeSidebarItem(
                     null // Let Compose handle standard navigation
                 }
             )
-            .onDpadCenter(onClick)
-            .clickable { onClick() }
+            .onClick(onClick)
     ) {
         // Background container with animation
         Box(

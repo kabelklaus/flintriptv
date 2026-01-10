@@ -1,5 +1,6 @@
 package com.flintr.tv.ui.utils
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.*
@@ -18,9 +19,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Utility functions for TV focus handling
+ * Utility functions for TV and touch interaction handling
  */
-object TVFocusUtils {
+object InteractionUtils {
     
     /**
      * Get readable key name for logging
@@ -136,6 +137,26 @@ fun Modifier.onDpadCenter(
         } else {
             false
         }
+    }
+}
+
+/**
+ * Unified modifier for handling clicks from both Key (D-Pad Center/Enter) and Touch events
+ * This is the recommended way to handle clicks in TV apps that also support touch displays
+ * 
+ * @param onClick Called when the component is clicked via Key or Touch
+ * @param enabled Whether the click handler is enabled (default: true)
+ */
+fun Modifier.onClick(
+    onClick: () -> Unit,
+    enabled: Boolean = true
+): Modifier {
+    return if (enabled) {
+        this
+            .onDpadCenter(onClick)
+            .clickable(onClick = onClick)
+    } else {
+        this
     }
 }
 
@@ -398,7 +419,7 @@ private fun handleKeyDown(
     durationMillis: Long,
     onLongPress: () -> Unit
 ): Boolean {
-    val keyName = TVFocusUtils.getKeyName(event.key)
+    val keyName = InteractionUtils.getKeyName(event.key)
     Log.d("ContentCardLongPress", "[KeyDown] $keyName gedrückt - Starte Long-Press Timer (${durationMillis}ms)")
     
     val keyState = state.keyState
@@ -442,7 +463,7 @@ private fun handleKeyUp(
     now: Long,
     onNormalClick: (() -> Unit)?
 ): Boolean {
-    val keyName = TVFocusUtils.getKeyName(event.key)
+    val keyName = InteractionUtils.getKeyName(event.key)
     val keyState = state.keyState
     val elapsed = keyState.timerStartTime?.let { System.currentTimeMillis() - it } ?: 0
     
@@ -477,7 +498,14 @@ private fun handleKeyUp(
         }
         else -> {
             Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Kein aktiver Timer")
-            false
+            // Fallback: Call onNormalClick if no timer was active (edge case)
+            if (onNormalClick != null) {
+                Log.d("TVFocusUtils", "🔵 SHORT PRESS KEY (Fallback - kein Timer)")
+                onNormalClick()
+                true
+            } else {
+                false
+            }
         }
     }
 }
@@ -571,8 +599,14 @@ private fun handleTouchUp(
         }
         else -> {
             Log.d("ContentCardLongPress", "[TouchUp] Touch losgelassen nach ${elapsed}ms - Kein aktiver Timer")
-            false
+            // Fallback: Call onNormalClick if no timer was active (edge case)
+            if (onNormalClick != null) {
+                Log.d("TVFocusUtils", "🔵 SHORT PRESS TOUCH (Fallback - kein Timer)")
+                onNormalClick()
+                true
+            } else {
+                false
+            }
         }
     }
 }
-

@@ -22,18 +22,9 @@ class UpdateInstaller @Inject constructor(
             return false
         }
         
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Use PackageInstaller for Android 8.0+
-                installWithPackageInstaller(apkFile)
-            } else {
-                // Use Intent for older versions
-                installWithIntent(apkFile)
-            }
-        } catch (e: Exception) {
-            Log.e("UpdateInstaller", "Failed to install APK", e)
-            false
-        }
+        // Always use Intent-based installation to show system installation dialog
+        // PackageInstaller is for silent installations (requires special permissions)
+        return installWithIntent(apkFile)
     }
     
     private fun installWithIntent(apkFile: File): Boolean {
@@ -94,11 +85,17 @@ class UpdateInstaller @Inject constructor(
             val intent = Intent("com.flintr.tv.INSTALL_COMPLETE").apply {
                 setPackage(context.packageName)
             }
+            // PackageInstaller.commit() requires FLAG_MUTABLE on Android 12+ (API 31+)
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE
+            } else {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            }
             val pendingIntent = android.app.PendingIntent.getBroadcast(
                 context,
                 0,
                 intent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                flags
             )
             
             session.commit(pendingIntent.intentSender)

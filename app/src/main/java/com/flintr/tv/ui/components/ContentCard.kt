@@ -233,7 +233,6 @@ private fun buildCardModifier(
             onLongPress = handlers.onLongPress,
             onNormalClick = handlers.onNormalClick
         )
-        .clickable { handlers.performClick() }
 }
 
 @Composable

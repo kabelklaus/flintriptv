@@ -35,7 +35,7 @@ import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onDpadCenter
+import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.viewmodel.MainViewModel
 
 data class SeriesItemConfig(
@@ -247,8 +247,7 @@ fun EpisodeCard(
                 isFocused = focusState.isFocused
             }
             .focusable()
-            .onDpadCenter(onClick)
-            .clickable { onClick() }
+            .onClick(onClick)
             .padding(8.dp),
         contentAlignment = Alignment.Center
     ) {
