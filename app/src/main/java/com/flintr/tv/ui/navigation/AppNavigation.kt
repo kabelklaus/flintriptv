@@ -33,6 +33,7 @@ import com.flintr.tv.ui.screens.EPGContent
 import com.flintr.tv.ui.screens.HomeDestination
 import com.flintr.tv.ui.screens.LoginScreen
 import com.flintr.tv.ui.screens.PlayerScreen
+import com.flintr.tv.ui.screens.StreamInfo
 import com.flintr.tv.ui.settings.SettingsScreen
 import com.flintr.tv.ui.tabs.LiveTVContent
 import com.flintr.tv.ui.tabs.VODContent
@@ -206,12 +207,14 @@ fun AppNavigation(
             val episodeId = episodeIdStr.toIntOrNull()?.takeIf { it >= 0 }
             
             PlayerScreen(
-                streamUrl = streamUrl,
-                contentType = contentType,
-                streamId = streamId,
-                seriesId = seriesId,
-                episodeId = episodeId,
-                title = title.takeIf { it.isNotEmpty() },
+                streamInfo = StreamInfo(
+                    streamUrl = streamUrl,
+                    contentType = contentType,
+                    streamId = streamId,
+                    seriesId = seriesId,
+                    episodeId = episodeId,
+                    title = title.takeIf { it.isNotEmpty() }
+                ),
                 playerViewModel = playerViewModel,
                 watchProgressService = watchProgressService,
                 onBack = { navController.popBackStack() }

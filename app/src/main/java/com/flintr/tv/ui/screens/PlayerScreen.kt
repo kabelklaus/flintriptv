@@ -29,19 +29,32 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * Data class containing stream information for playback
+ */
+data class StreamInfo(
+    val streamUrl: String,
+    val contentType: String,
+    val streamId: Int? = null,
+    val seriesId: Int? = null,
+    val episodeId: Int? = null,
+    val title: String? = null
+)
+
 @Composable
 fun PlayerScreen(
-    streamUrl: String,
-    contentType: String,
-    streamId: Int?,
-    seriesId: Int?,
-    episodeId: Int?,
-    title: String?,
+    streamInfo: StreamInfo,
     playerViewModel: PlayerViewModel,
     watchProgressService: WatchProgressService,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val streamUrl = streamInfo.streamUrl
+    val contentType = streamInfo.contentType
+    val streamId = streamInfo.streamId
+    val seriesId = streamInfo.seriesId
+    val episodeId = streamInfo.episodeId
+    val title = streamInfo.title
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var errorMessage by remember { mutableStateOf<String?>(null) }
