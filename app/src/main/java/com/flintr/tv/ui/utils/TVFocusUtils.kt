@@ -1,6 +1,7 @@
 package com.flintr.tv.ui.utils
 
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
@@ -9,6 +10,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import android.util.Log
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -200,61 +202,83 @@ fun Modifier.onBackButton(
     }
 }
 
+private const val LONG_PRESS_BLOCKING_PERIOD_MS = 800L
+
 /**
- * Internal state class for long press handling
+ * Internal state class for a single input type (key or touch)
  */
-private class LongPressState {
-    var longPressJob: Job? = null
+private class InputPressState {
+    var job: Job? = null
     var timerStartTime: Long? = null
-    var longPressSuccess: Boolean = false
+    var success: Boolean = false
     var blockUntilTime: Long? = null
-    var consumeNextKeyUp: Boolean = false
+    var consumeNextRelease: Boolean = false
     
     fun isInBlockingPeriod(now: Long): Boolean {
         return blockUntilTime != null && now < blockUntilTime!!
     }
     
     fun reset() {
-        longPressJob?.cancel()
-        longPressJob = null
+        job?.cancel()
+        job = null
         timerStartTime = null
-        longPressSuccess = false
+        success = false
         blockUntilTime = null
-        consumeNextKeyUp = false
+        consumeNextRelease = false
     }
     
     fun resetTimer() {
-        longPressJob?.cancel()
-        longPressJob = null
+        job?.cancel()
+        job = null
         timerStartTime = null
     }
 }
 
 /**
- * Composable modifier for handling long press (300ms) on D-Pad Center/Enter
- * Detects when D-Pad Center or Enter is held down for 300ms
- * 
- * Usage: Use this modifier inside a composable that has access to coroutine scope
- * 
- * @param onLongPress Called when long press is detected (after durationMillis)
- * @param onNormalClick Optional callback for normal click when timer is cancelled early
- * @param durationMillis Duration in milliseconds for long press detection
+ * Internal state class for long press handling
  */
-@Composable
-fun Modifier.onLongPress(
-    onLongPress: () -> Unit,
-    onNormalClick: (() -> Unit)? = null,
-    durationMillis: Long = 300L
-): Modifier {
-    val state = remember { LongPressState() }
-    val coroutineScope = rememberCoroutineScope()
+private class LongPressState {
+    val keyState = InputPressState()
+    val touchState = InputPressState()
     
-    return this.onKeyEvent { event ->
+    fun isInBlockingPeriod(now: Long): Boolean {
+        return keyState.isInBlockingPeriod(now)
+    }
+    
+    fun isInTouchBlockingPeriod(now: Long): Boolean {
+        return touchState.isInBlockingPeriod(now)
+    }
+    
+    fun reset() {
+        keyState.reset()
+        touchState.reset()
+    }
+    
+    fun resetTimer() {
+        keyState.resetTimer()
+    }
+    
+    fun resetTouchTimer() {
+        touchState.resetTimer()
+    }
+}
+
+/**
+ * Create key event handler for long press detection
+ */
+private fun createKeyEventHandler(
+    state: LongPressState,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    durationMillis: Long,
+    onLongPress: () -> Unit,
+    onNormalClick: (() -> Unit)?
+): (androidx.compose.ui.input.key.KeyEvent) -> Boolean {
+    return { event ->
         when (event.key) {
             Key.DirectionCenter, Key.Enter -> {
                 val now = System.currentTimeMillis()
                 if (state.isInBlockingPeriod(now)) {
-                    val remaining = state.blockUntilTime!! - now
+                    val remaining = state.keyState.blockUntilTime!! - now
                     Log.d("ContentCardLongPress", "[Block] Event ignoriert - Blocking-Periode aktiv (noch ${remaining}ms)")
                     true
                 } else {
@@ -271,6 +295,75 @@ fun Modifier.onLongPress(
 }
 
 /**
+ * Create touch event handler modifier for long press detection
+ */
+@Composable
+private fun createTouchEventHandler(
+    state: LongPressState,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    durationMillis: Long,
+    onLongPress: () -> Unit,
+    onNormalClick: (() -> Unit)?
+): Modifier {
+    return Modifier.pointerInput(Unit) {
+        detectTapGestures(
+            onPress = { _ ->
+                val now = System.currentTimeMillis()
+                
+                if (state.isInTouchBlockingPeriod(now)) {
+                    val remaining = state.touchState.blockUntilTime!! - now
+                    Log.d("ContentCardLongPress", "[TouchBlock] Touch ignoriert - Blocking-Periode aktiv (noch ${remaining}ms)")
+                    return@detectTapGestures
+                }
+                
+                handleTouchDown(state, coroutineScope, durationMillis, onLongPress)
+                
+                val released = tryAwaitRelease()
+                if (released) {
+                    val touchUpNow = System.currentTimeMillis()
+                    val handled = handleTouchUp(state, touchUpNow, onNormalClick)
+                    
+                    if (!handled) {
+                        // Normal tap if not handled by long press logic
+                        Log.d("ContentCardLongPress", "[TouchUp] Normaler Tap erkannt")
+                    }
+                } else {
+                    // Gesture was cancelled, so we just reset the timer
+                    state.resetTouchTimer()
+                }
+            }
+        )
+    }
+}
+
+/**
+ * Composable modifier for handling long press (300ms) on D-Pad Center/Enter and Touch
+ * Detects when D-Pad Center or Enter is held down for 300ms, or when touch is held for 300ms
+ * 
+ * Usage: Use this modifier inside a composable that has access to coroutine scope
+ * 
+ * @param onLongPress Called when long press is detected (after durationMillis)
+ * @param onNormalClick Optional callback for normal click when timer is cancelled early
+ * @param durationMillis Duration in milliseconds for long press detection
+ */
+@Composable
+fun Modifier.onLongPress(
+    onLongPress: () -> Unit,
+    onNormalClick: (() -> Unit)? = null,
+    durationMillis: Long = 300L
+): Modifier {
+    val state = remember { LongPressState() }
+    val coroutineScope = rememberCoroutineScope()
+    
+    val keyEventHandler = createKeyEventHandler(state, coroutineScope, durationMillis, onLongPress, onNormalClick)
+    val touchHandler = createTouchEventHandler(state, coroutineScope, durationMillis, onLongPress, onNormalClick)
+    
+    return this
+        .onKeyEvent(keyEventHandler)
+        .then(touchHandler)
+}
+
+/**
  * Handle KeyDown event for long press detection
  */
 private fun handleKeyDown(
@@ -283,30 +376,32 @@ private fun handleKeyDown(
     val keyName = TVFocusUtils.getKeyName(event.key)
     Log.d("ContentCardLongPress", "[KeyDown] $keyName gedrückt - Starte Long-Press Timer (${durationMillis}ms)")
     
+    val keyState = state.keyState
+    
     // Reset state
-    state.longPressSuccess = false
-    state.blockUntilTime = null
-    state.consumeNextKeyUp = false
+    keyState.success = false
+    keyState.blockUntilTime = null
+    keyState.consumeNextRelease = false
     
     // Cancel existing timer if any
-    val existingJob = state.longPressJob
+    val existingJob = keyState.job
     if (existingJob != null && existingJob.isActive) {
         Log.d("ContentCardLongPress", "[KeyDown] Vorheriger Timer wird abgebrochen")
         existingJob.cancel()
     }
     
     // Start long press timer
-    state.timerStartTime = System.currentTimeMillis()
-    state.longPressJob = coroutineScope.launch {
+    keyState.timerStartTime = System.currentTimeMillis()
+    keyState.job = coroutineScope.launch {
         Log.d("ContentCardLongPress", "[Timer] Timer gestartet, warte ${durationMillis}ms...")
         delay(durationMillis)
-        val elapsed = System.currentTimeMillis() - (state.timerStartTime ?: 0)
+        val elapsed = System.currentTimeMillis() - (keyState.timerStartTime ?: 0)
         Log.d("ContentCardLongPress", "[Timer] ✅ Long-Press erkannt! (${elapsed}ms vergangen)")
         Log.d("ContentCardLongPress", "[Callback] Rufe onLongPress() auf")
-        state.longPressSuccess = true
-        state.consumeNextKeyUp = true
-        state.blockUntilTime = System.currentTimeMillis() + 800
-        Log.d("ContentCardLongPress", "[Block] Blocking-Periode gestartet (800ms)")
+        keyState.success = true
+        keyState.consumeNextRelease = true
+        keyState.blockUntilTime = System.currentTimeMillis() + LONG_PRESS_BLOCKING_PERIOD_MS
+        Log.d("ContentCardLongPress", "[Block] Blocking-Periode gestartet (${LONG_PRESS_BLOCKING_PERIOD_MS}ms)")
         Log.d("ContentCardLongPress", "[Block] consumeNextKeyUp Flag gesetzt - nächster KeyUp wird konsumiert")
         onLongPress()
     }
@@ -323,23 +418,28 @@ private fun handleKeyUp(
     onNormalClick: (() -> Unit)?
 ): Boolean {
     val keyName = TVFocusUtils.getKeyName(event.key)
-    val elapsed = state.timerStartTime?.let { System.currentTimeMillis() - it } ?: 0
+    val keyState = state.keyState
+    val elapsed = keyState.timerStartTime?.let { System.currentTimeMillis() - it } ?: 0
     
     return when {
-        state.consumeNextKeyUp -> {
+        keyState.consumeNextRelease -> {
             Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - consumeNextKeyUp Flag aktiv, verhindere normalen Click")
-            state.reset()
+            // Reset only key-related state to avoid interfering with touch events
+            keyState.resetTimer()
+            keyState.success = false
+            keyState.blockUntilTime = null
+            keyState.consumeNextRelease = false
             true
         }
-        state.longPressSuccess || state.isInBlockingPeriod(now) -> {
+        keyState.success || state.isInBlockingPeriod(now) -> {
             Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Long-Press war erfolgreich, verhindere normalen Click")
             state.resetTimer()
-            if (state.longPressSuccess) {
-                state.longPressSuccess = false
+            if (keyState.success) {
+                keyState.success = false
             }
             true
         }
-        state.longPressJob != null && state.longPressJob!!.isActive -> {
+        keyState.job != null && keyState.job!!.isActive -> {
             Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Timer wird abgebrochen (zu früh)")
             state.resetTimer()
             if (onNormalClick != null) {
@@ -352,6 +452,95 @@ private fun handleKeyUp(
         }
         else -> {
             Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Kein aktiver Timer")
+            false
+        }
+    }
+}
+
+/**
+ * Handle Touch Down event for long press detection
+ */
+private fun handleTouchDown(
+    state: LongPressState,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    durationMillis: Long,
+    onLongPress: () -> Unit
+) {
+    Log.d("ContentCardLongPress", "[TouchDown] Touch erkannt - Starte Long-Press Timer (${durationMillis}ms)")
+    
+    val touchState = state.touchState
+    
+    // Reset touch state
+    touchState.success = false
+    touchState.blockUntilTime = null
+    touchState.consumeNextRelease = false
+    
+    // Cancel existing touch timer if any
+    val existingJob = touchState.job
+    if (existingJob != null && existingJob.isActive) {
+        Log.d("ContentCardLongPress", "[TouchDown] Vorheriger Touch-Timer wird abgebrochen")
+        existingJob.cancel()
+    }
+    
+    // Start long press timer
+    touchState.timerStartTime = System.currentTimeMillis()
+    touchState.job = coroutineScope.launch {
+        Log.d("ContentCardLongPress", "[TouchTimer] Timer gestartet, warte ${durationMillis}ms...")
+        delay(durationMillis)
+        val elapsed = System.currentTimeMillis() - (touchState.timerStartTime ?: 0)
+        Log.d("ContentCardLongPress", "[TouchTimer] ✅ Long-Press erkannt! (${elapsed}ms vergangen)")
+        Log.d("ContentCardLongPress", "[TouchCallback] Rufe onLongPress() auf")
+        touchState.success = true
+        touchState.consumeNextRelease = true
+        touchState.blockUntilTime = System.currentTimeMillis() + LONG_PRESS_BLOCKING_PERIOD_MS
+        Log.d("ContentCardLongPress", "[TouchBlock] Blocking-Periode gestartet (${LONG_PRESS_BLOCKING_PERIOD_MS}ms)")
+        Log.d("ContentCardLongPress", "[TouchBlock] consumeNextTouchUp Flag gesetzt - nächster TouchUp wird konsumiert")
+        onLongPress()
+    }
+}
+
+/**
+ * Handle Touch Up event for long press detection
+ */
+private fun handleTouchUp(
+    state: LongPressState,
+    now: Long,
+    onNormalClick: (() -> Unit)?
+): Boolean {
+    val touchState = state.touchState
+    val elapsed = touchState.timerStartTime?.let { System.currentTimeMillis() - it } ?: 0
+    
+    return when {
+        touchState.consumeNextRelease -> {
+            Log.d("ContentCardLongPress", "[TouchUp] Touch losgelassen nach ${elapsed}ms - consumeNextTouchUp Flag aktiv, verhindere normalen Click")
+            // Reset only touch-related state to avoid interfering with key events
+            touchState.resetTimer()
+            touchState.success = false
+            touchState.blockUntilTime = null
+            touchState.consumeNextRelease = false
+            true
+        }
+        touchState.success || state.isInTouchBlockingPeriod(now) -> {
+            Log.d("ContentCardLongPress", "[TouchUp] Touch losgelassen nach ${elapsed}ms - Long-Press war erfolgreich, verhindere normalen Click")
+            state.resetTouchTimer()
+            if (touchState.success) {
+                touchState.success = false
+            }
+            true
+        }
+        touchState.job != null && touchState.job!!.isActive -> {
+            Log.d("ContentCardLongPress", "[TouchUp] Touch losgelassen nach ${elapsed}ms - Timer wird abgebrochen (zu früh)")
+            state.resetTouchTimer()
+            if (onNormalClick != null) {
+                Log.d("ContentCardLongPress", "[TouchUp] Rufe onNormalClick() auf (Timer abgebrochen)")
+                onNormalClick()
+                true
+            } else {
+                false
+            }
+        }
+        else -> {
+            Log.d("ContentCardLongPress", "[TouchUp] Touch losgelassen nach ${elapsed}ms - Kein aktiver Timer")
             false
         }
     }
