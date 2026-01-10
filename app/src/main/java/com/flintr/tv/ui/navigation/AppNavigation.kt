@@ -56,6 +56,8 @@ sealed class Screen(val route: String) {
     }
 }
 
+private const val LOG_TAG_MAIN_CONTENT_SCREEN = "[MainContentScreen]"
+
 @Composable
 private fun InitialRoutingScreen(
     navController: NavHostController,
@@ -236,31 +238,31 @@ fun MainContentScreen(
     
     // Focus navigation functions (defined before LaunchedEffect to be available in closures)
     fun moveFocusToNavbar() {
-        Log.i("TVFocus", "[MainContentScreen] 🎯 Requesting focus: NAVBAR")
+        Log.i("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN 🎯 Requesting focus: NAVBAR")
         try {
             navbarFocusRequester.requestFocus()
         } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "[MainContentScreen] ⚠️ Navbar FocusRequester not initialized yet")
+            Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ Navbar FocusRequester not initialized yet")
         }
     }
     
     fun moveFocusToCategorySidebar() {
-        Log.i("TVFocus", "[MainContentScreen] 🎯 Requesting focus: CATEGORY_SIDEBAR")
+        Log.i("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN 🎯 Requesting focus: CATEGORY_SIDEBAR")
         try {
             categorySidebarFocusRequester.requestFocus()
         } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "[MainContentScreen] ⚠️ CategorySidebar FocusRequester not initialized yet")
+            Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ CategorySidebar FocusRequester not initialized yet")
         }
     }
     
     fun moveFocusToContentList() {
-        Log.i("TVFocus", "[MainContentScreen] 🎯 Requesting focus: CONTENT_LIST")
+        Log.i("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN 🎯 Requesting focus: CONTENT_LIST")
         try {
             contentListFocusRequester.requestFocus()
         } catch (e: IllegalStateException) {
             // FocusRequester not yet initialized - this can happen if called before content is loaded
             // The content will request focus automatically when streams are loaded
-            Log.w("TVFocus", "[MainContentScreen] ⚠️ ContentList FocusRequester not initialized yet, will focus when content loads")
+            Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ ContentList FocusRequester not initialized yet, will focus when content loads")
         }
     }
     
@@ -288,7 +290,7 @@ fun MainContentScreen(
     LaunchedEffect(navbarReady) {
         if (navbarReady && !initialFocusSet) {
             initialFocusSet = true
-            navbarFocusRequester.safeRequestFocus("[MainContentScreen]", "NAVBAR")
+            navbarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "NAVBAR")
         }
     }
     
@@ -300,7 +302,7 @@ fun MainContentScreen(
             pendingFocusDestination !is HomeDestination.Favorites &&
             showCategories && sortedCategories.isNotEmpty()) {
             categorySidebarFocusSet = true
-            categorySidebarFocusRequester.safeRequestFocus("[MainContentScreen]", "CATEGORY_SIDEBAR")
+            categorySidebarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
         }
     }
     
@@ -310,7 +312,7 @@ fun MainContentScreen(
             !contentListFocusSet &&
             pendingFocusDestination is HomeDestination.Favorites) {
             contentListFocusSet = true
-            contentListFocusRequester.safeRequestFocus("[MainContentScreen]", "CONTENT_LIST")
+            contentListFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CONTENT_LIST")
         }
     }
     
