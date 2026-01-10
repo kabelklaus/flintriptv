@@ -191,10 +191,8 @@ private fun MenuOptionItem(
                                     Log.d("ContentCardMenu", "[MenuItem] '${config.text}' - onClick ignoriert (Grace Period aktiv)")
                                     return@onClick
                                 }
-                                if (config.isEnabled) {
-                                    Log.d("ContentCardMenu", "[MenuItem] '${config.text}' - onClick aufgerufen")
-                                    config.onClick()
-                                }
+                                Log.d("ContentCardMenu", "[MenuItem] '${config.text}' - onClick aufgerufen")
+                                config.onClick()
                             },
                             enabled = config.isEnabled
                         )
