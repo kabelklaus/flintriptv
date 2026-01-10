@@ -348,11 +348,13 @@ private fun createTouchEventHandler(
                     
                     if (!handled) {
                         // Normal tap if not handled by long press logic
-                        Log.d("ContentCardLongPress", "[TouchUp] Normaler Tap erkannt")
+                        val elapsed = state.touchState.timerStartTime?.let { touchUpNow - it } ?: 0
+                        Log.d("TVFocusUtils", "🔵 SHORT PRESS TOUCH erkannt (${elapsed}ms)")
                     }
                 } else {
                     // Gesture was cancelled, so we just reset the timer
                     state.resetTouchTimer()
+                    Log.d("TVFocusUtils", "🔴 TOUCH GESTURE abgebrochen")
                 }
             }
         )
@@ -489,6 +491,7 @@ private fun handleTouchDown(
     durationMillis: Long,
     onLongPress: () -> Unit
 ) {
+    Log.d("TVFocusUtils", "👆 TOUCH DOWN erkannt - Starte Long-Press Timer (${durationMillis}ms)")
     Log.d("ContentCardLongPress", "[TouchDown] Touch erkannt - Starte Long-Press Timer (${durationMillis}ms)")
     
     val touchState = state.touchState
@@ -511,6 +514,7 @@ private fun handleTouchDown(
         Log.d("ContentCardLongPress", "[TouchTimer] Timer gestartet, warte ${durationMillis}ms...")
         delay(durationMillis)
         val elapsed = System.currentTimeMillis() - (touchState.timerStartTime ?: 0)
+        Log.d("TVFocusUtils", "🟢 LONG PRESS TOUCH erkannt! (${elapsed}ms)")
         Log.d("ContentCardLongPress", "[TouchTimer] ✅ Long-Press erkannt! (${elapsed}ms vergangen)")
         Log.d("ContentCardLongPress", "[TouchCallback] Rufe onLongPress() auf")
         touchState.success = true
@@ -535,6 +539,7 @@ private fun handleTouchUp(
     
     return when {
         touchState.consumeNextRelease -> {
+            Log.d("TVFocusUtils", "🟢 LONG PRESS TOUCH UP (${elapsed}ms - consumeNextRelease)")
             Log.d("ContentCardLongPress", "[TouchUp] Touch losgelassen nach ${elapsed}ms - consumeNextTouchUp Flag aktiv, verhindere normalen Click")
             // Reset only touch-related state to avoid interfering with key events
             touchState.resetTimer()
@@ -544,6 +549,7 @@ private fun handleTouchUp(
             true
         }
         touchState.success || state.isInTouchBlockingPeriod(now) -> {
+            Log.d("TVFocusUtils", "🟢 LONG PRESS TOUCH UP (${elapsed}ms - success/blocking)")
             Log.d("ContentCardLongPress", "[TouchUp] Touch losgelassen nach ${elapsed}ms - Long-Press war erfolgreich, verhindere normalen Click")
             state.resetTouchTimer()
             if (touchState.success) {
@@ -552,6 +558,7 @@ private fun handleTouchUp(
             true
         }
         touchState.job != null && touchState.job!!.isActive -> {
+            Log.d("TVFocusUtils", "🔵 SHORT PRESS TOUCH erkannt (${elapsed}ms - Timer abgebrochen)")
             Log.d("ContentCardLongPress", "[TouchUp] Touch losgelassen nach ${elapsed}ms - Timer wird abgebrochen (zu früh)")
             state.resetTouchTimer()
             if (onNormalClick != null) {
