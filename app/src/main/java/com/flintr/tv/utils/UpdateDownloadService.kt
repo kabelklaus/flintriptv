@@ -42,7 +42,7 @@ class UpdateDownloadService @Inject constructor(
         }
         
         try {
-            // Token is already added by the GitHub OkHttpClient interceptor
+            // Token is added by the Download OkHttpClient interceptor
             val request = Request.Builder()
                 .url(downloadUrl)
                 .header("Accept", "application/octet-stream")

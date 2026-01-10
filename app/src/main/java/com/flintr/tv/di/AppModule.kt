@@ -109,9 +109,10 @@ object AppModule {
     @Singleton
     @Named("GitHub")
     fun provideGitHubOkHttpClient(): OkHttpClient {
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
         
         // Add Authorization header interceptor for GitHub API
         val authInterceptor = okhttp3.Interceptor { chain ->
@@ -123,14 +124,17 @@ object AppModule {
                 .build()
             chain.proceed(authenticatedRequest)
         }
+        builder.addInterceptor(authInterceptor)
         
-        return OkHttpClient.Builder()
-            .addInterceptor(authInterceptor)
-            .addInterceptor(loggingInterceptor)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
+        // Add logging only in debug builds
+        if (com.flintr.tv.BuildConfig.DEBUG) {
+            val loggingInterceptor = HttpLoggingInterceptor().apply {
+                level = HttpLoggingInterceptor.Level.BODY
+            }
+            builder.addInterceptor(loggingInterceptor)
+        }
+        
+        return builder.build()
     }
     
     @Provides
@@ -167,16 +171,31 @@ object AppModule {
     @Singleton
     @Named("Download")
     fun provideDownloadOkHttpClient(): OkHttpClient {
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-        
-        return OkHttpClient.Builder()
-            .addInterceptor(loggingInterceptor)
+        val builder = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
+        
+        // Add Authorization header for private repository downloads
+        val authInterceptor = okhttp3.Interceptor { chain ->
+            val originalRequest = chain.request()
+            val token = com.flintr.tv.BuildConfig.GITHUB_TOKEN
+            val authenticatedRequest = originalRequest.newBuilder()
+                .header("Authorization", "token $token")
+                .build()
+            chain.proceed(authenticatedRequest)
+        }
+        builder.addInterceptor(authInterceptor)
+        
+        // Add logging only in debug builds
+        if (com.flintr.tv.BuildConfig.DEBUG) {
+            val loggingInterceptor = HttpLoggingInterceptor().apply {
+                level = HttpLoggingInterceptor.Level.BODY
+            }
+            builder.addInterceptor(loggingInterceptor)
+        }
+        
+        return builder.build()
     }
     
     @Provides
