@@ -11,6 +11,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.focus.FocusRequester
 import android.util.Log
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -89,6 +90,28 @@ object TVFocusUtils {
     fun isTV(context: android.content.Context): Boolean {
         val uiModeManager = context.getSystemService(android.content.Context.UI_MODE_SERVICE) as android.app.UiModeManager
         return uiModeManager.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    }
+}
+
+private const val FOCUS_REQUEST_DELAY_MS = 50L
+
+/**
+ * Safely request focus on a FocusRequester with a delay to ensure it's fully initialized.
+ * This prevents IllegalStateException when requesting focus before the FocusRequester is ready.
+ * 
+ * @param logTag Tag for logging (default: "TVFocus")
+ * @param targetName Name of the target component for logging purposes
+ */
+suspend fun FocusRequester.safeRequestFocus(
+    logTag: String = "TVFocus",
+    targetName: String
+) {
+    delay(FOCUS_REQUEST_DELAY_MS)
+    try {
+        requestFocus()
+        Log.i(logTag, "🎯 Focus set to $targetName")
+    } catch (e: IllegalStateException) {
+        Log.w(logTag, "⚠️ $targetName FocusRequester not initialized yet")
     }
 }
 

@@ -7,7 +7,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.layout.Box
@@ -41,6 +40,7 @@ import com.flintr.tv.ui.tabs.FavoritesContent
 import com.flintr.tv.ui.tabs.FavoritesContentParams
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
+import com.flintr.tv.ui.utils.safeRequestFocus
 
 sealed class Screen(val route: String) {
     object InitialRouting : Screen("initial_routing")
@@ -264,18 +264,6 @@ fun MainContentScreen(
         }
     }
     
-    // Helper function to safely request focus with delay to ensure FocusRequester is ready
-    suspend fun safeRequestFocus(focusRequester: FocusRequester, name: String) {
-        // Small delay to ensure FocusRequester is fully initialized
-        delay(50)
-        try {
-            focusRequester.requestFocus()
-            Log.i("TVFocus", "[MainContentScreen] 🎯 Focus set to $name")
-        } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "[MainContentScreen] ⚠️ $name FocusRequester not initialized yet")
-        }
-    }
-    
     // Track if initial focus has been set
     var initialFocusSet by remember { mutableStateOf(false) }
     var pendingFocusDestination by remember { mutableStateOf<HomeDestination?>(null) }
@@ -300,7 +288,7 @@ fun MainContentScreen(
     LaunchedEffect(navbarReady) {
         if (navbarReady && !initialFocusSet) {
             initialFocusSet = true
-            safeRequestFocus(navbarFocusRequester, "NAVBAR")
+            navbarFocusRequester.safeRequestFocus("[MainContentScreen]", "NAVBAR")
         }
     }
     
@@ -312,7 +300,7 @@ fun MainContentScreen(
             pendingFocusDestination !is HomeDestination.Favorites &&
             showCategories && sortedCategories.isNotEmpty()) {
             categorySidebarFocusSet = true
-            safeRequestFocus(categorySidebarFocusRequester, "CATEGORY_SIDEBAR")
+            categorySidebarFocusRequester.safeRequestFocus("[MainContentScreen]", "CATEGORY_SIDEBAR")
         }
     }
     
@@ -322,7 +310,7 @@ fun MainContentScreen(
             !contentListFocusSet &&
             pendingFocusDestination is HomeDestination.Favorites) {
             contentListFocusSet = true
-            safeRequestFocus(contentListFocusRequester, "CONTENT_LIST")
+            contentListFocusRequester.safeRequestFocus("[MainContentScreen]", "CONTENT_LIST")
         }
     }
     
@@ -358,9 +346,7 @@ fun MainContentScreen(
         onNavigateToContentList = { moveFocusToContentList() },
         onNavbarReady = {
             // Signal that navbar is ready for focus
-            if (!navbarReady) {
-                navbarReady = true
-            }
+            navbarReady = true
         },
         onCategorySidebarReady = {
             // Signal that category sidebar is ready for focus

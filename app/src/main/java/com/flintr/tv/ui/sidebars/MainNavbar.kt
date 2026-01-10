@@ -22,7 +22,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -41,6 +40,7 @@ import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.ui.utils.safeRequestFocus
 
 sealed class HomeDestination {
     object LiveTV : HomeDestination()
@@ -196,15 +196,8 @@ fun HomeSidebarItem(
             focusRequester != null && 
             pendingFocusDestination == destination && 
             !hasRequestedFocus) {
-            // Small delay to ensure FocusRequester is fully initialized
-            delay(50)
-            try {
-                focusRequester?.requestFocus()
-                hasRequestedFocus = true
-                Log.i("TVFocus", "[MainNavbar] 🎯 Focus set to selected item via LaunchedEffect: $destination")
-            } catch (e: IllegalStateException) {
-                Log.w("TVFocus", "[MainNavbar] ⚠️ FocusRequester not initialized yet for $destination")
-            }
+            hasRequestedFocus = true
+            focusRequester.safeRequestFocus("[MainNavbar]", destination.toString())
         }
     }
     
