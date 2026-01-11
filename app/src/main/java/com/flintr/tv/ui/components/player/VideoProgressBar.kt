@@ -77,11 +77,11 @@ fun VideoProgressBar(
                                     onDragStart()
                                     
                                     // Process initial drag position
-                                    var newProgress = calculateProgress(drag.position.x)
+                                    var currentDrag: androidx.compose.ui.input.pointer.PointerInputChange = drag
+                                    var newProgress = calculateProgress(currentDrag.position.x)
                                     onSeek(newProgress)
                                     
                                     // Process continuous drag events
-                                    var currentDrag: androidx.compose.ui.input.pointer.PointerInputChange = drag
                                     while (true) {
                                         val dragEvent = awaitHorizontalDragOrCancellation(currentDrag.id)
                                         if (dragEvent == null) break
