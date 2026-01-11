@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
@@ -23,6 +24,75 @@ import kotlinx.coroutines.withTimeout
  */
 private fun calculateProgress(xPosition: Float, containerWidthPx: Float): Float {
     return (xPosition / containerWidthPx).coerceIn(0f, 1f)
+}
+
+/**
+ * Handles tap gesture (tap without drag)
+ */
+private fun handleTapSeek(
+    downEvent: PointerInputChange,
+    containerWidthPx: Float,
+    onSeek: (Float) -> Unit
+) {
+    if (containerWidthPx > 0f) {
+        val newProgress = calculateProgress(downEvent.position.x, containerWidthPx)
+        onSeek(newProgress)
+    }
+}
+
+/**
+ * Processes continuous drag events and updates seek position
+ */
+private suspend fun AwaitPointerEventScope.processDragEvents(
+    initialDrag: PointerInputChange,
+    containerWidthPx: Float,
+    onSeek: (Float) -> Unit
+) {
+    var currentDrag = initialDrag
+    onSeek(calculateProgress(currentDrag.position.x, containerWidthPx))
+    
+    while (true) {
+        val dragEvent = awaitHorizontalDragOrCancellation(currentDrag.id) ?: break
+        currentDrag = dragEvent
+        onSeek(calculateProgress(currentDrag.position.x, containerWidthPx))
+    }
+}
+
+/**
+ * Waits for drag gesture within timeout, returns null if timeout or cancelled
+ */
+private suspend fun AwaitPointerEventScope.awaitDragGestureOrNull(
+    downEvent: PointerInputChange,
+    timeoutMillis: Long
+): PointerInputChange? {
+    return try {
+        withTimeout(timeoutMillis) {
+            awaitHorizontalDragOrCancellation(downEvent.id)
+        }
+    } catch (_: PointerEventTimeoutCancellationException) {
+        null
+    }
+}
+
+/**
+ * Handles complete drag gesture flow
+ * @return true if drag was handled, false if it should be treated as tap
+ */
+private suspend fun AwaitPointerEventScope.handleDragGesture(
+    downEvent: PointerInputChange,
+    containerWidthPx: Float,
+    timeoutMillis: Long,
+    onDragStart: () -> Unit,
+    onSeek: (Float) -> Unit,
+    onDragEnd: () -> Unit
+): Boolean {
+    val initialDrag = awaitDragGestureOrNull(downEvent, timeoutMillis) ?: return false
+    
+    onDragStart()
+    processDragEvents(initialDrag, containerWidthPx, onSeek)
+    onDragEnd()
+    
+    return true
 }
 
 
@@ -59,41 +129,18 @@ fun VideoProgressBar(
                 awaitPointerEventScope {
                     while (true) {
                         val down = awaitFirstDown()
-                        val initialDrag = try {
-                            withTimeout(viewConfiguration.longPressTimeoutMillis) {
-                                val drag = awaitHorizontalDragOrCancellation(down.id)
-                                if (drag == null) {
-                                    waitForUpOrCancellation()
-                                    null
-                                } else {
-                                    drag
-                                }
-                            }
-                        } catch (_: PointerEventTimeoutCancellationException) {
-                            null
-                        }
                         
-                        if (initialDrag != null) {
-                            onDragStart()
-                            var currentDrag: PointerInputChange = initialDrag
-                            var newProgress = calculateProgress(currentDrag.position.x, containerWidthPx)
-                            onSeek(newProgress)
-                            
-                            while (true) {
-                                val dragEvent = awaitHorizontalDragOrCancellation(currentDrag.id)
-                                if (dragEvent == null) break
-                                
-                                currentDrag = dragEvent
-                                newProgress = calculateProgress(currentDrag.position.x, containerWidthPx)
-                                onSeek(newProgress)
-                            }
-                            onDragEnd()
-                            continue
-                        }
+                        val wasDragged = handleDragGesture(
+                            downEvent = down,
+                            containerWidthPx = containerWidthPx,
+                            timeoutMillis = viewConfiguration.longPressTimeoutMillis,
+                            onDragStart = onDragStart,
+                            onSeek = onSeek,
+                            onDragEnd = onDragEnd
+                        )
                         
-                        if (containerWidthPx > 0f) {
-                            val newProgress = calculateProgress(down.position.x, containerWidthPx)
-                            onSeek(newProgress)
+                        if (!wasDragged) {
+                            handleTapSeek(down, containerWidthPx, onSeek)
                         }
                     }
                 }
