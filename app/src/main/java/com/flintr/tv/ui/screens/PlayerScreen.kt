@@ -79,7 +79,6 @@ fun PlayerScreen(
     val view = LocalView.current
     val coroutineScope = rememberCoroutineScope()
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var isInitializing by remember { mutableStateOf(true) }
     var hasRestoredProgress by remember { mutableStateOf(false) }
     
     // Player UI State
@@ -167,24 +166,20 @@ fun PlayerScreen(
                     else -> "Wiedergabefehler: ${error.message ?: "Unbekannter Fehler"}"
                 }
                 errorMessage = message
-                isInitializing = false
             }
 
             override fun onPlaybackStateChanged(state: Int) {
                 playbackState = state
                 val stateString = when (state) {
                     Player.STATE_IDLE -> {
-                        isInitializing = false
                         "STATE_IDLE"
                     }
                     Player.STATE_BUFFERING -> "STATE_BUFFERING"
                     Player.STATE_READY -> {
                         errorMessage = null // Clear error on successful playback
-                        isInitializing = false
                         "STATE_READY"
                     }
                     Player.STATE_ENDED -> {
-                        isInitializing = false
                         "STATE_ENDED"
                     }
                     else -> "UNKNOWN_STATE"
@@ -211,7 +206,6 @@ fun PlayerScreen(
                 Log.e("PlayerScreen", "Error preparing media item", e)
                 withContext(Dispatchers.Main) {
                     errorMessage = "Fehler beim Laden des Streams: ${e.message}"
-                    isInitializing = false
                 }
             }
         }
@@ -567,7 +561,6 @@ fun PlayerScreen(
                     ) {
                         Button(onClick = { 
                             errorMessage = null
-                            isInitializing = true
                             exoPlayer.prepare()
                         }) {
                             Text("Erneut versuchen")
