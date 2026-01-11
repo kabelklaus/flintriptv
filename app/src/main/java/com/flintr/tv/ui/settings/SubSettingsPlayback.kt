@@ -16,15 +16,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
 import android.util.Log
 import com.flintr.tv.ui.theme.Dimensions
-import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 
@@ -183,7 +179,7 @@ fun SettingsPlayback(
 }
 
 @Composable
-private fun VideoQualitySelector(
+fun VideoQualitySelector(
     selectedQuality: VideoQuality,
     onQualitySelected: (VideoQuality) -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors,
@@ -264,7 +260,7 @@ private fun VideoQualitySelector(
 }
 
 @Composable
-private fun SubtitleLanguageSelector(
+fun SubtitleLanguageSelector(
     selectedLanguage: SubtitleLanguage,
     onLanguageSelected: (SubtitleLanguage) -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors
@@ -336,7 +332,7 @@ private fun SubtitleLanguageSelector(
 }
 
 @Composable
-private fun AudioLanguageSelector(
+fun AudioLanguageSelector(
     selectedLanguage: AudioLanguage,
     onLanguageSelected: (AudioLanguage) -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors
@@ -408,7 +404,7 @@ private fun AudioLanguageSelector(
 }
 
 @Composable
-private fun ReadOnlySetting(
+fun ReadOnlySetting(
     label: String,
     value: String,
     colors: com.flintr.tv.ui.theme.AppColors
@@ -435,46 +431,6 @@ private fun ReadOnlySetting(
     )
 }
 
-@Composable
-private fun SwitchSetting(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    colors: com.flintr.tv.ui.theme.AppColors
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { focusState ->
-                isFocused = focusState.isFocused
-            }
-            .focusable()
-            .onDpadCenter { onCheckedChange(!checked) }
-            .padding(vertical = Dimensions.spacingXS),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            fontSize = FontSizes.fontSizeXL,
-            color = if (isFocused) colors.accentColor else colors.textPrimary,
-            fontWeight = if (isFocused) FontWeight.W600 else FontWeight.Normal
-        )
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = colors.accentColor,
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = colors.cardBorder
-            )
-        )
-    }
-}
-
 enum class VideoQuality(val displayName: String) {
     Auto("Auto"),
     Quality1080p("1080p"),
@@ -496,63 +452,5 @@ enum class AudioLanguage(val displayName: String) {
     English("English"),
     Francais("Français"),
     Espanol("Español")
-}
-
-@Composable
-private fun SettingsCard(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    colors: com.flintr.tv.ui.theme.AppColors,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
-        colors = CardDefaults.cardColors(
-            containerColor = colors.bgCard
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(
-                    width = 1.dp,
-                    color = colors.cardBorder,
-                    shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-                )
-        ) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(Dimensions.listItemHoverPadding),
-                horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingLG),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    modifier = Modifier.size(28.dp),
-                    tint = colors.iconColor
-                )
-                Text(
-                    text = title,
-                    fontSize = FontSizes.fontSizeXL,
-                    fontWeight = FontWeight.W600,
-                    color = colors.textPrimary
-                )
-            }
-            
-            // Content
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(Dimensions.spacingMD)
-                    .padding(top = 0.dp),
-                content = content
-            )
-        }
-    }
 }
 

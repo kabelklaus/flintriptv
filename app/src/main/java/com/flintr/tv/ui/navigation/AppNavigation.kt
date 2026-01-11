@@ -218,14 +218,6 @@ fun AppNavigation(
             val seriesId = seriesIdStr.toIntOrNull()?.takeIf { it >= 0 }
             val episodeId = episodeIdStr.toIntOrNull()?.takeIf { it >= 0 }
             
-            // Debug logs to track navigation arguments
-            if (BuildConfig.DEBUG) {
-                android.util.Log.d("AppNavigation", "🔗 Navigation to PlayerScreen")
-                android.util.Log.d("AppNavigation", "🔗 Raw streamUrl from args: $streamUrlRaw")
-                android.util.Log.d("AppNavigation", "🔗 Decoded streamUrl: $streamUrl")
-                android.util.Log.d("AppNavigation", "🔗 contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId, title: $title")
-            }
-            
             PlayerScreen(
                 streamInfo = StreamInfo(
                     streamUrl = streamUrl,
