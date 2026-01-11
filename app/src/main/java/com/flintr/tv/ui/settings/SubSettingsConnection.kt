@@ -464,64 +464,6 @@ fun SettingsConnection(
     }
 }
 
-@Composable
-private fun SettingsCard(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    colors: com.flintr.tv.ui.theme.AppColors,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
-        colors = CardDefaults.cardColors(
-            containerColor = colors.bgCard
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(
-                    width = 1.dp,
-                    color = colors.cardBorder,
-                    shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-                )
-        ) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(Dimensions.listItemHoverPadding),
-                horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingLG),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    modifier = Modifier.size(28.dp),
-                    tint = colors.iconColor
-                )
-                Text(
-                    text = title,
-                    fontSize = FontSizes.fontSizeXL,
-                    fontWeight = FontWeight.W600,
-                    color = colors.textPrimary
-                )
-            }
-            
-            // Content
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(Dimensions.spacingMD)
-                    .padding(top = 0.dp),
-                content = content
-            )
-        }
-    }
-}
-
 sealed class ConnectionResult(val message: String) {
     class Success(message: String) : ConnectionResult(message)
     class Error(message: String) : ConnectionResult(message)

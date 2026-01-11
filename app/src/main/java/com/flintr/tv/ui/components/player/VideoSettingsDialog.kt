@@ -87,7 +87,7 @@ fun VideoSettingsDialog(
                 Spacer(modifier = Modifier.height(Dimensions.spacingLG))
                 
                 // Quality Section
-                VideoSettingsCard(
+                SettingsCard(
                     title = "Qualität",
                     icon = Icons.Default.HighQuality,
                     colors = colors
@@ -119,7 +119,7 @@ fun VideoSettingsDialog(
                         )
                         
                         // Auto Play Switch
-                        VideoSwitchSetting(
+                        SwitchSetting(
                             label = "Automatisch abspielen",
                             checked = autoPlay,
                             onCheckedChange = { autoPlay = it },
@@ -127,7 +127,7 @@ fun VideoSettingsDialog(
                         )
                         
                         // Remember Position Switch
-                        VideoSwitchSetting(
+                        SwitchSetting(
                             label = "Position merken",
                             checked = rememberPosition,
                             onCheckedChange = { rememberPosition = it },
@@ -139,7 +139,7 @@ fun VideoSettingsDialog(
                 Spacer(modifier = Modifier.height(Dimensions.spacingMD))
                 
                 // Subtitles Section
-                VideoSettingsCard(
+                SettingsCard(
                     title = "Untertitel",
                     icon = Icons.Default.ClosedCaption,
                     colors = colors
@@ -148,7 +148,7 @@ fun VideoSettingsDialog(
                         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
                     ) {
                         // Subtitles Enabled Switch
-                        VideoSwitchSetting(
+                        SwitchSetting(
                             label = "Untertitel aktivieren",
                             checked = subtitlesEnabled,
                             onCheckedChange = { subtitlesEnabled = it },
@@ -169,7 +169,7 @@ fun VideoSettingsDialog(
                 Spacer(modifier = Modifier.height(Dimensions.spacingMD))
                 
                 // Audio Section
-                VideoSettingsCard(
+                SettingsCard(
                     title = "Audio",
                     icon = Icons.Default.VolumeUp,
                     colors = colors
@@ -189,106 +189,3 @@ fun VideoSettingsDialog(
     }
 }
 
-/**
- * Local SettingsCard component to avoid conflicts with other SettingsCard definitions
- */
-@Composable
-private fun VideoSettingsCard(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    colors: com.flintr.tv.ui.theme.AppColors,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
-        colors = CardDefaults.cardColors(
-            containerColor = colors.bgCard
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(
-                    width = 1.dp,
-                    color = colors.cardBorder,
-                    shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-                )
-        ) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(Dimensions.listItemHoverPadding),
-                horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingLG),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    modifier = Modifier.size(28.dp),
-                    tint = colors.iconColor
-                )
-                Text(
-                    text = title,
-                    fontSize = FontSizes.fontSizeXL,
-                    fontWeight = FontWeight.W600,
-                    color = colors.textPrimary
-                )
-            }
-            
-            // Content
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(Dimensions.spacingMD)
-                    .padding(top = 0.dp),
-                content = content
-            )
-        }
-    }
-}
-
-/**
- * Local SwitchSetting component to avoid conflicts with other SwitchSetting definitions
- */
-@Composable
-private fun VideoSwitchSetting(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    colors: com.flintr.tv.ui.theme.AppColors
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { focusState ->
-                isFocused = focusState.isFocused
-            }
-            .focusable()
-            .onDpadCenter { onCheckedChange(!checked) }
-            .padding(vertical = Dimensions.spacingXS),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            fontSize = FontSizes.fontSizeXL,
-            color = if (isFocused) colors.accentColor else colors.textPrimary,
-            fontWeight = if (isFocused) FontWeight.W600 else FontWeight.Normal
-        )
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = colors.accentColor,
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = colors.cardBorder
-            )
-        )
-    }
-}

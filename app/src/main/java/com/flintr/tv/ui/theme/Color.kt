@@ -35,7 +35,7 @@ object SharedColors {
     val red = Color(0xFFEF4444)
     
     // Video/Surface colors
-    val videoPlayerBg = Color(0xFF1A1A1A)
+    val videoPlayerBg = Color(0xFF000000)
     val sidebarCard = Color(0xFF1A2230)
     val navSidebarBg = Color(0xFF151B26)
     
