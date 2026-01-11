@@ -472,33 +472,40 @@ fun PlayerScreen(
         // Custom player controls
         if (showControls) {
             CustomPlayerControls(
-                isPlaying = isPlaying,
-                currentPosition = currentPosition,
-                duration = duration,
-                progress = progress,
-                focusedButton = focusedButton,
-                onPrevious = onPrevious,
-                onPlayPause = onPlayPause,
-                onNext = onNext,
-                onSeek = onSeek,
-                onDragStart = {
-                    isDraggingProgress = true
-                },
-                onDragEnd = {
-                    isDraggingProgress = false
-                },
-                onDebug = {
-                    showDebugOverlay = !showDebugOverlay
-                },
-                onSettings = {
-                    showSettingsDialog = true
-                },
-                onFocusChange = { button ->
-                    focusedButton = button
-                    if (button != null) {
-                        showControls = true
+                state = PlayerState(
+                    isPlaying = isPlaying,
+                    currentPosition = currentPosition,
+                    duration = duration,
+                    progress = progress,
+                    bufferedPosition = bufferedPosition
+                ),
+                callbacks = PlayerCallbacks(
+                    onPrevious = onPrevious,
+                    onPlayPause = onPlayPause,
+                    onNext = onNext,
+                    onSeek = onSeek,
+                    onDragStart = {
+                        isDraggingProgress = true
+                    },
+                    onDragEnd = {
+                        isDraggingProgress = false
                     }
-                },
+                ),
+                utilityCallbacks = PlayerUtilityCallbacks(
+                    onDebug = {
+                        showDebugOverlay = !showDebugOverlay
+                    },
+                    onSettings = {
+                        showSettingsDialog = true
+                    },
+                    onFocusChange = { button ->
+                        focusedButton = button
+                        if (button != null) {
+                            showControls = true
+                        }
+                    }
+                ),
+                focusedButton = focusedButton,
                 modifier = Modifier.fillMaxSize()
             )
             

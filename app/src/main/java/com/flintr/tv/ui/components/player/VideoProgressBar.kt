@@ -1,11 +1,9 @@
 package com.flintr.tv.ui.components.player
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitHorizontalDragOrCancellation
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,7 +12,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.ui.theme.SharedColors
@@ -22,7 +19,8 @@ import kotlinx.coroutines.withTimeout
 
 /**
  * Custom video progress bar with drag interaction
- * @param progress Progress value between 0.0 and 1.0
+ * @param progress Progress value between 0.0 and 1.0 (current position - dark red)
+ * @param bufferedProgress Buffered progress value between 0.0 and 1.0 (light red)
  * @param onSeek Callback when user seeks to a new position (0.0 to 1.0)
  * @param onDragStart Callback when drag starts
  * @param onDragEnd Callback when drag ends
@@ -31,53 +29,68 @@ import kotlinx.coroutines.withTimeout
 @Composable
 fun VideoProgressBar(
     progress: Float,
+    bufferedProgress: Float = 0f,
     onSeek: (Float) -> Unit,
     onDragStart: () -> Unit = {},
     onDragEnd: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val progressHeight = 4.dp
-    val handleRadius = 6.dp
-    val showHandle = progress > 0f && progress < 1f
     var containerWidthPx by remember { mutableStateOf(0f) }
-    val density = LocalDensity.current
     val viewConfiguration = LocalViewConfiguration.current
     
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(progressHeight + handleRadius * 2)
+            .height(progressHeight)
             .onSizeChanged { size ->
                 containerWidthPx = size.width.toFloat()
             }
             .pointerInput(Unit) {
                 awaitPointerEventScope {
+                    // Helper function to calculate progress from x position
+                    fun calculateProgress(xPosition: Float): Float {
+                        return (xPosition / containerWidthPx).coerceIn(0f, 1f)
+                    }
+                    
+                    // Helper function to handle tap gesture
+                    fun handleTap(down: androidx.compose.ui.input.pointer.PointerInputChange) {
+                        if (containerWidthPx > 0f) {
+                            val newProgress = calculateProgress(down.position.x)
+                            onSeek(newProgress)
+                        }
+                    }
+                    
+                    // Main event loop
                     while (true) {
                         val down = awaitFirstDown()
                         var isTap = true
+                        var dragOccurred = false
                         
                         try {
                             withTimeout(viewConfiguration.longPressTimeoutMillis) {
-                                var dragOccurred = false
                                 val drag = awaitHorizontalDragOrCancellation(down.id)
                                 if (drag != null) {
+                                    // Handle drag gesture
                                     dragOccurred = true
                                     isTap = false
                                     onDragStart()
-                                    val newProgress = (drag.position.x / containerWidthPx).coerceIn(0f, 1f)
+                                    
+                                    // Process initial drag position
+                                    var newProgress = calculateProgress(drag.position.x)
                                     onSeek(newProgress)
                                     
+                                    // Process continuous drag events
+                                    var currentDrag: androidx.compose.ui.input.pointer.PointerInputChange = drag
                                     while (true) {
-                                        val dragEvent = awaitHorizontalDragOrCancellation(drag.id)
-                                        if (dragEvent == null) {
-                                            break
-                                        } else {
-                                            val newProgress = (dragEvent.position.x / containerWidthPx).coerceIn(0f, 1f)
-                                            onSeek(newProgress)
-                                        }
+                                        val dragEvent = awaitHorizontalDragOrCancellation(currentDrag.id)
+                                        if (dragEvent == null) break
+                                        
+                                        currentDrag = dragEvent
+                                        newProgress = calculateProgress(currentDrag.position.x)
+                                        onSeek(newProgress)
                                     }
-                                }
-                                if (!dragOccurred) {
+                                } else {
                                     waitForUpOrCancellation()
                                 }
                             }
@@ -85,10 +98,10 @@ fun VideoProgressBar(
                             isTap = false
                         }
                         
-                        if (isTap && containerWidthPx > 0f) {
-                            val newProgress = (down.position.x / containerWidthPx).coerceIn(0f, 1f)
-                            onSeek(newProgress)
-                        } else {
+                        // Handle tap or drag end
+                        if (isTap) {
+                            handleTap(down)
+                        } else if (dragOccurred) {
                             onDragEnd()
                         }
                     }
@@ -106,7 +119,18 @@ fun VideoProgressBar(
             trackColor = Color.White.copy(alpha = 0.3f)
         )
         
-        // Progress indicator (red)
+        // Buffered progress indicator (light red)
+        LinearProgressIndicator(
+            progress = bufferedProgress.coerceIn(0f, 1f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(progressHeight)
+                .align(Alignment.Center),
+            color = SharedColors.red.copy(alpha = 0.5f),
+            trackColor = Color.Transparent
+        )
+        
+        // Current position indicator (dark red)
         LinearProgressIndicator(
             progress = progress,
             modifier = Modifier
@@ -116,19 +140,5 @@ fun VideoProgressBar(
             color = SharedColors.red,
             trackColor = Color.Transparent
         )
-        
-        // Handle circle (white, 6px radius)
-        if (showHandle && containerWidthPx > 0f) {
-            val handleOffsetXPx = progress * containerWidthPx
-            val handleOffsetX = with(density) { handleOffsetXPx.toDp() - handleRadius }
-            
-            Box(
-                modifier = Modifier
-                    .size(handleRadius * 2)
-                    .background(Color.White, CircleShape)
-                    .offset(x = handleOffsetX)
-                    .align(Alignment.CenterStart)
-            )
-        }
     }
 }

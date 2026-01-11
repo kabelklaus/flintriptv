@@ -27,57 +27,81 @@ import com.flintr.tv.ui.utils.formatTime
 import com.flintr.tv.ui.utils.onDpadDirection
 
 /**
+ * Data class containing player state information
+ */
+data class PlayerState(
+    val isPlaying: Boolean,
+    val currentPosition: Long,
+    val duration: Long,
+    val progress: Float,
+    val bufferedPosition: Long = 0L
+)
+
+/**
+ * Data class containing player control callbacks
+ */
+data class PlayerCallbacks(
+    val onPrevious: () -> Unit,
+    val onPlayPause: () -> Unit,
+    val onNext: () -> Unit,
+    val onSeek: (Float) -> Unit,
+    val onDragStart: () -> Unit,
+    val onDragEnd: () -> Unit
+)
+
+/**
+ * Data class containing utility callbacks
+ */
+data class PlayerUtilityCallbacks(
+    val onDebug: () -> Unit,
+    val onSettings: () -> Unit,
+    val onFocusChange: (FocusedButton?) -> Unit
+)
+
+/**
+ * Data class containing button configuration
+ */
+data class ButtonConfig(
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val iconSize: androidx.compose.ui.unit.Dp,
+    val contentDescription: String,
+    val isFocused: Boolean,
+    val focusRequester: FocusRequester,
+    val onFocusChange: (Boolean) -> Unit,
+    val onClick: () -> Unit,
+    val onNavigateLeft: () -> Unit,
+    val onNavigateRight: () -> Unit
+)
+
+/**
  * Custom player controls with progress bar, navigation buttons, time display, and utility buttons
- * @param isPlaying Whether video is currently playing
- * @param currentPosition Current playback position in milliseconds
- * @param duration Total duration in milliseconds
- * @param progress Progress value between 0.0 and 1.0
+ * @param state Player state information
+ * @param callbacks Player control callbacks
+ * @param utilityCallbacks Utility callbacks
  * @param focusedButton Currently focused button
- * @param onPrevious Callback for previous button (10s back)
- * @param onPlayPause Callback for play/pause button
- * @param onNext Callback for next button (10s forward)
- * @param onSeek Callback when user seeks to a new position
- * @param onDragStart Callback when drag starts on progress bar
- * @param onDragEnd Callback when drag ends on progress bar
- * @param onDebug Callback for debug button
- * @param onSettings Callback for settings button
- * @param onFocusChange Callback when focus changes
  * @param modifier Modifier for the controls
  */
 @Composable
 fun CustomPlayerControls(
-    isPlaying: Boolean,
-    currentPosition: Long,
-    duration: Long,
-    progress: Float,
+    state: PlayerState,
+    callbacks: PlayerCallbacks,
+    utilityCallbacks: PlayerUtilityCallbacks,
     focusedButton: FocusedButton?,
-    onPrevious: () -> Unit,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onSeek: (Float) -> Unit,
-    onDragStart: () -> Unit,
-    onDragEnd: () -> Unit,
-    onDebug: () -> Unit,
-    onSettings: () -> Unit,
-    onFocusChange: (FocusedButton?) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val previousFocusRequester = remember { FocusRequester() }
-    val playPauseFocusRequester = remember { FocusRequester() }
-    val nextFocusRequester = remember { FocusRequester() }
-    val debugFocusRequester = remember { FocusRequester() }
-    val settingsFocusRequester = remember { FocusRequester() }
+    val focusRequesters = remember {
+        mapOf(
+            FocusedButton.PREVIOUS to FocusRequester(),
+            FocusedButton.PLAY_PAUSE to FocusRequester(),
+            FocusedButton.NEXT to FocusRequester(),
+            FocusedButton.DEBUG to FocusRequester(),
+            FocusedButton.SETTINGS to FocusRequester()
+        )
+    }
     
     // Request focus when focusedButton changes
     LaunchedEffect(focusedButton) {
-        when (focusedButton) {
-            FocusedButton.PREVIOUS -> previousFocusRequester.requestFocus()
-            FocusedButton.PLAY_PAUSE -> playPauseFocusRequester.requestFocus()
-            FocusedButton.NEXT -> nextFocusRequester.requestFocus()
-            FocusedButton.DEBUG -> debugFocusRequester.requestFocus()
-            FocusedButton.SETTINGS -> settingsFocusRequester.requestFocus()
-            null -> {}
-        }
+        focusRequesters[focusedButton]?.requestFocus()
     }
     
     Box(
@@ -106,10 +130,15 @@ fun CustomPlayerControls(
         ) {
             // Progress bar
             VideoProgressBar(
-                progress = progress,
-                onSeek = onSeek,
-                onDragStart = onDragStart,
-                onDragEnd = onDragEnd,
+                progress = state.progress,
+                bufferedProgress = if (state.duration > 0) {
+                    (state.bufferedPosition.toFloat() / state.duration).coerceIn(0f, 1f)
+                } else {
+                    0f
+                },
+                onSeek = callbacks.onSeek,
+                onDragStart = callbacks.onDragStart,
+                onDragEnd = callbacks.onDragEnd,
                 modifier = Modifier.fillMaxWidth()
             )
             
@@ -122,91 +151,137 @@ fun CustomPlayerControls(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Navigation buttons
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Previous button (10s back)
-                    PlayerControlButton(
-                        icon = Icons.Default.Replay10,
-                        iconSize = 28.dp,
-                        contentDescription = "10 Sekunden zurück",
-                        isFocused = focusedButton == FocusedButton.PREVIOUS,
-                        focusRequester = previousFocusRequester,
-                        onFocusChange = { onFocusChange(if (it) FocusedButton.PREVIOUS else null) },
-                        onClick = onPrevious,
-                        onNavigateLeft = { onFocusChange(null) },
-                        onNavigateRight = { onFocusChange(FocusedButton.PLAY_PAUSE) }
-                    )
-                    
-                    // Play/Pause button
-                    PlayerControlButton(
-                        icon = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        iconSize = 32.dp,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        isFocused = focusedButton == FocusedButton.PLAY_PAUSE,
-                        focusRequester = playPauseFocusRequester,
-                        onFocusChange = { onFocusChange(if (it) FocusedButton.PLAY_PAUSE else null) },
-                        onClick = onPlayPause,
-                        onNavigateLeft = { onFocusChange(FocusedButton.PREVIOUS) },
-                        onNavigateRight = { onFocusChange(FocusedButton.NEXT) }
-                    )
-                    
-                    // Next button (10s forward)
-                    PlayerControlButton(
-                        icon = Icons.Default.Forward10,
-                        iconSize = 28.dp,
-                        contentDescription = "10 Sekunden vor",
-                        isFocused = focusedButton == FocusedButton.NEXT,
-                        focusRequester = nextFocusRequester,
-                        onFocusChange = { onFocusChange(if (it) FocusedButton.NEXT else null) },
-                        onClick = onNext,
-                        onNavigateLeft = { onFocusChange(FocusedButton.PLAY_PAUSE) },
-                        onNavigateRight = { onFocusChange(FocusedButton.DEBUG) }
-                    )
-                }
+                NavigationButtons(
+                    state = state,
+                    callbacks = callbacks,
+                    utilityCallbacks = utilityCallbacks,
+                    focusedButton = focusedButton,
+                    focusRequesters = focusRequesters
+                )
                 
                 // Time display
                 Text(
-                    text = "${formatTime(currentPosition)} / ${formatTime(duration)}",
+                    text = "${formatTime(state.currentPosition)} / ${formatTime(state.duration)}",
                     fontSize = FontSizes.fontSizeLG,
                     color = Color.White,
                     modifier = Modifier.padding(horizontal = Dimensions.spacingMD)
                 )
                 
                 // Utility buttons
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Debug button
-                    PlayerControlButton(
-                        icon = Icons.Default.BugReport,
-                        iconSize = 24.dp,
-                        contentDescription = "Debug",
-                        isFocused = focusedButton == FocusedButton.DEBUG,
-                        focusRequester = debugFocusRequester,
-                        onFocusChange = { onFocusChange(if (it) FocusedButton.DEBUG else null) },
-                        onClick = onDebug,
-                        onNavigateLeft = { onFocusChange(FocusedButton.NEXT) },
-                        onNavigateRight = { onFocusChange(FocusedButton.SETTINGS) }
-                    )
-                    
-                    // Settings button
-                    PlayerControlButton(
-                        icon = Icons.Default.Settings,
-                        iconSize = 24.dp,
-                        contentDescription = "Einstellungen",
-                        isFocused = focusedButton == FocusedButton.SETTINGS,
-                        focusRequester = settingsFocusRequester,
-                        onFocusChange = { onFocusChange(if (it) FocusedButton.SETTINGS else null) },
-                        onClick = onSettings,
-                        onNavigateLeft = { onFocusChange(FocusedButton.DEBUG) },
-                        onNavigateRight = { onFocusChange(null) }
-                    )
-                }
+                UtilityButtons(
+                    utilityCallbacks = utilityCallbacks,
+                    focusedButton = focusedButton,
+                    focusRequesters = focusRequesters
+                )
             }
         }
+    }
+}
+
+/**
+ * Navigation buttons group (Previous, Play/Pause, Next)
+ */
+@Composable
+private fun NavigationButtons(
+    state: PlayerState,
+    callbacks: PlayerCallbacks,
+    utilityCallbacks: PlayerUtilityCallbacks,
+    focusedButton: FocusedButton?,
+    focusRequesters: Map<FocusedButton, FocusRequester>
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Previous button (10s back)
+        PlayerControlButton(
+            config = ButtonConfig(
+                icon = Icons.Default.Replay10,
+                iconSize = 28.dp,
+                contentDescription = "10 Sekunden zurück",
+                isFocused = focusedButton == FocusedButton.PREVIOUS,
+                focusRequester = focusRequesters[FocusedButton.PREVIOUS]!!,
+                onFocusChange = { utilityCallbacks.onFocusChange(if (it) FocusedButton.PREVIOUS else null) },
+                onClick = callbacks.onPrevious,
+                onNavigateLeft = { utilityCallbacks.onFocusChange(null) },
+                onNavigateRight = { utilityCallbacks.onFocusChange(FocusedButton.PLAY_PAUSE) }
+            )
+        )
+        
+        // Play/Pause button
+        PlayerControlButton(
+            config = ButtonConfig(
+                icon = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                iconSize = 32.dp,
+                contentDescription = if (state.isPlaying) "Pause" else "Play",
+                isFocused = focusedButton == FocusedButton.PLAY_PAUSE,
+                focusRequester = focusRequesters[FocusedButton.PLAY_PAUSE]!!,
+                onFocusChange = { utilityCallbacks.onFocusChange(if (it) FocusedButton.PLAY_PAUSE else null) },
+                onClick = callbacks.onPlayPause,
+                onNavigateLeft = { utilityCallbacks.onFocusChange(FocusedButton.PREVIOUS) },
+                onNavigateRight = { utilityCallbacks.onFocusChange(FocusedButton.NEXT) }
+            )
+        )
+        
+        // Next button (10s forward)
+        PlayerControlButton(
+            config = ButtonConfig(
+                icon = Icons.Default.Forward10,
+                iconSize = 28.dp,
+                contentDescription = "10 Sekunden vor",
+                isFocused = focusedButton == FocusedButton.NEXT,
+                focusRequester = focusRequesters[FocusedButton.NEXT]!!,
+                onFocusChange = { utilityCallbacks.onFocusChange(if (it) FocusedButton.NEXT else null) },
+                onClick = callbacks.onNext,
+                onNavigateLeft = { utilityCallbacks.onFocusChange(FocusedButton.PLAY_PAUSE) },
+                onNavigateRight = { utilityCallbacks.onFocusChange(FocusedButton.DEBUG) }
+            )
+        )
+    }
+}
+
+/**
+ * Utility buttons group (Debug, Settings)
+ */
+@Composable
+private fun UtilityButtons(
+    utilityCallbacks: PlayerUtilityCallbacks,
+    focusedButton: FocusedButton?,
+    focusRequesters: Map<FocusedButton, FocusRequester>
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Debug button
+        PlayerControlButton(
+            config = ButtonConfig(
+                icon = Icons.Default.BugReport,
+                iconSize = 24.dp,
+                contentDescription = "Debug",
+                isFocused = focusedButton == FocusedButton.DEBUG,
+                focusRequester = focusRequesters[FocusedButton.DEBUG]!!,
+                onFocusChange = { utilityCallbacks.onFocusChange(if (it) FocusedButton.DEBUG else null) },
+                onClick = utilityCallbacks.onDebug,
+                onNavigateLeft = { utilityCallbacks.onFocusChange(FocusedButton.NEXT) },
+                onNavigateRight = { utilityCallbacks.onFocusChange(FocusedButton.SETTINGS) }
+            )
+        )
+        
+        // Settings button
+        PlayerControlButton(
+            config = ButtonConfig(
+                icon = Icons.Default.Settings,
+                iconSize = 24.dp,
+                contentDescription = "Einstellungen",
+                isFocused = focusedButton == FocusedButton.SETTINGS,
+                focusRequester = focusRequesters[FocusedButton.SETTINGS]!!,
+                onFocusChange = { utilityCallbacks.onFocusChange(if (it) FocusedButton.SETTINGS else null) },
+                onClick = utilityCallbacks.onSettings,
+                onNavigateLeft = { utilityCallbacks.onFocusChange(FocusedButton.DEBUG) },
+                onNavigateRight = { utilityCallbacks.onFocusChange(null) }
+            )
+        )
     }
 }
 
@@ -215,37 +290,29 @@ fun CustomPlayerControls(
  */
 @Composable
 private fun PlayerControlButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconSize: androidx.compose.ui.unit.Dp,
-    contentDescription: String,
-    isFocused: Boolean,
-    focusRequester: FocusRequester,
-    onFocusChange: (Boolean) -> Unit,
-    onClick: () -> Unit,
-    onNavigateLeft: () -> Unit,
-    onNavigateRight: () -> Unit,
+    config: ButtonConfig,
     modifier: Modifier = Modifier
 ) {
     IconButton(
-        onClick = onClick,
+        onClick = config.onClick,
         modifier = modifier
-            .focusRequester(focusRequester)
+            .focusRequester(config.focusRequester)
             .onFocusChanged { focusState ->
-                onFocusChange(focusState.isFocused)
+                config.onFocusChange(focusState.isFocused)
             }
             .focusable()
             .onDpadDirection(
                 onLeft = {
-                    onNavigateLeft()
+                    config.onNavigateLeft()
                     true
                 },
                 onRight = {
-                    onNavigateRight()
+                    config.onNavigateRight()
                     true
                 }
             )
             .then(
-                if (isFocused) {
+                if (config.isFocused) {
                     Modifier.border(2.dp, SharedColors.red, RoundedCornerShape(Dimensions.radiusSM))
                 } else {
                     Modifier
@@ -253,10 +320,10 @@ private fun PlayerControlButton(
             )
     ) {
         Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            modifier = Modifier.size(iconSize),
-            tint = if (isFocused) SharedColors.red else Color.White
+            imageVector = config.icon,
+            contentDescription = config.contentDescription,
+            modifier = Modifier.size(config.iconSize),
+            tint = if (config.isFocused) SharedColors.red else Color.White
         )
     }
 }
