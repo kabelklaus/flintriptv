@@ -235,7 +235,6 @@ private fun PlayerControlButton(
                 onFocusChange(focusState.isFocused)
             }
             .focusable()
-            .onClick(onClick = onClick)
             .onDpadDirection(
                 onLeft = {
                     onNavigateLeft()

@@ -5,8 +5,9 @@ import android.util.Log
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitHorizontalDragOrCancellation
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,10 +21,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -49,6 +52,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 /**
  * Data class containing stream information for playback
@@ -227,12 +231,12 @@ fun PlayerScreen(
     }
     
     // Update position and duration continuously
-    LaunchedEffect(Unit) {
-        while (true) {
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
             currentPosition = exoPlayer.currentPosition
             duration = exoPlayer.duration
             bufferedPosition = exoPlayer.bufferedPosition
-            delay(100) // Update every 100ms
+            delay(250) // Update every 250ms
         }
     }
     
@@ -374,6 +378,7 @@ fun PlayerScreen(
     
     // Focus requester to ensure Box receives key events
     val playerFocusRequester = remember { FocusRequester() }
+    val viewConfiguration = LocalViewConfiguration.current
     
     // Request focus when player screen is shown
     LaunchedEffect(Unit) {
@@ -387,31 +392,58 @@ fun PlayerScreen(
             .focusRequester(playerFocusRequester)
             .focusable() // Make Box focusable to receive key events
             .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { onVideoTap() }
-                )
-            }
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        swipeStartX = offset.x
+                awaitPointerEventScope {
+                    while (true) {
+                        val down = awaitFirstDown()
+                        var isTap = true
+                        swipeStartX = down.position.x
                         swipeStartTime = System.currentTimeMillis()
-                    },
-                    onDrag = { change, _ ->
-                        val currentX = change.position.x
-                        val currentTime = System.currentTimeMillis()
-                        val deltaX = currentX - swipeStartX
-                        val deltaTime = currentTime - swipeStartTime
                         
-                        // Check if swipe is from left edge (< 50px) and fast enough (> 500px/s)
-                        if (swipeStartX < 50f && deltaX > 0 && deltaTime > 0) {
-                            val velocity = deltaX / deltaTime * 1000 // px/s
-                            if (velocity > 500) {
-                                onBack()
+                        try {
+                            withTimeout(viewConfiguration.longPressTimeoutMillis) {
+                                var dragOccurred = false
+                                val drag = awaitHorizontalDragOrCancellation(down.id)
+                                if (drag != null) {
+                                    dragOccurred = true
+                                    isTap = false
+                                    
+                                    var lastDrag: androidx.compose.ui.input.pointer.PointerInputChange = drag
+                                    while (true) {
+                                        val currentX = lastDrag.position.x
+                                        val currentTime = System.currentTimeMillis()
+                                        val deltaX = currentX - swipeStartX
+                                        val deltaTime = currentTime - swipeStartTime
+                                        
+                                        // Check if swipe is from left edge (< 50px) and fast enough (> 500px/s)
+                                        if (swipeStartX < 50f && deltaX > 0 && deltaTime > 0) {
+                                            val velocity = deltaX / deltaTime * 1000 // px/s
+                                            if (velocity > 500) {
+                                                onBack()
+                                                break
+                                            }
+                                        }
+                                        
+                                        val dragEvent = awaitHorizontalDragOrCancellation(lastDrag.id)
+                                        if (dragEvent == null) {
+                                            break
+                                        } else {
+                                            lastDrag = dragEvent
+                                        }
+                                    }
+                                }
+                                if (!dragOccurred) {
+                                    waitForUpOrCancellation()
+                                }
                             }
+                        } catch (_: PointerEventTimeoutCancellationException) {
+                            isTap = false
+                        }
+                        
+                        if (isTap) {
+                            onVideoTap()
                         }
                     }
-                )
+                }
             }
             .onBackButton(onBack = onBack)
             .onDpadCenter {

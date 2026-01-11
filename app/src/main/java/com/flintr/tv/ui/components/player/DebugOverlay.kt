@@ -66,13 +66,12 @@ fun DebugOverlay(
             items(debugInfo) { info ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = info.label,
                         fontSize = FontSizes.fontSizeXXS,
-                        color = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.width(140.dp)
+                        color = Color.White.copy(alpha = 0.7f)
                     )
                     Text(
                         text = info.value,
