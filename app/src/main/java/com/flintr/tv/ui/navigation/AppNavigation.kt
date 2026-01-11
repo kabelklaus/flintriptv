@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import android.net.Uri
 import android.util.Log
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
@@ -52,20 +53,19 @@ sealed class Screen(val route: String) {
     object Settings : Screen("settings")
     object Player : Screen("player/{streamUrl}/{contentType}/{streamId}/{seriesId}/{episodeId}/{title}") {
         fun createRoute(streamUrl: String): String {
-            val encoded = java.net.URLEncoder.encode(streamUrl, "UTF-8")
-            val encodedTitle = java.net.URLEncoder.encode("", "UTF-8")
-            return "player/$encoded/live/-1/-1/-1/$encodedTitle"
+            val encoded = Uri.encode(streamUrl, null)
+            return "player/$encoded/live/-1/-1/-1/_"
         }
         
         fun createRouteForMovie(streamUrl: String, streamId: Int, title: String): String {
-            val encodedUrl = java.net.URLEncoder.encode(streamUrl, "UTF-8")
-            val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+            val encodedUrl = Uri.encode(streamUrl, null)
+            val encodedTitle = if (title.isNotEmpty()) Uri.encode(title, null) else "_"
             return "player/$encodedUrl/movie/$streamId/-1/-1/$encodedTitle"
         }
         
         fun createRouteForSeries(streamUrl: String, seriesId: Int, episodeId: Int, title: String): String {
-            val encodedUrl = java.net.URLEncoder.encode(streamUrl, "UTF-8")
-            val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+            val encodedUrl = Uri.encode(streamUrl, null)
+            val encodedTitle = if (title.isNotEmpty()) Uri.encode(title, null) else "_"
             return "player/$encodedUrl/series/-1/$seriesId/$episodeId/$encodedTitle"
         }
         
@@ -195,12 +195,13 @@ fun AppNavigation(
                 }
             )
         ) { backStackEntry ->
-            val streamUrl = backStackEntry.arguments?.getString("streamUrl") ?: ""
+            val streamUrl = Uri.decode(backStackEntry.arguments?.getString("streamUrl") ?: "")
             val contentType = backStackEntry.arguments?.getString("contentType") ?: "live"
             val streamIdStr = backStackEntry.arguments?.getString("streamId") ?: "-1"
             val seriesIdStr = backStackEntry.arguments?.getString("seriesId") ?: "-1"
             val episodeIdStr = backStackEntry.arguments?.getString("episodeId") ?: "-1"
-            val title = java.net.URLDecoder.decode(backStackEntry.arguments?.getString("title") ?: "", "UTF-8")
+            val titleRaw = backStackEntry.arguments?.getString("title") ?: ""
+            val title = if (titleRaw == "_") "" else Uri.decode(titleRaw)
             
             val streamId = streamIdStr.toIntOrNull()?.takeIf { it >= 0 }
             val seriesId = seriesIdStr.toIntOrNull()?.takeIf { it >= 0 }
