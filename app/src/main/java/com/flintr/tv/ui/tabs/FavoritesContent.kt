@@ -213,6 +213,13 @@ fun FavoritesContent(
         isLoading = isLoading,
         focusRequester = params.focusRequester,
         modifier = modifier,
+        keySelector = { item ->
+            when (item) {
+                is FavoriteContentItem.Live -> item.stream.streamId
+                is FavoriteContentItem.Movie -> item.vod.streamId
+                is FavoriteContentItem.SeriesItem -> item.series.seriesId
+            }
+        },
         onItemsRendered = {
             // Items are now rendered, loading is complete
             Log.d("FavoritesContent", "Items rendered, loading complete")

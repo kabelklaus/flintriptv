@@ -40,6 +40,7 @@ fun VODContent(
         isLoading = uiState.isLoading,
         focusRequester = focusRequester,
         modifier = modifier,
+        keySelector = { vod -> vod.streamId },
         content = { vod, _, columnIndex, onFocusChanged ->
             VODCard(
                 vod = vod,
