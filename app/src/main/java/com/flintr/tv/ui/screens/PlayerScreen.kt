@@ -1,5 +1,6 @@
 package com.flintr.tv.ui.screens
 
+import com.flintr.tv.BuildConfig
 import android.util.Log
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -57,9 +58,10 @@ fun PlayerScreen(
     val title = streamInfo.title
     
     // Debug logs to track when and why PlayerScreen is composed
-    Log.d("PlayerScreen", "🎬 PlayerScreen composed with URL: $streamUrl")
-    Log.d("PlayerScreen", "🎬 StreamInfo: contentType=$contentType, streamId=$streamId, seriesId=$seriesId, episodeId=$episodeId, title=$title")
-    Log.d("PlayerScreen", "📍 Called from: ${Exception().stackTraceToString().take(500)}")
+    if (BuildConfig.DEBUG) {
+        Log.d("PlayerScreen", "🎬 PlayerScreen composed with URL: $streamUrl")
+        Log.d("PlayerScreen", "🎬 StreamInfo: contentType=$contentType, streamId=$streamId, seriesId=$seriesId, episodeId=$episodeId, title=$title")
+    }
     
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -69,7 +71,9 @@ fun PlayerScreen(
     
     // Log stream info on load
     LaunchedEffect(streamUrl, contentType, streamId, seriesId, episodeId) {
-        Log.d("PlayerScreen", "Loading stream - contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId, title: $title, streamUrl: $streamUrl")
+        if (BuildConfig.DEBUG) {
+            Log.d("PlayerScreen", "Loading stream - contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId, title: $title, streamUrl: $streamUrl")
+        }
     }
     
     val exoPlayer = remember {
