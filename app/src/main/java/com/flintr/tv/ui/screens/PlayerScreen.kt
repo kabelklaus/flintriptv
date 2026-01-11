@@ -12,8 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import android.app.Activity
-import android.view.WindowManager
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -186,26 +184,6 @@ fun PlayerScreen(
         }
     }
     
-    // Keep screen on during playback
-    DisposableEffect(exoPlayer.playbackState, exoPlayer.playWhenReady) {
-        val activity = context as? Activity
-        val window = activity?.window
-        
-        val shouldKeepScreenOn = (exoPlayer.playbackState == Player.STATE_READY || 
-                                 exoPlayer.playbackState == Player.STATE_BUFFERING) &&
-                                 exoPlayer.playWhenReady
-        
-        if (shouldKeepScreenOn) {
-            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-        
-        onDispose {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-    }
-    
     // Restore watch progress when player is ready
     LaunchedEffect(exoPlayer.playbackState) {
         if (exoPlayer.playbackState == Player.STATE_READY && 
@@ -296,6 +274,7 @@ fun PlayerScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                     useController = true
+                    keepScreenOn = true
                 }
             },
             modifier = Modifier.fillMaxSize()
