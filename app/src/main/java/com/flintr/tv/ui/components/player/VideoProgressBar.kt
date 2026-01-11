@@ -25,6 +25,7 @@ private fun calculateProgress(xPosition: Float, containerWidthPx: Float): Float 
     return (xPosition / containerWidthPx).coerceIn(0f, 1f)
 }
 
+
 /**
  * Custom video progress bar with drag interaction
  * @param progress Progress value between 0.0 and 1.0 (current position - dark red)
@@ -65,7 +66,7 @@ fun VideoProgressBar(
                                     waitForUpOrCancellation()
                                     false
                                 } else {
-                                    // Handle drag gesture
+                                    // Process drag gesture
                                     onDragStart()
                                     var currentDrag: PointerInputChange = drag
                                     var newProgress = calculateProgress(currentDrag.position.x, containerWidthPx)
