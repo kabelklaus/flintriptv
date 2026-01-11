@@ -274,6 +274,7 @@ fun PlayerScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                     useController = true
+                    keepScreenOn = true
                 }
             },
             modifier = Modifier.fillMaxSize()
