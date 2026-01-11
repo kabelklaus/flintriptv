@@ -59,38 +59,39 @@ fun VideoProgressBar(
                 awaitPointerEventScope {
                     while (true) {
                         val down = awaitFirstDown()
-                        val isDrag = try {
+                        val initialDrag = try {
                             withTimeout(viewConfiguration.longPressTimeoutMillis) {
                                 val drag = awaitHorizontalDragOrCancellation(down.id)
                                 if (drag == null) {
                                     waitForUpOrCancellation()
-                                    false
+                                    null
                                 } else {
-                                    // Process drag gesture
-                                    onDragStart()
-                                    var currentDrag: PointerInputChange = drag
-                                    var newProgress = calculateProgress(currentDrag.position.x, containerWidthPx)
-                                    onSeek(newProgress)
-                                    
-                                    // Process continuous drag events
-                                    while (true) {
-                                        val dragEvent = awaitHorizontalDragOrCancellation(currentDrag.id)
-                                        if (dragEvent == null) break
-                                        
-                                        currentDrag = dragEvent
-                                        newProgress = calculateProgress(currentDrag.position.x, containerWidthPx)
-                                        onSeek(newProgress)
-                                    }
-                                    true
+                                    drag
                                 }
                             }
                         } catch (_: PointerEventTimeoutCancellationException) {
-                            false
+                            null
                         }
                         
-                        if (isDrag) {
+                        if (initialDrag != null) {
+                            onDragStart()
+                            var currentDrag: PointerInputChange = initialDrag
+                            var newProgress = calculateProgress(currentDrag.position.x, containerWidthPx)
+                            onSeek(newProgress)
+                            
+                            while (true) {
+                                val dragEvent = awaitHorizontalDragOrCancellation(currentDrag.id)
+                                if (dragEvent == null) break
+                                
+                                currentDrag = dragEvent
+                                newProgress = calculateProgress(currentDrag.position.x, containerWidthPx)
+                                onSeek(newProgress)
+                            }
                             onDragEnd()
-                        } else if (containerWidthPx > 0f) {
+                            continue
+                        }
+                        
+                        if (containerWidthPx > 0f) {
                             val newProgress = calculateProgress(down.position.x, containerWidthPx)
                             onSeek(newProgress)
                         }
