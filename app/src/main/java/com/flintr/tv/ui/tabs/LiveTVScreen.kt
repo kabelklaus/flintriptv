@@ -41,6 +41,7 @@ fun LiveTVContent(
         isLoading = uiState.isLoading,
         focusRequester = focusRequester,
         modifier = modifier,
+        keySelector = { stream -> stream.streamId },
         content = { stream, index, columnIndex, onFocusChanged ->
             LiveStreamCard(
                 stream = stream,

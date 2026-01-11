@@ -55,6 +55,12 @@ fun PlayerScreen(
     val seriesId = streamInfo.seriesId
     val episodeId = streamInfo.episodeId
     val title = streamInfo.title
+    
+    // Debug logs to track when and why PlayerScreen is composed
+    Log.d("PlayerScreen", "🎬 PlayerScreen composed with URL: $streamUrl")
+    Log.d("PlayerScreen", "🎬 StreamInfo: contentType=$contentType, streamId=$streamId, seriesId=$seriesId, episodeId=$episodeId, title=$title")
+    Log.d("PlayerScreen", "📍 Called from: ${Exception().stackTraceToString().take(500)}")
+    
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var errorMessage by remember { mutableStateOf<String?>(null) }

@@ -24,6 +24,7 @@ fun <T> ContentGridLayout(
     isLoading: Boolean,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
+    keySelector: ((T) -> Any)? = null,
     onItemsRendered: (() -> Unit)? = null,
     content: @Composable (item: T, index: Int, columnIndex: Int, onFocusChanged: ((Boolean) -> Unit)?) -> Unit
 ) {
@@ -64,7 +65,14 @@ fun <T> ContentGridLayout(
                 horizontalArrangement = Arrangement.spacedBy(Dimensions.contentCardCrossAxisSpacing),
                 verticalArrangement = Arrangement.spacedBy(Dimensions.contentCardMainAxisSpacing)
             ) {
-                items(items.size) { index ->
+                items(
+                    count = items.size,
+                    key = if (keySelector != null) {
+                        { index -> keySelector(items[index]) }
+                    } else {
+                        null
+                    }
+                ) { index ->
                     val item = items[index]
                     val columnIndex = index % columns
                     content(

@@ -77,6 +77,7 @@ fun SeriesContent(
         isLoading = uiState.isLoading,
         focusRequester = focusRequester,
         modifier = modifier,
+        keySelector = { seriesItem -> seriesItem.seriesId },
         content = { seriesItem, _, columnIndex, onFocusChanged ->
             SeriesItem(
                 series = seriesItem,

@@ -197,7 +197,8 @@ fun AppNavigation(
                 }
             )
         ) { backStackEntry ->
-            val streamUrl = Uri.decode(backStackEntry.arguments?.getString("streamUrl") ?: "")
+            val streamUrlRaw = backStackEntry.arguments?.getString("streamUrl") ?: ""
+            val streamUrl = Uri.decode(streamUrlRaw)
             val contentType = backStackEntry.arguments?.getString("contentType") ?: "live"
             val streamIdStr = backStackEntry.arguments?.getString("streamId") ?: "-1"
             val seriesIdStr = backStackEntry.arguments?.getString("seriesId") ?: "-1"
@@ -208,6 +209,12 @@ fun AppNavigation(
             val streamId = streamIdStr.toIntOrNull()?.takeIf { it >= 0 }
             val seriesId = seriesIdStr.toIntOrNull()?.takeIf { it >= 0 }
             val episodeId = episodeIdStr.toIntOrNull()?.takeIf { it >= 0 }
+            
+            // Debug logs to track navigation arguments
+            android.util.Log.d("AppNavigation", "🔗 Navigation to PlayerScreen")
+            android.util.Log.d("AppNavigation", "🔗 Raw streamUrl from args: $streamUrlRaw")
+            android.util.Log.d("AppNavigation", "🔗 Decoded streamUrl: $streamUrl")
+            android.util.Log.d("AppNavigation", "🔗 contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId, title: $title")
             
             PlayerScreen(
                 streamInfo = StreamInfo(
@@ -435,7 +442,9 @@ fun MainContentScreen(
                                 creds.username,
                                 creds.password
                             )
-                            navController.navigate(Screen.Player.createRouteForLive(streamUrl))
+                            val route = Screen.Player.createRouteForLive(streamUrl)
+                            android.util.Log.d("AppNavigation", "📺 LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route")
+                            navController.navigate(route)
                         }
                     )
                 }
@@ -453,7 +462,9 @@ fun MainContentScreen(
                                 creds.username,
                                 creds.password
                             )
-                            navController.navigate(Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name))
+                            val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
+                            android.util.Log.d("AppNavigation", "🎬 VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route")
+                            navController.navigate(route)
                         }
                     )
                 }
@@ -472,7 +483,9 @@ fun MainContentScreen(
                                 creds.password,
                                 series.seriesId
                             )
-                            navController.navigate(Screen.Player.createRouteForSeries(streamUrl, series.seriesId, episode.id, episode.title))
+                            val route = Screen.Player.createRouteForSeries(streamUrl, series.seriesId, episode.id, episode.title)
+                            android.util.Log.d("AppNavigation", "📺 Series onClick - episode.title: ${episode.title}, seriesId: ${series.seriesId}, episodeId: ${episode.id}, streamUrl: $streamUrl, route: $route")
+                            navController.navigate(route)
                         }
                     )
                 }
@@ -486,7 +499,9 @@ fun MainContentScreen(
                                 creds.username,
                                 creds.password
                             )
-                            navController.navigate(Screen.Player.createRouteForLive(streamUrl))
+                            val route = Screen.Player.createRouteForLive(streamUrl)
+                            android.util.Log.d("AppNavigation", "📅 EPG onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route")
+                            navController.navigate(route)
                         }
                     )
                 }
@@ -499,7 +514,9 @@ fun MainContentScreen(
                                 creds.username,
                                 creds.password
                             )
-                            navController.navigate(Screen.Player.createRouteForLive(streamUrl))
+                            val route = Screen.Player.createRouteForLive(streamUrl)
+                            android.util.Log.d("AppNavigation", "⭐ Favorites LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route")
+                            navController.navigate(route)
                         }
                     }
                     val onVodClick: (VodStream) -> Unit = { vod ->
@@ -510,7 +527,9 @@ fun MainContentScreen(
                                 creds.username,
                                 creds.password
                             )
-                            navController.navigate(Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name))
+                            val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
+                            android.util.Log.d("AppNavigation", "⭐ Favorites VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route")
+                            navController.navigate(route)
                         }
                     }
                     val onSeriesClick: (Series) -> Unit = { series ->
