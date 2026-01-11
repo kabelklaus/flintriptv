@@ -1,18 +1,34 @@
 package com.flintr.tv.ui.screens
 
-import com.flintr.tv.BuildConfig
+import android.app.Activity
 import android.util.Log
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -23,7 +39,11 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.ui.PlayerView
 import com.flintr.tv.data.local.WatchProgressService
-import com.flintr.tv.ui.theme.black
+import com.flintr.tv.ui.components.player.*
+import com.flintr.tv.ui.theme.SharedColors
+import com.flintr.tv.ui.utils.FocusedButton
+import com.flintr.tv.ui.utils.onBackButton
+import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.viewmodel.PlayerViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -57,22 +77,39 @@ fun PlayerScreen(
     val episodeId = streamInfo.episodeId
     val title = streamInfo.title
     
-    // Debug logs to track when and why PlayerScreen is composed
-    if (BuildConfig.DEBUG) {
-        Log.d("PlayerScreen", "🎬 PlayerScreen composed with URL: $streamUrl")
-        Log.d("PlayerScreen", "🎬 StreamInfo: contentType=$contentType, streamId=$streamId, seriesId=$seriesId, episodeId=$episodeId, title=$title")
-    }
-    
     val context = LocalContext.current
+    val view = LocalView.current
+    val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isInitializing by remember { mutableStateOf(true) }
     var hasRestoredProgress by remember { mutableStateOf(false) }
     
-    // Log stream info on load
-    LaunchedEffect(streamUrl, contentType, streamId, seriesId, episodeId) {
-        if (BuildConfig.DEBUG) {
-            Log.d("PlayerScreen", "Loading stream - contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId, title: $title, streamUrl: $streamUrl")
+    // Player UI State
+    var showControls by remember { mutableStateOf(true) }
+    var showDebugOverlay by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    var focusedButton by remember { mutableStateOf<FocusedButton?>(null) }
+    var isDraggingProgress by remember { mutableStateOf(false) }
+    var playbackState by remember { mutableStateOf(Player.STATE_IDLE) }
+    var currentPosition by remember { mutableStateOf(0L) }
+    var duration by remember { mutableStateOf(0L) }
+    var bufferedPosition by remember { mutableStateOf(0L) }
+    var isPlaying by remember { mutableStateOf(false) }
+    
+    // Hide System UI in fullscreen mode
+    DisposableEffect(Unit) {
+        val window = (view.context as Activity).window
+        val windowInsetsController = WindowCompat.getInsetsController(window, view)
+        
+        // Hide system bars
+        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+        windowInsetsController.systemBarsBehavior = 
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        
+        onDispose {
+            // Show system bars when leaving player
+            windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
         }
     }
     
@@ -136,8 +173,9 @@ fun PlayerScreen(
                 isInitializing = false
             }
 
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                val stateString = when (playbackState) {
+            override fun onPlaybackStateChanged(state: Int) {
+                playbackState = state
+                val stateString = when (state) {
                     Player.STATE_IDLE -> {
                         isInitializing = false
                         "STATE_IDLE"
@@ -155,6 +193,10 @@ fun PlayerScreen(
                     else -> "UNKNOWN_STATE"
                 }
                 Log.d("PlayerScreen", "Playback state changed to $stateString")
+            }
+            
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
             }
         }
         
@@ -181,6 +223,16 @@ fun PlayerScreen(
             prepareJob.cancel()
             exoPlayer.removeListener(listener)
             exoPlayer.release()
+        }
+    }
+    
+    // Update position and duration continuously
+    LaunchedEffect(Unit) {
+        while (true) {
+            currentPosition = exoPlayer.currentPosition
+            duration = exoPlayer.duration
+            bufferedPosition = exoPlayer.bufferedPosition
+            delay(100) // Update every 100ms
         }
     }
     
@@ -257,14 +309,120 @@ fun PlayerScreen(
             }
         }
     }
-
-    var showControls by remember { mutableStateOf(true) }
+    
+    // Auto-hide controls after 3 seconds of inactivity
+    LaunchedEffect(showControls, isDraggingProgress) {
+        if (showControls && !isDraggingProgress) {
+            delay(3000)
+            if (!isDraggingProgress) {
+                showControls = false
+                focusedButton = null
+            }
+        }
+    }
+    
+    // Calculate progress
+    val progress = if (duration > 0) {
+        (currentPosition.toFloat() / duration).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    
+    // Handle seek
+    val onSeek = { seekProgress: Float ->
+        if (duration > 0) {
+            val seekPosition = (seekProgress * duration).toLong()
+            exoPlayer.seekTo(seekPosition)
+        }
+    }
+    
+    // Handle previous (10s back)
+    val onPrevious = {
+        val newPosition = (exoPlayer.currentPosition - 10000).coerceAtLeast(0L)
+        exoPlayer.seekTo(newPosition)
+        showControls = true
+    }
+    
+    // Handle next (10s forward)
+    val onNext = {
+        val newPosition = (exoPlayer.currentPosition + 10000).coerceAtMost(duration)
+        exoPlayer.seekTo(newPosition)
+        showControls = true
+    }
+    
+    // Handle play/pause
+    val onPlayPause = {
+        if (exoPlayer.isPlaying) {
+            exoPlayer.pause()
+        } else {
+            exoPlayer.play()
+        }
+        showControls = true
+    }
+    
+    // Handle tap on video to toggle controls
+    val onVideoTap = {
+        showControls = !showControls
+        if (showControls) {
+            focusedButton = FocusedButton.PREVIOUS
+        }
+    }
+    
+    // Swipe gesture for back navigation
+    var swipeStartX by remember { mutableStateOf(0f) }
+    var swipeStartTime by remember { mutableStateOf(0L) }
+    
+    // Focus requester to ensure Box receives key events
+    val playerFocusRequester = remember { FocusRequester() }
+    
+    // Request focus when player screen is shown
+    LaunchedEffect(Unit) {
+        playerFocusRequester.requestFocus()
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(black)
+            .background(SharedColors.videoPlayerBg)
+            .focusRequester(playerFocusRequester)
+            .focusable() // Make Box focusable to receive key events
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onVideoTap() }
+                )
+            }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        swipeStartX = offset.x
+                        swipeStartTime = System.currentTimeMillis()
+                    },
+                    onDrag = { change, _ ->
+                        val currentX = change.position.x
+                        val currentTime = System.currentTimeMillis()
+                        val deltaX = currentX - swipeStartX
+                        val deltaTime = currentTime - swipeStartTime
+                        
+                        // Check if swipe is from left edge (< 50px) and fast enough (> 500px/s)
+                        if (swipeStartX < 50f && deltaX > 0 && deltaTime > 0) {
+                            val velocity = deltaX / deltaTime * 1000 // px/s
+                            if (velocity > 500) {
+                                onBack()
+                            }
+                        }
+                    }
+                )
+            }
+            .onBackButton(onBack = onBack)
+            .onDpadCenter {
+                if (!showControls) {
+                    showControls = true
+                    focusedButton = FocusedButton.PLAY_PAUSE
+                    onPlayPause()
+                }
+            }
     ) {
+        // ExoPlayer view (without default controls)
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -273,30 +431,84 @@ fun PlayerScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
-                    useController = true
+                    useController = false // Disable default controls
                     keepScreenOn = true
                 }
             },
             modifier = Modifier.fillMaxSize()
         )
-
-        if (showControls) {
-            PlayerControls(
-                onBack = onBack,
-                onToggleControls = { showControls = !showControls }
-            )
-        }
         
-        // Show loading indicator during initialization
-        if (isInitializing) {
+        // Loading indicator during buffering
+        if (playbackState == Player.STATE_BUFFERING) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(black.copy(alpha = 0.7f)),
+                    .background(SharedColors.videoPlayerBg.copy(alpha = 0.7f)),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = androidx.compose.ui.graphics.Color.White)
             }
+        }
+        
+        // Custom player controls
+        if (showControls) {
+            CustomPlayerControls(
+                isPlaying = isPlaying,
+                currentPosition = currentPosition,
+                duration = duration,
+                progress = progress,
+                focusedButton = focusedButton,
+                onPrevious = onPrevious,
+                onPlayPause = onPlayPause,
+                onNext = onNext,
+                onSeek = onSeek,
+                onDragStart = {
+                    isDraggingProgress = true
+                },
+                onDragEnd = {
+                    isDraggingProgress = false
+                },
+                onDebug = {
+                    showDebugOverlay = !showDebugOverlay
+                },
+                onSettings = {
+                    showSettingsDialog = true
+                },
+                onFocusChange = { button ->
+                    focusedButton = button
+                    if (button != null) {
+                        showControls = true
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            // Central play/pause button
+            CentralPlayPauseButton(
+                isPlaying = isPlaying,
+                onClick = onPlayPause,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+        
+        // Debug overlay
+        if (showDebugOverlay) {
+            DebugOverlay(
+                playerState = playbackState,
+                currentPosition = currentPosition,
+                duration = duration,
+                bufferedPosition = bufferedPosition,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(8.dp)
+            )
+        }
+        
+        // Settings dialog
+        if (showSettingsDialog) {
+            VideoSettingsDialog(
+                onDismiss = { showSettingsDialog = false }
+            )
         }
         
         // Show error message if playback failed
@@ -343,30 +555,6 @@ fun PlayerScreen(
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun PlayerControls(
-    onBack: () -> Unit,
-    onToggleControls: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Button(onClick = onBack) {
-                Text("Zurück")
-            }
-            Button(onClick = onToggleControls) {
-                Text("Steuerung")
             }
         }
     }

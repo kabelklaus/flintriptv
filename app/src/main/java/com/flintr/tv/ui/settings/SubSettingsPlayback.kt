@@ -183,7 +183,7 @@ fun SettingsPlayback(
 }
 
 @Composable
-private fun VideoQualitySelector(
+fun VideoQualitySelector(
     selectedQuality: VideoQuality,
     onQualitySelected: (VideoQuality) -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors,
@@ -264,7 +264,7 @@ private fun VideoQualitySelector(
 }
 
 @Composable
-private fun SubtitleLanguageSelector(
+fun SubtitleLanguageSelector(
     selectedLanguage: SubtitleLanguage,
     onLanguageSelected: (SubtitleLanguage) -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors
@@ -336,7 +336,7 @@ private fun SubtitleLanguageSelector(
 }
 
 @Composable
-private fun AudioLanguageSelector(
+fun AudioLanguageSelector(
     selectedLanguage: AudioLanguage,
     onLanguageSelected: (AudioLanguage) -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors
@@ -408,7 +408,7 @@ private fun AudioLanguageSelector(
 }
 
 @Composable
-private fun ReadOnlySetting(
+fun ReadOnlySetting(
     label: String,
     value: String,
     colors: com.flintr.tv.ui.theme.AppColors
