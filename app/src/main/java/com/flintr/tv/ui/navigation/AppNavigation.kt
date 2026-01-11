@@ -52,20 +52,22 @@ sealed class Screen(val route: String) {
     object Main : Screen("main")
     object Settings : Screen("settings")
     object Player : Screen("player/{streamUrl}/{contentType}/{streamId}/{seriesId}/{episodeId}/{title}") {
+        const val EMPTY_TITLE_PLACEHOLDER = "__EMPTY_TITLE__"
+        
         fun createRoute(streamUrl: String): String {
             val encoded = Uri.encode(streamUrl, null)
-            return "player/$encoded/live/-1/-1/-1/_"
+            return "player/$encoded/live/-1/-1/-1/$EMPTY_TITLE_PLACEHOLDER"
         }
         
         fun createRouteForMovie(streamUrl: String, streamId: Int, title: String): String {
             val encodedUrl = Uri.encode(streamUrl, null)
-            val encodedTitle = if (title.isNotEmpty()) Uri.encode(title, null) else "_"
+            val encodedTitle = if (title.isNotEmpty()) Uri.encode(title, null) else EMPTY_TITLE_PLACEHOLDER
             return "player/$encodedUrl/movie/$streamId/-1/-1/$encodedTitle"
         }
         
         fun createRouteForSeries(streamUrl: String, seriesId: Int, episodeId: Int, title: String): String {
             val encodedUrl = Uri.encode(streamUrl, null)
-            val encodedTitle = if (title.isNotEmpty()) Uri.encode(title, null) else "_"
+            val encodedTitle = if (title.isNotEmpty()) Uri.encode(title, null) else EMPTY_TITLE_PLACEHOLDER
             return "player/$encodedUrl/series/-1/$seriesId/$episodeId/$encodedTitle"
         }
         
@@ -201,7 +203,7 @@ fun AppNavigation(
             val seriesIdStr = backStackEntry.arguments?.getString("seriesId") ?: "-1"
             val episodeIdStr = backStackEntry.arguments?.getString("episodeId") ?: "-1"
             val titleRaw = backStackEntry.arguments?.getString("title") ?: ""
-            val title = if (titleRaw == "_") "" else Uri.decode(titleRaw)
+            val title = if (titleRaw == Screen.Player.EMPTY_TITLE_PLACEHOLDER) "" else Uri.decode(titleRaw)
             
             val streamId = streamIdStr.toIntOrNull()?.takeIf { it >= 0 }
             val seriesId = seriesIdStr.toIntOrNull()?.takeIf { it >= 0 }
