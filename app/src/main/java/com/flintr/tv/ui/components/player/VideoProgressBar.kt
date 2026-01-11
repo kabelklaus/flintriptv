@@ -10,12 +10,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.ui.theme.SharedColors
 import kotlinx.coroutines.withTimeout
+
+/**
+ * Calculates progress value from x position
+ */
+private fun calculateProgress(xPosition: Float, containerWidthPx: Float): Float {
+    return (xPosition / containerWidthPx).coerceIn(0f, 1f)
+}
 
 /**
  * Custom video progress bar with drag interaction
@@ -48,37 +56,19 @@ fun VideoProgressBar(
             }
             .pointerInput(Unit) {
                 awaitPointerEventScope {
-                    // Helper function to calculate progress from x position
-                    fun calculateProgress(xPosition: Float): Float {
-                        return (xPosition / containerWidthPx).coerceIn(0f, 1f)
-                    }
-                    
-                    // Helper function to handle tap gesture
-                    fun handleTap(down: androidx.compose.ui.input.pointer.PointerInputChange) {
-                        if (containerWidthPx > 0f) {
-                            val newProgress = calculateProgress(down.position.x)
-                            onSeek(newProgress)
-                        }
-                    }
-                    
-                    // Main event loop
                     while (true) {
                         val down = awaitFirstDown()
-                        var isTap = true
-                        var dragOccurred = false
-                        
-                        try {
+                        val isDrag = try {
                             withTimeout(viewConfiguration.longPressTimeoutMillis) {
                                 val drag = awaitHorizontalDragOrCancellation(down.id)
-                                if (drag != null) {
+                                if (drag == null) {
+                                    waitForUpOrCancellation()
+                                    false
+                                } else {
                                     // Handle drag gesture
-                                    dragOccurred = true
-                                    isTap = false
                                     onDragStart()
-                                    
-                                    // Process initial drag position
-                                    var currentDrag: androidx.compose.ui.input.pointer.PointerInputChange = drag
-                                    var newProgress = calculateProgress(currentDrag.position.x)
+                                    var currentDrag: PointerInputChange = drag
+                                    var newProgress = calculateProgress(currentDrag.position.x, containerWidthPx)
                                     onSeek(newProgress)
                                     
                                     // Process continuous drag events
@@ -87,22 +77,21 @@ fun VideoProgressBar(
                                         if (dragEvent == null) break
                                         
                                         currentDrag = dragEvent
-                                        newProgress = calculateProgress(currentDrag.position.x)
+                                        newProgress = calculateProgress(currentDrag.position.x, containerWidthPx)
                                         onSeek(newProgress)
                                     }
-                                } else {
-                                    waitForUpOrCancellation()
+                                    true
                                 }
                             }
                         } catch (_: PointerEventTimeoutCancellationException) {
-                            isTap = false
+                            false
                         }
                         
-                        // Handle tap or drag end
-                        if (isTap) {
-                            handleTap(down)
-                        } else if (dragOccurred) {
+                        if (isDrag) {
                             onDragEnd()
+                        } else if (containerWidthPx > 0f) {
+                            val newProgress = calculateProgress(down.position.x, containerWidthPx)
+                            onSeek(newProgress)
                         }
                     }
                 }
