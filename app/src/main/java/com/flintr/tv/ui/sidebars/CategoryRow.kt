@@ -21,13 +21,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.util.Log
+import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.model.Category
+import com.flintr.tv.data.model.CategoryType
+import com.flintr.tv.ui.components.ContentCardMenu
+import com.flintr.tv.ui.components.MenuType
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.ui.utils.onLongPress
 import androidx.compose.ui.focus.focusRequester
 
 @Composable
@@ -40,9 +45,16 @@ fun CategoryRow(
     focusRequester: androidx.compose.ui.focus.FocusRequester,
     onNavigateLeft: () -> Unit,
     onNavigateRight: () -> Unit,
+    categoryVisibilityService: CategoryVisibilityService,
+    categoryType: CategoryType,
+    onCategoryHidden: (Category) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val sortedCategories = categories.sortedBy { it.categoryName }
+    // Filter out hidden categories
+    val filteredCategories = categories.filter { 
+        !categoryVisibilityService.isCategoryHidden(it.categoryId, categoryType) 
+    }
+    val sortedCategories = filteredCategories.sortedBy { it.categoryName }
     val colors = appColors()
     val isDark = isSystemInDarkTheme()
     
@@ -76,13 +88,14 @@ fun CategoryRow(
         } else {
             items(sortedCategories) { category ->
                 CategoryChip(
-                    name = category.categoryName,
+                    category = category,
                     itemCount = itemCounts?.get(category.categoryId) ?: 0,
                     itemLabelBuilder = itemLabelBuilder,
                     isSelected = selectedCategoryId == category.categoryId,
                     onClick = { onCategorySelected(category.categoryId) },
                     onNavigateLeft = onNavigateLeft,
-                    onNavigateRight = onNavigateRight
+                    onNavigateRight = onNavigateRight,
+                    onCategoryHidden = onCategoryHidden
                 )
             }
         }
@@ -91,17 +104,25 @@ fun CategoryRow(
 
 @Composable
 fun CategoryChip(
-    name: String,
+    category: Category,
     itemCount: Int = 0,
     itemLabelBuilder: (Int) -> String = { count -> "Kanäle" },
     isSelected: Boolean,
     onClick: () -> Unit,
     onNavigateLeft: (() -> Unit)? = null,
     onNavigateRight: (() -> Unit)? = null,
+    onCategoryHidden: ((Category) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var hasFocus by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
     val colors = appColors()
+    val name = category.categoryName
+    
+    // Debug: Log menu state changes
+    LaunchedEffect(showMenu) {
+        Log.d("CategoryChip", "[MenuState] Category '$name': showMenu = $showMenu, onCategoryHidden = ${onCategoryHidden != null}")
+    }
     
     val isHoveredOrFocused = hasFocus && !isSelected
     
@@ -206,7 +227,23 @@ fun CategoryChip(
                     null // Let Compose handle standard navigation
                 }
             )
-            .onClick(onClick)
+            .onLongPress(
+                onLongPress = {
+                    Log.d("CategoryChip", "[LongPress] ✅ Long-Press erkannt für Kategorie '$name'")
+                    Log.d("CategoryChip", "[LongPress] onCategoryHidden != null: ${onCategoryHidden != null}")
+                    if (onCategoryHidden != null) {
+                        Log.d("CategoryChip", "[LongPress] Setze showMenu = true für Kategorie '$name'")
+                        showMenu = true
+                    } else {
+                        Log.w("CategoryChip", "[LongPress] ⚠️ onCategoryHidden ist null - Menü kann nicht geöffnet werden")
+                    }
+                },
+                onNormalClick = {
+                    Log.d("CategoryChip", "[Click] 🔵 Single-Click erkannt für Kategorie '$name' (via onNormalClick)")
+                    onClick()
+                },
+                durationMillis = 300L
+            )
             .padding(all = Dimensions.listItemHoverPadding),
         contentAlignment = Alignment.CenterStart
     ) {
@@ -231,6 +268,29 @@ fun CategoryChip(
                 )
             }
         }
+    }
+    
+    // Category menu dialog
+    if (onCategoryHidden != null) {
+        Log.d("CategoryChip", "[MenuRender] Rendering ContentCardMenu für Kategorie '$name': showMenu = $showMenu")
+        ContentCardMenu(
+            isOpen = showMenu,
+            menuOptions = listOf("Ausblenden"),
+            onDismiss = { 
+                Log.d("CategoryChip", "[MenuDismiss] Menü wird geschlossen für Kategorie '$name'")
+                showMenu = false 
+            },
+            onOptionSelected = { index ->
+                Log.d("CategoryChip", "[MenuOption] Option $index ausgewählt für Kategorie '$name'")
+                if (index == 0) {
+                    Log.d("CategoryChip", "[MenuOption] Rufe onCategoryHidden() auf für Kategorie '$name'")
+                    onCategoryHidden(category)
+                }
+            },
+            menuType = MenuType.CATEGORY
+        )
+    } else {
+        Log.d("CategoryChip", "[MenuRender] onCategoryHidden ist null - Menü wird nicht gerendert für Kategorie '$name'")
     }
 }
 

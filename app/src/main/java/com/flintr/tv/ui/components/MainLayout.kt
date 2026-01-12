@@ -13,7 +13,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
+import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.model.Category
+import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.ui.screens.HomeDestination
 import com.flintr.tv.ui.screens.HomeSidebar
 import com.flintr.tv.ui.sidebars.CategoryRow
@@ -89,6 +91,9 @@ fun MainLayout(
     onNavigateToNavbar: () -> Unit,
     onNavigateToCategorySidebar: () -> Unit,
     onNavigateToContentList: () -> Unit,
+    categoryVisibilityService: CategoryVisibilityService,
+    categoryType: CategoryType,
+    onCategoryHidden: (Category) -> Unit,
     onNavbarReady: (() -> Unit)? = null,
     onCategorySidebarReady: (() -> Unit)? = null,
     onContentListReady: (() -> Unit)? = null,
@@ -124,6 +129,7 @@ fun MainLayout(
         
         // Middle Column: Categories (if applicable)
         if (showCategories) {
+            android.util.Log.d("MainLayout", "[CategoryRow] Rendering CategoryRow: categories=${categories.size}, onCategoryHidden != null: ${onCategoryHidden != null}")
             CategoryRow(
                 categories = categories,
                 selectedCategoryId = selectedCategoryId,
@@ -131,6 +137,9 @@ fun MainLayout(
                 focusRequester = categorySidebarFocusRequester,
                 onNavigateLeft = { wrappedOnNavigateToNavbar() },
                 onNavigateRight = { onNavigateToContentList() },
+                categoryVisibilityService = categoryVisibilityService,
+                categoryType = categoryType,
+                onCategoryHidden = onCategoryHidden,
                 modifier = createCategorySidebarModifier(onCategorySidebarReady)
             )
         } else {

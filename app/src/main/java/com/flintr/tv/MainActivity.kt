@@ -9,6 +9,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.rememberNavController
+import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
@@ -32,6 +33,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var watchProgressService: WatchProgressService
 
+    @Inject
+    lateinit var categoryVisibilityService: CategoryVisibilityService
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -46,7 +50,8 @@ class MainActivity : ComponentActivity() {
                         credentialsRepository = credentialsRepository,
                         cacheService = cacheService,
                         favoritesRepository = favoritesRepository,
-                        watchProgressService = watchProgressService
+                        watchProgressService = watchProgressService,
+                        categoryVisibilityService = categoryVisibilityService
                     )
                 }
             }

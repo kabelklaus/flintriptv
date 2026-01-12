@@ -26,6 +26,14 @@ import com.flintr.tv.ui.utils.onClick
 import kotlinx.coroutines.delay
 
 /**
+ * Enum representing the type of menu
+ */
+enum class MenuType {
+    CONTENT,
+    CATEGORY
+}
+
+/**
  * TV-optimized menu dialog for ContentCard
  * Opens on long press and provides menu options
  */
@@ -34,9 +42,15 @@ fun ContentCardMenu(
     isOpen: Boolean,
     menuOptions: List<String>,
     onDismiss: () -> Unit,
-    onOptionSelected: (Int) -> Unit
+    onOptionSelected: (Int) -> Unit,
+    menuType: MenuType? = null
 ) {
-    if (!isOpen) return
+    Log.d("ContentCardMenu", "[Render] ContentCardMenu aufgerufen: isOpen = $isOpen, menuType = $menuType, menuOptions = $menuOptions")
+    if (!isOpen) {
+        Log.d("ContentCardMenu", "[Render] isOpen = false - Menü wird nicht gerendert")
+        return
+    }
+    Log.d("ContentCardMenu", "[Render] Menü wird gerendert (isOpen = true)")
 
     val colors = appColors()
     var focusedIndex by remember { mutableStateOf(0) }
