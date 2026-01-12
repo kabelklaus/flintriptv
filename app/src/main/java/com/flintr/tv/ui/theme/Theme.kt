@@ -2,6 +2,7 @@ package com.flintr.tv.ui.theme
 
 import android.app.Activity
 import android.os.Build
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -47,6 +48,16 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 /**
+ * Extension property to determine if a ColorScheme represents a dark theme
+ * Uses relative luminance calculation: 0.2126*R + 0.7152*G + 0.0722*B
+ */
+val ColorScheme.isDark: Boolean
+    get() {
+        val luminance = (0.2126f * background.red + 0.7152f * background.green + 0.0722f * background.blue)
+        return luminance < 0.5f
+    }
+
+/**
  * Main theme composable
  * Supports light/dark mode and dynamic colors (Android 12+)
  */
@@ -88,11 +99,7 @@ fun FlintRTVTheme(
 @Composable
 fun appColors(): AppColors {
     val colorScheme = MaterialTheme.colorScheme
-    // Dark theme has dark background - check if background color is dark
-    // Calculate relative luminance: 0.2126*R + 0.7152*G + 0.0722*B (normalized to 0-1)
-    val bg = colorScheme.background
-    val luminance = (0.2126f * bg.red + 0.7152f * bg.green + 0.0722f * bg.blue)
-    val isDark = luminance < 0.5f
+    val isDark = colorScheme.isDark
     return if (isDark) {
         AppColors(
             bgSidebar = DarkColors.bgSidebar,

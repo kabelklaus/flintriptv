@@ -27,6 +27,7 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
+import com.flintr.tv.ui.theme.isDark
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import androidx.compose.ui.focus.focusRequester
@@ -47,11 +48,7 @@ fun CategoryRow(
     // Categories are already filtered and sorted in AppNavigation.kt
     val colors = appColors()
     val colorScheme = MaterialTheme.colorScheme
-    // Dark theme has dark background - check if background color is dark
-    // Calculate relative luminance: 0.2126*R + 0.7152*G + 0.0722*B (normalized to 0-1)
-    val bg = colorScheme.background
-    val luminance = (0.2126f * bg.red + 0.7152f * bg.green + 0.0722f * bg.blue)
-    val isDark = luminance < 0.5f
+    val isDark = colorScheme.isDark
     
     LazyColumn(
         modifier = modifier
