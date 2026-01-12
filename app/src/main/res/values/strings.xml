@@ -16,6 +16,14 @@
     <string name="check_for_updates">Nach Updates suchen</string>
     <string name="checking_for_updates">Suche nach Updates…</string>
     <string name="updates_available">Updates verfügbar</string>
+    <string name="update_available">Update verfügbar</string>
+    <string name="current_version">Aktuelle Version</string>
+    <string name="new_version">Neue Version</string>
+    <string name="changelog_label">Änderungen:</string>
+    <string name="download">Herunterladen</string>
+    <string name="later">Später</string>
+    <string name="installation_starting">Installation startet…</string>
+    <string name="download_percent">%1$d%% heruntergeladen</string>
     <string name="latest_version">Sie verwenden die neueste Version</string>
     <string name="download_and_install_update">Update herunterladen und installieren</string>
     <string name="download_progress">Download: %1$d%%</string>

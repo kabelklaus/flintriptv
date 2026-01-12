@@ -31,7 +31,8 @@ class UpdateRepository @Inject constructor(
                 hasUpdate = false,
                 stableVersion = null,
                 betaVersion = null,
-                downloadUrl = null
+                downloadUrl = null,
+                changelog = null
             )
         }
         
@@ -62,7 +63,8 @@ class UpdateRepository @Inject constructor(
             hasUpdate = hasUpdate,
             stableVersion = if (hasUpdate) releaseVersion else null,
             betaVersion = null,
-            downloadUrl = downloadUrl
+            downloadUrl = downloadUrl,
+            changelog = if (hasUpdate) release.body?.takeIf { it.isNotBlank() } else null
         )
     }
     

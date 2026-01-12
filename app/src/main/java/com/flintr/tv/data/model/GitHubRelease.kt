@@ -13,6 +13,8 @@ data class GitHubRelease(
     val prerelease: Boolean,
     @Json(name = "published_at")
     val publishedAt: String,
+    @Json(name = "body")
+    val body: String? = null,
     @Json(name = "assets")
     val assets: List<GitHubAsset>
 )
