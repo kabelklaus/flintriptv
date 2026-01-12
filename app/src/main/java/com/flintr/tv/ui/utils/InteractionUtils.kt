@@ -358,7 +358,7 @@ private fun createTouchEventHandler(
     
     return Modifier.pointerInput(onLongPress, onNormalClick) {
         detectTapGestures(
-            onPress = { offset ->
+            onPress = { _ ->
                 val now = System.currentTimeMillis()
                 
                 if (state.isInTouchBlockingPeriod(now)) {
