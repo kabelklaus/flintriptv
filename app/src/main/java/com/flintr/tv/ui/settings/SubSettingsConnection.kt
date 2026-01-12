@@ -32,7 +32,6 @@ import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
-import kotlinx.coroutines.launch
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.collectAsState
 import com.flintr.tv.viewmodel.SettingsConnectionViewModel
@@ -365,7 +364,7 @@ fun SettingsConnection(
                         connectionTestState.serverInfo?.let {
                             Card(
                                 colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFF10B981).copy(alpha = 0.1f)
+                                    containerColor = SharedColors.successGreen.copy(alpha = 0.1f)
                                 ),
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(Dimensions.radiusMD)
@@ -380,11 +379,11 @@ fun SettingsConnection(
                                     Icon(
                                         imageVector = Icons.Default.CheckCircle,
                                         contentDescription = null,
-                                        tint = Color(0xFF10B981)
+                                        tint = SharedColors.successGreen
                                     )
                                     Text(
                                         text = "Verbindung erfolgreich!",
-                                        color = Color(0xFF10B981),
+                                        color = SharedColors.successGreen,
                                         style = MaterialTheme.typography.bodyMedium
                                     )
                                 }

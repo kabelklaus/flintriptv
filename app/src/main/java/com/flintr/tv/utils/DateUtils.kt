@@ -84,13 +84,13 @@ private fun parseExpirationDate(expDate: String): LocalDate? {
     if (expDate.all { it.isDigit() }) {
         try {
             val timestamp = expDate.toLong()
-            // Determine if it's seconds or milliseconds
-            // Timestamps before year 2000 are likely seconds, after are milliseconds
-            val date = if (timestamp < 946684800000L) { // Jan 1, 2000 in milliseconds
-                // Likely seconds
+            // Determine if it's seconds or milliseconds based on string length
+            // Unix timestamps in seconds typically have 10 or fewer digits
+            val date = if (expDate.length <= 10) {
+                // Likely seconds (10 digits or less)
                 Date(timestamp * 1000)
             } else {
-                // Likely milliseconds
+                // Likely milliseconds (more than 10 digits)
                 Date(timestamp)
             }
             return date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
