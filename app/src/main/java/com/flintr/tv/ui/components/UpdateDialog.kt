@@ -1,7 +1,6 @@
 package com.flintr.tv.ui.components
 
 import androidx.compose.foundation.border
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,13 +19,14 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
+import com.flintr.tv.R
 import com.flintr.tv.data.model.UpdateInfo
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onBackButton
-import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.utils.DownloadProgress
 import kotlinx.coroutines.delay
@@ -60,8 +60,6 @@ fun UpdateDialog(
     val updateButtonFocusRequester = remember { FocusRequester() }
     val laterButtonFocusRequester = remember { FocusRequester() }
     
-    // Track focused button (0 = update, 1 = later)
-    var focusedButtonIndex by remember { mutableStateOf(0) }
     var isDialogReady by remember { mutableStateOf(false) }
     
     // Initialize focus when dialog opens
@@ -122,7 +120,7 @@ fun UpdateDialog(
                         modifier = Modifier.size(Dimensions.iconSizeLG)
                     )
                     Text(
-                        text = "Update verfügbar",
+                        text = stringResource(R.string.update_available),
                         style = MaterialTheme.typography.headlineSmall,
                         color = colors.textPrimary,
                         fontWeight = FontWeight.Bold
@@ -132,13 +130,13 @@ fun UpdateDialog(
                 // Version info
                 if (currentVersion != null && updateInfo.stableVersion != null) {
                     Text(
-                        text = "Aktuelle Version: $currentVersion",
+                        text = "${stringResource(R.string.current_version)}: $currentVersion",
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.textSecondary,
                         fontSize = FontSizes.fontSizeXL
                     )
                     Text(
-                        text = "Neue Version: ${updateInfo.stableVersion}",
+                        text = "${stringResource(R.string.new_version)}: ${updateInfo.stableVersion}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.textPrimary,
                         fontSize = FontSizes.fontSizeXL,
@@ -152,7 +150,7 @@ fun UpdateDialog(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Änderungen:",
+                            text = stringResource(R.string.changelog_label),
                             style = MaterialTheme.typography.titleSmall,
                             color = colors.textPrimary,
                             fontSize = FontSizes.fontSizeLG,
@@ -168,7 +166,6 @@ fun UpdateDialog(
                             ),
                             shape = RoundedCornerShape(Dimensions.radiusSM)
                         ) {
-                            val changelogScrollState = rememberScrollState()
                             Text(
                                 text = changelog,
                                 style = MaterialTheme.typography.bodySmall,
@@ -176,7 +173,6 @@ fun UpdateDialog(
                                 fontSize = FontSizes.fontSizeMD,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .verticalScroll(changelogScrollState)
                                     .padding(Dimensions.spacingMD)
                             )
                         }
@@ -203,9 +199,6 @@ fun UpdateDialog(
                             .focusRequester(updateButtonFocusRequester)
                             .onFocusChanged { focusState ->
                                 isUpdateButtonFocused = focusState.isFocused
-                                if (focusState.isFocused) {
-                                    focusedButtonIndex = 0
-                                }
                             }
                             .then(
                                 if (isUpdateButtonFocused) {
@@ -227,16 +220,6 @@ fun UpdateDialog(
                                         false
                                     }
                                 }
-                            )
-                            .then(
-                                if (isDialogReady && !isDownloading) {
-                                    Modifier.focusable().onClick(
-                                        onClick = { onUpdateNow() },
-                                        enabled = !isDownloading && downloadProgress?.isComplete != true
-                                    )
-                                } else {
-                                    Modifier
-                                }
                             ),
                         enabled = !isDownloading && downloadProgress?.isComplete != true,
                         shape = RoundedCornerShape(Dimensions.radiusMD),
@@ -254,7 +237,7 @@ fun UpdateDialog(
                         when {
                             downloadProgress?.isComplete == true -> {
                                 Text(
-                                    text = "Installation startet...",
+                                    text = stringResource(R.string.installation_starting),
                                     fontSize = FontSizes.fontSizeLG,
                                     fontWeight = FontWeight.W600
                                 )
@@ -262,14 +245,14 @@ fun UpdateDialog(
                             isDownloading && downloadProgress != null -> {
                                 val progressPercent = (downloadProgress.progress * 100).toInt()
                                 Text(
-                                    text = "$progressPercent% heruntergeladen",
+                                    text = stringResource(R.string.download_percent, progressPercent),
                                     fontSize = FontSizes.fontSizeLG,
                                     fontWeight = FontWeight.W600
                                 )
                             }
                             else -> {
                                 Text(
-                                    text = "Herunterladen",
+                                    text = stringResource(R.string.download),
                                     fontSize = FontSizes.fontSizeLG,
                                     fontWeight = FontWeight.W600
                                 )
@@ -288,9 +271,6 @@ fun UpdateDialog(
                             .focusRequester(laterButtonFocusRequester)
                             .onFocusChanged { focusState ->
                                 isLaterButtonFocused = focusState.isFocused
-                                if (focusState.isFocused) {
-                                    focusedButtonIndex = 1
-                                }
                             }
                             .then(
                                 if (isLaterButtonFocused) {
@@ -312,13 +292,6 @@ fun UpdateDialog(
                                         false
                                     }
                                 }
-                            )
-                            .then(
-                                if (isDialogReady) {
-                                    Modifier.focusable().onClick(onClick = onLater)
-                                } else {
-                                    Modifier
-                                }
                             ),
                         shape = RoundedCornerShape(Dimensions.radiusMD),
                         colors = ButtonDefaults.buttonColors(
@@ -331,7 +304,7 @@ fun UpdateDialog(
                         )
                     ) {
                         Text(
-                            text = "Später",
+                            text = stringResource(R.string.later),
                             fontSize = FontSizes.fontSizeLG,
                             fontWeight = FontWeight.W600
                         )

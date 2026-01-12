@@ -47,13 +47,9 @@ import com.flintr.tv.viewmodel.PlayerViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
-import android.content.Context
-import android.content.pm.PackageInfo
-import android.content.pm.PackageManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.flintr.tv.utils.loadPackageInfo
 
 sealed class Screen(val route: String) {
     object InitialRouting : Screen("initial_routing")
@@ -280,7 +276,6 @@ fun MainContentScreen(
     
     // Update check state
     var hasCheckedForUpdates by remember { mutableStateOf(false) }
-    var currentVersion by remember { mutableStateOf<String?>(null) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     
     // UpdateViewModel state
@@ -292,8 +287,8 @@ fun MainContentScreen(
     LaunchedEffect(Unit) {
         if (!hasCheckedForUpdates) {
             hasCheckedForUpdates = true
-            val version = loadPackageVersion(context)
-            currentVersion = version
+            val packageInfo = loadPackageInfo(context)
+            val version = packageInfo?.versionName
             if (version != null) {
                 updateViewModel.checkForUpdates(version)
             }
@@ -443,7 +438,7 @@ fun MainContentScreen(
     if (showUpdateDialog && currentUpdateInfo != null) {
         UpdateDialog(
             updateInfo = currentUpdateInfo,
-            currentVersion = currentVersionFromViewModel ?: currentVersion,
+            currentVersion = currentVersionFromViewModel,
             downloadProgress = currentDownloadProgress,
             isDownloading = currentDownloadProgress != null && !currentDownloadProgress.isComplete && currentDownloadProgress.error == null,
             onUpdateNow = {
@@ -640,24 +635,4 @@ fun MainContentScreen(
     )
 }
 
-/**
- * Load package version name from PackageManager
- * Similar to loadPackageInfo in SubSettingsInfo.kt
- */
-private suspend fun loadPackageVersion(context: Context): String? = withContext(Dispatchers.IO) {
-    try {
-        val packageManager = context.packageManager
-        val packageName = context.packageName
-        val packageInfo: PackageInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
-        } else {
-            @Suppress("DEPRECATION")
-            packageManager.getPackageInfo(packageName, 0)
-        }
-        packageInfo.versionName
-    } catch (e: Exception) {
-        Log.e("AppNavigation", "Failed to load package version", e)
-        null
-    }
-}
 
