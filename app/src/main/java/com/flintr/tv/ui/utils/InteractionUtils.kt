@@ -354,7 +354,7 @@ private fun createTouchEventHandler(
     onLongPress: () -> Unit,
     onNormalClick: (() -> Unit)?
 ): Modifier {
-    return Modifier.pointerInput(Unit) {
+    return Modifier.pointerInput(onLongPress, onNormalClick) {
         detectTapGestures(
             onPress = { _ ->
                 val now = System.currentTimeMillis()
