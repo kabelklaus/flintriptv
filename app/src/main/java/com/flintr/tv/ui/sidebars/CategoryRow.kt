@@ -5,7 +5,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -47,7 +46,12 @@ fun CategoryRow(
 ) {
     // Categories are already filtered and sorted in AppNavigation.kt
     val colors = appColors()
-    val isDark = isSystemInDarkTheme()
+    val colorScheme = MaterialTheme.colorScheme
+    // Dark theme has dark background - check if background color is dark
+    // Calculate relative luminance: 0.2126*R + 0.7152*G + 0.0722*B (normalized to 0-1)
+    val bg = colorScheme.background
+    val luminance = (0.2126f * bg.red + 0.7152f * bg.green + 0.0722f * bg.blue)
+    val isDark = luminance < 0.5f
     
     LazyColumn(
         modifier = modifier
