@@ -42,10 +42,14 @@ class UpdateViewModel @Inject constructor(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
     
+    private val _currentVersion = MutableStateFlow<String?>(null)
+    val currentVersion: StateFlow<String?> = _currentVersion.asStateFlow()
+    
     fun checkForUpdates(currentVersion: String) {
         viewModelScope.launch {
             _isCheckingUpdates.value = true
             _errorMessage.value = null
+            _currentVersion.value = currentVersion
             
             try {
                 val info = updateRepository.checkForUpdates(currentVersion)

@@ -44,7 +44,16 @@ import com.flintr.tv.ui.tabs.FavoritesContent
 import com.flintr.tv.ui.tabs.FavoritesContentParams
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
+import com.flintr.tv.viewmodel.UpdateViewModel
 import com.flintr.tv.ui.utils.safeRequestFocus
+import com.flintr.tv.ui.components.UpdateDialog
+import android.content.Context
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 sealed class Screen(val route: String) {
     object InitialRouting : Screen("initial_routing")
@@ -261,11 +270,49 @@ fun MainContentScreen(
     mainViewModel: MainViewModel,
     credentialsRepository: CredentialsRepository,
     favoritesRepository: FavoritesRepository,
-    cacheService: DataCacheService
+    cacheService: DataCacheService,
+    updateViewModel: UpdateViewModel = hiltViewModel()
 ) {
     val credentials = credentialsRepository.getCredentials()
+    val context = LocalContext.current
     var selectedDestination by remember { mutableStateOf<HomeDestination>(HomeDestination.LiveTV) }
     var selectedCategoryId by remember { mutableStateOf<String?>(null) }
+    
+    // Update check state
+    var hasCheckedForUpdates by remember { mutableStateOf(false) }
+    var currentVersion by remember { mutableStateOf<String?>(null) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    
+    // UpdateViewModel state
+    val updateInfo by updateViewModel.updateInfo.collectAsState()
+    val downloadProgress by updateViewModel.downloadProgress.collectAsState()
+    val currentVersionFromViewModel by updateViewModel.currentVersion.collectAsState()
+    
+    // Load package info and check for updates once
+    LaunchedEffect(Unit) {
+        if (!hasCheckedForUpdates) {
+            hasCheckedForUpdates = true
+            val version = loadPackageVersion(context)
+            currentVersion = version
+            if (version != null) {
+                updateViewModel.checkForUpdates(version)
+            }
+        }
+    }
+    
+    // Show update dialog when update becomes available
+    LaunchedEffect(updateInfo?.hasUpdate) {
+        if (updateInfo?.hasUpdate == true && updateInfo?.downloadUrl != null) {
+            showUpdateDialog = true
+        }
+    }
+    
+    // Auto-close dialog when installation starts
+    LaunchedEffect(downloadProgress?.isComplete) {
+        if (downloadProgress?.isComplete == true) {
+            showUpdateDialog = false
+        }
+    }
     
     // Focus requesters for each panel
     val navbarFocusRequester = remember { FocusRequester() }
@@ -389,6 +436,28 @@ fun MainContentScreen(
     // Set initial focus on Navbar when app starts (via onNavbarReady callback)
     // When destination changes and categories are shown, move focus to CategoryRow
     // For Favorites (no categories), move focus directly to content list
+    
+    // Update Dialog
+    val currentUpdateInfo = updateInfo
+    val currentDownloadProgress = downloadProgress
+    if (showUpdateDialog && currentUpdateInfo != null) {
+        UpdateDialog(
+            updateInfo = currentUpdateInfo,
+            currentVersion = currentVersionFromViewModel ?: currentVersion,
+            downloadProgress = currentDownloadProgress,
+            isDownloading = currentDownloadProgress != null && !currentDownloadProgress.isComplete && currentDownloadProgress.error == null,
+            onUpdateNow = {
+                currentUpdateInfo.downloadUrl?.let { url ->
+                    currentUpdateInfo.stableVersion?.let { version ->
+                        updateViewModel.downloadUpdate(url, version)
+                    }
+                }
+            },
+            onLater = {
+                showUpdateDialog = false
+            }
+        )
+    }
     
     MainLayout(
         selectedDestination = selectedDestination,
@@ -569,5 +638,26 @@ fun MainContentScreen(
             }
         }
     )
+}
+
+/**
+ * Load package version name from PackageManager
+ * Similar to loadPackageInfo in SubSettingsInfo.kt
+ */
+private suspend fun loadPackageVersion(context: Context): String? = withContext(Dispatchers.IO) {
+    try {
+        val packageManager = context.packageManager
+        val packageName = context.packageName
+        val packageInfo: PackageInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, 0)
+        }
+        packageInfo.versionName
+    } catch (e: Exception) {
+        Log.e("AppNavigation", "Failed to load package version", e)
+        null
+    }
 }
 
