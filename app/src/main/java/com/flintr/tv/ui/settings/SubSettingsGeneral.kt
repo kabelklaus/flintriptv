@@ -28,11 +28,15 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.data.local.CategoryVisibilityService
+import androidx.compose.runtime.collectAsState
 
 @Composable
 fun SettingsGeneral(
     onBack: () -> Unit,
     onNavigateLeft: () -> Unit,
+    categoryVisibilityService: CategoryVisibilityService,
+    onNavigateToHiddenCategories: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = appColors()
@@ -42,7 +46,10 @@ fun SettingsGeneral(
     var selectedLanguage by remember { mutableStateOf(AppLanguage.Deutsch) }
     var isDarkTheme by remember { mutableStateOf(false) }
     var cacheSizeMB by remember { mutableStateOf(0) }
-    var hiddenCategoriesCount by remember { mutableStateOf(0) }
+    
+    // Get hidden categories count from StateFlow
+    val hiddenCategories by categoryVisibilityService.hiddenCategories.collectAsState()
+    val hiddenCategoriesCount = hiddenCategories.values.sumOf { it.size }
     
     // Focus requesters
     val languageFocusRequester = remember { FocusRequester() }
@@ -218,7 +225,8 @@ fun SettingsGeneral(
                         
                         OutlinedButton(
                             onClick = {
-                                // Mock: Navigate to hidden categories screen
+                                Log.i("SettingsNav", "➡️ NAVIGATE: SettingsGeneral -> SubSettingsHiddenCategories")
+                                onNavigateToHiddenCategories()
                             },
                             modifier = Modifier
                                 .fillMaxWidth()

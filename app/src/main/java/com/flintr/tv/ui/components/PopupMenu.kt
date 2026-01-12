@@ -2,13 +2,11 @@ package com.flintr.tv.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -16,7 +14,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import android.util.Log
 import com.flintr.tv.BuildConfig
@@ -29,7 +26,7 @@ import kotlinx.coroutines.delay
 /**
  * Helper function for debug logging that only logs in DEBUG builds
  */
-private inline fun debugLog(tag: String = "ContentCardMenu", message: () -> String) {
+private inline fun debugLog(tag: String = "PopupMenu", message: () -> String) {
     if (BuildConfig.DEBUG) {
         Log.d(tag, message())
     }
@@ -149,18 +146,18 @@ private fun Modifier.conditionalMenuItemModifier(
 }
 
 /**
- * TV-optimized menu dialog for ContentCard
+ * TV-optimized popup menu dialog
  * Opens on long press and provides menu options
  */
 @Composable
-fun ContentCardMenu(
+fun PopupMenu(
     isOpen: Boolean,
     menuOptions: List<String>,
     onDismiss: () -> Unit,
     onOptionSelected: (Int) -> Unit,
     menuType: MenuType? = null
 ) {
-    debugLog { "[Render] ContentCardMenu aufgerufen: isOpen = $isOpen, menuType = $menuType, menuOptions = $menuOptions" }
+    debugLog { "[Render] PopupMenu aufgerufen: isOpen = $isOpen, menuType = $menuType, menuOptions = $menuOptions" }
     if (!isOpen) {
         debugLog { "[Render] isOpen = false - Menü wird nicht gerendert" }
         return

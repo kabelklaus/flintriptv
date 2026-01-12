@@ -191,7 +191,9 @@ fun AppNavigation(
         composable(Screen.Settings.route) {
             SettingsScreen(
                 focusRequester = remember { FocusRequester() },
-                onNavigateLeft = { navController.popBackStack() }
+                onNavigateLeft = { navController.popBackStack() },
+                categoryVisibilityService = dependencies.categoryVisibilityService,
+                mainViewModel = mainViewModel
             )
         }
         

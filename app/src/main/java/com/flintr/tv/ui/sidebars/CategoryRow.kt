@@ -22,7 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.util.Log
 import com.flintr.tv.data.model.Category
-import com.flintr.tv.ui.components.ContentCardMenu
+import com.flintr.tv.ui.components.PopupMenu
 import com.flintr.tv.ui.components.MenuType
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
@@ -263,8 +263,8 @@ fun CategoryChip(
     
     // Category menu dialog
     if (onCategoryHidden != null) {
-        Log.d("CategoryChip", "[MenuRender] Rendering ContentCardMenu für Kategorie '$name': showMenu = $showMenu")
-        ContentCardMenu(
+        Log.d("CategoryChip", "[MenuRender] Rendering PopupMenu für Kategorie '$name': showMenu = $showMenu")
+        PopupMenu(
             isOpen = showMenu,
             menuOptions = listOf("Ausblenden"),
             onDismiss = { 

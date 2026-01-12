@@ -13,6 +13,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +35,8 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.data.local.CategoryVisibilityService
+import com.flintr.tv.viewmodel.MainViewModel
 
 sealed class SettingsDestination {
     object Main : SettingsDestination()
@@ -40,16 +44,31 @@ sealed class SettingsDestination {
     object Playback : SettingsDestination()
     object General : SettingsDestination()
     object Info : SettingsDestination()
+    object HiddenCategories : SettingsDestination()
 }
 
 @Composable
 fun SettingsScreen(
     focusRequester: FocusRequester,
     onNavigateLeft: () -> Unit,
+    categoryVisibilityService: CategoryVisibilityService,
+    mainViewModel: MainViewModel,
     modifier: Modifier = Modifier
 ) {
     var currentDestination by remember { mutableStateOf<SettingsDestination>(SettingsDestination.Main) }
     val colors = appColors()
+    
+    // Snackbar support
+    val snackbarHostState = remember { SnackbarHostState() }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    
+    // Show snackbar when message is set
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            snackbarMessage = null
+        }
+    }
     
     // Fade-in animation
     var isVisible by remember { mutableStateOf(false) }
@@ -107,7 +126,11 @@ fun SettingsScreen(
                     onBack = {
                         currentDestination = SettingsDestination.Main
                     },
-                    onNavigateLeft = onNavigateLeft
+                    onNavigateLeft = onNavigateLeft,
+                    categoryVisibilityService = categoryVisibilityService,
+                    onNavigateToHiddenCategories = {
+                        currentDestination = SettingsDestination.HiddenCategories
+                    }
                 )
             }
             is SettingsDestination.Info -> {
@@ -118,7 +141,26 @@ fun SettingsScreen(
                     onNavigateLeft = onNavigateLeft
                 )
             }
+            is SettingsDestination.HiddenCategories -> {
+                SubSettingsHiddenCategories(
+                    onBack = {
+                        currentDestination = SettingsDestination.Main
+                    },
+                    onNavigateLeft = onNavigateLeft,
+                    categoryVisibilityService = categoryVisibilityService,
+                    mainViewModel = mainViewModel,
+                    onShowSnackbar = { message ->
+                        snackbarMessage = message
+                    }
+                )
+            }
         }
+        
+        // Snackbar for feedback messages
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 
