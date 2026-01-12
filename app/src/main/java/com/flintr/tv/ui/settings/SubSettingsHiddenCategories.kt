@@ -27,7 +27,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.activity.compose.BackHandler
 import android.util.Log
 import com.flintr.tv.data.local.CategoryVisibilityService
-import com.flintr.tv.data.model.Category
 import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
@@ -71,16 +70,20 @@ fun SubSettingsHiddenCategories(
     
     // Resolve category names
     val hiddenCategoryItems = remember(hiddenCategories, liveCategories, vodCategories, seriesCategories) {
+        val liveCategoriesMap = liveCategories.associateBy { it.categoryId }
+        val vodCategoriesMap = vodCategories.associateBy { it.categoryId }
+        val seriesCategoriesMap = seriesCategories.associateBy { it.categoryId }
+        
         buildList {
             hiddenCategories.forEach { (categoryType, categoryIds) ->
-                val allCategories = when (categoryType) {
-                    CategoryType.LIVE_TV -> liveCategories
-                    CategoryType.VOD -> vodCategories
-                    CategoryType.SERIES -> seriesCategories
+                val allCategoriesMap = when (categoryType) {
+                    CategoryType.LIVE_TV -> liveCategoriesMap
+                    CategoryType.VOD -> vodCategoriesMap
+                    CategoryType.SERIES -> seriesCategoriesMap
                 }
                 
                 categoryIds.forEach { categoryId ->
-                    val category = allCategories.find { it.categoryId == categoryId }
+                    val category = allCategoriesMap[categoryId]
                     val categoryName = category?.categoryName ?: categoryId
                     val isAvailable = category != null
                     
@@ -150,54 +153,33 @@ fun SubSettingsHiddenCategories(
                 verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
                 contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
             ) {
-                // Live TV section
-                groupedItems[CategoryType.LIVE_TV]?.let { items ->
-                    item {
-                        CategoryTypeHeader("Live TV", colors)
-                    }
-                    items(items) { item ->
-                        HiddenCategoryItemCard(
-                            item = item,
-                            colors = colors,
-                            focusRequester = if (item == items.first()) firstItemFocusRequester else null,
-                            onClick = { showDialog = item },
-                            onNavigateLeft = onNavigateLeft,
-                            onBack = onBack
-                        )
-                    }
-                }
-                
-                // VOD section
-                groupedItems[CategoryType.VOD]?.let { items ->
-                    item {
-                        CategoryTypeHeader("VOD", colors)
-                    }
-                    items(items) { item ->
-                        HiddenCategoryItemCard(
-                            item = item,
-                            colors = colors,
-                            focusRequester = if (groupedItems[CategoryType.LIVE_TV].isNullOrEmpty() && item == items.first()) firstItemFocusRequester else null,
-                            onClick = { showDialog = item },
-                            onNavigateLeft = onNavigateLeft,
-                            onBack = onBack
-                        )
-                    }
-                }
-                
-                // Series section
-                groupedItems[CategoryType.SERIES]?.let { items ->
-                    item {
-                        CategoryTypeHeader("Serien", colors)
-                    }
-                    items(items) { item ->
-                        HiddenCategoryItemCard(
-                            item = item,
-                            colors = colors,
-                            focusRequester = if (groupedItems[CategoryType.LIVE_TV].isNullOrEmpty() && groupedItems[CategoryType.VOD].isNullOrEmpty() && item == items.first()) firstItemFocusRequester else null,
-                            onClick = { showDialog = item },
-                            onNavigateLeft = onNavigateLeft,
-                            onBack = onBack
-                        )
+                val categoryOrder = listOf(
+                    CategoryType.LIVE_TV to "Live TV",
+                    CategoryType.VOD to "VOD",
+                    CategoryType.SERIES to "Serien"
+                )
+                var isFirstItem = true
+
+                categoryOrder.forEach { (categoryType, title) ->
+                    groupedItems[categoryType]?.let { items ->
+                        item {
+                            CategoryTypeHeader(title, colors)
+                        }
+                        items(items) { item ->
+                            val requester = if (isFirstItem) {
+                                isFirstItem = false
+                                firstItemFocusRequester
+                            } else null
+
+                            HiddenCategoryItemCard(
+                                item = item,
+                                colors = colors,
+                                focusRequester = requester,
+                                onClick = { showDialog = item },
+                                onNavigateLeft = onNavigateLeft,
+                                onBack = onBack
+                            )
+                        }
                     }
                 }
             }
@@ -207,8 +189,6 @@ fun SubSettingsHiddenCategories(
         showDialog?.let { item ->
             ConfirmUnhideCategoryDialog(
                 categoryName = item.categoryName,
-                categoryId = item.categoryId,
-                categoryType = item.categoryType,
                 onConfirm = {
                     categoryVisibilityService.showCategory(item.categoryId, item.categoryType)
                     onShowSnackbar("Kategorie wurde wieder eingeblendet")
@@ -361,8 +341,6 @@ private fun HiddenCategoryItemCard(
 @Composable
 private fun ConfirmUnhideCategoryDialog(
     categoryName: String,
-    categoryId: String,
-    categoryType: CategoryType,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {

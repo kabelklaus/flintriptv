@@ -389,7 +389,7 @@ private fun ContentCardInternal(
         }
     }
     
-    ContentCardMenu(
+    PopupMenu(
         isOpen = showMenu && menuOptions.isNotEmpty(),
         menuOptions = menuOptions,
         onDismiss = {
