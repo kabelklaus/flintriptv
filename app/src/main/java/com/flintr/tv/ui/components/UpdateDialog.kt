@@ -62,17 +62,25 @@ fun UpdateDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         UpdateDialogContent(
-            updateInfo = updateInfo,
-            currentVersion = currentVersion,
-            downloadProgress = downloadProgress,
-            isDownloading = isDownloading,
-            dimensions = dimensions,
-            isDialogReady = isDialogReady,
-            updateButtonFocusRequester = updateButtonFocusRequester,
-            laterButtonFocusRequester = laterButtonFocusRequester,
-            scrollState = scrollState,
-            onUpdateNow = onUpdateNow,
-            onLater = onLater
+            updateState = UpdateDialogState(
+                updateInfo = updateInfo,
+                currentVersion = currentVersion,
+                downloadProgress = downloadProgress,
+                isDownloading = isDownloading
+            ),
+            uiState = DialogUIState(
+                dimensions = dimensions,
+                isDialogReady = isDialogReady,
+                scrollState = scrollState
+            ),
+            focusRequesters = DialogFocusRequesters(
+                updateButtonFocusRequester = updateButtonFocusRequester,
+                laterButtonFocusRequester = laterButtonFocusRequester
+            ),
+            callbacks = UpdateDialogCallbacks(
+                onUpdateNow = onUpdateNow,
+                onLater = onLater
+            )
         )
     }
 }
@@ -102,6 +110,33 @@ private data class DialogDimensions(
     val maxHeight: Dp,
     val changelogMaxHeight: Dp,
     val isSmallScreen: Boolean
+)
+
+@Immutable
+private data class UpdateDialogState(
+    val updateInfo: UpdateInfo,
+    val currentVersion: String?,
+    val downloadProgress: DownloadProgress?,
+    val isDownloading: Boolean
+)
+
+@Immutable
+private data class DialogUIState(
+    val dimensions: DialogDimensions,
+    val isDialogReady: Boolean,
+    val scrollState: ScrollState
+)
+
+@Immutable
+private data class DialogFocusRequesters(
+    val updateButtonFocusRequester: FocusRequester,
+    val laterButtonFocusRequester: FocusRequester
+)
+
+@Immutable
+private data class UpdateDialogCallbacks(
+    val onUpdateNow: () -> Unit,
+    val onLater: () -> Unit
 )
 
 @Composable
@@ -378,48 +413,41 @@ private fun ButtonsRow(
 
 @Composable
 private fun UpdateDialogContent(
-    updateInfo: UpdateInfo,
-    currentVersion: String?,
-    downloadProgress: DownloadProgress?,
-    isDownloading: Boolean,
-    dimensions: DialogDimensions,
-    isDialogReady: Boolean,
-    updateButtonFocusRequester: FocusRequester,
-    laterButtonFocusRequester: FocusRequester,
-    scrollState: ScrollState,
-    onUpdateNow: () -> Unit,
-    onLater: () -> Unit
+    updateState: UpdateDialogState,
+    uiState: DialogUIState,
+    focusRequesters: DialogFocusRequesters,
+    callbacks: UpdateDialogCallbacks
 ) {
     val colors = appColors()
     
     Card(
         modifier = Modifier
-            .width(dimensions.width)
-            .heightIn(max = dimensions.maxHeight)
-            .onBackButton { onLater() },
+            .width(uiState.dimensions.width)
+            .heightIn(max = uiState.dimensions.maxHeight)
+            .onBackButton { callbacks.onLater() },
         shape = RoundedCornerShape(Dimensions.radiusMD),
         colors = CardDefaults.cardColors(containerColor = colors.bgCard)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(scrollState)
+                .verticalScroll(uiState.scrollState)
                 .padding(Dimensions.spacingXL),
             verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
         ) {
             DialogTitle()
-            VersionInfoSection(currentVersion, updateInfo.stableVersion)
-            ChangelogSection(updateInfo.changelog, dimensions.changelogMaxHeight)
+            VersionInfoSection(updateState.currentVersion, updateState.updateInfo.stableVersion)
+            ChangelogSection(updateState.updateInfo.changelog, uiState.dimensions.changelogMaxHeight)
             ButtonsRow(
-                isDownloading = isDownloading,
-                downloadProgress = downloadProgress,
-                isDialogReady = isDialogReady,
-                updateButtonFocusRequester = updateButtonFocusRequester,
-                laterButtonFocusRequester = laterButtonFocusRequester,
-                onUpdateNow = onUpdateNow,
-                onLater = onLater
+                isDownloading = updateState.isDownloading,
+                downloadProgress = updateState.downloadProgress,
+                isDialogReady = uiState.isDialogReady,
+                updateButtonFocusRequester = focusRequesters.updateButtonFocusRequester,
+                laterButtonFocusRequester = focusRequesters.laterButtonFocusRequester,
+                onUpdateNow = callbacks.onUpdateNow,
+                onLater = callbacks.onLater
             )
-            if (dimensions.isSmallScreen) {
+            if (uiState.dimensions.isSmallScreen) {
                 Spacer(modifier = Modifier.height(Dimensions.spacingMD))
             }
         }
