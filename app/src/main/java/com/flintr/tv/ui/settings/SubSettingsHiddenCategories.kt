@@ -27,6 +27,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.activity.compose.BackHandler
 import android.util.Log
 import com.flintr.tv.data.local.CategoryVisibilityService
+import com.flintr.tv.data.model.Category
 import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
@@ -45,6 +46,64 @@ private data class HiddenCategoryItem(
     val categoryType: CategoryType,
     val isAvailable: Boolean // true if category still exists in current categories
 )
+
+/**
+ * Resolves hidden category items by mapping category IDs to their names
+ */
+private fun resolveHiddenCategoryItems(
+    hiddenCategories: Map<CategoryType, Set<String>>,
+    liveCategoriesMap: Map<String, Category>,
+    vodCategoriesMap: Map<String, Category>,
+    seriesCategoriesMap: Map<String, Category>
+): List<HiddenCategoryItem> {
+    return buildList {
+        hiddenCategories.forEach { (categoryType, categoryIds) ->
+            val categoriesMap = getCategoriesMapForType(
+                categoryType,
+                liveCategoriesMap,
+                vodCategoriesMap,
+                seriesCategoriesMap
+            )
+            
+            categoryIds.forEach { categoryId ->
+                add(createHiddenCategoryItem(categoryId, categoryType, categoriesMap))
+            }
+        }
+    }
+}
+
+/**
+ * Returns the appropriate categories map based on category type
+ */
+private fun getCategoriesMapForType(
+    categoryType: CategoryType,
+    liveCategoriesMap: Map<String, Category>,
+    vodCategoriesMap: Map<String, Category>,
+    seriesCategoriesMap: Map<String, Category>
+): Map<String, Category> {
+    return when (categoryType) {
+        CategoryType.LIVE_TV -> liveCategoriesMap
+        CategoryType.VOD -> vodCategoriesMap
+        CategoryType.SERIES -> seriesCategoriesMap
+    }
+}
+
+/**
+ * Creates a HiddenCategoryItem from a category ID
+ */
+private fun createHiddenCategoryItem(
+    categoryId: String,
+    categoryType: CategoryType,
+    categoriesMap: Map<String, Category>
+): HiddenCategoryItem {
+    val category = categoriesMap[categoryId]
+    return HiddenCategoryItem(
+        categoryId = categoryId,
+        categoryName = category?.categoryName ?: categoryId,
+        categoryType = categoryType,
+        isAvailable = category != null
+    )
+}
 
 /**
  * Settings screen for managing hidden categories
@@ -74,30 +133,12 @@ fun SubSettingsHiddenCategories(
         val vodCategoriesMap = vodCategories.associateBy { it.categoryId }
         val seriesCategoriesMap = seriesCategories.associateBy { it.categoryId }
         
-        buildList {
-            hiddenCategories.forEach { (categoryType, categoryIds) ->
-                val allCategoriesMap = when (categoryType) {
-                    CategoryType.LIVE_TV -> liveCategoriesMap
-                    CategoryType.VOD -> vodCategoriesMap
-                    CategoryType.SERIES -> seriesCategoriesMap
-                }
-                
-                categoryIds.forEach { categoryId ->
-                    val category = allCategoriesMap[categoryId]
-                    val categoryName = category?.categoryName ?: categoryId
-                    val isAvailable = category != null
-                    
-                    add(
-                        HiddenCategoryItem(
-                            categoryId = categoryId,
-                            categoryName = categoryName,
-                            categoryType = categoryType,
-                            isAvailable = isAvailable
-                        )
-                    )
-                }
-            }
-        }
+        resolveHiddenCategoryItems(
+            hiddenCategories,
+            liveCategoriesMap,
+            vodCategoriesMap,
+            seriesCategoriesMap
+        )
     }
     
     // Group by category type
@@ -348,7 +389,6 @@ private fun ConfirmUnhideCategoryDialog(
     val confirmButtonFocusRequester = remember { FocusRequester() }
     val cancelButtonFocusRequester = remember { FocusRequester() }
     
-    // Set initial focus on confirm button
     LaunchedEffect(Unit) {
         confirmButtonFocusRequester.requestFocus()
     }
@@ -361,102 +401,160 @@ private fun ConfirmUnhideCategoryDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Card(
+        DialogCard(
+            categoryName = categoryName,
+            colors = colors,
+            confirmButtonFocusRequester = confirmButtonFocusRequester,
+            cancelButtonFocusRequester = cancelButtonFocusRequester,
+            onConfirm = onConfirm,
+            onDismiss = onDismiss
+        )
+    }
+}
+
+@Composable
+private fun DialogCard(
+    categoryName: String,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    confirmButtonFocusRequester: FocusRequester,
+    cancelButtonFocusRequester: FocusRequester,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 600.dp)
+            .padding(Dimensions.spacingXL),
+        shape = RoundedCornerShape(Dimensions.radiusLG),
+        colors = CardDefaults.cardColors(containerColor = colors.bgCard)
+    ) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 600.dp)
                 .padding(Dimensions.spacingXL),
-            shape = RoundedCornerShape(Dimensions.radiusLG),
-            colors = CardDefaults.cardColors(
-                containerColor = colors.bgCard
-            )
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingLG)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(Dimensions.spacingXL),
-                verticalArrangement = Arrangement.spacedBy(Dimensions.spacingLG)
-            ) {
-                // Title
-                Text(
-                    text = "Kategorie einblenden",
-                    fontSize = FontSizes.fontSizeXL,
-                    fontWeight = FontWeight.W600,
-                    color = colors.textPrimary
-                )
-                
-                // Message
-                Text(
-                    text = "Möchtest du die Kategorie '$categoryName' wieder einblenden?",
-                    fontSize = FontSizes.fontSizeXL,
-                    color = colors.textPrimary
-                )
-                
-                // Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Cancel button
-                    var isCancelFocused by remember { mutableStateOf(false) }
-                    
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier
-                            .weight(1f)
-                            .focusRequester(cancelButtonFocusRequester)
-                            .onFocusChanged { focusState ->
-                                isCancelFocused = focusState.isFocused
-                            },
-                        shape = RoundedCornerShape(Dimensions.radiusMD),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = if (isCancelFocused) colors.accentColor else colors.textPrimary
-                        ),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(
-                            width = if (isCancelFocused) 2.dp else 1.dp
-                        ),
-                        contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
-                    ) {
-                        Text(
-                            text = "Abbrechen",
-                            fontSize = FontSizes.fontSizeXL,
-                            fontWeight = if (isCancelFocused) FontWeight.W600 else FontWeight.Normal
-                        )
-                    }
-                    
-                    // Confirm button
-                    var isConfirmFocused by remember { mutableStateOf(false) }
-                    
-                    Button(
-                        onClick = onConfirm,
-                        modifier = Modifier
-                            .weight(1f)
-                            .focusRequester(confirmButtonFocusRequester)
-                            .onFocusChanged { focusState ->
-                                isConfirmFocused = focusState.isFocused
-                            },
-                        shape = RoundedCornerShape(Dimensions.radiusMD),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = colors.accentColor,
-                            contentColor = Color.White
-                        ),
-                        contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Visibility,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(Dimensions.spacingXS))
-                        Text(
-                            text = "Einblenden",
-                            fontSize = FontSizes.fontSizeXL,
-                            fontWeight = if (isConfirmFocused) FontWeight.W600 else FontWeight.Normal
-                        )
-                    }
-                }
-            }
+            DialogTitle(colors)
+            DialogMessage(categoryName, colors)
+            DialogButtons(
+                colors = colors,
+                confirmButtonFocusRequester = confirmButtonFocusRequester,
+                cancelButtonFocusRequester = cancelButtonFocusRequester,
+                onConfirm = onConfirm,
+                onDismiss = onDismiss
+            )
         }
+    }
+}
+
+@Composable
+private fun DialogTitle(colors: com.flintr.tv.ui.theme.AppColors) {
+    Text(
+        text = "Kategorie einblenden",
+        fontSize = FontSizes.fontSizeXL,
+        fontWeight = FontWeight.W600,
+        color = colors.textPrimary
+    )
+}
+
+@Composable
+private fun DialogMessage(categoryName: String, colors: com.flintr.tv.ui.theme.AppColors) {
+    Text(
+        text = "Möchtest du die Kategorie '$categoryName' wieder einblenden?",
+        fontSize = FontSizes.fontSizeXL,
+        color = colors.textPrimary
+    )
+}
+
+@Composable
+private fun DialogButtons(
+    colors: com.flintr.tv.ui.theme.AppColors,
+    confirmButtonFocusRequester: FocusRequester,
+    cancelButtonFocusRequester: FocusRequester,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CancelButton(
+            focusRequester = cancelButtonFocusRequester,
+            colors = colors,
+            onDismiss = onDismiss
+        )
+        ConfirmButton(
+            focusRequester = confirmButtonFocusRequester,
+            colors = colors,
+            onConfirm = onConfirm
+        )
+    }
+}
+
+@Composable
+private fun RowScope.CancelButton(
+    focusRequester: FocusRequester,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    onDismiss: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    
+    OutlinedButton(
+        onClick = onDismiss,
+        modifier = Modifier
+            .weight(1f)
+            .focusRequester(focusRequester)
+            .onFocusChanged { isFocused = it.isFocused },
+        shape = RoundedCornerShape(Dimensions.radiusMD),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = if (isFocused) colors.accentColor else colors.textPrimary
+        ),
+        border = ButtonDefaults.outlinedButtonBorder.copy(
+            width = if (isFocused) 2.dp else 1.dp
+        ),
+        contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
+    ) {
+        Text(
+            text = "Abbrechen",
+            fontSize = FontSizes.fontSizeXL,
+            fontWeight = if (isFocused) FontWeight.W600 else FontWeight.Normal
+        )
+    }
+}
+
+@Composable
+private fun RowScope.ConfirmButton(
+    focusRequester: FocusRequester,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    onConfirm: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    
+    Button(
+        onClick = onConfirm,
+        modifier = Modifier
+            .weight(1f)
+            .focusRequester(focusRequester)
+            .onFocusChanged { isFocused = it.isFocused },
+        shape = RoundedCornerShape(Dimensions.radiusMD),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = colors.accentColor,
+            contentColor = Color.White
+        ),
+        contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
+    ) {
+        Icon(
+            imageVector = Icons.Default.Visibility,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(Dimensions.spacingXS))
+        Text(
+            text = "Einblenden",
+            fontSize = FontSizes.fontSizeXL,
+            fontWeight = if (isFocused) FontWeight.W600 else FontWeight.Normal
+        )
     }
 }
