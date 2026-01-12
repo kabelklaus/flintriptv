@@ -187,7 +187,7 @@ private fun buildCardModifier(
     handlers: CardInteractionHandlers
 ): Modifier {
     return baseModifier
-        .size(width = Dimensions.contentCardMaxCrossAxisExtent, height = ContentCardHeight)
+        .width(Dimensions.contentCardMaxCrossAxisExtent)
         .aspectRatio(Dimensions.contentCardAspectRatio)
         .then(
             if (config.isSelected) {
