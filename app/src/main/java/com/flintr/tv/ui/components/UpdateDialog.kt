@@ -2,6 +2,7 @@ package com.flintr.tv.ui.components
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -9,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -17,8 +19,10 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import com.flintr.tv.R
@@ -44,277 +48,379 @@ fun UpdateDialog(
     onUpdateNow: () -> Unit,
     onLater: () -> Unit
 ) {
-    val colors = appColors()
+    val dimensions = rememberDialogDimensions()
+    val scrollState = rememberScrollState()
+    val updateButtonFocusRequester = remember { FocusRequester() }
+    val laterButtonFocusRequester = remember { FocusRequester() }
+    val isDialogReady = rememberDialogFocusState(updateButtonFocusRequester)
+    
+    HandleAutoClose(downloadProgress, onLater)
+    BackHandler(enabled = true) { onLater() }
+    
+    Dialog(
+        onDismissRequest = onLater,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        UpdateDialogContent(
+            updateInfo = updateInfo,
+            currentVersion = currentVersion,
+            downloadProgress = downloadProgress,
+            isDownloading = isDownloading,
+            dimensions = dimensions,
+            isDialogReady = isDialogReady,
+            updateButtonFocusRequester = updateButtonFocusRequester,
+            laterButtonFocusRequester = laterButtonFocusRequester,
+            scrollState = scrollState,
+            onUpdateNow = onUpdateNow,
+            onLater = onLater
+        )
+    }
+}
+
+// Helper Functions
+
+@Composable
+private fun rememberDialogDimensions(): DialogDimensions {
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
     val screenHeight = configuration.screenHeightDp.dp
     val isSmallScreen = screenWidth < 600.dp
     
-    // Responsive dimensions
-    val dialogWidth = if (isSmallScreen) screenWidth * 0.9f else 600.dp
-    val maxDialogHeight = if (isSmallScreen) screenHeight * 0.6f else 400.dp
-    
-    val scrollState = rememberScrollState()
-    
-    // Focus requesters for buttons
-    val updateButtonFocusRequester = remember { FocusRequester() }
-    val laterButtonFocusRequester = remember { FocusRequester() }
-    
+    return remember(screenWidth, screenHeight) {
+        DialogDimensions(
+            width = if (isSmallScreen) screenWidth * 0.9f else 600.dp,
+            maxHeight = if (isSmallScreen) screenHeight * 0.6f else 400.dp,
+            changelogMaxHeight = if (isSmallScreen) 150.dp else 200.dp,
+            isSmallScreen = isSmallScreen
+        )
+    }
+}
+
+@Immutable
+private data class DialogDimensions(
+    val width: Dp,
+    val maxHeight: Dp,
+    val changelogMaxHeight: Dp,
+    val isSmallScreen: Boolean
+)
+
+@Composable
+private fun getUpdateButtonText(
+    isDownloading: Boolean,
+    downloadProgress: DownloadProgress?
+): String {
+    return when {
+        downloadProgress?.isComplete == true -> stringResource(R.string.installation_starting)
+        isDownloading && downloadProgress != null -> {
+            val progressPercent = (downloadProgress.progress * 100).toInt()
+            stringResource(R.string.download_percent, progressPercent)
+        }
+        else -> stringResource(R.string.download)
+    }
+}
+
+private fun Modifier.focusBorder(isFocused: Boolean): Modifier {
+    return if (isFocused) {
+        this.border(
+            width = 2.dp,
+            color = Color.White,
+            shape = RoundedCornerShape(Dimensions.radiusMD)
+        )
+    } else {
+        this
+    }
+}
+
+@Composable
+private fun rememberDialogFocusState(
+    updateButtonFocusRequester: FocusRequester
+): Boolean {
     var isDialogReady by remember { mutableStateOf(false) }
     
-    // Initialize focus when dialog opens
     LaunchedEffect(Unit) {
-        delay(16) // Wait for next frame
+        delay(16)
         isDialogReady = true
         updateButtonFocusRequester.requestFocus()
     }
     
-    // Auto-close when installation starts (downloadProgress.isComplete == true)
+    return isDialogReady
+}
+
+@Composable
+private fun HandleAutoClose(
+    downloadProgress: DownloadProgress?,
+    onLater: () -> Unit
+) {
     LaunchedEffect(downloadProgress?.isComplete) {
         if (downloadProgress?.isComplete == true) {
-            delay(500) // Small delay to show completion
-            onLater() // Close dialog
+            delay(500)
+            onLater()
         }
     }
+}
+
+// UI Components
+
+@Composable
+private fun DialogTitle() {
+    val colors = appColors()
     
-    // Handle Back button
-    BackHandler(enabled = true) {
-        onLater()
-    }
-    
-    Dialog(
-        onDismissRequest = onLater,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false
-        )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Card(
-            modifier = Modifier
-                .width(dialogWidth.coerceAtMost(screenWidth * 0.95f))
-                .heightIn(max = maxDialogHeight)
-                .onBackButton {
-                    onLater()
-                },
-            shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = CardDefaults.cardColors(
-                containerColor = colors.bgCard
+        Icon(
+            imageVector = Icons.Default.SystemUpdate,
+            contentDescription = null,
+            tint = colors.accentColor,
+            modifier = Modifier.size(Dimensions.iconSizeLG)
+        )
+        Text(
+            text = stringResource(R.string.update_available),
+            style = MaterialTheme.typography.headlineSmall,
+            color = colors.textPrimary,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun VersionInfoSection(
+    currentVersion: String?,
+    newVersion: String?
+) {
+    if (currentVersion != null && newVersion != null) {
+        Text(
+            text = "${stringResource(R.string.current_version)}: $currentVersion",
+            style = MaterialTheme.typography.bodyMedium,
+            color = appColors().textSecondary,
+            fontSize = FontSizes.fontSizeXL
+        )
+        Text(
+            text = "${stringResource(R.string.new_version)}: $newVersion",
+            style = MaterialTheme.typography.bodyMedium,
+            color = appColors().textPrimary,
+            fontSize = FontSizes.fontSizeXL,
+            fontWeight = FontWeight.W600
+        )
+    }
+}
+
+@Composable
+private fun ChangelogSection(
+    changelog: String?,
+    maxHeight: Dp
+) {
+    changelog?.takeIf { it.isNotBlank() }?.let { changelogText ->
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = stringResource(R.string.changelog_label),
+                style = MaterialTheme.typography.titleSmall,
+                color = appColors().textPrimary,
+                fontSize = FontSizes.fontSizeLG,
+                fontWeight = FontWeight.W600,
+                modifier = Modifier.padding(bottom = Dimensions.spacingXS)
             )
-        ) {
-            Column(
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(scrollState)
-                    .padding(Dimensions.spacingXL),
-                verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+                    .heightIn(max = maxHeight),
+                colors = CardDefaults.cardColors(
+                    containerColor = appColors().bgHover
+                ),
+                shape = RoundedCornerShape(Dimensions.radiusSM)
             ) {
-                // Title
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SystemUpdate,
-                        contentDescription = null,
-                        tint = colors.accentColor,
-                        modifier = Modifier.size(Dimensions.iconSizeLG)
-                    )
-                    Text(
-                        text = stringResource(R.string.update_available),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = colors.textPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                
-                // Version info
-                if (currentVersion != null && updateInfo.stableVersion != null) {
-                    Text(
-                        text = "${stringResource(R.string.current_version)}: $currentVersion",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.textSecondary,
-                        fontSize = FontSizes.fontSizeXL
-                    )
-                    Text(
-                        text = "${stringResource(R.string.new_version)}: ${updateInfo.stableVersion}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.textPrimary,
-                        fontSize = FontSizes.fontSizeXL,
-                        fontWeight = FontWeight.W600
-                    )
-                }
-                
-                // Changelog
-                updateInfo.changelog?.takeIf { it.isNotBlank() }?.let { changelog ->
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = stringResource(R.string.changelog_label),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = colors.textPrimary,
-                            fontSize = FontSizes.fontSizeLG,
-                            fontWeight = FontWeight.W600,
-                            modifier = Modifier.padding(bottom = Dimensions.spacingXS)
-                        )
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = if (isSmallScreen) 150.dp else 200.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = colors.bgHover
-                            ),
-                            shape = RoundedCornerShape(Dimensions.radiusSM)
-                        ) {
-                            Text(
-                                text = changelog,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.textPrimary,
-                                fontSize = FontSizes.fontSizeMD,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(Dimensions.spacingMD)
-                            )
-                        }
+                Text(
+                    text = changelogText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = appColors().textPrimary,
+                    fontSize = FontSizes.fontSizeMD,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(Dimensions.spacingMD)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.UpdateButton(
+    isDownloading: Boolean,
+    downloadProgress: DownloadProgress?,
+    isDialogReady: Boolean,
+    focusRequester: FocusRequester,
+    laterButtonFocusRequester: FocusRequester,
+    onUpdateNow: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    
+    Button(
+        onClick = {
+            if (!isDownloading && downloadProgress?.isComplete != true) {
+                onUpdateNow()
+            }
+        },
+        modifier = Modifier
+            .weight(1f)
+            .heightIn(min = 44.dp)
+            .focusRequester(focusRequester)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusBorder(isFocused)
+            .onDpadDirection(
+                onRight = {
+                    if (isDialogReady) {
+                        laterButtonFocusRequester.requestFocus()
+                        true
+                    } else {
+                        false
                     }
                 }
-                
-                // Buttons row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                ) {
-                    // Update Now Button
-                    var isUpdateButtonFocused by remember { mutableStateOf(false) }
-                    
-                    Button(
-                        onClick = {
-                            if (!isDownloading && downloadProgress?.isComplete != true) {
-                                onUpdateNow()
-                            }
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 44.dp) // Minimum touch target size
-                            .focusRequester(updateButtonFocusRequester)
-                            .onFocusChanged { focusState ->
-                                isUpdateButtonFocused = focusState.isFocused
-                            }
-                            .then(
-                                if (isUpdateButtonFocused) {
-                                    Modifier.border(
-                                        width = 2.dp,
-                                        color = Color.White,
-                                        shape = RoundedCornerShape(Dimensions.radiusMD)
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .onDpadDirection(
-                                onRight = {
-                                    if (isDialogReady) {
-                                        laterButtonFocusRequester.requestFocus()
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                            ),
-                        enabled = !isDownloading && downloadProgress?.isComplete != true,
-                        shape = RoundedCornerShape(Dimensions.radiusMD),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isUpdateButtonFocused) colors.buttonPrimaryHover else colors.buttonPrimary,
-                            contentColor = Color.White,
-                            disabledContainerColor = colors.buttonPrimary.copy(alpha = 0.6f),
-                            disabledContentColor = Color.White.copy(alpha = 0.6f)
-                        ),
-                        contentPadding = PaddingValues(
-                            horizontal = Dimensions.spacingMD,
-                            vertical = Dimensions.spacingSM
-                        )
-                    ) {
-                        when {
-                            downloadProgress?.isComplete == true -> {
-                                Text(
-                                    text = stringResource(R.string.installation_starting),
-                                    fontSize = FontSizes.fontSizeLG,
-                                    fontWeight = FontWeight.W600
-                                )
-                            }
-                            isDownloading && downloadProgress != null -> {
-                                val progressPercent = (downloadProgress.progress * 100).toInt()
-                                Text(
-                                    text = stringResource(R.string.download_percent, progressPercent),
-                                    fontSize = FontSizes.fontSizeLG,
-                                    fontWeight = FontWeight.W600
-                                )
-                            }
-                            else -> {
-                                Text(
-                                    text = stringResource(R.string.download),
-                                    fontSize = FontSizes.fontSizeLG,
-                                    fontWeight = FontWeight.W600
-                                )
-                            }
-                        }
-                    }
-                    
-                    // Later Button
-                    var isLaterButtonFocused by remember { mutableStateOf(false) }
-                    
-                    Button(
-                        onClick = onLater,
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 44.dp) // Minimum touch target size
-                            .focusRequester(laterButtonFocusRequester)
-                            .onFocusChanged { focusState ->
-                                isLaterButtonFocused = focusState.isFocused
-                            }
-                            .then(
-                                if (isLaterButtonFocused) {
-                                    Modifier.border(
-                                        width = 2.dp,
-                                        color = Color.White,
-                                        shape = RoundedCornerShape(Dimensions.radiusMD)
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .onDpadDirection(
-                                onLeft = {
-                                    if (isDialogReady) {
-                                        updateButtonFocusRequester.requestFocus()
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                            ),
-                        shape = RoundedCornerShape(Dimensions.radiusMD),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isLaterButtonFocused) colors.bgHover else colors.bgHover.copy(alpha = 0.7f),
-                            contentColor = colors.textPrimary
-                        ),
-                        contentPadding = PaddingValues(
-                            horizontal = Dimensions.spacingMD,
-                            vertical = Dimensions.spacingSM
-                        )
-                    ) {
-                        Text(
-                            text = stringResource(R.string.later),
-                            fontSize = FontSizes.fontSizeLG,
-                            fontWeight = FontWeight.W600
-                        )
+            ),
+        enabled = !isDownloading && downloadProgress?.isComplete != true,
+        shape = RoundedCornerShape(Dimensions.radiusMD),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (isFocused) appColors().buttonPrimaryHover else appColors().buttonPrimary,
+            contentColor = Color.White,
+            disabledContainerColor = appColors().buttonPrimary.copy(alpha = 0.6f),
+            disabledContentColor = Color.White.copy(alpha = 0.6f)
+        ),
+        contentPadding = PaddingValues(
+            horizontal = Dimensions.spacingMD,
+            vertical = Dimensions.spacingSM
+        )
+    ) {
+        Text(
+            text = getUpdateButtonText(isDownloading, downloadProgress),
+            fontSize = FontSizes.fontSizeLG,
+            fontWeight = FontWeight.W600
+        )
+    }
+}
+
+@Composable
+private fun RowScope.LaterButton(
+    isDialogReady: Boolean,
+    focusRequester: FocusRequester,
+    updateButtonFocusRequester: FocusRequester,
+    onLater: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val colors = appColors()
+    
+    Button(
+        onClick = onLater,
+        modifier = Modifier
+            .weight(1f)
+            .heightIn(min = 44.dp)
+            .focusRequester(focusRequester)
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusBorder(isFocused)
+            .onDpadDirection(
+                onLeft = {
+                    if (isDialogReady) {
+                        updateButtonFocusRequester.requestFocus()
+                        true
+                    } else {
+                        false
                     }
                 }
-                
-                // Extra padding at bottom for better scrolling on small screens
-                if (isSmallScreen) {
-                    Spacer(modifier = Modifier.height(Dimensions.spacingMD))
-                }
+            ),
+        shape = RoundedCornerShape(Dimensions.radiusMD),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (isFocused) colors.bgHover else colors.bgHover.copy(alpha = 0.7f),
+            contentColor = colors.textPrimary
+        ),
+        contentPadding = PaddingValues(
+            horizontal = Dimensions.spacingMD,
+            vertical = Dimensions.spacingSM
+        )
+    ) {
+        Text(
+            text = stringResource(R.string.later),
+            fontSize = FontSizes.fontSizeLG,
+            fontWeight = FontWeight.W600
+        )
+    }
+}
+
+@Composable
+private fun ButtonsRow(
+    isDownloading: Boolean,
+    downloadProgress: DownloadProgress?,
+    isDialogReady: Boolean,
+    updateButtonFocusRequester: FocusRequester,
+    laterButtonFocusRequester: FocusRequester,
+    onUpdateNow: () -> Unit,
+    onLater: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+    ) {
+        UpdateButton(
+            isDownloading = isDownloading,
+            downloadProgress = downloadProgress,
+            isDialogReady = isDialogReady,
+            focusRequester = updateButtonFocusRequester,
+            laterButtonFocusRequester = laterButtonFocusRequester,
+            onUpdateNow = onUpdateNow
+        )
+        LaterButton(
+            isDialogReady = isDialogReady,
+            focusRequester = laterButtonFocusRequester,
+            updateButtonFocusRequester = updateButtonFocusRequester,
+            onLater = onLater
+        )
+    }
+}
+
+@Composable
+private fun UpdateDialogContent(
+    updateInfo: UpdateInfo,
+    currentVersion: String?,
+    downloadProgress: DownloadProgress?,
+    isDownloading: Boolean,
+    dimensions: DialogDimensions,
+    isDialogReady: Boolean,
+    updateButtonFocusRequester: FocusRequester,
+    laterButtonFocusRequester: FocusRequester,
+    scrollState: ScrollState,
+    onUpdateNow: () -> Unit,
+    onLater: () -> Unit
+) {
+    val colors = appColors()
+    
+    Card(
+        modifier = Modifier
+            .width(dimensions.width)
+            .heightIn(max = dimensions.maxHeight)
+            .onBackButton { onLater() },
+        shape = RoundedCornerShape(Dimensions.radiusMD),
+        colors = CardDefaults.cardColors(containerColor = colors.bgCard)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(scrollState)
+                .padding(Dimensions.spacingXL),
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            DialogTitle()
+            VersionInfoSection(currentVersion, updateInfo.stableVersion)
+            ChangelogSection(updateInfo.changelog, dimensions.changelogMaxHeight)
+            ButtonsRow(
+                isDownloading = isDownloading,
+                downloadProgress = downloadProgress,
+                isDialogReady = isDialogReady,
+                updateButtonFocusRequester = updateButtonFocusRequester,
+                laterButtonFocusRequester = laterButtonFocusRequester,
+                onUpdateNow = onUpdateNow,
+                onLater = onLater
+            )
+            if (dimensions.isSmallScreen) {
+                Spacer(modifier = Modifier.height(Dimensions.spacingMD))
             }
         }
     }
