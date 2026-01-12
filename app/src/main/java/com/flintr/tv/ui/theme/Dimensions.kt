@@ -81,8 +81,8 @@ object Dimensions {
     
     // Content Card dimensions
     val contentCardMaxCrossAxisExtent = 133.0.dp
-    val contentCardCrossAxisSpacing = size4.dp
-    val contentCardMainAxisSpacing = size4.dp
+    val contentCardCrossAxisSpacing = size8.dp
+    val contentCardMainAxisSpacing = size8.dp
     val contentCardAspectRatio = 0.67f
     val contentCardGridPadding = size8.dp
     

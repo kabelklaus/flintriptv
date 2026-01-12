@@ -54,9 +54,8 @@ import com.flintr.tv.R
 import kotlinx.coroutines.launch
 
 // Content Card dimensions (from Flutter AppTheme)
-private val ContentCardMaxCrossAxisExtent = 133.dp
-private val ContentCardAspectRatio = 0.67f // 2:3 format
-private val ContentCardHeight = ContentCardMaxCrossAxisExtent / ContentCardAspectRatio
+// Using Dimensions object for single source of truth
+private val ContentCardHeight = Dimensions.contentCardMaxCrossAxisExtent / Dimensions.contentCardAspectRatio
 private val ContentCardBorderRadius = 8.dp // radiusMD
 private val ContentCardBorderWidth = 2.dp // categoryBorderWidth
 
@@ -188,7 +187,8 @@ private fun buildCardModifier(
     handlers: CardInteractionHandlers
 ): Modifier {
     return baseModifier
-        .size(width = ContentCardMaxCrossAxisExtent, height = ContentCardHeight)
+        .width(Dimensions.contentCardMaxCrossAxisExtent)
+        .aspectRatio(Dimensions.contentCardAspectRatio)
         .then(
             if (config.isSelected) {
                 Modifier.shadow(

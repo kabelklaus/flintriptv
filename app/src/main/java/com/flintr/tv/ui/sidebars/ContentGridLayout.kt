@@ -61,7 +61,12 @@ fun <T> ContentGridLayout(
                             onItemsRendered?.invoke()
                         }
                     },
-                contentPadding = PaddingValues(Dimensions.contentCardGridPadding),
+                contentPadding = PaddingValues(
+                    top = Dimensions.contentCardGridPadding * 2,
+                    bottom = Dimensions.contentCardGridPadding,
+                    start = Dimensions.contentCardGridPadding,
+                    end = Dimensions.contentCardGridPadding
+                ),
                 horizontalArrangement = Arrangement.spacedBy(Dimensions.contentCardCrossAxisSpacing),
                 verticalArrangement = Arrangement.spacedBy(Dimensions.contentCardMainAxisSpacing)
             ) {
