@@ -3,6 +3,7 @@ package com.flintr.tv.di
 import android.content.Context
 import com.flintr.tv.data.api.GitHubApiService
 import com.flintr.tv.data.api.XtreamApiService
+import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchProgressService
@@ -223,6 +224,15 @@ object AppModule {
         moshi: Moshi
     ): WatchProgressService {
         return WatchProgressService(context, moshi)
+    }
+    
+    @Provides
+    @Singleton
+    fun provideCategoryVisibilityService(
+        @ApplicationContext context: Context,
+        moshi: Moshi
+    ): CategoryVisibilityService {
+        return CategoryVisibilityService(context, moshi)
     }
 }
 

@@ -20,10 +20,13 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
+import com.flintr.tv.data.model.Category
+import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.LiveStream
@@ -47,8 +50,9 @@ import com.flintr.tv.viewmodel.PlayerViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import com.flintr.tv.utils.loadPackageInfo
 
 sealed class Screen(val route: String) {
@@ -120,13 +124,21 @@ private fun InitialRoutingScreen(
     Box(modifier = Modifier.fillMaxSize())
 }
 
+/**
+ * Data class grouping dependencies for AppNavigation
+ */
+data class AppNavigationDependencies(
+    val credentialsRepository: CredentialsRepository,
+    val cacheService: DataCacheService,
+    val favoritesRepository: FavoritesRepository,
+    val watchProgressService: WatchProgressService,
+    val categoryVisibilityService: CategoryVisibilityService
+)
+
 @Composable
 fun AppNavigation(
     navController: NavHostController,
-    credentialsRepository: CredentialsRepository,
-    cacheService: DataCacheService,
-    favoritesRepository: FavoritesRepository,
-    watchProgressService: WatchProgressService,
+    dependencies: AppNavigationDependencies,
     mainViewModel: MainViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
@@ -137,8 +149,8 @@ fun AppNavigation(
         composable(Screen.InitialRouting.route) {
             InitialRoutingScreen(
                 navController = navController,
-                credentialsRepository = credentialsRepository,
-                cacheService = cacheService
+                credentialsRepository = dependencies.credentialsRepository,
+                cacheService = dependencies.cacheService
             )
         }
 
@@ -169,9 +181,10 @@ fun AppNavigation(
             MainContentScreen(
                 navController = navController,
                 mainViewModel = mainViewModel,
-                credentialsRepository = credentialsRepository,
-                favoritesRepository = favoritesRepository,
-                cacheService = cacheService
+                credentialsRepository = dependencies.credentialsRepository,
+                favoritesRepository = dependencies.favoritesRepository,
+                cacheService = dependencies.cacheService,
+                categoryVisibilityService = dependencies.categoryVisibilityService
             )
         }
         
@@ -233,7 +246,7 @@ fun AppNavigation(
                     title = title.takeIf { it.isNotEmpty() }
                 ),
                 playerViewModel = playerViewModel,
-                watchProgressService = watchProgressService,
+                watchProgressService = dependencies.watchProgressService,
                 onBack = { navController.popBackStack() }
             )
         }
@@ -267,12 +280,15 @@ fun MainContentScreen(
     credentialsRepository: CredentialsRepository,
     favoritesRepository: FavoritesRepository,
     cacheService: DataCacheService,
+    categoryVisibilityService: CategoryVisibilityService,
     updateViewModel: UpdateViewModel = hiltViewModel()
 ) {
     val credentials = credentialsRepository.getCredentials()
     val context = LocalContext.current
     var selectedDestination by remember { mutableStateOf<HomeDestination>(HomeDestination.LiveTV) }
     var selectedCategoryId by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    var snackbarMessage by remember { mutableStateOf<String?>(null) }
     
     // Update check state
     var hasCheckedForUpdates by remember { mutableStateOf(false) }
@@ -318,6 +334,19 @@ fun MainContentScreen(
     val vodCategories by mainViewModel.vodCategories.collectAsState()
     val seriesCategories by mainViewModel.seriesCategories.collectAsState()
     
+    // Collect hidden categories state reactively
+    val hiddenCategories by categoryVisibilityService.hiddenCategories.collectAsState()
+    
+    // Determine category type based on destination
+    val categoryType = when (selectedDestination) {
+        is HomeDestination.LiveTV -> CategoryType.LIVE_TV
+        is HomeDestination.VOD -> CategoryType.VOD
+        is HomeDestination.Series -> CategoryType.SERIES
+        is HomeDestination.EPG -> CategoryType.LIVE_TV // Not used for EPG
+        is HomeDestination.Favorites -> CategoryType.LIVE_TV // Not used for Favorites
+        is HomeDestination.Settings -> CategoryType.LIVE_TV // Not used for Settings
+    }
+    
     // Select first category when destination changes or categories are loaded
     val categories = when (selectedDestination) {
         is HomeDestination.LiveTV -> liveCategories
@@ -328,8 +357,13 @@ fun MainContentScreen(
         is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
     }
     
+    // Filter out hidden categories using StateFlow
+    val filteredCategories = categories.filter { 
+        !(hiddenCategories[categoryType]?.contains(it.categoryId) ?: false)
+    }
+    
     // Sort categories the same way as in CategoryRow for consistency
-    val sortedCategories = categories.sortedBy { it.categoryName }
+    val sortedCategories = filteredCategories.sortedBy { it.categoryName }
     
     LaunchedEffect(selectedDestination, sortedCategories) {
         if (sortedCategories.isEmpty()) {
@@ -341,6 +375,29 @@ fun MainContentScreen(
             if (!currentCategoryExists) {
                 selectedCategoryId = sortedCategories.first().categoryId
             }
+        }
+    }
+    
+    // Handle category hiding callback
+    fun handleCategoryHidden(category: Category) {
+        // Hide the category
+        categoryVisibilityService.hideCategory(category.categoryId, categoryType)
+        
+        // If the hidden category was currently selected, select the first available category
+        if (selectedCategoryId == category.categoryId) {
+            val remainingCategories = sortedCategories.filter { it.categoryId != category.categoryId }
+            selectedCategoryId = remainingCategories.firstOrNull()?.categoryId
+        }
+        
+        // Show snackbar feedback
+        snackbarMessage = "Kategorie wurde ausgeblendet"
+    }
+    
+    // Show snackbar when message is set
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            snackbarMessage = null
         }
     }
     
@@ -454,32 +511,39 @@ fun MainContentScreen(
         )
     }
     
-    MainLayout(
-        selectedDestination = selectedDestination,
-        onDestinationChange = { destination ->
-            if (destination is HomeDestination.Settings) {
-                // Navigate to separate Settings screen
-                navController.navigate(Screen.Settings.route)
-            } else {
-                // Reset category selection and clear streams when switching tabs
-                selectedCategoryId = null
-                // Clear streams from old destination
-                clearStreamsForDestination(selectedDestination, mainViewModel)
-                // Clear streams from new destination to prevent showing old data
-                clearStreamsForDestination(destination, mainViewModel)
-                selectedDestination = destination
-            }
-        },
-        showCategories = showCategories,
-        categories = categories,
-        selectedCategoryId = selectedCategoryId,
-        onCategorySelected = { selectedCategoryId = it },
-        navbarFocusRequester = navbarFocusRequester,
-        categorySidebarFocusRequester = categorySidebarFocusRequester,
-        contentListFocusRequester = contentListFocusRequester,
-        onNavigateToNavbar = { moveFocusToNavbar() },
-        onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
-        onNavigateToContentList = { moveFocusToContentList() },
+    Box(modifier = Modifier.fillMaxSize()) {
+        MainLayout(
+            selectedDestination = selectedDestination,
+            onDestinationChange = { destination ->
+                if (destination is HomeDestination.Settings) {
+                    // Navigate to separate Settings screen
+                    navController.navigate(Screen.Settings.route)
+                } else {
+                    // Reset category selection and clear streams when switching tabs
+                    selectedCategoryId = null
+                    // Clear streams from old destination
+                    clearStreamsForDestination(selectedDestination, mainViewModel)
+                    // Clear streams from new destination to prevent showing old data
+                    clearStreamsForDestination(destination, mainViewModel)
+                    selectedDestination = destination
+                }
+            },
+            showCategories = showCategories,
+            categories = sortedCategories,
+            selectedCategoryId = selectedCategoryId,
+            onCategorySelected = { selectedCategoryId = it },
+            navbarFocusRequester = navbarFocusRequester,
+            categorySidebarFocusRequester = categorySidebarFocusRequester,
+            contentListFocusRequester = contentListFocusRequester,
+            onNavigateToNavbar = { moveFocusToNavbar() },
+            onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
+            onNavigateToContentList = { moveFocusToContentList() },
+            categoryVisibilityService = categoryVisibilityService,
+            categoryType = categoryType,
+            onCategoryHidden = { category -> 
+                Log.d("AppNavigation", "[CategoryHidden] Callback aufgerufen für Kategorie: ${category.categoryName} (${category.categoryId})")
+                handleCategoryHidden(category) 
+            },
         onNavbarReady = {
             // Signal that navbar is ready for focus
             navbarReady = true
@@ -632,7 +696,14 @@ fun MainContentScreen(
                 }
             }
         }
-    )
+        )
+        
+        // Snackbar for feedback messages
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
+        )
+    }
 }
 
 

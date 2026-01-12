@@ -19,11 +19,134 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import android.util.Log
+import com.flintr.tv.BuildConfig
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onClick
 import kotlinx.coroutines.delay
+
+/**
+ * Helper function for debug logging that only logs in DEBUG builds
+ */
+private inline fun debugLog(tag: String = "ContentCardMenu", message: () -> String) {
+    if (BuildConfig.DEBUG) {
+        Log.d(tag, message())
+    }
+}
+
+/**
+ * Enum representing the type of menu
+ */
+enum class MenuType {
+    CONTENT,
+    CATEGORY
+}
+
+/**
+ * Handles menu opening logic including state changes, focus initialization, and grace period
+ */
+private suspend fun handleMenuOpening(
+    focusRequesters: List<FocusRequester>,
+    menuOptions: List<String>,
+    onStateChange: (ready: Boolean, ignore: Boolean) -> Unit
+) {
+    debugLog { "[State] isOpen = true" }
+    debugLog { "[Dialog] Menü wird geöffnet" }
+    debugLog { "[Dialog] Anzahl Optionen: ${menuOptions.size}" }
+    onStateChange(false, true)
+    // Short delay to wait for next frame instead of long arbitrary delay
+    delay(16)
+    debugLog { "[Focus] Menü ist jetzt bereit - setze isMenuReady = true" }
+    debugLog { "[Focus] Setze Focus auf erstes Item (Index 0) nach Delay" }
+    onStateChange(true, true)
+    focusRequesters.firstOrNull()?.requestFocus()
+    // Grace period: ignore key events for 500ms after menu opens to prevent
+    // the key event that triggered the long press from immediately selecting an option
+    delay(500)
+    onStateChange(true, false)
+    debugLog { "[GracePeriod] Grace Period beendet - Key-Events werden jetzt verarbeitet" }
+}
+
+/**
+ * Handles menu closing logic
+ */
+private fun handleMenuClosing(
+    onStateChange: (ready: Boolean, ignore: Boolean) -> Unit
+) {
+    debugLog { "[State] isOpen = false" }
+    onStateChange(false, true)
+}
+
+/**
+ * Handles option selection with readiness check
+ */
+private fun handleOptionSelection(
+    index: Int,
+    option: String,
+    isMenuReady: Boolean,
+    onOptionSelected: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (!isMenuReady) {
+        debugLog { "[Option] Option $index Klick ignoriert - Menü noch nicht bereit" }
+        return
+    }
+    debugLog { "[Option] Option $index ausgewählt: '$option'" }
+    debugLog { "[Callback] Rufe onOptionSelected($index) auf" }
+    onOptionSelected(index)
+    debugLog { "[Dialog] Menü wird nach Option-Auswahl geschlossen" }
+    onDismiss()
+}
+
+/**
+ * Handles focus change for menu option
+ */
+private fun handleFocusChange(
+    isFocused: Boolean,
+    index: Int,
+    option: String,
+    currentFocusedIndex: Int,
+    onFocusIndexChange: (Int) -> Unit
+) {
+    if (!isFocused) return
+    
+    val previousIndex = currentFocusedIndex
+    onFocusIndexChange(index)
+    debugLog { "[Focus] Focus gewechselt: Index $previousIndex -> $index ('$option')" }
+}
+
+/**
+ * Handles menu option item click with grace period check
+ */
+private fun handleMenuOptionItemClick(
+    config: MenuOptionItemConfig
+) {
+    if (config.ignoreKeyEvents) {
+        debugLog { "[MenuItem] '${config.text}' - onClick ignoriert (Grace Period aktiv)" }
+        return
+    }
+    debugLog { "[MenuItem] '${config.text}' - onClick aufgerufen" }
+    config.onClick()
+}
+
+/**
+ * Extension function to conditionally apply menu item modifier
+ */
+private fun Modifier.conditionalMenuItemModifier(
+    config: MenuOptionItemConfig
+): Modifier {
+    return if (config.isEnabled) {
+        this
+            .focusable()
+            .onClick(
+                onClick = { handleMenuOptionItemClick(config) },
+                enabled = config.isEnabled
+            )
+    } else {
+        this
+    }
+}
 
 /**
  * TV-optimized menu dialog for ContentCard
@@ -34,9 +157,15 @@ fun ContentCardMenu(
     isOpen: Boolean,
     menuOptions: List<String>,
     onDismiss: () -> Unit,
-    onOptionSelected: (Int) -> Unit
+    onOptionSelected: (Int) -> Unit,
+    menuType: MenuType? = null
 ) {
-    if (!isOpen) return
+    debugLog { "[Render] ContentCardMenu aufgerufen: isOpen = $isOpen, menuType = $menuType, menuOptions = $menuOptions" }
+    if (!isOpen) {
+        debugLog { "[Render] isOpen = false - Menü wird nicht gerendert" }
+        return
+    }
+    debugLog { "[Render] Menü wird gerendert (isOpen = true)" }
 
     val colors = appColors()
     var focusedIndex by remember { mutableStateOf(0) }
@@ -46,39 +175,27 @@ fun ContentCardMenu(
 
     // Combined LaunchedEffect: handle menu state and focus initialization
     LaunchedEffect(isOpen) {
-        if (isOpen) {
-            Log.d("ContentCardMenu", "[State] isOpen = true")
-            Log.d("ContentCardMenu", "[Dialog] Menü wird geöffnet")
-            Log.d("ContentCardMenu", "[Dialog] Anzahl Optionen: ${menuOptions.size}")
-            isMenuReady = false
-            ignoreKeyEvents = true
-            // Short delay to wait for next frame instead of long arbitrary delay
-            delay(16)
-            Log.d("ContentCardMenu", "[Focus] Menü ist jetzt bereit - setze isMenuReady = true")
-            isMenuReady = true
-            Log.d("ContentCardMenu", "[Focus] Setze Focus auf erstes Item (Index 0) nach Delay")
-            focusRequesters.firstOrNull()?.requestFocus()
-            // Grace period: ignore key events for 500ms after menu opens to prevent
-            // the key event that triggered the long press from immediately selecting an option
-            delay(500)
-            ignoreKeyEvents = false
-            Log.d("ContentCardMenu", "[GracePeriod] Grace Period beendet - Key-Events werden jetzt verarbeitet")
-        } else {
-            Log.d("ContentCardMenu", "[State] isOpen = false")
-            isMenuReady = false
-            ignoreKeyEvents = true
+        when {
+            isOpen -> handleMenuOpening(focusRequesters, menuOptions) { ready, ignore ->
+                isMenuReady = ready
+                ignoreKeyEvents = ignore
+            }
+            else -> handleMenuClosing { ready, ignore ->
+                isMenuReady = ready
+                ignoreKeyEvents = ignore
+            }
         }
     }
 
     Dialog(onDismissRequest = {
-        Log.d("ContentCardMenu", "[Dialog] onDismissRequest aufgerufen (z.B. durch Klick außerhalb)")
+        debugLog { "[Dialog] onDismissRequest aufgerufen (z.B. durch Klick außerhalb)" }
         onDismiss()
     }) {
         Card(
             modifier = Modifier
                 .width(400.dp)
                 .onBackButton {
-                    Log.d("ContentCardMenu", "[BackButton] Back-Button gedrückt - Menü wird geschlossen")
+                    debugLog { "[BackButton] Back-Button gedrückt - Menü wird geschlossen" }
                     onDismiss()
                 },
             shape = RoundedCornerShape(Dimensions.radiusMD),
@@ -110,22 +227,22 @@ fun ContentCardMenu(
                             ignoreKeyEvents = ignoreKeyEvents,
                             focusRequester = focusRequesters[index],
                             onClick = {
-                                if (!isMenuReady) {
-                                    Log.d("ContentCardMenu", "[Option] Option $index Klick ignoriert - Menü noch nicht bereit")
-                                    return@MenuOptionItemConfig
-                                }
-                                Log.d("ContentCardMenu", "[Option] Option $index ausgewählt: '$option'")
-                                Log.d("ContentCardMenu", "[Callback] Rufe onOptionSelected($index) auf")
-                                onOptionSelected(index)
-                                Log.d("ContentCardMenu", "[Dialog] Menü wird nach Option-Auswahl geschlossen")
-                                onDismiss()
+                                handleOptionSelection(
+                                    index = index,
+                                    option = option,
+                                    isMenuReady = isMenuReady,
+                                    onOptionSelected = onOptionSelected,
+                                    onDismiss = onDismiss
+                                )
                             },
                             onFocusChanged = { isFocused ->
-                                if (isFocused) {
-                                    val previousIndex = focusedIndex
-                                    focusedIndex = index
-                                    Log.d("ContentCardMenu", "[Focus] Focus gewechselt: Index $previousIndex -> $index ('$option')")
-                                }
+                                handleFocusChange(
+                                    isFocused = isFocused,
+                                    index = index,
+                                    option = option,
+                                    currentFocusedIndex = focusedIndex,
+                                    onFocusIndexChange = { focusedIndex = it }
+                                )
                             }
                         ),
                         colors = colors
@@ -158,7 +275,7 @@ private fun MenuOptionItem(
     // Log focus changes
     LaunchedEffect(config.isFocused) {
         if (config.isFocused) {
-            Log.d("ContentCardMenu", "[MenuItem] '${config.text}' hat jetzt Focus")
+            debugLog { "[MenuItem] '${config.text}' hat jetzt Focus" }
         }
     }
     val backgroundColor by animateColorAsState(
@@ -180,26 +297,7 @@ private fun MenuOptionItem(
             .onFocusChanged { focusState ->
                 config.onFocusChanged(focusState.isFocused)
             }
-            .then(
-                if (config.isEnabled) {
-                    Modifier
-                        .focusable()
-                        .onClick(
-                            onClick = {
-                                // Ignore clicks during grace period or if menu is not ready
-                                if (config.ignoreKeyEvents) {
-                                    Log.d("ContentCardMenu", "[MenuItem] '${config.text}' - onClick ignoriert (Grace Period aktiv)")
-                                    return@onClick
-                                }
-                                Log.d("ContentCardMenu", "[MenuItem] '${config.text}' - onClick aufgerufen")
-                                config.onClick()
-                            },
-                            enabled = config.isEnabled
-                        )
-                } else {
-                    Modifier // Not focusable until menu is ready
-                }
-            ),
+            .conditionalMenuItemModifier(config),
         shape = RoundedCornerShape(Dimensions.radiusSM),
         colors = CardDefaults.cardColors(
             containerColor = backgroundColor
