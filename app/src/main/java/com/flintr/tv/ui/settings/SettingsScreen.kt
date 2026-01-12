@@ -36,6 +36,7 @@ import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.data.local.CategoryVisibilityService
+import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.viewmodel.MainViewModel
 
 sealed class SettingsDestination {
@@ -53,6 +54,7 @@ fun SettingsScreen(
     onNavigateLeft: () -> Unit,
     categoryVisibilityService: CategoryVisibilityService,
     mainViewModel: MainViewModel,
+    credentialsRepository: CredentialsRepository,
     modifier: Modifier = Modifier
 ) {
     var currentDestination by remember { mutableStateOf<SettingsDestination>(SettingsDestination.Main) }
@@ -110,7 +112,8 @@ fun SettingsScreen(
                     onBack = {
                         currentDestination = SettingsDestination.Main
                     },
-                    onNavigateLeft = onNavigateLeft
+                    onNavigateLeft = onNavigateLeft,
+                    credentialsRepository = credentialsRepository
                 )
             }
             is SettingsDestination.Playback -> {

@@ -193,7 +193,8 @@ fun AppNavigation(
                 focusRequester = remember { FocusRequester() },
                 onNavigateLeft = { navController.popBackStack() },
                 categoryVisibilityService = dependencies.categoryVisibilityService,
-                mainViewModel = mainViewModel
+                mainViewModel = mainViewModel,
+                credentialsRepository = dependencies.credentialsRepository
             )
         }
         
