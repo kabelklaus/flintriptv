@@ -349,12 +349,14 @@ private fun createKeyEventHandler(
 @Composable
 private fun createTouchEventHandler(
     state: LongPressState,
-    coroutineScope: kotlinx.coroutines.CoroutineScope,
     durationMillis: Long,
     onLongPress: () -> Unit,
     onNormalClick: (() -> Unit)?
 ): Modifier {
-    return Modifier.pointerInput(Unit) {
+    // Get coroutine scope for launching jobs in the gesture handler
+    val coroutineScope = rememberCoroutineScope()
+    
+    return Modifier.pointerInput(onLongPress, onNormalClick) {
         detectTapGestures(
             onPress = { _ ->
                 val now = System.currentTimeMillis()
@@ -365,6 +367,8 @@ private fun createTouchEventHandler(
                     return@detectTapGestures
                 }
                 
+                // Use coroutineScope from Composable, but the gesture lifecycle will cancel
+                // the job automatically when the gesture ends (via tryAwaitRelease)
                 handleTouchDown(state, coroutineScope, durationMillis, onLongPress)
                 
                 val released = tryAwaitRelease()
@@ -407,7 +411,7 @@ fun Modifier.onLongPress(
     val coroutineScope = rememberCoroutineScope()
     
     val keyEventHandler = createKeyEventHandler(state, coroutineScope, durationMillis, onLongPress, onNormalClick)
-    val touchHandler = createTouchEventHandler(state, coroutineScope, durationMillis, onLongPress, onNormalClick)
+    val touchHandler = createTouchEventHandler(state, durationMillis, onLongPress, onNormalClick)
     
     return this
         .onKeyEvent(keyEventHandler)
@@ -517,6 +521,7 @@ private fun handleKeyUp(
 
 /**
  * Handle Touch Down event for long press detection
+ * The job will be cancelled automatically when the gesture ends (via tryAwaitRelease in onPress)
  */
 private fun handleTouchDown(
     state: LongPressState,
@@ -542,6 +547,7 @@ private fun handleTouchDown(
     }
     
     // Start long press timer
+    // Note: The job will be cancelled when the gesture ends (via tryAwaitRelease in onPress)
     touchState.timerStartTime = System.currentTimeMillis()
     touchState.job = coroutineScope.launch {
         Log.d("ContentCardLongPress", "[TouchTimer] Timer gestartet, warte ${durationMillis}ms...")
