@@ -50,13 +50,10 @@ import com.flintr.tv.viewmodel.PlayerViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import com.flintr.tv.utils.loadPackageInfo
-import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
 
 sealed class Screen(val route: String) {
     object InitialRouting : Screen("initial_routing")
@@ -330,12 +327,17 @@ fun MainContentScreen(
     val vodCategories by mainViewModel.vodCategories.collectAsState()
     val seriesCategories by mainViewModel.seriesCategories.collectAsState()
     
+    // Collect hidden categories state reactively
+    val hiddenCategories by categoryVisibilityService.hiddenCategories.collectAsState()
+    
     // Determine category type based on destination
     val categoryType = when (selectedDestination) {
         is HomeDestination.LiveTV -> CategoryType.LIVE_TV
         is HomeDestination.VOD -> CategoryType.VOD
         is HomeDestination.Series -> CategoryType.SERIES
-        else -> CategoryType.LIVE_TV // Default, won't be used
+        is HomeDestination.EPG -> CategoryType.LIVE_TV // Not used for EPG
+        is HomeDestination.Favorites -> CategoryType.LIVE_TV // Not used for Favorites
+        is HomeDestination.Settings -> CategoryType.LIVE_TV // Not used for Settings
     }
     
     // Select first category when destination changes or categories are loaded
@@ -348,9 +350,9 @@ fun MainContentScreen(
         is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
     }
     
-    // Filter out hidden categories
+    // Filter out hidden categories using StateFlow
     val filteredCategories = categories.filter { 
-        !categoryVisibilityService.isCategoryHidden(it.categoryId, categoryType) 
+        !(hiddenCategories[categoryType]?.contains(it.categoryId) ?: false)
     }
     
     // Sort categories the same way as in CategoryRow for consistency

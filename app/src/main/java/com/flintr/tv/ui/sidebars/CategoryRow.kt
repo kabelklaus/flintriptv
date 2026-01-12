@@ -30,7 +30,6 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import androidx.compose.ui.focus.focusRequester
@@ -50,11 +49,7 @@ fun CategoryRow(
     onCategoryHidden: (Category) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Filter out hidden categories
-    val filteredCategories = categories.filter { 
-        !categoryVisibilityService.isCategoryHidden(it.categoryId, categoryType) 
-    }
-    val sortedCategories = filteredCategories.sortedBy { it.categoryName }
+    // Categories are already filtered and sorted in AppNavigation.kt
     val colors = appColors()
     val isDark = isSystemInDarkTheme()
     
@@ -69,7 +64,7 @@ fun CategoryRow(
         contentPadding = PaddingValues(all = Dimensions.spacingMD),
         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
     ) {
-        if (sortedCategories.isEmpty()) {
+        if (categories.isEmpty()) {
             item {
                 Box(
                     modifier = Modifier
@@ -86,7 +81,7 @@ fun CategoryRow(
                 }
             }
         } else {
-            items(sortedCategories) { category ->
+            items(categories) { category ->
                 CategoryChip(
                     category = category,
                     itemCount = itemCounts?.get(category.categoryId) ?: 0,

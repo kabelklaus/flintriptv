@@ -129,7 +129,6 @@ fun MainLayout(
         
         // Middle Column: Categories (if applicable)
         if (showCategories) {
-            android.util.Log.d("MainLayout", "[CategoryRow] Rendering CategoryRow: categories=${categories.size}, onCategoryHidden != null: ${onCategoryHidden != null}")
             CategoryRow(
                 categories = categories,
                 selectedCategoryId = selectedCategoryId,

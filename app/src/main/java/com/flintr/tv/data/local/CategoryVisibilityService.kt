@@ -7,6 +7,9 @@ import com.flintr.tv.data.model.CategoryType
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,6 +36,15 @@ class CategoryVisibilityService @Inject constructor(
     )
     private val setAdapter = moshi.adapter<Set<String>>(setType)
 
+    // StateFlow for reactive state management
+    private val _hiddenCategories = MutableStateFlow<Map<CategoryType, Set<String>>>(emptyMap())
+    val hiddenCategories: StateFlow<Map<CategoryType, Set<String>>> = _hiddenCategories.asStateFlow()
+
+    init {
+        // Load initial state from SharedPreferences
+        _hiddenCategories.value = CategoryType.values().associateWith { loadHiddenCategories(it) }
+    }
+
     /**
      * Get the SharedPreferences key for the given category type
      */
@@ -48,8 +60,8 @@ class CategoryVisibilityService @Inject constructor(
      * Load hidden categories for the given type from SharedPreferences
      */
     private fun loadHiddenCategories(categoryType: CategoryType): Set<String> {
+        val key = getKeyForType(categoryType)
         return try {
-            val key = getKeyForType(categoryType)
             val json = sharedPreferences.getString(key, null)
             if (json.isNullOrBlank()) {
                 emptySet()
@@ -59,7 +71,6 @@ class CategoryVisibilityService @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing hidden categories JSON for type: $categoryType, returning empty set", e)
             // Clear corrupted data
-            val key = getKeyForType(categoryType)
             sharedPreferences.edit().remove(key).apply()
             emptySet()
         }
@@ -84,9 +95,12 @@ class CategoryVisibilityService @Inject constructor(
      * @return true if category was hidden, false if it was already hidden
      */
     fun hideCategory(categoryId: String, categoryType: CategoryType): Boolean {
-        val hiddenCategories = loadHiddenCategories(categoryType).toMutableSet()
+        val currentState = _hiddenCategories.value.toMutableMap()
+        val hiddenCategories = currentState.getOrDefault(categoryType, emptySet()).toMutableSet()
         val wasAdded = hiddenCategories.add(categoryId)
         if (wasAdded) {
+            currentState[categoryType] = hiddenCategories
+            _hiddenCategories.value = currentState
             saveHiddenCategories(categoryType, hiddenCategories)
             Log.d(TAG, "Category hidden: categoryId=$categoryId, type=$categoryType")
         }
@@ -98,9 +112,12 @@ class CategoryVisibilityService @Inject constructor(
      * @return true if category was shown, false if it was not hidden
      */
     fun showCategory(categoryId: String, categoryType: CategoryType): Boolean {
-        val hiddenCategories = loadHiddenCategories(categoryType).toMutableSet()
+        val currentState = _hiddenCategories.value.toMutableMap()
+        val hiddenCategories = currentState.getOrDefault(categoryType, emptySet()).toMutableSet()
         val wasRemoved = hiddenCategories.remove(categoryId)
         if (wasRemoved) {
+            currentState[categoryType] = hiddenCategories
+            _hiddenCategories.value = currentState
             saveHiddenCategories(categoryType, hiddenCategories)
             Log.d(TAG, "Category shown: categoryId=$categoryId, type=$categoryType")
         }
@@ -111,25 +128,20 @@ class CategoryVisibilityService @Inject constructor(
      * Check if a category is hidden
      */
     fun isCategoryHidden(categoryId: String, categoryType: CategoryType): Boolean {
-        val hiddenCategories = loadHiddenCategories(categoryType)
-        return hiddenCategories.contains(categoryId)
+        return _hiddenCategories.value[categoryType]?.contains(categoryId) ?: false
     }
 
     /**
      * Get all hidden category IDs for the given type
      */
     fun getHiddenCategories(categoryType: CategoryType): Set<String> {
-        return loadHiddenCategories(categoryType)
+        return _hiddenCategories.value[categoryType] ?: emptySet()
     }
 
     /**
      * Get all hidden categories for all types
      */
     fun getAllHiddenCategories(): Map<CategoryType, Set<String>> {
-        return mapOf(
-            CategoryType.LIVE_TV to loadHiddenCategories(CategoryType.LIVE_TV),
-            CategoryType.VOD to loadHiddenCategories(CategoryType.VOD),
-            CategoryType.SERIES to loadHiddenCategories(CategoryType.SERIES)
-        )
+        return _hiddenCategories.value
     }
 }
