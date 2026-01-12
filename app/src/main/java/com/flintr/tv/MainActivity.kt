@@ -15,6 +15,7 @@ import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.ui.navigation.AppNavigation
+import com.flintr.tv.ui.navigation.AppNavigationDependencies
 import com.flintr.tv.ui.theme.FlintRTVTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -47,11 +48,13 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     AppNavigation(
                         navController = navController,
-                        credentialsRepository = credentialsRepository,
-                        cacheService = cacheService,
-                        favoritesRepository = favoritesRepository,
-                        watchProgressService = watchProgressService,
-                        categoryVisibilityService = categoryVisibilityService
+                        dependencies = AppNavigationDependencies(
+                            credentialsRepository = credentialsRepository,
+                            cacheService = cacheService,
+                            favoritesRepository = favoritesRepository,
+                            watchProgressService = watchProgressService,
+                            categoryVisibilityService = categoryVisibilityService
+                        )
                     )
                 }
             }

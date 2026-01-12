@@ -136,8 +136,6 @@ fun MainLayout(
                 focusRequester = categorySidebarFocusRequester,
                 onNavigateLeft = { wrappedOnNavigateToNavbar() },
                 onNavigateRight = { onNavigateToContentList() },
-                categoryVisibilityService = categoryVisibilityService,
-                categoryType = categoryType,
                 onCategoryHidden = onCategoryHidden,
                 modifier = createCategorySidebarModifier(onCategorySidebarReady)
             )

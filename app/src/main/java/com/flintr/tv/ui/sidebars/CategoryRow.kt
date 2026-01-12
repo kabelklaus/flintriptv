@@ -21,9 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.util.Log
-import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.model.Category
-import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.ui.components.ContentCardMenu
 import com.flintr.tv.ui.components.MenuType
 import com.flintr.tv.ui.theme.Dimensions
@@ -44,8 +42,6 @@ fun CategoryRow(
     focusRequester: androidx.compose.ui.focus.FocusRequester,
     onNavigateLeft: () -> Unit,
     onNavigateRight: () -> Unit,
-    categoryVisibilityService: CategoryVisibilityService,
-    categoryType: CategoryType,
     onCategoryHidden: (Category) -> Unit,
     modifier: Modifier = Modifier
 ) {

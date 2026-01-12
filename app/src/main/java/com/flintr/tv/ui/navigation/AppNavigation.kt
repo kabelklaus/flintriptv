@@ -124,14 +124,21 @@ private fun InitialRoutingScreen(
     Box(modifier = Modifier.fillMaxSize())
 }
 
+/**
+ * Data class grouping dependencies for AppNavigation
+ */
+data class AppNavigationDependencies(
+    val credentialsRepository: CredentialsRepository,
+    val cacheService: DataCacheService,
+    val favoritesRepository: FavoritesRepository,
+    val watchProgressService: WatchProgressService,
+    val categoryVisibilityService: CategoryVisibilityService
+)
+
 @Composable
 fun AppNavigation(
     navController: NavHostController,
-    credentialsRepository: CredentialsRepository,
-    cacheService: DataCacheService,
-    favoritesRepository: FavoritesRepository,
-    watchProgressService: WatchProgressService,
-    categoryVisibilityService: CategoryVisibilityService,
+    dependencies: AppNavigationDependencies,
     mainViewModel: MainViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
@@ -142,8 +149,8 @@ fun AppNavigation(
         composable(Screen.InitialRouting.route) {
             InitialRoutingScreen(
                 navController = navController,
-                credentialsRepository = credentialsRepository,
-                cacheService = cacheService
+                credentialsRepository = dependencies.credentialsRepository,
+                cacheService = dependencies.cacheService
             )
         }
 
@@ -174,10 +181,10 @@ fun AppNavigation(
             MainContentScreen(
                 navController = navController,
                 mainViewModel = mainViewModel,
-                credentialsRepository = credentialsRepository,
-                favoritesRepository = favoritesRepository,
-                cacheService = cacheService,
-                categoryVisibilityService = categoryVisibilityService
+                credentialsRepository = dependencies.credentialsRepository,
+                favoritesRepository = dependencies.favoritesRepository,
+                cacheService = dependencies.cacheService,
+                categoryVisibilityService = dependencies.categoryVisibilityService
             )
         }
         
@@ -239,7 +246,7 @@ fun AppNavigation(
                     title = title.takeIf { it.isNotEmpty() }
                 ),
                 playerViewModel = playerViewModel,
-                watchProgressService = watchProgressService,
+                watchProgressService = dependencies.watchProgressService,
                 onBack = { navController.popBackStack() }
             )
         }
