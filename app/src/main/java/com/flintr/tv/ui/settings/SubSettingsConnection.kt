@@ -28,30 +28,50 @@ import android.util.Log
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
+import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 import kotlinx.coroutines.launch
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.runtime.collectAsState
+import com.flintr.tv.viewmodel.SettingsConnectionViewModel
+import com.flintr.tv.utils.formatExpirationDate
+import com.flintr.tv.utils.getExpirationDateColor
+import com.flintr.tv.data.local.CredentialsRepository
 
 @Composable
 fun SettingsConnection(
     onBack: () -> Unit,
     onNavigateLeft: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: SettingsConnectionViewModel = hiltViewModel(),
+    credentialsRepository: CredentialsRepository
 ) {
     val colors = appColors()
     val scrollState = rememberScrollState()
-    val coroutineScope = rememberCoroutineScope()
     
-    // Mock state
-    var serverUrl by remember { mutableStateOf("") }
+    // ViewModel state
+    val connectionTestState by viewModel.connectionTestState.collectAsState()
+    
+    // Load saved credentials and populate form fields
+    val savedCredentials = remember { credentialsRepository.getCredentials() }
+    
+    // Form state - initialize with saved credentials if available
+    var serverUrl by remember { mutableStateOf(savedCredentials?.serverUrl ?: "") }
     var playlistName by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf(savedCredentials?.username ?: "") }
+    var password by remember { mutableStateOf(savedCredentials?.password ?: "") }
     var passwordVisible by remember { mutableStateOf(false) }
-    var isTestingConnection by remember { mutableStateOf(false) }
-    var connectionResult by remember { mutableStateOf<ConnectionResult?>(null) }
-    var accountInfo by remember { mutableStateOf<String?>(null) }
+    
+    // Format expiration date if available
+    val expirationDateText = formatExpirationDate(connectionTestState.serverInfo?.userInfo?.expDate)
+    val expirationDateColor = getExpirationDateColor(
+        expDate = connectionTestState.serverInfo?.userInfo?.expDate,
+        normalColor = colors.textPrimary,
+        warningColor = SharedColors.orange,
+        expiredColor = colors.dangerText
+    )
     
     // Focus requesters
     val serverUrlFocusRequester = remember { FocusRequester() }
@@ -260,14 +280,7 @@ fun SettingsConnection(
                         
                         Button(
                             onClick = {
-                                isTestingConnection = true
-                                // Mock connection test
-                                coroutineScope.launch {
-                                    kotlinx.coroutines.delay(1500) // Simulate API call
-                                    isTestingConnection = false
-                                    connectionResult = ConnectionResult.Success("Verbindung erfolgreich!")
-                                    accountInfo = "Account läuft ab: 31.12.2025"
-                                }
+                                viewModel.testConnection(serverUrl, username, password)
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -286,7 +299,7 @@ fun SettingsConnection(
                                         Modifier
                                     }
                                 ),
-                            enabled = !isTestingConnection && serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
+                            enabled = !connectionTestState.isLoading && serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
                             shape = RoundedCornerShape(Dimensions.radiusMD),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isTestButtonFocused) colors.buttonPrimaryHover else colors.buttonPrimary,
@@ -296,7 +309,7 @@ fun SettingsConnection(
                             ),
                             contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
                         ) {
-                            if (isTestingConnection) {
+                            if (connectionTestState.isLoading) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
                                     color = Color.White,
@@ -318,13 +331,12 @@ fun SettingsConnection(
                         }
                         
                         // Connection Result
-                        connectionResult?.let { result ->
+                        connectionTestState.error?.let { error ->
+                            ConnectionResult.Error(error)
+                        }?.let { result ->
                             Card(
                                 colors = CardDefaults.cardColors(
-                                    containerColor = when (result) {
-                                        is ConnectionResult.Success -> Color(0xFF10B981).copy(alpha = 0.1f)
-                                        is ConnectionResult.Error -> colors.dangerBg
-                                    }
+                                    containerColor = colors.dangerBg
                                 ),
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(Dimensions.radiusMD)
@@ -337,27 +349,50 @@ fun SettingsConnection(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = if (result is ConnectionResult.Success) Icons.Default.CheckCircle else Icons.Default.Error,
+                                        imageVector = Icons.Default.Error,
                                         contentDescription = null,
-                                        tint = when (result) {
-                                            is ConnectionResult.Success -> Color(0xFF10B981)
-                                            is ConnectionResult.Error -> colors.dangerText
-                                        }
+                                        tint = colors.dangerText
                                     )
                                     Text(
                                         text = result.message,
-                                        color = when (result) {
-                                            is ConnectionResult.Success -> Color(0xFF10B981)
-                                            is ConnectionResult.Error -> colors.dangerText
-                                        },
+                                        color = colors.dangerText,
                                         style = MaterialTheme.typography.bodyMedium
                                     )
                                 }
                             }
                         }
                         
-                        // Account Info
-                        accountInfo?.let { info ->
+                        connectionTestState.serverInfo?.let {
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFF10B981).copy(alpha = 0.1f)
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(Dimensions.radiusMD)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(Dimensions.spacingMD),
+                                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Color(0xFF10B981)
+                                    )
+                                    Text(
+                                        text = "Verbindung erfolgreich!",
+                                        color = Color(0xFF10B981),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                        
+                        // Account Expiration Info
+                        expirationDateText?.let { info ->
                             Card(
                                 colors = CardDefaults.cardColors(
                                     containerColor = colors.bgHover
@@ -373,14 +408,14 @@ fun SettingsConnection(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Info,
+                                        imageVector = Icons.Default.CalendarToday,
                                         contentDescription = null,
-                                        tint = colors.accentColor,
+                                        tint = expirationDateColor,
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Text(
                                         text = info,
-                                        color = colors.textPrimary,
+                                        color = expirationDateColor,
                                         fontWeight = FontWeight.W500,
                                         style = MaterialTheme.typography.bodyMedium
                                     )
