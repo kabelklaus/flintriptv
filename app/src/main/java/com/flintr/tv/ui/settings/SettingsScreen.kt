@@ -174,6 +174,11 @@ private fun SettingsMainScreen(
 ) {
     val colors = appColors()
     
+    val onNavigateLeftHandler: () -> Unit = {
+        Log.i("SettingsNav", LOG_BACK_TO_MAIN)
+        onNavigateLeft()
+    }
+    
     // Set focus on first item when screen is first displayed
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -198,10 +203,7 @@ private fun SettingsMainScreen(
                     colors = colors,
                     navigationConfig = NavigationConfig(
                         focusRequester = focusRequester,
-                        onNavigateLeft = {
-                            Log.i("SettingsNav", LOG_BACK_TO_MAIN)
-                            onNavigateLeft()
-                        }
+                        onNavigateLeft = onNavigateLeftHandler
                     )
                 )
         }
@@ -217,10 +219,7 @@ private fun SettingsMainScreen(
                     },
                     colors = colors,
                     navigationConfig = NavigationConfig(
-                        onNavigateLeft = {
-                            Log.i("SettingsNav", LOG_BACK_TO_MAIN)
-                            onNavigateLeft()
-                        }
+                        onNavigateLeft = onNavigateLeftHandler
                     )
                 )
         }
@@ -236,10 +235,7 @@ private fun SettingsMainScreen(
                     },
                     colors = colors,
                     navigationConfig = NavigationConfig(
-                        onNavigateLeft = {
-                            Log.i("SettingsNav", LOG_BACK_TO_MAIN)
-                            onNavigateLeft()
-                        }
+                        onNavigateLeft = onNavigateLeftHandler
                     )
                 )
         }
@@ -255,17 +251,14 @@ private fun SettingsMainScreen(
                     },
                     colors = colors,
                     navigationConfig = NavigationConfig(
-                        onNavigateLeft = {
-                            Log.i("SettingsNav", LOG_BACK_TO_MAIN)
-                            onNavigateLeft()
-                        }
+                        onNavigateLeft = onNavigateLeftHandler
                     )
                 )
         }
     }
 }
 
-data class NavigationConfig(
+private data class NavigationConfig(
     val focusRequester: FocusRequester? = null,
     val onNavigateLeft: (() -> Unit)? = null
 )
