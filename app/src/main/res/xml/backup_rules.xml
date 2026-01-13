@@ -6,4 +6,14 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
+    <!-- Include non-sensitive user preferences -->
+    <include domain="sharedpref" path="category_visibility_prefs.xml"/>
+    <include domain="sharedpref" path="favorites_prefs.xml"/>
+    <include domain="sharedpref" path="watch_progress_prefs.xml"/>
+    
+    <!-- Explicitly exclude sensitive credentials -->
+    <exclude domain="sharedpref" path="credentials_prefs.xml"/>
+    
+    <!-- Optional: Cache can be excluded (will be regenerated) -->
+    <exclude domain="sharedpref" path="iptv_cache_prefs.xml"/>
 </full-backup-content>
