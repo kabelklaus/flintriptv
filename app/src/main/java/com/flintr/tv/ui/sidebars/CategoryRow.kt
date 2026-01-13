@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -32,17 +33,32 @@ import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import androidx.compose.ui.focus.focusRequester
 
+data class CategoryRowParams(
+    val categories: List<Category>,
+    val selectedCategoryId: String? = null,
+    val onCategorySelected: (String?) -> Unit,
+    val itemCounts: Map<String, Int>? = null,
+    val itemLabelBuilder: (Int) -> String = { _ -> "Kanäle" },
+    val focusRequester: FocusRequester,
+    val onNavigateLeft: () -> Unit,
+    val onNavigateRight: () -> Unit,
+    val onCategoryHidden: (Category) -> Unit
+)
+
+data class CategoryChipParams(
+    val category: Category,
+    val itemCount: Int = 0,
+    val itemLabelBuilder: (Int) -> String = { _ -> "Kanäle" },
+    val isSelected: Boolean,
+    val onClick: () -> Unit,
+    val onNavigateLeft: (() -> Unit)? = null,
+    val onNavigateRight: (() -> Unit)? = null,
+    val onCategoryHidden: ((Category) -> Unit)? = null
+)
+
 @Composable
 fun CategoryRow(
-    categories: List<Category>,
-    selectedCategoryId: String? = null,
-    onCategorySelected: (String?) -> Unit,
-    itemCounts: Map<String, Int>? = null,
-    itemLabelBuilder: (Int) -> String = { count -> "Kanäle" },
-    focusRequester: androidx.compose.ui.focus.FocusRequester,
-    onNavigateLeft: () -> Unit,
-    onNavigateRight: () -> Unit,
-    onCategoryHidden: (Category) -> Unit,
+    params: CategoryRowParams,
     modifier: Modifier = Modifier
 ) {
     // Categories are already filtered and sorted in AppNavigation.kt
@@ -57,11 +73,11 @@ fun CategoryRow(
             .background(
                 if (isDark) SharedColors.sidebarCard else colors.bgList
             )
-            .focusRequester(focusRequester),
+            .focusRequester(params.focusRequester),
         contentPadding = PaddingValues(all = Dimensions.spacingMD),
         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
     ) {
-        if (categories.isEmpty()) {
+        if (params.categories.isEmpty()) {
             item {
                 Box(
                     modifier = Modifier
@@ -78,16 +94,18 @@ fun CategoryRow(
                 }
             }
         } else {
-            items(categories) { category ->
+            items(params.categories) { category ->
                 CategoryChip(
-                    category = category,
-                    itemCount = itemCounts?.get(category.categoryId) ?: 0,
-                    itemLabelBuilder = itemLabelBuilder,
-                    isSelected = selectedCategoryId == category.categoryId,
-                    onClick = { onCategorySelected(category.categoryId) },
-                    onNavigateLeft = onNavigateLeft,
-                    onNavigateRight = onNavigateRight,
-                    onCategoryHidden = onCategoryHidden
+                    params = CategoryChipParams(
+                        category = category,
+                        itemCount = params.itemCounts?.get(category.categoryId) ?: 0,
+                        itemLabelBuilder = params.itemLabelBuilder,
+                        isSelected = params.selectedCategoryId == category.categoryId,
+                        onClick = { params.onCategorySelected(category.categoryId) },
+                        onNavigateLeft = params.onNavigateLeft,
+                        onNavigateRight = params.onNavigateRight,
+                        onCategoryHidden = params.onCategoryHidden
+                    )
                 )
             }
         }
@@ -96,32 +114,25 @@ fun CategoryRow(
 
 @Composable
 fun CategoryChip(
-    category: Category,
-    itemCount: Int = 0,
-    itemLabelBuilder: (Int) -> String = { count -> "Kanäle" },
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    onNavigateLeft: (() -> Unit)? = null,
-    onNavigateRight: (() -> Unit)? = null,
-    onCategoryHidden: ((Category) -> Unit)? = null,
+    params: CategoryChipParams,
     modifier: Modifier = Modifier
 ) {
     var hasFocus by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     val colors = appColors()
-    val name = category.categoryName
+    val name = params.category.categoryName
     
     // Debug: Log menu state changes
     LaunchedEffect(showMenu) {
-        Log.d("CategoryChip", "[MenuState] Category '$name': showMenu = $showMenu, onCategoryHidden = ${onCategoryHidden != null}")
+        Log.d("CategoryChip", "[MenuState] Category '$name': showMenu = $showMenu, onCategoryHidden = ${params.onCategoryHidden != null}")
     }
     
-    val isHoveredOrFocused = hasFocus && !isSelected
+    val isHoveredOrFocused = hasFocus && !params.isSelected
     
     // Background color with animation
     val backgroundColor by animateColorAsState(
         targetValue = when {
-            isSelected -> colors.accentColor
+            params.isSelected -> colors.accentColor
             isHoveredOrFocused -> colors.categoryHoverBg
             else -> Color.Transparent
         },
@@ -130,27 +141,27 @@ fun CategoryChip(
     )
     
     // Text colors
-    val titleColor = if (isSelected || isHoveredOrFocused) {
+    val titleColor = if (params.isSelected || isHoveredOrFocused) {
         Color.White
     } else {
         colors.categoryDefaultText
     }
     
-    val countColor = if (isSelected || isHoveredOrFocused) {
+    val countColor = if (params.isSelected || isHoveredOrFocused) {
         Color.White
     } else {
         colors.categoryChannelCountText
     }
     
     // Border
-    val borderColor = if (isSelected || hasFocus) {
+    val borderColor = if (params.isSelected || hasFocus) {
         colors.accentColor
     } else {
         Color.Transparent
     }
     
     // Shadow for selected items
-    val shadowElevation = if (isSelected) {
+    val shadowElevation = if (params.isSelected) {
         4.dp
     } else {
         0.dp
@@ -160,7 +171,7 @@ fun CategoryChip(
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (isSelected) {
+                if (params.isSelected) {
                     Modifier.shadow(
                         elevation = shadowElevation,
                         shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
@@ -192,7 +203,7 @@ fun CategoryChip(
                 hasFocus = focusState.hasFocus
                 if (hasFocus != wasFocused) {
                     if (hasFocus) {
-                        Log.i("TVFocus", "[CategoryRow] ✅ FOCUSED: Category '$name' (Selected: $isSelected, Count: $itemCount)")
+                        Log.i("TVFocus", "[CategoryRow] ✅ FOCUSED: Category '$name' (Selected: ${params.isSelected}, Count: ${params.itemCount})")
                     } else {
                         Log.i("TVFocus", "[CategoryRow] ❌ UNFOCUSED: Category '$name'")
                     }
@@ -200,19 +211,19 @@ fun CategoryChip(
             }
             .focusable()
             .onDpadDirection(
-                onLeft = if (onNavigateLeft != null) {
+                onLeft = if (params.onNavigateLeft != null) {
                     {
                         Log.i("TVFocus", "[CategoryRow] ⬅️ D-Pad Left: Category '$name' -> Navigating to Navbar")
-                        onNavigateLeft()
+                        params.onNavigateLeft()
                         true
                     }
                 } else {
                     null // Let Compose handle standard navigation
                 },
-                onRight = if (onNavigateRight != null) {
+                onRight = if (params.onNavigateRight != null) {
                     {
                         Log.i("TVFocus", "[CategoryRow] ➡️ D-Pad Right: Category '$name' -> Navigating to Content")
-                        onNavigateRight()
+                        params.onNavigateRight()
                         true
                     }
                 } else {
@@ -222,8 +233,8 @@ fun CategoryChip(
             .onLongPress(
                 onLongPress = {
                     Log.d("CategoryChip", "[LongPress] ✅ Long-Press erkannt für Kategorie '$name'")
-                    Log.d("CategoryChip", "[LongPress] onCategoryHidden != null: ${onCategoryHidden != null}")
-                    if (onCategoryHidden != null) {
+                    Log.d("CategoryChip", "[LongPress] onCategoryHidden != null: ${params.onCategoryHidden != null}")
+                    if (params.onCategoryHidden != null) {
                         Log.d("CategoryChip", "[LongPress] Setze showMenu = true für Kategorie '$name'")
                         showMenu = true
                     } else {
@@ -232,7 +243,7 @@ fun CategoryChip(
                 },
                 onNormalClick = {
                     Log.d("CategoryChip", "[Click] 🔵 Single-Click erkannt für Kategorie '$name' (via onNormalClick)")
-                    onClick()
+                    params.onClick()
                 },
                 durationMillis = 300L
             )
@@ -246,13 +257,13 @@ fun CategoryChip(
             Text(
                 text = name,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    fontWeight = if (params.isSelected) FontWeight.Bold else FontWeight.Normal,
                     color = titleColor
                 )
             )
-            if (itemCount > 0) {
+            if (params.itemCount > 0) {
                 Text(
-                    text = "$itemCount ${itemLabelBuilder(itemCount)}",
+                    text = "${params.itemCount} ${params.itemLabelBuilder(params.itemCount)}",
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontSize = FontSizes.fontSizeXS,
                         color = countColor
@@ -263,7 +274,7 @@ fun CategoryChip(
     }
     
     // Category menu dialog
-    if (onCategoryHidden != null) {
+    if (params.onCategoryHidden != null) {
         Log.d("CategoryChip", "[MenuRender] Rendering PopupMenu für Kategorie '$name': showMenu = $showMenu")
         PopupMenu(
             isOpen = showMenu,
@@ -276,7 +287,7 @@ fun CategoryChip(
                 Log.d("CategoryChip", "[MenuOption] Option $index ausgewählt für Kategorie '$name'")
                 if (index == 0) {
                     Log.d("CategoryChip", "[MenuOption] Rufe onCategoryHidden() auf für Kategorie '$name'")
-                    onCategoryHidden(category)
+                    params.onCategoryHidden(params.category)
                 }
             },
             menuType = MenuType.CATEGORY

@@ -19,6 +19,7 @@ import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.ui.screens.HomeDestination
 import com.flintr.tv.ui.screens.HomeSidebar
 import com.flintr.tv.ui.sidebars.CategoryRow
+import com.flintr.tv.ui.sidebars.CategoryRowParams
 
 /**
  * Creates a callback for onGloballyPositioned that invokes the ready callback
@@ -132,13 +133,15 @@ fun MainLayout(
         // Middle Column: Categories (if applicable)
         if (showCategories) {
             CategoryRow(
-                categories = categories,
-                selectedCategoryId = selectedCategoryId,
-                onCategorySelected = onCategorySelected,
-                focusRequester = categorySidebarFocusRequester,
-                onNavigateLeft = { wrappedOnNavigateToNavbar() },
-                onNavigateRight = { onNavigateToContentList() },
-                onCategoryHidden = onCategoryHidden,
+                params = CategoryRowParams(
+                    categories = categories,
+                    selectedCategoryId = selectedCategoryId,
+                    onCategorySelected = onCategorySelected,
+                    focusRequester = categorySidebarFocusRequester,
+                    onNavigateLeft = { wrappedOnNavigateToNavbar() },
+                    onNavigateRight = { onNavigateToContentList() },
+                    onCategoryHidden = onCategoryHidden
+                ),
                 modifier = createCategorySidebarModifier(onCategorySidebarReady)
             )
         } else {
