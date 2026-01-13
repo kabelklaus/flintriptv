@@ -25,11 +25,28 @@ data class SeriesInfoResponse(
         val seriesInfo = info
         
         // Merge episodes into seasons
-        val seasonsWithEpisodes = seasons?.map { season ->
-            val seasonNumber = season.seasonNumber
-            val seasonEpisodes = episodes?.get(seasonNumber.toString())
-            season.copy(episodes = seasonEpisodes)
-        } ?: emptyList()
+        val seasonsWithEpisodes = if (seasons.isNullOrEmpty() && episodes != null) {
+            // If seasons array is empty, create seasons from episodes
+            episodes.map { (seasonNumberStr, seasonEpisodes) ->
+                val seasonNumber = seasonNumberStr.toIntOrNull() ?: 0
+                Season(
+                    airDate = null,
+                    episodeCount = seasonEpisodes.size,
+                    id = null,
+                    name = "Staffel $seasonNumber",
+                    overview = null,
+                    seasonNumber = seasonNumber,
+                    cover = null,
+                    episodes = seasonEpisodes
+                )
+            }.sortedBy { it.seasonNumber }
+        } else {
+            seasons?.map { season ->
+                val seasonNumber = season.seasonNumber
+                val seasonEpisodes = episodes?.get(seasonNumber.toString())
+                season.copy(episodes = seasonEpisodes)
+            } ?: emptyList()
+        }
         
         return Series(
             num = null,
