@@ -25,11 +25,39 @@ data class SeriesInfoResponse(
         val seriesInfo = info
         
         // Merge episodes into seasons
-        val seasonsWithEpisodes = seasons?.map { season ->
-            val seasonNumber = season.seasonNumber
-            val seasonEpisodes = episodes?.get(seasonNumber.toString())
-            season.copy(episodes = seasonEpisodes)
-        } ?: emptyList()
+        val seasonsWithEpisodes = if (seasons.isNullOrEmpty() && episodes != null) {
+            // If seasons array is empty, create seasons from episodes
+            // Group by season number to avoid duplicates from non-numeric keys
+            episodes.entries
+                .groupBy { (key, _) -> key.toIntOrNull() ?: 0 }
+                .map { (seasonNumber, entries) ->
+                    val allEpisodes = entries.flatMap { it.value }
+                    // Only create season if it has episodes
+                    if (allEpisodes.isNotEmpty()) {
+                        Season(
+                            airDate = null,
+                            episodeCount = allEpisodes.size,
+                            id = null,
+                            name = "Staffel $seasonNumber",
+                            overview = null,
+                            seasonNumber = seasonNumber,
+                            cover = null,
+                            episodes = allEpisodes
+                        )
+                    } else null
+                }
+                .filterNotNull()
+                .sortedBy { it.seasonNumber }
+        } else {
+            seasons?.mapNotNull { season ->
+                val seasonNumber = season.seasonNumber
+                val seasonEpisodes = episodes?.get(seasonNumber.toString())
+                // Only include seasons that have episodes
+                seasonEpisodes?.takeIf { it.isNotEmpty() }?.let {
+                    season.copy(episodes = it)
+                }
+            } ?: emptyList()
+        }
         
         return Series(
             num = null,
