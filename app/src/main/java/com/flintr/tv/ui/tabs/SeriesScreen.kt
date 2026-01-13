@@ -8,29 +8,35 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import com.flintr.tv.data.local.FavoritesRepository
-import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.viewmodel.MainViewModel
 
+/**
+ * Parameters for SeriesContent composable.
+ * Encapsulates all parameters to reduce function parameter count.
+ */
+data class SeriesContentParams(
+    val viewModel: MainViewModel,
+    val selectedCategoryId: String?,
+    val focusRequester: FocusRequester,
+    val favoritesRepository: FavoritesRepository,
+    val onNavigateLeft: () -> Unit,
+    val onSeriesClick: (Series) -> Unit
+)
+
 @Composable
 fun SeriesContent(
-    viewModel: MainViewModel,
-    selectedCategoryId: String?,
-    focusRequester: FocusRequester,
-    favoritesRepository: FavoritesRepository,
-    onNavigateLeft: () -> Unit,
-    onEpisodeClick: (Episode, Series) -> Unit,
-    onSeriesClick: (Series) -> Unit,
+    params: SeriesContentParams,
     modifier: Modifier = Modifier
 ) {
-    val series by viewModel.series.collectAsState()
-    val uiState by viewModel.uiState.collectAsState()
+    val series by params.viewModel.series.collectAsState()
+    val uiState by params.viewModel.uiState.collectAsState()
     
-    LaunchedEffect(selectedCategoryId) {
-        if (selectedCategoryId != null) {
-            viewModel.loadSeries(selectedCategoryId)
+    LaunchedEffect(params.selectedCategoryId) {
+        if (params.selectedCategoryId != null) {
+            params.viewModel.loadSeries(params.selectedCategoryId)
         }
     }
     
@@ -41,19 +47,19 @@ fun SeriesContent(
     ContentGridLayout(
         items = series,
         isLoading = uiState.isLoading,
-        focusRequester = focusRequester,
+        focusRequester = params.focusRequester,
         modifier = modifier,
         keySelector = { seriesItem -> seriesItem.seriesId },
         content = { seriesItem, _, columnIndex, onFocusChanged ->
             SeriesItem(
                 series = seriesItem,
-                favoritesRepository = favoritesRepository,
-                onSeriesClick = { onSeriesClick(seriesItem) },
+                favoritesRepository = params.favoritesRepository,
+                onSeriesClick = { params.onSeriesClick(seriesItem) },
                 cardConfig = com.flintr.tv.ui.components.CardConfig(
                     isSelected = false,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = if (columnIndex == 0) {
-                        { onNavigateLeft() }
+                        { params.onNavigateLeft() }
                     } else {
                         null
                     }

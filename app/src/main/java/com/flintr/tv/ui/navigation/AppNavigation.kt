@@ -43,6 +43,7 @@ import com.flintr.tv.ui.settings.SettingsScreen
 import com.flintr.tv.ui.tabs.LiveTVContent
 import com.flintr.tv.ui.tabs.VODContent
 import com.flintr.tv.ui.tabs.SeriesContent
+import com.flintr.tv.ui.tabs.SeriesContentParams
 import com.flintr.tv.ui.tabs.FavoritesContent
 import com.flintr.tv.ui.tabs.FavoritesContentParams
 import com.flintr.tv.ui.screens.SeriesEpisodesScreen
@@ -672,30 +673,19 @@ fun MainContentScreen(
                 }
                 is HomeDestination.Series -> {
                     SeriesContent(
-                        viewModel = mainViewModel,
-                        selectedCategoryId = selectedCategoryId,
-                        focusRequester = contentListFocusRequester,
-                        favoritesRepository = favoritesRepository,
-                        onNavigateLeft = { moveFocusToCategorySidebar() },
-                        onEpisodeClick = { episode, series ->
-                            val creds = credentials ?: return@SeriesContent
-                            val streamUrl = episode.getStreamUrl(
-                                creds.serverUrl,
-                                creds.username,
-                                creds.password,
-                                series.seriesId
-                            )
-                            val route = Screen.Player.createRouteForSeries(streamUrl, series.seriesId, episode.id, episode.title)
-                            navController.logAndNavigate(route, "AppNavigation") {
-                                "📺 Series onClick - episode.title: ${episode.title}, seriesId: ${series.seriesId}, episodeId: ${episode.id}, streamUrl: $streamUrl, route: $route"
+                        params = SeriesContentParams(
+                            viewModel = mainViewModel,
+                            selectedCategoryId = selectedCategoryId,
+                            focusRequester = contentListFocusRequester,
+                            favoritesRepository = favoritesRepository,
+                            onNavigateLeft = { moveFocusToCategorySidebar() },
+                            onSeriesClick = { series ->
+                                val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
+                                navController.logAndNavigate(route, "AppNavigation") {
+                                    "📺 Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
+                                }
                             }
-                        },
-                        onSeriesClick = { series ->
-                            val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
-                            navController.logAndNavigate(route, "AppNavigation") {
-                                "📺 Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
-                            }
-                        }
+                        )
                     )
                 }
                 is HomeDestination.EPG -> {
