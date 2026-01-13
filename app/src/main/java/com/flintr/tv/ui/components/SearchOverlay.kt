@@ -71,7 +71,6 @@ private fun SearchContent(
     onVodClick: (VodStream) -> Unit,
     onSeriesClick: (Series) -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors,
-    resultsListFocusRequester: FocusRequester,
     onNavigateUpToSearchField: () -> Unit
 ) {
     // Use trimmed length for display logic (original query kept for TextField)
@@ -246,7 +245,6 @@ fun SearchOverlay(
                 onVodClick = onVodClick,
                 onSeriesClick = onSeriesClick,
                 colors = colors,
-                resultsListFocusRequester = resultsListFocusRequester,
                 onNavigateUpToSearchField = {
                     searchFieldFocusRequester.requestFocus()
                 }
