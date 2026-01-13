@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -38,7 +39,7 @@ data class CategoryRowParams(
     val onCategorySelected: (String?) -> Unit,
     val itemCounts: Map<String, Int>? = null,
     val itemLabelBuilder: (Int) -> String = { _ -> "Kanäle" },
-    val focusRequester: androidx.compose.ui.focus.FocusRequester,
+    val focusRequester: FocusRequester,
     val onNavigateLeft: () -> Unit,
     val onNavigateRight: () -> Unit,
     val onCategoryHidden: (Category) -> Unit
