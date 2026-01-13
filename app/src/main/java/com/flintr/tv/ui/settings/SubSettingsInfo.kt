@@ -36,7 +36,6 @@ import com.flintr.tv.utils.PackageInfoData
 @Composable
 fun SettingsInfo(
     onBack: () -> Unit,
-    onNavigateLeft: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: UpdateViewModel = hiltViewModel()
 ) {
