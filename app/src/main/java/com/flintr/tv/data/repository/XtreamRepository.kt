@@ -286,7 +286,9 @@ class XtreamRepository @Inject constructor(
             val service = requireApiService()
             val response = service.getSeriesInfo(username, password, "get_series_info", seriesId)
             if (response.isSuccessful && response.body() != null) {
-                Result.success(response.body()!!)
+                val seriesInfoResponse = response.body()!!
+                val series = seriesInfoResponse.toSeries(seriesId)
+                Result.success(series)
             } else {
                 Result.failure(Exception("Failed to get series info: ${response.code()}"))
             }

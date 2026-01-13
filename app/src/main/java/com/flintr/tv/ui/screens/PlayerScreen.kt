@@ -34,6 +34,12 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.upstream.DefaultAllocator
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.ui.PlayerView
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.ui.components.player.*
@@ -130,9 +136,25 @@ fun PlayerScreen(
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         }
         
+        // Configure HTTP DataSource with custom headers to avoid 513 errors
+        // Use browser-like User-Agent
+        val userAgent = "Mozilla/5.0 (Linux; Android 13; Pixel 6 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+        
+        // Create HttpDataSourceFactory
+        val httpDataSourceFactory: HttpDataSource.Factory = DefaultHttpDataSource.Factory()
+            .setUserAgent(userAgent)
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(30000)
+            .setReadTimeoutMs(30000)
+        
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+        
         ExoPlayer.Builder(context)
             .setRenderersFactory(renderersFactory)
             .setLoadControl(loadControl)
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(dataSourceFactory)
+            )
             .build()
             .apply {
                 playWhenReady = true

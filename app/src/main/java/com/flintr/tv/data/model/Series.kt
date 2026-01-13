@@ -64,7 +64,7 @@ data class Season(
     @Json(name = "episode_count")
     val episodeCount: Int?,
     @Json(name = "id")
-    val id: Int,
+    val id: Int?,
     @Json(name = "name")
     val name: String,
     @Json(name = "overview")
@@ -100,7 +100,8 @@ data class Episode(
 ) {
     fun getStreamUrl(baseUrl: String, username: String, password: String, seriesId: Int): String {
         val extension = containerExtension ?: "mkv"
-        return "$baseUrl/series/$username/$password/$seriesId/$id.$extension"
+        // Xtream Codes uses only the episodeId in the URL, not the seriesId
+        return "$baseUrl/series/$username/$password/$id.$extension"
     }
 }
 

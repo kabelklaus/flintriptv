@@ -45,6 +45,7 @@ import com.flintr.tv.ui.tabs.VODContent
 import com.flintr.tv.ui.tabs.SeriesContent
 import com.flintr.tv.ui.tabs.FavoritesContent
 import com.flintr.tv.ui.tabs.FavoritesContentParams
+import com.flintr.tv.ui.screens.SeriesEpisodesScreen
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
@@ -83,6 +84,12 @@ sealed class Screen(val route: String) {
         
         fun createRouteForLive(streamUrl: String): String {
             return createRoute(streamUrl)
+        }
+    }
+    
+    object SeriesEpisodes : Screen("series_episodes/{seriesId}") {
+        fun createRoute(seriesId: Int): String {
+            return "series_episodes/$seriesId"
         }
     }
 }
@@ -252,6 +259,61 @@ fun AppNavigation(
                 watchProgressService = dependencies.watchProgressService,
                 onBack = { navController.popBackStack() }
             )
+        }
+        
+        composable(
+            route = Screen.SeriesEpisodes.route,
+            arguments = listOf(
+                navArgument("seriesId") {
+                    type = NavType.IntType
+                }
+            )
+        ) { backStackEntry ->
+            val seriesId = backStackEntry.arguments?.getInt("seriesId") ?: -1
+            
+            // Load series info if not already loaded
+            LaunchedEffect(seriesId) {
+                if (seriesId >= 0) {
+                    mainViewModel.loadSeriesInfo(seriesId)
+                }
+            }
+            
+            val selectedSeries by mainViewModel.selectedSeries.collectAsState()
+            
+            if (selectedSeries != null) {
+                SeriesEpisodesScreen(
+                    series = selectedSeries!!,
+                    mainViewModel = mainViewModel,
+                    watchProgressService = dependencies.watchProgressService,
+                    credentialsRepository = dependencies.credentialsRepository,
+                    onBack = { navController.popBackStack() },
+                    onEpisodeClick = { episode ->
+                        val creds = dependencies.credentialsRepository.getCredentials()
+                        if (creds != null) {
+                            val streamUrl = episode.getStreamUrl(
+                                creds.serverUrl,
+                                creds.username,
+                                creds.password,
+                                selectedSeries!!.seriesId
+                            )
+                            val route = Screen.Player.createRouteForSeries(
+                                streamUrl,
+                                selectedSeries!!.seriesId,
+                                episode.id,
+                                episode.title
+                            )
+                            navController.logAndNavigate(route, "AppNavigation") {
+                                "📺 SeriesEpisodes onClick - episode.title: ${episode.title}, seriesId: ${selectedSeries!!.seriesId}, episodeId: ${episode.id}, streamUrl: $streamUrl, route: $route"
+                            }
+                        }
+                    }
+                )
+            } else {
+                // Show loading or error state
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // Loading indicator or error message
+                }
+            }
         }
     }
 }
@@ -621,6 +683,12 @@ fun MainContentScreen(
                             val route = Screen.Player.createRouteForSeries(streamUrl, series.seriesId, episode.id, episode.title)
                             navController.logAndNavigate(route, "AppNavigation") {
                                 "📺 Series onClick - episode.title: ${episode.title}, seriesId: ${series.seriesId}, episodeId: ${episode.id}, streamUrl: $streamUrl, route: $route"
+                            }
+                        },
+                        onSeriesClick = { series ->
+                            val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
+                            navController.logAndNavigate(route, "AppNavigation") {
+                                "📺 Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
                             }
                         }
                     )
