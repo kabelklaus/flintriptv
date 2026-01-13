@@ -27,8 +27,6 @@ import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.data.model.CategoryType
-import com.flintr.tv.data.model.Episode
-import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream

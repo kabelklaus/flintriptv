@@ -48,6 +48,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.content.Context
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 
 /**
  * Data class containing stream information for playback
@@ -60,6 +63,276 @@ data class StreamInfo(
     val episodeId: Int? = null,
     val title: String? = null
 )
+
+// Swipe gesture constants
+private const val SWIPE_EDGE_THRESHOLD_PX = 50f
+private const val MIN_SWIPE_VELOCITY_PX_PER_S = 500f
+
+/**
+ * Creates and configures an ExoPlayer instance with optimized settings
+ */
+private fun createExoPlayer(context: Context): ExoPlayer {
+    // Configure LoadControl with optimized buffer settings to prevent main thread blocking
+    val allocator = DefaultAllocator(true, 16 * 1024)
+    val loadControl: LoadControl = DefaultLoadControl.Builder()
+        .setAllocator(allocator)
+        .setBufferDurationsMs(
+            5000,  // minBufferMs
+            20000, // maxBufferMs
+            1500,  // bufferForPlaybackMs
+            5000   // bufferForPlaybackAfterRebufferMs
+        )
+        .setTargetBufferBytes(2 * 1024 * 1024) // 2MB target buffer
+        .setPrioritizeTimeOverSizeThresholds(true)
+        .build()
+    
+    // Configure RenderersFactory to allow software decoders as fallback
+    val renderersFactory = DefaultRenderersFactory(context).apply {
+        setEnableDecoderFallback(true)
+        setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+    }
+    
+    // Configure HTTP DataSource with custom headers to avoid 513 errors
+    // Use browser-like User-Agent
+    val userAgent = "Mozilla/5.0 (Linux; Android 13; Pixel 6 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    
+    // Create HttpDataSourceFactory
+    val httpDataSourceFactory: HttpDataSource.Factory = DefaultHttpDataSource.Factory()
+        .setUserAgent(userAgent)
+        .setAllowCrossProtocolRedirects(true)
+        .setConnectTimeoutMs(30000)
+        .setReadTimeoutMs(30000)
+    
+    val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+    
+    return ExoPlayer.Builder(context)
+        .setRenderersFactory(renderersFactory)
+        .setLoadControl(loadControl)
+        .setMediaSourceFactory(
+            DefaultMediaSourceFactory(dataSourceFactory)
+        )
+        .build()
+        .apply {
+            playWhenReady = true
+            repeatMode = Player.REPEAT_MODE_OFF
+        }
+}
+
+/**
+ * Extracts error message from PlaybackException
+ */
+private fun getErrorMessage(error: PlaybackException): String {
+    // Check for HLS-specific errors (IndexOutOfBoundsException in playlist parsing)
+    val cause = error.cause
+    val isHlsPlaylistError = cause is IndexOutOfBoundsException || 
+        (cause?.message?.contains("index") == true && 
+         cause.message?.contains("size") == true)
+    
+    return when {
+        isHlsPlaylistError -> 
+            "HLS-Playlist ist leer oder ungültig. Der Stream ist möglicherweise nicht verfügbar."
+        error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+        error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> 
+            "Netzwerkfehler. Bitte Verbindung prüfen."
+        error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+        error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> 
+            "Videoformat wird nicht unterstützt."
+        error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+        error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> 
+            "Codec-Fehler. Videoformat wird möglicherweise nicht unterstützt."
+        else -> "Wiedergabefehler: ${error.message ?: "Unbekannter Fehler"}"
+    }
+}
+
+/**
+ * Creates a Player.Listener with callbacks for state changes
+ */
+private fun createPlayerListener(
+    onError: (String) -> Unit,
+    onPlaybackStateChanged: (Int) -> Unit,
+    onIsPlayingChanged: (Boolean) -> Unit
+): Player.Listener {
+    return object : Player.Listener {
+        override fun onPlayerError(error: PlaybackException) {
+            Log.e("PlayerScreen", "Player Error:", error)
+            onError(getErrorMessage(error))
+        }
+
+        override fun onPlaybackStateChanged(state: Int) {
+            onPlaybackStateChanged(state)
+            val stateString = when (state) {
+                Player.STATE_IDLE -> "STATE_IDLE"
+                Player.STATE_BUFFERING -> "STATE_BUFFERING"
+                Player.STATE_READY -> "STATE_READY"
+                Player.STATE_ENDED -> "STATE_ENDED"
+                else -> "UNKNOWN_STATE"
+            }
+            Log.d("PlayerScreen", "Playback state changed to $stateString")
+        }
+        
+        override fun onIsPlayingChanged(playing: Boolean) {
+            onIsPlayingChanged(playing)
+        }
+    }
+}
+
+/**
+ * Restores watch progress from saved state
+ */
+private suspend fun restoreWatchProgress(
+    exoPlayer: ExoPlayer,
+    contentType: String,
+    streamId: Int?,
+    seriesId: Int?,
+    episodeId: Int?,
+    watchProgressService: WatchProgressService
+): Boolean {
+    if (contentType == "live") return false
+    if (contentType == "movie" && streamId == null) return false
+    if (contentType == "series" && (seriesId == null || episodeId == null)) return false
+    
+    val savedPosition = watchProgressService.getProgress(
+        contentType = contentType,
+        streamId = streamId,
+        seriesId = seriesId,
+        episodeId = episodeId
+    ) ?: return false
+    
+    val duration = exoPlayer.duration
+    if (duration <= 0 || savedPosition >= duration) {
+        Log.d("PlayerScreen", "Skipping progress restore: savedPosition ($savedPosition) >= duration ($duration) or duration invalid")
+        return false
+    }
+    
+    Log.d("PlayerScreen", "Restoring watch progress: position=${savedPosition}ms (${savedPosition / 1000}s), duration=${duration}ms (${duration / 1000}s)")
+    delay(500) // Wait a bit for player to be fully ready
+    exoPlayer.seekTo(savedPosition)
+    Log.d("PlayerScreen", "Watch progress restored successfully")
+    return true
+}
+
+/**
+ * Saves watch progress periodically
+ */
+private suspend fun saveWatchProgress(
+    exoPlayer: ExoPlayer,
+    contentType: String,
+    streamId: Int?,
+    seriesId: Int?,
+    episodeId: Int?,
+    title: String?,
+    watchProgressService: WatchProgressService
+) {
+    if (contentType == "live") return
+    if (contentType == "movie" && streamId == null) return
+    if (contentType == "series" && (seriesId == null || episodeId == null)) return
+    
+    val position = exoPlayer.currentPosition
+    val duration = exoPlayer.duration
+    
+    if (position > 0 && duration > 0) {
+        val titleToSave = title ?: "Unknown"
+        watchProgressService.saveProgress(
+            contentType = contentType,
+            streamId = streamId,
+            seriesId = seriesId,
+            episodeId = episodeId,
+            position = position,
+            duration = duration,
+            title = titleToSave
+        )
+    }
+}
+
+/**
+ * Creates a modifier for tap gesture detection
+ */
+private fun Modifier.createTapGestureModifier(onTap: () -> Unit): Modifier {
+    return this.pointerInput(Unit) {
+        detectTapGestures(onTap = { onTap() })
+    }
+}
+
+/**
+ * Calculates swipe velocity in pixels per second
+ * @return Velocity in px/s, or null if calculation is invalid
+ */
+private fun calculateSwipeVelocity(
+    startX: Float,
+    startTime: Long,
+    currentX: Float,
+    currentTime: Long
+): Float? {
+    val deltaX = currentX - startX
+    val deltaTime = currentTime - startTime
+    
+    return if (deltaX > 0 && deltaTime > 0) {
+        deltaX / deltaTime * 1000 // px/s
+    } else {
+        null
+    }
+}
+
+/**
+ * Checks if swipe starts from the left edge
+ */
+private fun isSwipeFromLeftEdge(startX: Float): Boolean {
+    return startX < SWIPE_EDGE_THRESHOLD_PX
+}
+
+/**
+ * Processes swipe drag events and detects if swipe velocity threshold is reached
+ * @return true if swipe was detected and onBack was called, false otherwise
+ */
+private suspend fun AwaitPointerEventScope.processSwipeDrag(
+    initialDrag: PointerInputChange,
+    startX: Float,
+    startTime: Long,
+    onBack: () -> Unit
+): Boolean {
+    var lastDrag: PointerInputChange = initialDrag
+    
+    while (true) {
+        val currentX = lastDrag.position.x
+        val currentTime = System.currentTimeMillis()
+        
+        val velocity = calculateSwipeVelocity(startX, startTime, currentX, currentTime)
+        if (velocity != null && velocity > MIN_SWIPE_VELOCITY_PX_PER_S) {
+            onBack()
+            return true
+        }
+        
+        val dragEvent = awaitHorizontalDragOrCancellation(lastDrag.id)
+        if (dragEvent == null) {
+            return false
+        }
+        lastDrag = dragEvent
+    }
+}
+
+/**
+ * Creates a modifier for swipe gesture detection (from left edge)
+ */
+private fun Modifier.createSwipeGestureModifier(onBack: () -> Unit): Modifier {
+    return this.pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                val swipeStartX = down.position.x
+                val swipeStartTime = System.currentTimeMillis()
+                
+                if (!isSwipeFromLeftEdge(swipeStartX)) {
+                    continue
+                }
+                
+                val drag = awaitHorizontalDragOrCancellation(down.id)
+                if (drag != null) {
+                    processSwipeDrag(drag, swipeStartX, swipeStartTime, onBack)
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun PlayerScreen(
@@ -111,103 +384,20 @@ fun PlayerScreen(
     }
     
     val exoPlayer = remember {
-        // Configure LoadControl with optimized buffer settings to prevent main thread blocking
-        val allocator = DefaultAllocator(true, 16 * 1024)
-        val loadControl: LoadControl = DefaultLoadControl.Builder()
-            .setAllocator(allocator)
-            .setBufferDurationsMs(
-                5000,  // minBufferMs
-                20000, // maxBufferMs
-                1500,  // bufferForPlaybackMs
-                5000   // bufferForPlaybackAfterRebufferMs
-            )
-            .setTargetBufferBytes(2 * 1024 * 1024) // 2MB target buffer
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
-        
-        // Configure RenderersFactory to allow software decoders as fallback
-        val renderersFactory = DefaultRenderersFactory(context).apply {
-            setEnableDecoderFallback(true)
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-        }
-        
-        // Configure HTTP DataSource with custom headers to avoid 513 errors
-        // Use browser-like User-Agent
-        val userAgent = "Mozilla/5.0 (Linux; Android 13; Pixel 6 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-        
-        // Create HttpDataSourceFactory
-        val httpDataSourceFactory: HttpDataSource.Factory = DefaultHttpDataSource.Factory()
-            .setUserAgent(userAgent)
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(30000)
-            .setReadTimeoutMs(30000)
-        
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
-        
-        ExoPlayer.Builder(context)
-            .setRenderersFactory(renderersFactory)
-            .setLoadControl(loadControl)
-            .setMediaSourceFactory(
-                DefaultMediaSourceFactory(dataSourceFactory)
-            )
-            .build()
-            .apply {
-                playWhenReady = true
-                repeatMode = Player.REPEAT_MODE_OFF
-            }
+        createExoPlayer(context)
     }
 
     DisposableEffect(streamUrl) {
-        val listener = object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) {
-                Log.e("PlayerScreen", "Player Error:", error)
-                
-                // Check for HLS-specific errors (IndexOutOfBoundsException in playlist parsing)
-                val cause = error.cause
-                val isHlsPlaylistError = cause is IndexOutOfBoundsException || 
-                    (cause?.message?.contains("index") == true && 
-                     cause.message?.contains("size") == true)
-                
-                val message = when {
-                    isHlsPlaylistError -> 
-                        "HLS-Playlist ist leer oder ungültig. Der Stream ist möglicherweise nicht verfügbar."
-                    error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
-                    error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> 
-                        "Netzwerkfehler. Bitte Verbindung prüfen."
-                    error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
-                    error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> 
-                        "Videoformat wird nicht unterstützt."
-                    error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
-                    error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> 
-                        "Codec-Fehler. Videoformat wird möglicherweise nicht unterstützt."
-                    else -> "Wiedergabefehler: ${error.message ?: "Unbekannter Fehler"}"
-                }
-                errorMessage = message
-            }
-
-            override fun onPlaybackStateChanged(state: Int) {
+        val listener = createPlayerListener(
+            onError = { message -> errorMessage = message },
+            onPlaybackStateChanged = { state ->
                 playbackState = state
-                val stateString = when (state) {
-                    Player.STATE_IDLE -> {
-                        "STATE_IDLE"
-                    }
-                    Player.STATE_BUFFERING -> "STATE_BUFFERING"
-                    Player.STATE_READY -> {
-                        errorMessage = null // Clear error on successful playback
-                        "STATE_READY"
-                    }
-                    Player.STATE_ENDED -> {
-                        "STATE_ENDED"
-                    }
-                    else -> "UNKNOWN_STATE"
+                if (state == Player.STATE_READY) {
+                    errorMessage = null // Clear error on successful playback
                 }
-                Log.d("PlayerScreen", "Playback state changed to $stateString")
-            }
-            
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
-            }
-        }
+            },
+            onIsPlayingChanged = { playing -> isPlaying = playing }
+        )
         
         exoPlayer.addListener(listener)
 
@@ -246,36 +436,19 @@ fun PlayerScreen(
     
     // Restore watch progress when player is ready
     LaunchedEffect(exoPlayer.playbackState) {
-        if (exoPlayer.playbackState == Player.STATE_READY && 
-            !hasRestoredProgress &&
-            contentType != "live" &&
-            ((contentType == "movie" && streamId != null) ||
-             (contentType == "series" && seriesId != null && episodeId != null))) {
-            
+        if (exoPlayer.playbackState == Player.STATE_READY && !hasRestoredProgress) {
             coroutineScope.launch {
-                val savedPosition = watchProgressService.getProgress(
+                val restored = restoreWatchProgress(
+                    exoPlayer = exoPlayer,
                     contentType = contentType,
                     streamId = streamId,
                     seriesId = seriesId,
-                    episodeId = episodeId
+                    episodeId = episodeId,
+                    watchProgressService = watchProgressService
                 )
-                
-                if (savedPosition != null) {
-                    val duration = exoPlayer.duration
-                    if (duration > 0 && savedPosition < duration) {
-                        Log.d("PlayerScreen", "Restoring watch progress: position=${savedPosition}ms (${savedPosition / 1000}s), duration=${duration}ms (${duration / 1000}s)")
-                        // Wait a bit for player to be fully ready
-                        delay(500)
-                        exoPlayer.seekTo(savedPosition)
-                        hasRestoredProgress = true
-                        Log.d("PlayerScreen", "Watch progress restored successfully")
-                    } else {
-                        Log.d("PlayerScreen", "Skipping progress restore: savedPosition ($savedPosition) >= duration ($duration) or duration invalid")
-                        hasRestoredProgress = true
-                    }
-                } else {
+                hasRestoredProgress = true
+                if (!restored) {
                     Log.d("PlayerScreen", "No saved progress found for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId")
-                    hasRestoredProgress = true
                 }
             }
         }
@@ -283,37 +456,18 @@ fun PlayerScreen(
     
     // Auto-save progress every 10 seconds
     LaunchedEffect(contentType, streamId, seriesId, episodeId, title) {
-        if (contentType == "live") {
-            return@LaunchedEffect // Skip live streams
-        }
-        
-        if (contentType == "movie" && streamId == null) {
-            return@LaunchedEffect // Skip if required IDs are missing
-        }
-        
-        if (contentType == "series" && (seriesId == null || episodeId == null)) {
-            return@LaunchedEffect // Skip if required IDs are missing
-        }
-        
         while (true) {
             delay(10000) // 10 seconds
-            
-            val position = exoPlayer.currentPosition
-            val duration = exoPlayer.duration
-            
-            if (position > 0 && duration > 0) {
-                val titleToSave = title ?: "Unknown"
-                coroutineScope.launch {
-                    watchProgressService.saveProgress(
-                        contentType = contentType,
-                        streamId = streamId,
-                        seriesId = seriesId,
-                        episodeId = episodeId,
-                        position = position,
-                        duration = duration,
-                        title = titleToSave
-                    )
-                }
+            coroutineScope.launch {
+                saveWatchProgress(
+                    exoPlayer = exoPlayer,
+                    contentType = contentType,
+                    streamId = streamId,
+                    seriesId = seriesId,
+                    episodeId = episodeId,
+                    title = title,
+                    watchProgressService = watchProgressService
+                )
             }
         }
     }
@@ -376,10 +530,6 @@ fun PlayerScreen(
         }
     }
     
-    // Swipe gesture for back navigation
-    var swipeStartX by remember { mutableStateOf(0f) }
-    var swipeStartTime by remember { mutableStateOf(0L) }
-    
     // Focus requester to ensure Box receives key events
     val playerFocusRequester = remember { FocusRequester() }
     
@@ -394,52 +544,8 @@ fun PlayerScreen(
             .background(SharedColors.videoPlayerBg)
             .focusRequester(playerFocusRequester)
             .focusable() // Make Box focusable to receive key events
-            // Tap-Erkennung für Controls Toggle
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { onVideoTap() }
-                )
-            }
-            // Swipe-Geste für Back-Navigation (vom linken Rand)
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        swipeStartX = down.position.x
-                        swipeStartTime = System.currentTimeMillis()
-                        
-                        // Nur Swipe-Erkennung vom linken Rand (< 50px)
-                        if (swipeStartX < 50f) {
-                            val drag = awaitHorizontalDragOrCancellation(down.id)
-                            if (drag != null) {
-                                var lastDrag: androidx.compose.ui.input.pointer.PointerInputChange = drag
-                                while (true) {
-                                    val currentX = lastDrag.position.x
-                                    val currentTime = System.currentTimeMillis()
-                                    val deltaX = currentX - swipeStartX
-                                    val deltaTime = currentTime - swipeStartTime
-                                    
-                                    // Check if swipe is fast enough (> 500px/s)
-                                    if (deltaX > 0 && deltaTime > 0) {
-                                        val velocity = deltaX / deltaTime * 1000 // px/s
-                                        if (velocity > 500) {
-                                            onBack()
-                                            break
-                                        }
-                                    }
-                                    
-                                    val dragEvent = awaitHorizontalDragOrCancellation(lastDrag.id)
-                                    if (dragEvent == null) {
-                                        break
-                                    } else {
-                                        lastDrag = dragEvent
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            .createTapGestureModifier(onTap = onVideoTap)
+            .createSwipeGestureModifier(onBack = onBack)
             .onBackButton(onBack = onBack)
             .onDpadCenter {
                 if (!showControls) {
@@ -466,16 +572,10 @@ fun PlayerScreen(
         )
         
         // Loading indicator during buffering
-        if (playbackState == Player.STATE_BUFFERING) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(SharedColors.videoPlayerBg.copy(alpha = 0.7f)),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = androidx.compose.ui.graphics.Color.White)
-            }
-        }
+        PlayerLoadingIndicator(
+            isBuffering = playbackState == Player.STATE_BUFFERING,
+            modifier = Modifier.fillMaxSize()
+        )
         
         // Custom player controls
         if (showControls) {
@@ -546,49 +646,17 @@ fun PlayerScreen(
         }
         
         // Show error message if playback failed
-        errorMessage?.let { message ->
-            Card(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Wiedergabefehler",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(onClick = { 
-                            errorMessage = null
-                            exoPlayer.prepare()
-                        }) {
-                            Text("Erneut versuchen")
-                        }
-                        Button(onClick = { 
-                            errorMessage = null
-                            onBack()
-                        }) {
-                            Text("Zurück")
-                        }
-                    }
-                }
-            }
-        }
+        PlayerErrorDialog(
+            errorMessage = errorMessage,
+            onRetry = {
+                errorMessage = null
+                exoPlayer.prepare()
+            },
+            onDismiss = {
+                errorMessage = null
+                onBack()
+            },
+            modifier = Modifier.align(Alignment.Center)
+        )
     }
 }
