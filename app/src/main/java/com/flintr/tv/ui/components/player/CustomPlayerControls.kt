@@ -8,7 +8,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +23,7 @@ import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.FocusedButton
 import com.flintr.tv.ui.utils.formatTime
+import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 
 /**
@@ -293,14 +293,15 @@ private fun PlayerControlButton(
     config: ButtonConfig,
     modifier: Modifier = Modifier
 ) {
-    IconButton(
-        onClick = config.onClick,
+    Box(
         modifier = modifier
+            .size(48.dp)
             .focusRequester(config.focusRequester)
             .onFocusChanged { focusState ->
                 config.onFocusChange(focusState.isFocused)
             }
             .focusable()
+            .onClick(onClick = config.onClick)
             .onDpadDirection(
                 onLeft = {
                     config.onNavigateLeft()
@@ -317,7 +318,8 @@ private fun PlayerControlButton(
                 } else {
                     Modifier
                 }
-            )
+            ),
+        contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = config.icon,
