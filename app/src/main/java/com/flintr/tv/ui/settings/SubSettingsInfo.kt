@@ -26,8 +26,6 @@ import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onBackButton
-import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.viewmodel.UpdateViewModel
 import androidx.hilt.navigation.compose.hiltViewModel
