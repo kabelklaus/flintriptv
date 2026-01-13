@@ -17,14 +17,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
-import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.viewmodel.MainViewModel
 
 @Composable
 fun EPGContent(
     viewModel: MainViewModel,
-    onProgramClick: (EpgProgram, LiveStream) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val streams by viewModel.liveStreams.collectAsState()
@@ -62,10 +60,7 @@ fun EPGContent(
             ) {
                 items(streams) { stream ->
                     EPGChannelItem(
-                        stream = stream,
-                        onProgramClick = { program ->
-                            onProgramClick(program, stream)
-                        }
+                        stream = stream
                     )
                 }
             }
@@ -75,8 +70,7 @@ fun EPGContent(
 
 @Composable
 fun EPGChannelItem(
-    stream: LiveStream,
-    onProgramClick: (EpgProgram) -> Unit
+    stream: LiveStream
 ) {
     // Note: EPG data would need to be loaded per channel
     // This is a simplified version

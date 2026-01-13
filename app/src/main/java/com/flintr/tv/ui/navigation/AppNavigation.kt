@@ -714,19 +714,7 @@ fun MainContentScreen(
                 }
                 is HomeDestination.EPG -> {
                     EPGContent(
-                        viewModel = mainViewModel,
-                        onProgramClick = { _, stream ->
-                            val creds = credentials ?: return@EPGContent
-                            val streamUrl = stream.getStreamUrl(
-                                creds.serverUrl,
-                                creds.username,
-                                creds.password
-                            )
-                            val route = Screen.Player.createRouteForLive(streamUrl)
-                            navController.logAndNavigate(route, "AppNavigation") {
-                                "📅 EPG onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
-                            }
-                        }
+                        viewModel = mainViewModel
                     )
                 }
                 is HomeDestination.Favorites -> {
