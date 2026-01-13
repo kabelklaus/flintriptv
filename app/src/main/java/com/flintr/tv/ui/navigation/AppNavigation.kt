@@ -52,6 +52,7 @@ import com.flintr.tv.viewmodel.PlayerViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
+import com.flintr.tv.ui.components.SearchOverlay
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.CircularProgressIndicator
@@ -351,6 +352,9 @@ private fun clearStreamsForDestination(
         is HomeDestination.Favorites -> {
             // Favorites doesn't have streams to clear
         }
+        is HomeDestination.Search -> {
+            // Search doesn't have streams to clear
+        }
         is HomeDestination.Settings -> {
             // Settings navigates to separate screen, no streams to clear
         }
@@ -377,6 +381,10 @@ fun MainContentScreen(
     // Update check state
     var hasCheckedForUpdates by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    
+    // Search overlay state
+    var showSearchOverlay by remember { mutableStateOf(false) }
+    val searchState by mainViewModel.searchState.collectAsState()
     
     // UpdateViewModel state
     val updateInfo by updateViewModel.updateInfo.collectAsState()
@@ -428,6 +436,7 @@ fun MainContentScreen(
         is HomeDestination.Series -> CategoryType.SERIES
         is HomeDestination.EPG -> CategoryType.LIVE_TV // Not used for EPG
         is HomeDestination.Favorites -> CategoryType.LIVE_TV // Not used for Favorites
+        is HomeDestination.Search -> CategoryType.LIVE_TV // Not used for Search
         is HomeDestination.Settings -> CategoryType.LIVE_TV // Not used for Settings
     }
     
@@ -438,6 +447,7 @@ fun MainContentScreen(
         is HomeDestination.Series -> seriesCategories
         is HomeDestination.EPG -> emptyList()
         is HomeDestination.Favorites -> emptyList() // Favorites doesn't have categories
+        is HomeDestination.Search -> emptyList() // Search doesn't have categories
         is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
     }
     
@@ -628,6 +638,9 @@ fun MainContentScreen(
                 Log.d("AppNavigation", "[CategoryHidden] Callback aufgerufen für Kategorie: ${category.categoryName} (${category.categoryId})")
                 handleCategoryHidden(category) 
             },
+            onSearchClick = {
+                showSearchOverlay = true
+            },
         onNavbarReady = {
             // Signal that navbar is ready for focus
             navbarReady = true
@@ -768,6 +781,10 @@ fun MainContentScreen(
                         )
                     )
                 }
+                is HomeDestination.Search -> {
+                    // Search screen will be implemented in Story 12.2
+                    Box {}
+                }
                 is HomeDestination.Settings -> {
                     // Settings navigates to separate screen, this should not be reached
                     // but kept for exhaustiveness
@@ -782,6 +799,59 @@ fun MainContentScreen(
             hostState = snackbarHostState,
             modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
         )
+        
+        // Search Overlay (rendered last to be on top)
+        if (showSearchOverlay) {
+            SearchOverlay(
+                searchState = searchState,
+                onQueryChange = { query ->
+                    mainViewModel.searchContent(query)
+                },
+                onDismiss = {
+                    mainViewModel.clearSearch()
+                    showSearchOverlay = false
+                    // Return focus to search button
+                    moveFocusToNavbar()
+                },
+                onLiveStreamClick = { stream ->
+                    val creds = credentials ?: return@SearchOverlay
+                    val streamUrl = stream.getStreamUrl(
+                        creds.serverUrl,
+                        creds.username,
+                        creds.password
+                    )
+                    val route = Screen.Player.createRouteForLive(streamUrl)
+                    mainViewModel.clearSearch()
+                    showSearchOverlay = false
+                    navController.logAndNavigate(route, "AppNavigation") {
+                        "🔍 Search LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
+                    }
+                },
+                onVodClick = { vod ->
+                    val creds = credentials ?: return@SearchOverlay
+                    val streamUrl = vod.getStreamUrl(
+                        creds.serverUrl,
+                        creds.username,
+                        creds.password
+                    )
+                    val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
+                    mainViewModel.clearSearch()
+                    showSearchOverlay = false
+                    navController.logAndNavigate(route, "AppNavigation") {
+                        "🔍 Search VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
+                    }
+                },
+                onSeriesClick = { series ->
+                    val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
+                    mainViewModel.clearSearch()
+                    showSearchOverlay = false
+                    navController.logAndNavigate(route, "AppNavigation") {
+                        "🔍 Search Series onClick - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
+                    }
+                },
+                favoritesRepository = favoritesRepository
+            )
+        }
     }
 }
 

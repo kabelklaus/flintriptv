@@ -47,6 +47,7 @@ sealed class HomeDestination {
     object Series : HomeDestination()
     object EPG : HomeDestination()
     object Favorites : HomeDestination()
+    object Search : HomeDestination()
     object Settings : HomeDestination()
 }
 
@@ -63,12 +64,14 @@ fun HomeSidebar(
     focusRequester: FocusRequester,
     externalFocusRequested: Boolean = false,
     onNavigateRight: (() -> Unit)? = null,
+    onSearchClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val colors = appColors()
     
     val navItems = remember {
         listOf(
+            NavItem("Suche", Icons.Default.Search, HomeDestination.Search),
             NavItem("TV", Icons.Default.Tv, HomeDestination.LiveTV),
             NavItem("Movies", Icons.Default.Movie, HomeDestination.VOD),
             NavItem("Series", Icons.Default.PlayArrow, HomeDestination.Series),
@@ -115,7 +118,13 @@ fun HomeSidebar(
                     destination = navItem.destination,
                     selectedDestination = selectedDestination,
                     pendingFocusDestination = pendingFocusDestination,
-                    onClick = { onNavigate(navItem.destination) },
+                    onClick = {
+                        if (navItem.destination == HomeDestination.Search) {
+                            onSearchClick()
+                        } else {
+                            onNavigate(navItem.destination)
+                        }
+                    },
                     colors = colors,
                     focusRequester = focusRequesters[index],
                     externalFocusRequester = getExternalFocusRequester(

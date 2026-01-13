@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import javax.inject.Inject
 
 @HiltViewModel
@@ -44,6 +46,17 @@ class MainViewModel @Inject constructor(
 
     private val _selectedSeries = MutableStateFlow<Series?>(null)
     val selectedSeries: StateFlow<Series?> = _selectedSeries.asStateFlow()
+
+    private val _searchState = MutableStateFlow(SearchState())
+    val searchState: StateFlow<SearchState> = _searchState.asStateFlow()
+
+    private var searchJob: Job? = null
+
+    companion object {
+        private const val MIN_QUERY_LENGTH = 2
+        private const val DEBOUNCE_MS = 300L
+        private const val MAX_RESULTS_PER_CATEGORY = 50
+    }
 
     init {
         loadInitialData()
@@ -237,6 +250,86 @@ class MainViewModel @Inject constructor(
         loadSeries(seriesCategory.categoryId)
         Log.d("MainViewModel", "Showing series from favorites: ${series.name}, category: ${seriesCategory.categoryName}")
         return seriesCategory.categoryId
+    }
+
+    /**
+     * Search content in cached data with debouncing
+     * Searches in LiveTV, VOD, and Series by name field (case-insensitive)
+     */
+    fun searchContent(query: String) {
+        // Cancel previous search job
+        searchJob?.cancel()
+        
+        // Update query immediately
+        val trimmedQuery = query.trim()
+        _searchState.value = _searchState.value.copy(
+            query = trimmedQuery,
+            showMinLengthHint = trimmedQuery.length > 0 && trimmedQuery.length < MIN_QUERY_LENGTH
+        )
+        
+        // Check minimum length
+        if (trimmedQuery.length < MIN_QUERY_LENGTH) {
+            _searchState.value = _searchState.value.copy(
+                results = SearchResults(),
+                isSearching = false
+            )
+            return
+        }
+        
+        // Start new search job with debouncing
+        searchJob = viewModelScope.launch {
+            _searchState.value = _searchState.value.copy(isSearching = true)
+            
+            // Debounce delay
+            delay(DEBOUNCE_MS)
+            
+            // Load cached data
+            val cachedData = cacheService.loadCachedData()
+            if (cachedData == null) {
+                Log.w("MainViewModel", "No cached data available for search")
+                _searchState.value = _searchState.value.copy(
+                    results = SearchResults(),
+                    isSearching = false
+                )
+                return@launch
+            }
+            
+            // Perform search (case-insensitive substring match)
+            val queryLower = trimmedQuery.lowercase()
+            
+            val liveTVResults = cachedData.channels
+                .filter { it.name.lowercase().contains(queryLower) }
+                .take(MAX_RESULTS_PER_CATEGORY)
+            
+            val vodResults = cachedData.movies
+                .filter { it.name.lowercase().contains(queryLower) }
+                .take(MAX_RESULTS_PER_CATEGORY)
+            
+            val seriesResults = cachedData.series
+                .filter { it.name.lowercase().contains(queryLower) }
+                .take(MAX_RESULTS_PER_CATEGORY)
+            
+            val results = SearchResults(
+                liveTV = liveTVResults,
+                vod = vodResults,
+                series = seriesResults
+            )
+            
+            Log.d("MainViewModel", "Search completed: query='$trimmedQuery', results=${results.totalCount} (LiveTV: ${results.liveTV.size}, VOD: ${results.vod.size}, Series: ${results.series.size})")
+            
+            _searchState.value = _searchState.value.copy(
+                results = results,
+                isSearching = false
+            )
+        }
+    }
+
+    /**
+     * Clear search state
+     */
+    fun clearSearch() {
+        searchJob?.cancel()
+        _searchState.value = SearchState()
     }
 }
 
