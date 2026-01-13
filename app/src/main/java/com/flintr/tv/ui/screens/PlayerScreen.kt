@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.content.Context
 import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 
 /**
  * Data class containing stream information for playback
@@ -62,6 +63,10 @@ data class StreamInfo(
     val episodeId: Int? = null,
     val title: String? = null
 )
+
+// Swipe gesture constants
+private const val SWIPE_EDGE_THRESHOLD_PX = 50f
+private const val MIN_SWIPE_VELOCITY_PX_PER_S = 500f
 
 /**
  * Creates and configures an ExoPlayer instance with optimized settings
@@ -249,6 +254,63 @@ private fun Modifier.createTapGestureModifier(onTap: () -> Unit): Modifier {
 }
 
 /**
+ * Calculates swipe velocity in pixels per second
+ * @return Velocity in px/s, or null if calculation is invalid
+ */
+private fun calculateSwipeVelocity(
+    startX: Float,
+    startTime: Long,
+    currentX: Float,
+    currentTime: Long
+): Float? {
+    val deltaX = currentX - startX
+    val deltaTime = currentTime - startTime
+    
+    return if (deltaX > 0 && deltaTime > 0) {
+        deltaX / deltaTime * 1000 // px/s
+    } else {
+        null
+    }
+}
+
+/**
+ * Checks if swipe starts from the left edge
+ */
+private fun isSwipeFromLeftEdge(startX: Float): Boolean {
+    return startX < SWIPE_EDGE_THRESHOLD_PX
+}
+
+/**
+ * Processes swipe drag events and detects if swipe velocity threshold is reached
+ * @return true if swipe was detected and onBack was called, false otherwise
+ */
+private suspend fun AwaitPointerEventScope.processSwipeDrag(
+    initialDrag: PointerInputChange,
+    startX: Float,
+    startTime: Long,
+    onBack: () -> Unit
+): Boolean {
+    var lastDrag: PointerInputChange = initialDrag
+    
+    while (true) {
+        val currentX = lastDrag.position.x
+        val currentTime = System.currentTimeMillis()
+        
+        val velocity = calculateSwipeVelocity(startX, startTime, currentX, currentTime)
+        if (velocity != null && velocity > MIN_SWIPE_VELOCITY_PX_PER_S) {
+            onBack()
+            return true
+        }
+        
+        val dragEvent = awaitHorizontalDragOrCancellation(lastDrag.id)
+        if (dragEvent == null) {
+            return false
+        }
+        lastDrag = dragEvent
+    }
+}
+
+/**
  * Creates a modifier for swipe gesture detection (from left edge)
  */
 private fun Modifier.createSwipeGestureModifier(onBack: () -> Unit): Modifier {
@@ -259,34 +321,13 @@ private fun Modifier.createSwipeGestureModifier(onBack: () -> Unit): Modifier {
                 val swipeStartX = down.position.x
                 val swipeStartTime = System.currentTimeMillis()
                 
-                // Only detect swipe from left edge (< 50px)
-                if (swipeStartX < 50f) {
-                    val drag = awaitHorizontalDragOrCancellation(down.id)
-                    if (drag != null) {
-                        var lastDrag: PointerInputChange = drag
-                        while (true) {
-                            val currentX = lastDrag.position.x
-                            val currentTime = System.currentTimeMillis()
-                            val deltaX = currentX - swipeStartX
-                            val deltaTime = currentTime - swipeStartTime
-                            
-                            // Check if swipe is fast enough (> 500px/s)
-                            if (deltaX > 0 && deltaTime > 0) {
-                                val velocity = deltaX / deltaTime * 1000 // px/s
-                                if (velocity > 500) {
-                                    onBack()
-                                    break
-                                }
-                            }
-                            
-                            val dragEvent = awaitHorizontalDragOrCancellation(lastDrag.id)
-                            if (dragEvent == null) {
-                                break
-                            } else {
-                                lastDrag = dragEvent
-                            }
-                        }
-                    }
+                if (!isSwipeFromLeftEdge(swipeStartX)) {
+                    continue
+                }
+                
+                val drag = awaitHorizontalDragOrCancellation(down.id)
+                if (drag != null) {
+                    processSwipeDrag(drag, swipeStartX, swipeStartTime, onBack)
                 }
             }
         }
