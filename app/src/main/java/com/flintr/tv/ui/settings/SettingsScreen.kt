@@ -39,6 +39,8 @@ import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.viewmodel.MainViewModel
 
+private const val LOG_BACK_TO_MAIN = "🔙 BACK: SettingsMainScreen -> AppNavigation (Main Screen) via D-Pad Left"
+
 sealed class SettingsDestination {
     object Main : SettingsDestination()
     object Connection : SettingsDestination()
@@ -172,6 +174,11 @@ private fun SettingsMainScreen(
 ) {
     val colors = appColors()
     
+    val onNavigateLeftHandler: () -> Unit = {
+        Log.i("SettingsNav", LOG_BACK_TO_MAIN)
+        onNavigateLeft()
+    }
+    
     // Set focus on first item when screen is first displayed
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -194,11 +201,10 @@ private fun SettingsMainScreen(
                         onCategorySelected(SettingsDestination.Connection)
                     },
                     colors = colors,
-                    focusRequester = focusRequester,
-                    onNavigateLeft = {
-                        Log.i("SettingsNav", "🔙 BACK: SettingsMainScreen -> AppNavigation (Main Screen) via D-Pad Left")
-                        onNavigateLeft()
-                    }
+                    navigationConfig = NavigationConfig(
+                        focusRequester = focusRequester,
+                        onNavigateLeft = onNavigateLeftHandler
+                    )
                 )
         }
         
@@ -212,10 +218,9 @@ private fun SettingsMainScreen(
                         onCategorySelected(SettingsDestination.Playback)
                     },
                     colors = colors,
-                    onNavigateLeft = {
-                        Log.i("SettingsNav", "🔙 BACK: SettingsMainScreen -> AppNavigation (Main Screen) via D-Pad Left")
-                        onNavigateLeft()
-                    }
+                    navigationConfig = NavigationConfig(
+                        onNavigateLeft = onNavigateLeftHandler
+                    )
                 )
         }
         
@@ -229,10 +234,9 @@ private fun SettingsMainScreen(
                         onCategorySelected(SettingsDestination.General)
                     },
                     colors = colors,
-                    onNavigateLeft = {
-                        Log.i("SettingsNav", "🔙 BACK: SettingsMainScreen -> AppNavigation (Main Screen) via D-Pad Left")
-                        onNavigateLeft()
-                    }
+                    navigationConfig = NavigationConfig(
+                        onNavigateLeft = onNavigateLeftHandler
+                    )
                 )
         }
         
@@ -246,14 +250,18 @@ private fun SettingsMainScreen(
                         onCategorySelected(SettingsDestination.Info)
                     },
                     colors = colors,
-                    onNavigateLeft = {
-                        Log.i("SettingsNav", "🔙 BACK: SettingsMainScreen -> AppNavigation (Main Screen) via D-Pad Left")
-                        onNavigateLeft()
-                    }
+                    navigationConfig = NavigationConfig(
+                        onNavigateLeft = onNavigateLeftHandler
+                    )
                 )
         }
     }
 }
+
+private data class NavigationConfig(
+    val focusRequester: FocusRequester? = null,
+    val onNavigateLeft: (() -> Unit)? = null
+)
 
 @Composable
 private fun SettingsCategoryCard(
@@ -263,8 +271,7 @@ private fun SettingsCategoryCard(
     onClick: () -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors,
     modifier: Modifier = Modifier,
-    focusRequester: FocusRequester? = null,
-    onNavigateLeft: (() -> Unit)? = null
+    navigationConfig: NavigationConfig = NavigationConfig()
 ) {
     var isFocused by remember { mutableStateOf(false) }
     
@@ -294,8 +301,8 @@ private fun SettingsCategoryCard(
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
+                if (navigationConfig.focusRequester != null) {
+                    Modifier.focusRequester(navigationConfig.focusRequester)
                 } else {
                     Modifier
                 }
@@ -305,9 +312,9 @@ private fun SettingsCategoryCard(
             }
             .focusable()
             .onDpadDirection(
-                onLeft = if (onNavigateLeft != null) {
+                onLeft = if (navigationConfig.onNavigateLeft != null) {
                     {
-                        onNavigateLeft()
+                        navigationConfig.onNavigateLeft()
                         true
                     }
                 } else {
@@ -315,7 +322,7 @@ private fun SettingsCategoryCard(
                 }
             )
             .onBackButton {
-                onNavigateLeft?.invoke()
+                navigationConfig.onNavigateLeft?.invoke()
             }
             .onClick(onClick)
     ) {
