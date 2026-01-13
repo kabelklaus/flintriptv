@@ -33,11 +33,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
-import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
+import com.flintr.tv.ui.theme.AppColors
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onClick
@@ -45,12 +45,37 @@ import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.utils.ContentParser
 
+// Navigation direction enum
+private enum class NavigationDirection {
+    LEFT, RIGHT
+}
+
+// Data classes for EpisodeDetailCard
+private data class EpisodeCardState(
+    val progressPercent: Float,
+    val isCompleted: Boolean,
+    val remainingMinutes: Int?
+)
+
+private data class EpisodeCardConfig(
+    val episode: Episode,
+    val season: Season,
+    val series: Series,
+    val watchProgressService: WatchProgressService
+)
+
+private data class EpisodeCardCallbacks(
+    val onClick: () -> Unit,
+    val onFocusChanged: (Boolean) -> Unit,
+    val onNavigateLeft: () -> Unit,
+    val onNavigateRight: () -> Unit
+)
+
 @Composable
 fun SeriesEpisodesScreen(
     series: Series,
     mainViewModel: com.flintr.tv.viewmodel.MainViewModel,
     watchProgressService: WatchProgressService,
-    credentialsRepository: CredentialsRepository,
     onBack: () -> Unit,
     onEpisodeClick: (Episode) -> Unit
 ) {
@@ -162,7 +187,6 @@ fun SeriesEpisodesScreen(
                 selectedSeason = selectedSeason,
                 series = displaySeries,
                 watchProgressService = watchProgressService,
-                credentialsRepository = credentialsRepository,
                 onEpisodeClick = onEpisodeClick,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -232,13 +256,11 @@ private fun SeriesHeader(
             }
             
             // Year
-            if (year != null) {
-                Text(
-                    text = year,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = Color.White
-                )
-            }
+            OptionalMetadataText(
+                content = year,
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White
+            )
             
             // Season Count
             Text(
@@ -248,45 +270,61 @@ private fun SeriesHeader(
             )
             
             // Categories/Genre
-            if (!series.genre.isNullOrEmpty()) {
-                Text(
-                    text = series.genre,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = Color.White
-                )
-            }
+            OptionalMetadataText(
+                content = series.genre,
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White
+            )
         }
         
         // Row 2: Cast
-        if (!series.cast.isNullOrEmpty()) {
-            Text(
-                text = "Besetzung: ${series.cast}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.9f),
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-        }
+        OptionalMetadataText(
+            content = series.cast,
+            prefix = "Besetzung: ",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White.copy(alpha = 0.9f),
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
         
         // Row 3: Director
-        if (!series.director.isNullOrEmpty()) {
-            Text(
-                text = "Regisseur: ${series.director}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.9f),
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-        }
+        OptionalMetadataText(
+            content = series.director,
+            prefix = "Regisseur: ",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White.copy(alpha = 0.9f),
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
         
         // Row 4+: Plot/Description
-        if (!series.plot.isNullOrEmpty()) {
-            Text(
-                text = series.plot,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.9f),
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        OptionalMetadataText(
+            content = series.plot,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.White.copy(alpha = 0.9f),
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun OptionalMetadataText(
+    content: String?,
+    prefix: String = "",
+    style: androidx.compose.ui.text.TextStyle,
+    color: Color,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    modifier: Modifier = Modifier
+) {
+    if (!content.isNullOrEmpty()) {
+        Text(
+            text = if (prefix.isNotEmpty()) "$prefix$content" else content,
+            style = style,
+            color = color,
+            maxLines = maxLines,
+            overflow = overflow,
+            modifier = modifier
+        )
     }
 }
 
@@ -298,7 +336,6 @@ private fun SeasonNavigation(
     selectedSeason: Season?,
     series: Series,
     watchProgressService: WatchProgressService,
-    credentialsRepository: CredentialsRepository,
     onEpisodeClick: (Episode) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -317,71 +354,12 @@ private fun SeasonNavigation(
                     items = seasons,
                     key = { it.seasonNumber }
                 ) { season ->
-                    val isSelected = seasons.indexOf(season) == selectedSeasonIndex
-                    val colors = appColors()
-                    
-                    // Border color with animation
-                    val borderColor by animateColorAsState(
-                        targetValue = if (isSelected) colors.accentColor else Color.Transparent,
-                        animationSpec = tween(durationMillis = 200),
-                        label = "borderColor"
+                    val seasonIndex = seasons.indexOf(season)
+                    SeasonButton(
+                        season = season,
+                        isSelected = seasonIndex == selectedSeasonIndex,
+                        onSelect = { onSeasonSelected(seasonIndex) }
                     )
-                    
-                    // Background color with animation
-                    val backgroundColor by animateColorAsState(
-                        targetValue = when {
-                            isSelected -> colors.accentColorHoverBg
-                            else -> Color.White.copy(alpha = 0.2f)
-                        },
-                        animationSpec = tween(durationMillis = 200),
-                        label = "backgroundColor"
-                    )
-                    
-                    val focusRequester = remember { FocusRequester() }
-                    
-                    // Request focus when selected
-                    LaunchedEffect(isSelected) {
-                        if (isSelected) {
-                            kotlinx.coroutines.delay(50)
-                            try {
-                                focusRequester.requestFocus()
-                            } catch (e: Exception) {
-                                // FocusRequester might not be ready yet
-                            }
-                        }
-                    }
-                    
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                color = backgroundColor,
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            .then(
-                                if (borderColor != Color.Transparent) {
-                                    Modifier.border(
-                                        width = 2.dp,
-                                        color = borderColor,
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .focusRequester(focusRequester)
-                            .focusable()
-                            .onClick(onClick = {
-                                onSeasonSelected(seasons.indexOf(season))
-                            })
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Text(
-                            text = "Staffel ${season.seasonNumber}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = Color.White
-                        )
-                    }
                 }
             }
         }
@@ -404,11 +382,80 @@ private fun SeasonNavigation(
                 season = selectedSeason,
                 series = series,
                 watchProgressService = watchProgressService,
-                credentialsRepository = credentialsRepository,
                 onEpisodeClick = onEpisodeClick,
                 modifier = Modifier.fillMaxWidth()
             )
         }
+    }
+}
+
+@Composable
+private fun SeasonButton(
+    season: Season,
+    isSelected: Boolean,
+    onSelect: () -> Unit
+) {
+    val colors = appColors()
+    
+    // Border color with animation
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) colors.accentColor else Color.Transparent,
+        animationSpec = tween(durationMillis = 200),
+        label = "borderColor"
+    )
+    
+    // Background color with animation
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> colors.accentColorHoverBg
+            else -> Color.White.copy(alpha = 0.2f)
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "backgroundColor"
+    )
+    
+    val focusRequester = remember { FocusRequester() }
+    
+    // Request focus when selected
+    LaunchedEffect(isSelected) {
+        if (isSelected) {
+            kotlinx.coroutines.delay(50)
+            try {
+                focusRequester.requestFocus()
+            } catch (e: Exception) {
+                // FocusRequester might not be ready yet
+            }
+        }
+    }
+    
+    Box(
+        modifier = Modifier
+            .background(
+                color = backgroundColor,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .then(
+                if (borderColor != Color.Transparent) {
+                    Modifier.border(
+                        width = 2.dp,
+                        color = borderColor,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .focusRequester(focusRequester)
+            .focusable()
+            .onClick(onClick = onSelect)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Text(
+            text = "Staffel ${season.seasonNumber}",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            color = Color.White
+        )
     }
 }
 
@@ -418,7 +465,6 @@ private fun EpisodesList(
     season: Season,
     series: Series,
     watchProgressService: WatchProgressService,
-    credentialsRepository: CredentialsRepository,
     onEpisodeClick: (Episode) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -428,19 +474,19 @@ private fun EpisodesList(
     
     // Set initial focus on first episode when list is displayed
     LaunchedEffect(episodes.size) {
-        if (episodes.isNotEmpty()) {
-            kotlinx.coroutines.delay(100) // Small delay to ensure layout is ready
-            try {
-                firstEpisodeFocusRequester.requestFocus()
-            } catch (e: Exception) {
-                // FocusRequester might not be ready yet
-            }
+        if (episodes.isEmpty()) return@LaunchedEffect
+        
+        kotlinx.coroutines.delay(100) // Small delay to ensure layout is ready
+        try {
+            firstEpisodeFocusRequester.requestFocus()
+        } catch (e: Exception) {
+            // FocusRequester might not be ready yet
         }
     }
     
     // Scroll to focused episode
     LaunchedEffect(focusedEpisodeIndex) {
-        if (focusedEpisodeIndex >= 0 && focusedEpisodeIndex < episodes.size) {
+        if (focusedEpisodeIndex in 0 until episodes.size) {
             listState.animateScrollToItem(focusedEpisodeIndex)
         }
     }
@@ -474,31 +520,36 @@ private fun EpisodesList(
             ) { episode ->
                 val episodeIndex = episodes.indexOf(episode)
                 EpisodeDetailCard(
-                    episode = episode,
-                    season = season,
-                    series = series,
-                    watchProgressService = watchProgressService,
-                    credentialsRepository = credentialsRepository,
+                    config = EpisodeCardConfig(
+                        episode = episode,
+                        season = season,
+                        series = series,
+                        watchProgressService = watchProgressService
+                    ),
+                    callbacks = EpisodeCardCallbacks(
+                        onClick = { onEpisodeClick(episode) },
+                        onFocusChanged = { isFocused ->
+                            if (isFocused) {
+                                focusedEpisodeIndex = episodeIndex
+                            }
+                        },
+                        onNavigateLeft = {
+                            focusedEpisodeIndex = updateEpisodeIndex(
+                                currentIndex = focusedEpisodeIndex,
+                                maxIndex = episodes.size - 1,
+                                direction = NavigationDirection.LEFT
+                            )
+                        },
+                        onNavigateRight = {
+                            focusedEpisodeIndex = updateEpisodeIndex(
+                                currentIndex = focusedEpisodeIndex,
+                                maxIndex = episodes.size - 1,
+                                direction = NavigationDirection.RIGHT
+                            )
+                        }
+                    ),
                     isFocused = episodeIndex == focusedEpisodeIndex,
-                    focusRequester = if (episodeIndex == 0) firstEpisodeFocusRequester else null,
-                    onClick = {
-                        onEpisodeClick(episode)
-                    },
-                    onFocusChanged = { isFocused ->
-                        if (isFocused) {
-                            focusedEpisodeIndex = episodeIndex
-                        }
-                    },
-                    onNavigateLeft = {
-                        if (focusedEpisodeIndex > 0) {
-                            focusedEpisodeIndex--
-                        }
-                    },
-                    onNavigateRight = {
-                        if (focusedEpisodeIndex < episodes.size - 1) {
-                            focusedEpisodeIndex++
-                        }
-                    }
+                    focusRequester = if (episodeIndex == 0) firstEpisodeFocusRequester else null
                 )
             }
         }
@@ -507,60 +558,21 @@ private fun EpisodesList(
 
 @Composable
 private fun EpisodeDetailCard(
-    episode: Episode,
-    season: Season,
-    series: Series,
-    watchProgressService: WatchProgressService,
-    credentialsRepository: CredentialsRepository,
+    config: EpisodeCardConfig,
+    callbacks: EpisodeCardCallbacks,
     isFocused: Boolean,
     focusRequester: FocusRequester? = null,
-    onClick: () -> Unit,
-    onFocusChanged: (Boolean) -> Unit,
-    onNavigateLeft: () -> Unit,
-    onNavigateRight: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isFocusedState by remember { mutableStateOf(false) }
     val colors = appColors()
     val cardFocusRequester = focusRequester ?: remember { FocusRequester() }
     
-    // Load watch progress
-    var progress by remember { mutableStateOf<Long?>(null) }
-    var duration by remember { mutableStateOf<Long?>(null) }
-    
-    LaunchedEffect(episode.id) {
-        progress = watchProgressService.getProgress(
-            contentType = "series",
-            streamId = null,
-            seriesId = series.seriesId,
-            episodeId = episode.id
-        )
-        
-        // Parse duration from episode.info?.duration
-        episode.info?.duration?.let { durationStr ->
-            // Duration is typically in seconds or "HH:MM:SS" format
-            duration = try {
-                durationStr.toLongOrNull()?.times(1000) // Convert seconds to milliseconds
-                    ?: parseDurationString(durationStr)?.times(1000)
-            } catch (e: Exception) {
-                null
-            }
-        }
-    }
-    
-    // Calculate progress percentage
-    val progressPercent = if (progress != null && duration != null && duration!! > 0) {
-        (progress!!.toFloat() / duration!!.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-    
-    val isCompleted = progressPercent >= 0.9f
-    val remainingMinutes = if (progress != null && duration != null && !isCompleted) {
-        ((duration!! - progress!!) / 60000).toInt()
-    } else {
-        null
-    }
+    val progressState = rememberEpisodeProgress(
+        episode = config.episode,
+        series = config.series,
+        watchProgressService = config.watchProgressService
+    )
     
     // Border color with animation
     val borderColor by animateColorAsState(
@@ -637,48 +649,33 @@ private fun EpisodeDetailCard(
             .focusRequester(cardFocusRequester)
             .onFocusChanged { focusState ->
                 isFocusedState = focusState.isFocused
-                onFocusChanged(focusState.isFocused)
+                callbacks.onFocusChanged(focusState.isFocused)
             }
             .focusable()
             .onDpadDirection(
                 onLeft = {
-                    onNavigateLeft()
+                    callbacks.onNavigateLeft()
                     true
                 },
                 onRight = {
-                    onNavigateRight()
+                    callbacks.onNavigateRight()
                     true
                 }
             )
-            .onClick(onClick)
+            .onClick(callbacks.onClick)
             .padding(12.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth()
         ) {
             // Thumbnail
-            episode.info?.movieImage?.let { imageUrl ->
-                if (imageUrl.isNotEmpty()) {
-                    val painter = rememberAsyncImagePainter(model = imageUrl)
-                    val imageState = painter.state
-                    
-                    if (imageState !is AsyncImagePainter.State.Error) {
-                        Image(
-                            painter = painter,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(180.dp)
-                                .padding(bottom = 8.dp),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                }
-            }
+            EpisodeThumbnail(
+                imageUrl = config.episode.info?.movieImage
+            )
             
             // Episode number and title
-            val episodeNum = episode.episodeNum ?: episode.id
-            val episodeTitle = "S${season.seasonNumber}E$episodeNum - ${episode.title}"
+            val episodeNum = config.episode.episodeNum ?: config.episode.id
+            val episodeTitle = "S${config.season.seasonNumber}E$episodeNum - ${config.episode.title}"
             
             Text(
                 text = episodeTitle,
@@ -691,21 +688,17 @@ private fun EpisodeDetailCard(
             )
             
             // Description
-            episode.info?.plot?.let { plot ->
-                if (plot.isNotEmpty()) {
-                    Text(
-                        text = plot,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-                }
-            }
+            OptionalMetadataText(
+                content = config.episode.info?.plot,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
             
             // Duration
-            episode.info?.duration?.let { durationStr ->
+            config.episode.info?.duration?.let { durationStr ->
                 Text(
                     text = formatDuration(durationStr),
                     style = MaterialTheme.typography.bodySmall,
@@ -715,46 +708,145 @@ private fun EpisodeDetailCard(
             }
             
             // Progress bar or checkmark
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            EpisodeProgressIndicator(
+                progressState = progressState,
+                colors = colors
+            )
+        }
+    }
+}
+
+@Composable
+private fun rememberEpisodeProgress(
+    episode: Episode,
+    series: Series,
+    watchProgressService: WatchProgressService
+): EpisodeCardState {
+    var progress by remember { mutableStateOf<Long?>(null) }
+    var duration by remember { mutableStateOf<Long?>(null) }
+    
+    LaunchedEffect(episode.id) {
+        progress = watchProgressService.getProgress(
+            contentType = "series",
+            streamId = null,
+            seriesId = series.seriesId,
+            episodeId = episode.id
+        )
+        
+        // Parse duration from episode.info?.duration
+        episode.info?.duration?.let { durationStr ->
+            // Duration is typically in seconds or "HH:MM:SS" format
+            duration = try {
+                durationStr.toLongOrNull()?.times(1000) // Convert seconds to milliseconds
+                    ?: parseDurationString(durationStr)?.times(1000)
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+    
+    // Calculate progress percentage
+    val progressPercent = if (progress != null && duration != null && duration!! > 0) {
+        (progress!!.toFloat() / duration!!.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    
+    val isCompleted = progressPercent >= 0.9f
+    val remainingMinutes = if (progress != null && duration != null && !isCompleted) {
+        ((duration!! - progress!!) / 60000).toInt()
+    } else {
+        null
+    }
+    
+    return EpisodeCardState(
+        progressPercent = progressPercent,
+        isCompleted = isCompleted,
+        remainingMinutes = remainingMinutes
+    )
+}
+
+@Composable
+private fun EpisodeThumbnail(
+    imageUrl: String?
+) {
+    imageUrl?.let { url ->
+        if (url.isNotEmpty()) {
+            val painter = rememberAsyncImagePainter(model = url)
+            val imageState = painter.state
+            
+            if (imageState !is AsyncImagePainter.State.Error) {
+                Image(
+                    painter = painter,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .padding(bottom = 8.dp),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EpisodeProgressIndicator(
+    progressState: EpisodeCardState,
+    colors: AppColors
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (progressState.isCompleted) {
+            // Checkmark for completed episodes
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = "Abgeschlossen",
+                tint = colors.accentColor,
+                modifier = Modifier.size(24.dp)
+            )
+        } else if (progressState.progressPercent > 0f) {
+            // Progress bar
+            Column(
+                modifier = Modifier.fillMaxWidth()
             ) {
-                if (isCompleted) {
-                    // Checkmark for completed episodes
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "Abgeschlossen",
-                        tint = colors.accentColor,
-                        modifier = Modifier.size(24.dp)
+                LinearProgressIndicator(
+                    progress = progressState.progressPercent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                    color = colors.accentColor,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+                
+                // Remaining time
+                progressState.remainingMinutes?.let { minutes ->
+                    Text(
+                        text = "${minutes}m verbleibend",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 4.dp)
                     )
-                } else if (progressPercent > 0f) {
-                    // Progress bar
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        LinearProgressIndicator(
-                            progress = progressPercent,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp),
-                            color = colors.accentColor,
-                            trackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                        
-                        // Remaining time
-                        remainingMinutes?.let { minutes ->
-                            Text(
-                                text = "${minutes}m verbleibend",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                    }
                 }
             }
         }
+    }
+}
+
+/**
+ * Update episode index based on navigation direction
+ */
+private fun updateEpisodeIndex(
+    currentIndex: Int,
+    maxIndex: Int,
+    direction: NavigationDirection
+): Int {
+    return when (direction) {
+        NavigationDirection.LEFT -> (currentIndex - 1).coerceAtLeast(0)
+        NavigationDirection.RIGHT -> (currentIndex + 1).coerceAtMost(maxIndex)
     }
 }
 

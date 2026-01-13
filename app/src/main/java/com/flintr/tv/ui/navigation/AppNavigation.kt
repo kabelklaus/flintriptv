@@ -288,7 +288,6 @@ fun AppNavigation(
                     series = selectedSeries!!,
                     mainViewModel = mainViewModel,
                     watchProgressService = dependencies.watchProgressService,
-                    credentialsRepository = dependencies.credentialsRepository,
                     onBack = { navController.popBackStack() },
                     onEpisodeClick = { episode ->
                         val creds = dependencies.credentialsRepository.getCredentials()
