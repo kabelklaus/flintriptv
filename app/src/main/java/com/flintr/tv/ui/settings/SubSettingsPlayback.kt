@@ -27,7 +27,6 @@ import com.flintr.tv.ui.utils.onDpadDirection
 @Composable
 fun SettingsPlayback(
     onBack: () -> Unit,
-    onNavigateLeft: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = appColors()

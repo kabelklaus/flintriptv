@@ -37,7 +37,6 @@ import com.flintr.tv.data.local.CredentialsRepository
 @Composable
 fun SettingsConnection(
     onBack: () -> Unit,
-    onNavigateLeft: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsConnectionViewModel = hiltViewModel(),
     credentialsRepository: CredentialsRepository

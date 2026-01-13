@@ -33,7 +33,6 @@ import androidx.compose.runtime.collectAsState
 @Composable
 fun SettingsGeneral(
     onBack: () -> Unit,
-    onNavigateLeft: () -> Unit,
     categoryVisibilityService: CategoryVisibilityService,
     onNavigateToHiddenCategories: () -> Unit,
     modifier: Modifier = Modifier

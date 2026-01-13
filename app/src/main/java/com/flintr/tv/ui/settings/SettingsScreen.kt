@@ -112,7 +112,6 @@ fun SettingsScreen(
                     onBack = {
                         currentDestination = SettingsDestination.Main
                     },
-                    onNavigateLeft = onNavigateLeft,
                     credentialsRepository = credentialsRepository
                 )
             }
@@ -120,8 +119,7 @@ fun SettingsScreen(
                 SettingsPlayback(
                     onBack = {
                         currentDestination = SettingsDestination.Main
-                    },
-                    onNavigateLeft = onNavigateLeft
+                    }
                 )
             }
             is SettingsDestination.General -> {
@@ -129,7 +127,6 @@ fun SettingsScreen(
                     onBack = {
                         currentDestination = SettingsDestination.Main
                     },
-                    onNavigateLeft = onNavigateLeft,
                     categoryVisibilityService = categoryVisibilityService,
                     onNavigateToHiddenCategories = {
                         currentDestination = SettingsDestination.HiddenCategories
@@ -140,8 +137,7 @@ fun SettingsScreen(
                 SettingsInfo(
                     onBack = {
                         currentDestination = SettingsDestination.Main
-                    },
-                    onNavigateLeft = onNavigateLeft
+                    }
                 )
             }
             is SettingsDestination.HiddenCategories -> {
