@@ -9,15 +9,15 @@ object SharedColors {
     // Brand/Accent colors
     val primary = Color(0xFF1152D4)
     val primaryHover = Color(0xFF0E42A8)
-    val primaryHoverBg = Color(0x1A1152D4) // rgba(17, 82, 212, 0.1)
-    val primaryBorderLight = Color(0x331152D4) // rgba(17, 82, 212, 0.2)
+    val primaryHoverBg = Color(0x1A1152D4)
+    val primaryBorderLight = Color(0x331152D4)
     
     // Semantic colors
     val blocked = Color(0xFFEF4444)
-    val error = Color(0xFFEF4444) // Error color (same as blocked)
+    val error = Color(0xFFEF4444)
     val proBadge = Color(0xFF9334E6)
     val success = Color(0xFF4CAF50)
-    val successGreen = Color(0xFF10B981) // Success green for updates
+    val successGreen = Color(0xFF10B981)
     
     // Avatar colors
     val avatarPlaceholder = Color(0xFF9AA0A6)
@@ -44,10 +44,10 @@ object SharedColors {
     val overlayWhite = Color(0xFFFFFFFF)
     
     // Slate colors
-    val slate400 = Color(0xFF94A3B8) // Used for categoryChannelCountText in both themes
+    val slate400 = Color(0xFF94A3B8)
     
     // Content Card colors
-    val contentCardRatingIconColor = Color(0xFFFFC107) // Material Amber
+    val contentCardRatingIconColor = Color(0xFFFFC107)
 }
 
 /**
@@ -57,8 +57,8 @@ object LightColors {
     // Background colors
     val bgSidebar = Color(0xFFF5F5F5)
     val bgSidebarCard = SharedColors.sidebarCard
-    val bgList = Color(0xFFF6F6F8) // background-light
-    val bgPreview = Color(0xFFF6F6F8) // background-light
+    val bgList = Color(0xFFF6F6F8)
+    val bgPreview = Color(0xFFF6F6F8)
     val bgSelected = Color(0xFFE8F0FE)
     val bgHover = Color(0xFFF1F3F4)
     val bgCard = Color(0xFFF8F9FA)
@@ -131,8 +131,8 @@ object LightColors {
     val overlayWhite = SharedColors.overlayWhite
     
     // Category Sidebar colors
-    val categoryHoverBg = Color(0xFFE2E8F0) // slate-200
-    val categoryDefaultText = Color(0xFF475569) // slate-600
+    val categoryHoverBg = Color(0xFFE2E8F0)
+    val categoryDefaultText = Color(0xFF475569)
     val categoryChannelCountText = SharedColors.slate400
 }
 
@@ -141,13 +141,13 @@ object LightColors {
  */
 object DarkColors {
     // Background colors
-    val bgSidebar = Color(0xFF151B26) // surface-darker
+    val bgSidebar = Color(0xFF151B26)
     val bgSidebarCard = SharedColors.sidebarCard
-    val bgList = Color(0xFF101622) // background-dark
-    val bgPreview = Color(0xFF101622) // background-dark
+    val bgList = Color(0xFF101622)
+    val bgPreview = Color(0xFF101622)
     val bgSelected = Color(0xFF414B5C)
     val bgHover = Color(0xFF2D2E30)
-    val bgCard = Color(0xFF1A2230) // surface-dark
+    val bgCard = Color(0xFF1A2230)
     
     // Border colors
     val cardBorder = Color(0xFF3C4043)
@@ -171,7 +171,7 @@ object DarkColors {
     
     // Semantic colors
     val dangerBg = Color(0xFF3B0A0A)
-    val dangerBorder = Color(0x73F87171) // rgba(248, 113, 113, 0.45)
+    val dangerBorder = Color(0x73F87171)
     val dangerText = Color(0xFFFECACA)
     val successColor = SharedColors.success
     val errorColor = SharedColors.error
@@ -217,8 +217,8 @@ object DarkColors {
     val overlayWhite = SharedColors.overlayWhite
     
     // Category Sidebar colors
-    val categoryHoverBg = Color(0x0DFFFFFF) // white/5 (5% opacity)
-    val categoryDefaultText = Color(0xFFCBD5E1) // slate-300
+    val categoryHoverBg = Color(0x0DFFFFFF)
+    val categoryDefaultText = Color(0xFFCBD5E1)
     val categoryChannelCountText = SharedColors.slate400
 }
 
@@ -235,7 +235,7 @@ val OnSurface = DarkColors.textPrimary
 val OnError = Color(0xFFFFFFFF)
 
 // TV Focus Colors (legacy compatibility)
-val FocusHighlight = Color(0xFF03DAC6) // Teal accent color for focus indicators
+val FocusHighlight = Color(0xFF03DAC6)
 val FocusBackground = Color(0xFF2A2A2A)
 val black = Color(0xFF000000)
 

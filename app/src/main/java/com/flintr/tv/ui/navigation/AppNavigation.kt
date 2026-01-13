@@ -176,7 +176,7 @@ fun AppNavigation(
 
         composable(Screen.DataLoading.route) {
             DataLoadingScreen(
-                onLoadingComplete = { cachedData ->
+                onLoadingComplete = { _ ->
                     // Refresh MainViewModel data after successful loading
                     mainViewModel.refreshData()
                     navController.navigate(Screen.Main.route) {
@@ -715,7 +715,7 @@ fun MainContentScreen(
                 is HomeDestination.EPG -> {
                     EPGContent(
                         viewModel = mainViewModel,
-                        onProgramClick = { program, stream ->
+                        onProgramClick = { _, stream ->
                             val creds = credentials ?: return@EPGContent
                             val streamUrl = stream.getStreamUrl(
                                 creds.serverUrl,
