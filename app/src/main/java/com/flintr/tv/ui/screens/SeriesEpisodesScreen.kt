@@ -7,8 +7,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -28,12 +26,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.flintr.tv.data.local.CredentialsRepository
@@ -79,15 +76,18 @@ fun SeriesEpisodesScreen(
     // Scroll state for auto-scrolling to selected season
     val scrollState = rememberScrollState()
     
+    // Dynamic measurements for header and season heights
+    var headerHeight by remember { mutableStateOf(0) }
+    var seasonHeight by remember { mutableStateOf(0) }
+    
     // Auto-scroll when season changes
-    LaunchedEffect(selectedSeasonIndex) {
-        // Scroll to show the selected season
-        kotlinx.coroutines.delay(100)
-        // Calculate approximate position (header height + spacing)
-        val headerHeight = 400 // Approximate header height
-        val seasonHeight = 300 // Approximate season height
-        val targetPosition = headerHeight + (selectedSeasonIndex * seasonHeight)
-        scrollState.animateScrollTo(targetPosition.coerceAtMost(scrollState.maxValue))
+    LaunchedEffect(selectedSeasonIndex, headerHeight, seasonHeight) {
+        if (headerHeight > 0 && seasonHeight > 0) {
+            // Scroll to show the selected season
+            kotlinx.coroutines.delay(100)
+            val targetPosition = headerHeight + (selectedSeasonIndex * seasonHeight)
+            scrollState.animateScrollTo(targetPosition.coerceAtMost(scrollState.maxValue))
+        }
     }
     
     Box(
@@ -143,7 +143,11 @@ fun SeriesEpisodesScreen(
             // Series Header
             SeriesHeader(
                 series = displaySeries,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coordinates ->
+                        headerHeight = coordinates.size.height
+                    }
             )
             
             Spacer(modifier = Modifier.height(32.dp))
@@ -160,7 +164,14 @@ fun SeriesEpisodesScreen(
                 watchProgressService = watchProgressService,
                 credentialsRepository = credentialsRepository,
                 onEpisodeClick = onEpisodeClick,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coordinates ->
+                        if (seasonHeight == 0) {
+                            // Only set once, use first season as reference
+                            seasonHeight = coordinates.size.height
+                        }
+                    }
             )
         }
     }
@@ -413,7 +424,6 @@ private fun EpisodesList(
 ) {
     var focusedEpisodeIndex by remember { mutableStateOf(0) }
     val listState = rememberLazyListState()
-    val colors = appColors()
     val firstEpisodeFocusRequester = remember { FocusRequester() }
     
     // Set initial focus on first episode when list is displayed
@@ -456,19 +466,7 @@ private fun EpisodesList(
         LazyRow(
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures { change, dragAmount ->
-                        if (dragAmount > 0 && focusedEpisodeIndex > 0) {
-                            // Swipe right - previous episode
-                            focusedEpisodeIndex--
-                        } else if (dragAmount < 0 && focusedEpisodeIndex < episodes.size - 1) {
-                            // Swipe left - next episode
-                            focusedEpisodeIndex++
-                        }
-                    }
-                }
+            modifier = Modifier.fillMaxWidth()
         ) {
             items(
                 items = episodes,
@@ -592,11 +590,16 @@ private fun EpisodeDetailCard(
     // Request focus when isFocused changes
     LaunchedEffect(isFocused) {
         if (isFocused) {
-            kotlinx.coroutines.delay(50) // Small delay to ensure proper focus handling
             try {
                 cardFocusRequester.requestFocus()
             } catch (e: Exception) {
-                // FocusRequester might not be ready yet
+                // FocusRequester might not be ready yet, retry after short delay
+                kotlinx.coroutines.delay(50)
+                try {
+                    cardFocusRequester.requestFocus()
+                } catch (e2: Exception) {
+                    // Ignore if still not ready
+                }
             }
         }
     }

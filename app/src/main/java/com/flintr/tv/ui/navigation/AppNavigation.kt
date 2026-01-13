@@ -52,6 +52,8 @@ import com.flintr.tv.viewmodel.UpdateViewModel
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import com.flintr.tv.utils.loadPackageInfo
@@ -271,16 +273,16 @@ fun AppNavigation(
         ) { backStackEntry ->
             val seriesId = backStackEntry.arguments?.getInt("seriesId") ?: -1
             
-            // Load series info if not already loaded
+            val selectedSeries by mainViewModel.selectedSeries.collectAsState()
+            
+            // Load series info only if not already loaded for this seriesId
             LaunchedEffect(seriesId) {
-                if (seriesId >= 0) {
+                if (seriesId >= 0 && selectedSeries?.seriesId != seriesId) {
                     mainViewModel.loadSeriesInfo(seriesId)
                 }
             }
             
-            val selectedSeries by mainViewModel.selectedSeries.collectAsState()
-            
-            if (selectedSeries != null) {
+            if (selectedSeries != null && selectedSeries!!.seriesId == seriesId) {
                 SeriesEpisodesScreen(
                     series = selectedSeries!!,
                     mainViewModel = mainViewModel,
@@ -309,9 +311,12 @@ fun AppNavigation(
                     }
                 )
             } else {
-                // Show loading or error state
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // Loading indicator or error message
+                // Show loading state
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
                 }
             }
         }

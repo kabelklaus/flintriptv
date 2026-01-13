@@ -1,40 +1,21 @@
 package com.flintr.tv.ui.tabs
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.shadow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.Episode
-import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
-import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.components.VODCard
-import com.flintr.tv.ui.theme.Dimensions
-import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onClick
+import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.viewmodel.MainViewModel
 
 @Composable
