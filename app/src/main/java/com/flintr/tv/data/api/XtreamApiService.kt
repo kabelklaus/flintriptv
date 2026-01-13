@@ -85,7 +85,7 @@ interface XtreamApiService {
         @Query("password") password: String,
         @Query("action") action: String = "get_series_info",
         @Query("series_id") seriesId: Int
-    ): Response<Series>
+    ): Response<com.flintr.tv.data.model.SeriesInfoResponse>
     
     @GET("player_api.php")
     suspend fun getShortEpg(

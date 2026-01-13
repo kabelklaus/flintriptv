@@ -43,14 +43,18 @@ import com.flintr.tv.ui.settings.SettingsScreen
 import com.flintr.tv.ui.tabs.LiveTVContent
 import com.flintr.tv.ui.tabs.VODContent
 import com.flintr.tv.ui.tabs.SeriesContent
+import com.flintr.tv.ui.tabs.SeriesContentParams
 import com.flintr.tv.ui.tabs.FavoritesContent
 import com.flintr.tv.ui.tabs.FavoritesContentParams
+import com.flintr.tv.ui.screens.SeriesEpisodesScreen
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import com.flintr.tv.utils.loadPackageInfo
@@ -83,6 +87,12 @@ sealed class Screen(val route: String) {
         
         fun createRouteForLive(streamUrl: String): String {
             return createRoute(streamUrl)
+        }
+    }
+    
+    object SeriesEpisodes : Screen("series_episodes/{seriesId}") {
+        fun createRoute(seriesId: Int): String {
+            return "series_episodes/$seriesId"
         }
     }
 }
@@ -252,6 +262,77 @@ fun AppNavigation(
                 watchProgressService = dependencies.watchProgressService,
                 onBack = { navController.popBackStack() }
             )
+        }
+        
+        composable(
+            route = Screen.SeriesEpisodes.route,
+            arguments = listOf(
+                navArgument("seriesId") {
+                    type = NavType.IntType
+                }
+            )
+        ) { backStackEntry ->
+            val seriesId = backStackEntry.arguments?.getInt("seriesId") ?: -1
+            SeriesEpisodesRoute(
+                seriesId = seriesId,
+                mainViewModel = mainViewModel,
+                dependencies = dependencies,
+                navController = navController
+            )
+        }
+    }
+}
+
+@Composable
+private fun SeriesEpisodesRoute(
+    seriesId: Int,
+    mainViewModel: MainViewModel,
+    dependencies: AppNavigationDependencies,
+    navController: NavHostController
+) {
+    val selectedSeries by mainViewModel.selectedSeries.collectAsState()
+    
+    // Load series info only if not already loaded for this seriesId
+    LaunchedEffect(seriesId) {
+        if (seriesId >= 0 && selectedSeries?.seriesId != seriesId) {
+            mainViewModel.loadSeriesInfo(seriesId)
+        }
+    }
+    
+    if (selectedSeries != null && selectedSeries!!.seriesId == seriesId) {
+        SeriesEpisodesScreen(
+            series = selectedSeries!!,
+            mainViewModel = mainViewModel,
+            watchProgressService = dependencies.watchProgressService,
+            onBack = { navController.popBackStack() },
+            onEpisodeClick = { episode ->
+                val creds = dependencies.credentialsRepository.getCredentials()
+                if (creds != null) {
+                    val streamUrl = episode.getStreamUrl(
+                        creds.serverUrl,
+                        creds.username,
+                        creds.password,
+                        selectedSeries!!.seriesId
+                    )
+                    val route = Screen.Player.createRouteForSeries(
+                        streamUrl,
+                        selectedSeries!!.seriesId,
+                        episode.id,
+                        episode.title
+                    )
+                    navController.logAndNavigate(route, "AppNavigation") {
+                        "📺 SeriesEpisodes onClick - episode.title: ${episode.title}, seriesId: ${selectedSeries!!.seriesId}, episodeId: ${episode.id}, streamUrl: $streamUrl, route: $route"
+                    }
+                }
+            }
+        )
+    } else {
+        // Show loading state
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
         }
     }
 }
@@ -605,24 +686,19 @@ fun MainContentScreen(
                 }
                 is HomeDestination.Series -> {
                     SeriesContent(
-                        viewModel = mainViewModel,
-                        selectedCategoryId = selectedCategoryId,
-                        focusRequester = contentListFocusRequester,
-                        favoritesRepository = favoritesRepository,
-                        onNavigateLeft = { moveFocusToCategorySidebar() },
-                        onEpisodeClick = { episode, series ->
-                            val creds = credentials ?: return@SeriesContent
-                            val streamUrl = episode.getStreamUrl(
-                                creds.serverUrl,
-                                creds.username,
-                                creds.password,
-                                series.seriesId
-                            )
-                            val route = Screen.Player.createRouteForSeries(streamUrl, series.seriesId, episode.id, episode.title)
-                            navController.logAndNavigate(route, "AppNavigation") {
-                                "📺 Series onClick - episode.title: ${episode.title}, seriesId: ${series.seriesId}, episodeId: ${episode.id}, streamUrl: $streamUrl, route: $route"
+                        params = SeriesContentParams(
+                            viewModel = mainViewModel,
+                            selectedCategoryId = selectedCategoryId,
+                            focusRequester = contentListFocusRequester,
+                            favoritesRepository = favoritesRepository,
+                            onNavigateLeft = { moveFocusToCategorySidebar() },
+                            onSeriesClick = { series ->
+                                val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
+                                navController.logAndNavigate(route, "AppNavigation") {
+                                    "📺 Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
+                                }
                             }
-                        }
+                        )
                     )
                 }
                 is HomeDestination.EPG -> {
