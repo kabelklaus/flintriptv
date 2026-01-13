@@ -273,52 +273,66 @@ fun AppNavigation(
             )
         ) { backStackEntry ->
             val seriesId = backStackEntry.arguments?.getInt("seriesId") ?: -1
-            
-            val selectedSeries by mainViewModel.selectedSeries.collectAsState()
-            
-            // Load series info only if not already loaded for this seriesId
-            LaunchedEffect(seriesId) {
-                if (seriesId >= 0 && selectedSeries?.seriesId != seriesId) {
-                    mainViewModel.loadSeriesInfo(seriesId)
-                }
-            }
-            
-            if (selectedSeries != null && selectedSeries!!.seriesId == seriesId) {
-                SeriesEpisodesScreen(
-                    series = selectedSeries!!,
-                    mainViewModel = mainViewModel,
-                    watchProgressService = dependencies.watchProgressService,
-                    onBack = { navController.popBackStack() },
-                    onEpisodeClick = { episode ->
-                        val creds = dependencies.credentialsRepository.getCredentials()
-                        if (creds != null) {
-                            val streamUrl = episode.getStreamUrl(
-                                creds.serverUrl,
-                                creds.username,
-                                creds.password,
-                                selectedSeries!!.seriesId
-                            )
-                            val route = Screen.Player.createRouteForSeries(
-                                streamUrl,
-                                selectedSeries!!.seriesId,
-                                episode.id,
-                                episode.title
-                            )
-                            navController.logAndNavigate(route, "AppNavigation") {
-                                "📺 SeriesEpisodes onClick - episode.title: ${episode.title}, seriesId: ${selectedSeries!!.seriesId}, episodeId: ${episode.id}, streamUrl: $streamUrl, route: $route"
-                            }
-                        }
+            SeriesEpisodesRoute(
+                seriesId = seriesId,
+                mainViewModel = mainViewModel,
+                dependencies = dependencies,
+                navController = navController
+            )
+        }
+    }
+}
+
+@Composable
+private fun SeriesEpisodesRoute(
+    seriesId: Int,
+    mainViewModel: MainViewModel,
+    dependencies: AppNavigationDependencies,
+    navController: NavHostController
+) {
+    val selectedSeries by mainViewModel.selectedSeries.collectAsState()
+    
+    // Load series info only if not already loaded for this seriesId
+    LaunchedEffect(seriesId) {
+        if (seriesId >= 0 && selectedSeries?.seriesId != seriesId) {
+            mainViewModel.loadSeriesInfo(seriesId)
+        }
+    }
+    
+    if (selectedSeries != null && selectedSeries!!.seriesId == seriesId) {
+        SeriesEpisodesScreen(
+            series = selectedSeries!!,
+            mainViewModel = mainViewModel,
+            watchProgressService = dependencies.watchProgressService,
+            onBack = { navController.popBackStack() },
+            onEpisodeClick = { episode ->
+                val creds = dependencies.credentialsRepository.getCredentials()
+                if (creds != null) {
+                    val streamUrl = episode.getStreamUrl(
+                        creds.serverUrl,
+                        creds.username,
+                        creds.password,
+                        selectedSeries!!.seriesId
+                    )
+                    val route = Screen.Player.createRouteForSeries(
+                        streamUrl,
+                        selectedSeries!!.seriesId,
+                        episode.id,
+                        episode.title
+                    )
+                    navController.logAndNavigate(route, "AppNavigation") {
+                        "📺 SeriesEpisodes onClick - episode.title: ${episode.title}, seriesId: ${selectedSeries!!.seriesId}, episodeId: ${episode.id}, streamUrl: $streamUrl, route: $route"
                     }
-                )
-            } else {
-                // Show loading state
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
                 }
             }
+        )
+    } else {
+        // Show loading state
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
         }
     }
 }

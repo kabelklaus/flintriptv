@@ -71,6 +71,14 @@ private data class EpisodeCardCallbacks(
     val onNavigateRight: () -> Unit
 )
 
+private data class SeasonNavigationParams(
+    val seasons: List<Season>,
+    val selectedSeasonIndex: Int,
+    val selectedSeason: Season?,
+    val series: Series,
+    val watchProgressService: WatchProgressService
+)
+
 @Composable
 fun SeriesEpisodesScreen(
     series: Series,
@@ -179,14 +187,16 @@ fun SeriesEpisodesScreen(
             
             // Season Navigation
             SeasonNavigation(
-                seasons = sortedSeasons,
-                selectedSeasonIndex = selectedSeasonIndex,
+                params = SeasonNavigationParams(
+                    seasons = sortedSeasons,
+                    selectedSeasonIndex = selectedSeasonIndex,
+                    selectedSeason = selectedSeason,
+                    series = displaySeries,
+                    watchProgressService = watchProgressService
+                ),
                 onSeasonSelected = { index ->
                     selectedSeasonIndex = index
                 },
-                selectedSeason = selectedSeason,
-                series = displaySeries,
-                watchProgressService = watchProgressService,
                 onEpisodeClick = onEpisodeClick,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -330,12 +340,8 @@ private fun OptionalMetadataText(
 
 @Composable
 private fun SeasonNavigation(
-    seasons: List<Season>,
-    selectedSeasonIndex: Int,
+    params: SeasonNavigationParams,
     onSeasonSelected: (Int) -> Unit,
-    selectedSeason: Season?,
-    series: Series,
-    watchProgressService: WatchProgressService,
     onEpisodeClick: (Episode) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -343,7 +349,7 @@ private fun SeasonNavigation(
         modifier = modifier
     ) {
         // Season Selector - Horizontal list of season buttons
-        if (seasons.size > 1) {
+        if (params.seasons.size > 1) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
@@ -351,13 +357,13 @@ private fun SeasonNavigation(
                     .padding(bottom = 16.dp)
             ) {
                 items(
-                    items = seasons,
+                    items = params.seasons,
                     key = { it.seasonNumber }
                 ) { season ->
-                    val seasonIndex = seasons.indexOf(season)
+                    val seasonIndex = params.seasons.indexOf(season)
                     SeasonButton(
                         season = season,
-                        isSelected = seasonIndex == selectedSeasonIndex,
+                        isSelected = seasonIndex == params.selectedSeasonIndex,
                         onSelect = { onSeasonSelected(seasonIndex) }
                     )
                 }
@@ -365,9 +371,9 @@ private fun SeasonNavigation(
         }
         
         // Season Title
-        if (selectedSeason != null) {
+        if (params.selectedSeason != null) {
             Text(
-                text = "Staffel ${selectedSeason.seasonNumber}",
+                text = "Staffel ${params.selectedSeason.seasonNumber}",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
@@ -376,12 +382,12 @@ private fun SeasonNavigation(
         }
         
         // Episodes List for selected season
-        selectedSeason?.episodes?.let { episodes ->
+        params.selectedSeason?.episodes?.let { episodes ->
             EpisodesList(
                 episodes = episodes,
-                season = selectedSeason,
-                series = series,
-                watchProgressService = watchProgressService,
+                season = params.selectedSeason,
+                series = params.series,
+                watchProgressService = params.watchProgressService,
                 onEpisodeClick = onEpisodeClick,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -556,6 +562,44 @@ private fun EpisodesList(
     }
 }
 
+/**
+ * Extension function to conditionally apply shadow modifier for focused episode cards
+ */
+private fun Modifier.episodeCardShadow(
+    isFocused: Boolean,
+    elevation: Float,
+    accentColor: Color
+): Modifier {
+    return if (isFocused) {
+        this.shadow(
+            elevation = elevation.dp,
+            shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
+            spotColor = accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
+            ambientColor = accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
+        )
+    } else {
+        this
+    }
+}
+
+/**
+ * Extension function to conditionally apply border modifier for episode cards
+ */
+private fun Modifier.conditionalBorder(
+    borderColor: Color,
+    shape: RoundedCornerShape
+): Modifier {
+    return if (borderColor != Color.Transparent) {
+        this.border(
+            width = Dimensions.listItemHoverBorderWidth,
+            color = borderColor,
+            shape = shape
+        )
+    } else {
+        this
+    }
+}
+
 @Composable
 private fun EpisodeDetailCard(
     config: EpisodeCardConfig,
@@ -616,35 +660,23 @@ private fun EpisodeDetailCard(
         }
     }
     
+    val cardShape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
+    
     Box(
         modifier = modifier
             .width(300.dp)
-            .then(
-                if (isFocused) {
-                    Modifier.shadow(
-                        elevation = shadowElevation.dp,
-                        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
-                        spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
-                        ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
-                    )
-                } else {
-                    Modifier
-                }
+            .episodeCardShadow(
+                isFocused = isFocused,
+                elevation = shadowElevation,
+                accentColor = colors.accentColor
             )
             .background(
                 color = backgroundColor,
-                shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
+                shape = cardShape
             )
-            .then(
-                if (borderColor != Color.Transparent) {
-                    Modifier.border(
-                        width = Dimensions.listItemHoverBorderWidth,
-                        color = borderColor,
-                        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-                    )
-                } else {
-                    Modifier
-                }
+            .conditionalBorder(
+                borderColor = borderColor,
+                shape = cardShape
             )
             .focusRequester(cardFocusRequester)
             .onFocusChanged { focusState ->
