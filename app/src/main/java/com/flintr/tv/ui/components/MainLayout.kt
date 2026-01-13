@@ -94,6 +94,7 @@ fun MainLayout(
     categoryVisibilityService: CategoryVisibilityService,
     categoryType: CategoryType,
     onCategoryHidden: (Category) -> Unit,
+    onSearchClick: () -> Unit = {},
     onNavbarReady: (() -> Unit)? = null,
     onCategorySidebarReady: (() -> Unit)? = null,
     onContentListReady: (() -> Unit)? = null,
@@ -124,6 +125,7 @@ fun MainLayout(
             focusRequester = navbarFocusRequester,
             externalFocusRequested = externalFocusRequested,
             onNavigateRight = createNavbarOnNavigateRight(showCategories, onNavigateToCategorySidebar),
+            onSearchClick = onSearchClick,
             modifier = createNavbarModifier(onNavbarReady)
         )
         
