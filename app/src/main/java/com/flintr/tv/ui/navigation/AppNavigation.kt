@@ -848,8 +848,7 @@ fun MainContentScreen(
                     navController.logAndNavigate(route, "AppNavigation") {
                         "🔍 Search Series onClick - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
                     }
-                },
-                favoritesRepository = favoritesRepository
+                }
             )
         }
     }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -25,7 +26,6 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.SearchState
 import com.flintr.tv.data.model.Series
@@ -39,6 +39,73 @@ import com.flintr.tv.ui.utils.safeRequestFocus
 import kotlinx.coroutines.delay
 
 /**
+ * Handles key events for the search field
+ */
+private fun handleSearchFieldKeyEvent(
+    event: androidx.compose.ui.input.key.KeyEvent,
+    hasResults: Boolean,
+    onNavigateToResults: () -> Unit
+): Boolean {
+    return if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
+        if (hasResults) {
+            onNavigateToResults()
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+/**
+ * Renders search content (hints or results)
+ */
+@Composable
+private fun SearchContent(
+    searchState: SearchState,
+    onLiveStreamClick: (LiveStream) -> Unit,
+    onVodClick: (VodStream) -> Unit,
+    onSeriesClick: (Series) -> Unit,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    resultsListFocusRequester: FocusRequester,
+    onNavigateUpToSearchField: () -> Unit
+) {
+    // Use trimmed length for display logic (original query kept for TextField)
+    val effectiveQueryLength = searchState.query.trim().length
+    
+    when {
+        searchState.showMinLengthHint -> {
+            Text(
+                text = "Mindestens 2 Zeichen eingeben",
+                fontSize = FontSizes.fontSizeMD,
+                color = colors.textSecondary,
+                modifier = Modifier.padding(horizontal = Dimensions.spacingMD)
+            )
+        }
+        effectiveQueryLength >= 2 && !searchState.isSearching && searchState.results.isEmpty -> {
+            Text(
+                text = "Keine Ergebnisse gefunden",
+                fontSize = FontSizes.fontSizeMD,
+                color = colors.textSecondary,
+                modifier = Modifier.padding(horizontal = Dimensions.spacingMD)
+            )
+        }
+        effectiveQueryLength >= 2 && searchState.results.totalCount > 0 -> {
+            SearchResultsList(
+                searchState = searchState,
+                onLiveStreamClick = onLiveStreamClick,
+                onVodClick = onVodClick,
+                onSeriesClick = onSeriesClick,
+                colors = colors,
+                focusRequester = resultsListFocusRequester,
+                onNavigateUp = onNavigateUpToSearchField
+            )
+        }
+    }
+}
+
+/**
  * Fullscreen search overlay optimized for TV navigation
  * Opens when search button is activated and provides a text input field with search results
  */
@@ -49,18 +116,11 @@ fun SearchOverlay(
     onDismiss: () -> Unit,
     onLiveStreamClick: (LiveStream) -> Unit,
     onVodClick: (VodStream) -> Unit,
-    onSeriesClick: (Series) -> Unit,
-    favoritesRepository: FavoritesRepository
+    onSeriesClick: (Series) -> Unit
 ) {
     val colors = appColors()
     val searchFieldFocusRequester = remember { FocusRequester() }
     val resultsListFocusRequester = remember { FocusRequester() }
-    var searchQuery by remember { mutableStateOf("") }
-    
-    // Sync searchQuery with searchState.query
-    LaunchedEffect(searchState.query) {
-        searchQuery = searchState.query
-    }
     
     // Handle Back button
     BackHandler(enabled = true) {
@@ -104,11 +164,8 @@ fun SearchOverlay(
         ) {
             // Search input field
             OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { newQuery ->
-                    searchQuery = newQuery
-                    onQueryChange(newQuery)
-                },
+                value = searchState.query,
+                onValueChange = onQueryChange,
                 placeholder = { 
                     Text(
                         text = "Suchen...",
@@ -136,17 +193,11 @@ fun SearchOverlay(
                     .fillMaxWidth()
                     .focusRequester(searchFieldFocusRequester)
                     .onKeyEvent { event ->
-                        // Navigate to results list when Down is pressed
-                        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown) {
-                            if (searchState.results.totalCount > 0) {
-                                resultsListFocusRequester.requestFocus()
-                                true
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        }
+                        handleSearchFieldKeyEvent(
+                            event = event,
+                            hasResults = searchState.results.totalCount > 0,
+                            onNavigateToResults = { resultsListFocusRequester.requestFocus() }
+                        )
                     },
                 singleLine = true,
                 shape = RoundedCornerShape(Dimensions.radiusMD),
@@ -171,41 +222,31 @@ fun SearchOverlay(
             Spacer(modifier = Modifier.height(Dimensions.spacingMD))
             
             // Search results or hints
-            when {
-                searchState.showMinLengthHint -> {
-                    Text(
-                        text = "Mindestens 2 Zeichen eingeben",
-                        fontSize = FontSizes.fontSizeMD,
-                        color = colors.textSecondary,
-                        modifier = Modifier.padding(horizontal = Dimensions.spacingMD)
-                    )
+            SearchContent(
+                searchState = searchState,
+                onLiveStreamClick = onLiveStreamClick,
+                onVodClick = onVodClick,
+                onSeriesClick = onSeriesClick,
+                colors = colors,
+                resultsListFocusRequester = resultsListFocusRequester,
+                onNavigateUpToSearchField = {
+                    searchFieldFocusRequester.requestFocus()
                 }
-                searchState.query.length >= 2 && !searchState.isSearching && searchState.results.isEmpty -> {
-                    Text(
-                        text = "Keine Ergebnisse gefunden",
-                        fontSize = FontSizes.fontSizeMD,
-                        color = colors.textSecondary,
-                        modifier = Modifier.padding(horizontal = Dimensions.spacingMD)
-                    )
-                }
-                searchState.query.length >= 2 && searchState.results.totalCount > 0 -> {
-                    SearchResultsList(
-                        searchState = searchState,
-                        onLiveStreamClick = onLiveStreamClick,
-                        onVodClick = onVodClick,
-                        onSeriesClick = onSeriesClick,
-                        favoritesRepository = favoritesRepository,
-                        colors = colors,
-                        focusRequester = resultsListFocusRequester,
-                        onNavigateUp = {
-                            searchFieldFocusRequester.requestFocus()
-                        }
-                    )
-                }
-            }
+            )
         }
     }
 }
+
+/**
+ * Data class for type-safe search section definitions
+ */
+private data class SearchSection<T>(
+    val title: String,
+    val items: List<T>,
+    val getName: (T) -> String,
+    val onClick: (T) -> Unit,
+    val categoryId: String
+)
 
 @Composable
 private fun SearchResultsList(
@@ -213,23 +254,45 @@ private fun SearchResultsList(
     onLiveStreamClick: (LiveStream) -> Unit,
     onVodClick: (VodStream) -> Unit,
     onSeriesClick: (Series) -> Unit,
-    favoritesRepository: FavoritesRepository,
     colors: com.flintr.tv.ui.theme.AppColors,
     focusRequester: FocusRequester,
     onNavigateUp: () -> Unit
 ) {
-    // Track if we have any results to determine first item
-    val hasResults = searchState.results.totalCount > 0
     val firstItemFocusRequester = remember { FocusRequester() }
     var firstItemRendered by remember { mutableStateOf(false) }
     
-    // Determine which category comes first
-    val firstCategory = when {
-        searchState.results.liveTV.isNotEmpty() -> "liveTV"
-        searchState.results.vod.isNotEmpty() -> "vod"
-        searchState.results.series.isNotEmpty() -> "series"
-        else -> null
+    // Build sections list
+    val sections = buildList {
+        if (searchState.results.liveTV.isNotEmpty()) {
+            add(SearchSection(
+                title = "LiveTV",
+                items = searchState.results.liveTV,
+                getName = { it.name },
+                onClick = { onLiveStreamClick(it) },
+                categoryId = "liveTV"
+            ))
+        }
+        if (searchState.results.vod.isNotEmpty()) {
+            add(SearchSection(
+                title = "Movies",
+                items = searchState.results.vod,
+                getName = { it.name },
+                onClick = { onVodClick(it) },
+                categoryId = "vod"
+            ))
+        }
+        if (searchState.results.series.isNotEmpty()) {
+            add(SearchSection(
+                title = "Series",
+                items = searchState.results.series,
+                getName = { it.name },
+                onClick = { onSeriesClick(it) },
+                categoryId = "series"
+            ))
+        }
     }
+    
+    val firstCategory = sections.firstOrNull()?.categoryId
     
     // Reset firstItemRendered when results change
     LaunchedEffect(searchState.results.totalCount) {
@@ -243,65 +306,47 @@ private fun SearchResultsList(
         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
         contentPadding = PaddingValues(horizontal = Dimensions.spacingMD)
     ) {
-        // LiveTV results
-        if (searchState.results.liveTV.isNotEmpty()) {
-            item {
-                SearchSectionHeader("LiveTV (${searchState.results.liveTV.size})", colors)
-            }
-            items(searchState.results.liveTV) { stream ->
-                val isFirstItem = firstCategory == "liveTV" && !firstItemRendered
-                if (isFirstItem) {
-                    firstItemRendered = true
-                }
-                SearchResultItem(
-                    title = stream.name,
-                    onClick = { onLiveStreamClick(stream) },
-                    colors = colors,
-                    focusRequester = if (isFirstItem) firstItemFocusRequester else null,
-                    onNavigateUp = if (isFirstItem) onNavigateUp else null
-                )
-            }
+        sections.forEach { section ->
+            searchSection(
+                section = section,
+                firstCategory = firstCategory,
+                firstItemRendered = firstItemRendered,
+                onFirstItemRendered = { firstItemRendered = true },
+                colors = colors,
+                firstItemFocusRequester = firstItemFocusRequester,
+                onNavigateUp = onNavigateUp
+            )
         }
-        
-        // VOD results
-        if (searchState.results.vod.isNotEmpty()) {
-            item {
-                SearchSectionHeader("Movies (${searchState.results.vod.size})", colors)
-            }
-            items(searchState.results.vod) { vod ->
-                val isFirstItem = firstCategory == "vod" && !firstItemRendered
-                if (isFirstItem) {
-                    firstItemRendered = true
-                }
-                SearchResultItem(
-                    title = vod.name,
-                    onClick = { onVodClick(vod) },
-                    colors = colors,
-                    focusRequester = if (isFirstItem) firstItemFocusRequester else null,
-                    onNavigateUp = if (isFirstItem) onNavigateUp else null
-                )
-            }
+    }
+}
+
+/**
+ * Helper function to render a search section in LazyColumn
+ */
+private fun <T> LazyListScope.searchSection(
+    section: SearchSection<T>,
+    firstCategory: String?,
+    firstItemRendered: Boolean,
+    onFirstItemRendered: () -> Unit,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    firstItemFocusRequester: FocusRequester,
+    onNavigateUp: () -> Unit
+) {
+    item {
+        SearchSectionHeader("${section.title} (${section.items.size})", colors)
+    }
+    items(section.items) { item ->
+        val isFirstItem = section.categoryId == firstCategory && !firstItemRendered
+        if (isFirstItem) {
+            onFirstItemRendered()
         }
-        
-        // Series results
-        if (searchState.results.series.isNotEmpty()) {
-            item {
-                SearchSectionHeader("Series (${searchState.results.series.size})", colors)
-            }
-            items(searchState.results.series) { series ->
-                val isFirstItem = firstCategory == "series" && !firstItemRendered
-                if (isFirstItem) {
-                    firstItemRendered = true
-                }
-                SearchResultItem(
-                    title = series.name,
-                    onClick = { onSeriesClick(series) },
-                    colors = colors,
-                    focusRequester = if (isFirstItem) firstItemFocusRequester else null,
-                    onNavigateUp = if (isFirstItem) onNavigateUp else null
-                )
-            }
-        }
+        SearchResultItem(
+            title = section.getName(item),
+            onClick = { section.onClick(item) },
+            colors = colors,
+            focusRequester = if (isFirstItem) firstItemFocusRequester else null,
+            onNavigateUp = if (isFirstItem) onNavigateUp else null
+        )
     }
 }
 

@@ -260,14 +260,14 @@ class MainViewModel @Inject constructor(
         // Cancel previous search job
         searchJob?.cancel()
         
-        // Update query immediately
+        // Store original query for TextField display, use trimmed for search logic
         val trimmedQuery = query.trim()
         _searchState.value = _searchState.value.copy(
-            query = trimmedQuery,
-            showMinLengthHint = trimmedQuery.length > 0 && trimmedQuery.length < MIN_QUERY_LENGTH
+            query = query, // Keep original for TextField display
+            showMinLengthHint = trimmedQuery.isNotEmpty() && trimmedQuery.length < MIN_QUERY_LENGTH
         )
         
-        // Check minimum length
+        // Check minimum length (using trimmed query)
         if (trimmedQuery.length < MIN_QUERY_LENGTH) {
             _searchState.value = _searchState.value.copy(
                 results = SearchResults(),
