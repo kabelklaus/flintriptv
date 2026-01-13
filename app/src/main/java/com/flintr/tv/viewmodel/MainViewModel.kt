@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import javax.inject.Inject
 
@@ -54,7 +53,6 @@ class MainViewModel @Inject constructor(
 
     companion object {
         private const val MIN_QUERY_LENGTH = 2
-        private const val DEBOUNCE_MS = 300L
         private const val MAX_RESULTS_PER_CATEGORY = 50
     }
 
@@ -253,13 +251,10 @@ class MainViewModel @Inject constructor(
     }
 
     /**
-     * Search content in cached data with debouncing
-     * Searches in LiveTV, VOD, and Series by name field (case-insensitive)
+     * Updates the search query state without performing a search.
+     * Search is only performed when user confirms with Enter key.
      */
     fun searchContent(query: String) {
-        // Cancel previous search job
-        searchJob?.cancel()
-        
         // Store original query for TextField display, use trimmed for search logic
         val trimmedQuery = query.trim()
         _searchState.value = _searchState.value.copy(
@@ -267,7 +262,22 @@ class MainViewModel @Inject constructor(
             showMinLengthHint = trimmedQuery.isNotEmpty() && trimmedQuery.length < MIN_QUERY_LENGTH
         )
         
-        // Check minimum length (using trimmed query)
+        // Clear results if query is too short
+        if (trimmedQuery.length < MIN_QUERY_LENGTH) {
+            _searchState.value = _searchState.value.copy(
+                results = SearchResults(),
+                isSearching = false
+            )
+        }
+    }
+    
+    /**
+     * Performs search immediately (triggered by Enter key)
+     */
+    fun searchContentImmediate() {
+        searchJob?.cancel()
+        val trimmedQuery = _searchState.value.query.trim()
+        
         if (trimmedQuery.length < MIN_QUERY_LENGTH) {
             _searchState.value = _searchState.value.copy(
                 results = SearchResults(),
@@ -276,52 +286,55 @@ class MainViewModel @Inject constructor(
             return
         }
         
-        // Start new search job with debouncing
         searchJob = viewModelScope.launch {
-            _searchState.value = _searchState.value.copy(isSearching = true)
-            
-            // Debounce delay
-            delay(DEBOUNCE_MS)
-            
-            // Load cached data
-            val cachedData = cacheService.loadCachedData()
-            if (cachedData == null) {
-                Log.w("MainViewModel", "No cached data available for search")
-                _searchState.value = _searchState.value.copy(
-                    results = SearchResults(),
-                    isSearching = false
-                )
-                return@launch
-            }
-            
-            // Perform search (case-insensitive substring match)
-            val queryLower = trimmedQuery.lowercase()
-            
-            val liveTVResults = cachedData.channels
-                .filter { it.name.lowercase().contains(queryLower) }
-                .take(MAX_RESULTS_PER_CATEGORY)
-            
-            val vodResults = cachedData.movies
-                .filter { it.name.lowercase().contains(queryLower) }
-                .take(MAX_RESULTS_PER_CATEGORY)
-            
-            val seriesResults = cachedData.series
-                .filter { it.name.lowercase().contains(queryLower) }
-                .take(MAX_RESULTS_PER_CATEGORY)
-            
-            val results = SearchResults(
-                liveTV = liveTVResults,
-                vod = vodResults,
-                series = seriesResults
-            )
-            
-            Log.d("MainViewModel", "Search completed: query='$trimmedQuery', results=${results.totalCount} (LiveTV: ${results.liveTV.size}, VOD: ${results.vod.size}, Series: ${results.series.size})")
-            
+            performSearch(trimmedQuery)
+        }
+    }
+    
+    /**
+     * Performs the actual search operation
+     */
+    private suspend fun performSearch(trimmedQuery: String) {
+        _searchState.value = _searchState.value.copy(isSearching = true)
+        
+        // Load cached data
+        val cachedData = cacheService.loadCachedData()
+        if (cachedData == null) {
+            Log.w("MainViewModel", "No cached data available for search")
             _searchState.value = _searchState.value.copy(
-                results = results,
+                results = SearchResults(),
                 isSearching = false
             )
+            return
         }
+        
+        // Perform search (case-insensitive substring match)
+        val queryLower = trimmedQuery.lowercase()
+        
+        val liveTVResults = cachedData.channels
+            .filter { it.name.lowercase().contains(queryLower) }
+            .take(MAX_RESULTS_PER_CATEGORY)
+        
+        val vodResults = cachedData.movies
+            .filter { it.name.lowercase().contains(queryLower) }
+            .take(MAX_RESULTS_PER_CATEGORY)
+        
+        val seriesResults = cachedData.series
+            .filter { it.name.lowercase().contains(queryLower) }
+            .take(MAX_RESULTS_PER_CATEGORY)
+        
+        val results = SearchResults(
+            liveTV = liveTVResults,
+            vod = vodResults,
+            series = seriesResults
+        )
+        
+        Log.d("MainViewModel", "Search completed: query='$trimmedQuery', results=${results.totalCount} (LiveTV: ${results.liveTV.size}, VOD: ${results.vod.size}, Series: ${results.series.size})")
+        
+        _searchState.value = _searchState.value.copy(
+            results = results,
+            isSearching = false
+        )
     }
 
     /**

@@ -25,6 +25,9 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.SearchState
@@ -98,7 +101,6 @@ private fun SearchContent(
                 onVodClick = onVodClick,
                 onSeriesClick = onSeriesClick,
                 colors = colors,
-                focusRequester = resultsListFocusRequester,
                 onNavigateUp = onNavigateUpToSearchField
             )
         }
@@ -113,6 +115,7 @@ private fun SearchContent(
 fun SearchOverlay(
     searchState: SearchState,
     onQueryChange: (String) -> Unit,
+    onSearchImmediate: () -> Unit,
     onDismiss: () -> Unit,
     onLiveStreamClick: (LiveStream) -> Unit,
     onVodClick: (VodStream) -> Unit,
@@ -146,7 +149,7 @@ fun SearchOverlay(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(SharedColors.overlayBlack.copy(alpha = 0.8f))
+            .background(SharedColors.overlayBlack.copy(alpha = 0.95f))
     ) {
         // Search field container at top center
         Column(
@@ -193,11 +196,18 @@ fun SearchOverlay(
                     .fillMaxWidth()
                     .focusRequester(searchFieldFocusRequester)
                     .onKeyEvent { event ->
-                        handleSearchFieldKeyEvent(
-                            event = event,
-                            hasResults = searchState.results.totalCount > 0,
-                            onNavigateToResults = { resultsListFocusRequester.requestFocus() }
-                        )
+                        when {
+                            event.type == KeyEventType.KeyDown && 
+                            (event.key == Key.Enter || event.key == Key.DirectionCenter) -> {
+                                onSearchImmediate()
+                                true
+                            }
+                            else -> handleSearchFieldKeyEvent(
+                                event = event,
+                                hasResults = searchState.results.totalCount > 0,
+                                onNavigateToResults = { resultsListFocusRequester.requestFocus() }
+                            )
+                        }
                     },
                 singleLine = true,
                 shape = RoundedCornerShape(Dimensions.radiusMD),
@@ -216,6 +226,14 @@ fun SearchOverlay(
                 ),
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     fontSize = FontSizes.fontSizeXL
+                ),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = ImeAction.Search,
+                    keyboardType = KeyboardType.Text
+                ),
+                keyboardActions = KeyboardActions(
+                    onSearch = { onSearchImmediate() },
+                    onDone = { onSearchImmediate() }
                 )
             )
             
@@ -255,7 +273,6 @@ private fun SearchResultsList(
     onVodClick: (VodStream) -> Unit,
     onSeriesClick: (Series) -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors,
-    focusRequester: FocusRequester,
     onNavigateUp: () -> Unit
 ) {
     val firstItemFocusRequester = remember { FocusRequester() }

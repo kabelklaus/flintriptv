@@ -807,6 +807,9 @@ fun MainContentScreen(
                 onQueryChange = { query ->
                     mainViewModel.searchContent(query)
                 },
+                onSearchImmediate = {
+                    mainViewModel.searchContentImmediate()
+                },
                 onDismiss = {
                     mainViewModel.clearSearch()
                     showSearchOverlay = false
