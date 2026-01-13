@@ -27,24 +27,35 @@ data class SeriesInfoResponse(
         // Merge episodes into seasons
         val seasonsWithEpisodes = if (seasons.isNullOrEmpty() && episodes != null) {
             // If seasons array is empty, create seasons from episodes
-            episodes.map { (seasonNumberStr, seasonEpisodes) ->
-                val seasonNumber = seasonNumberStr.toIntOrNull() ?: 0
-                Season(
-                    airDate = null,
-                    episodeCount = seasonEpisodes.size,
-                    id = null,
-                    name = "Staffel $seasonNumber",
-                    overview = null,
-                    seasonNumber = seasonNumber,
-                    cover = null,
-                    episodes = seasonEpisodes
-                )
-            }.sortedBy { it.seasonNumber }
+            // Group by season number to avoid duplicates from non-numeric keys
+            episodes.entries
+                .groupBy { (key, _) -> key.toIntOrNull() ?: 0 }
+                .map { (seasonNumber, entries) ->
+                    val allEpisodes = entries.flatMap { it.value }
+                    // Only create season if it has episodes
+                    if (allEpisodes.isNotEmpty()) {
+                        Season(
+                            airDate = null,
+                            episodeCount = allEpisodes.size,
+                            id = null,
+                            name = "Staffel $seasonNumber",
+                            overview = null,
+                            seasonNumber = seasonNumber,
+                            cover = null,
+                            episodes = allEpisodes
+                        )
+                    } else null
+                }
+                .filterNotNull()
+                .sortedBy { it.seasonNumber }
         } else {
-            seasons?.map { season ->
+            seasons?.mapNotNull { season ->
                 val seasonNumber = season.seasonNumber
                 val seasonEpisodes = episodes?.get(seasonNumber.toString())
-                season.copy(episodes = seasonEpisodes)
+                // Only include seasons that have episodes
+                seasonEpisodes?.takeIf { it.isNotEmpty() }?.let {
+                    season.copy(episodes = it)
+                }
             } ?: emptyList()
         }
         
