@@ -272,7 +272,6 @@ fun AppNavigation(
                     episodeId = episodeId,
                     title = title.takeIf { it.isNotEmpty() }
                 ),
-                playerViewModel = playerViewModel,
                 watchProgressService = dependencies.watchProgressService,
                 onBack = { navController.popBackStack() }
             )

@@ -43,7 +43,7 @@ import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.FocusedButton
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onDpadCenter
-import com.flintr.tv.viewmodel.PlayerViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -334,74 +334,54 @@ private fun Modifier.createSwipeGestureModifier(onBack: () -> Unit): Modifier {
     }
 }
 
+/**
+ * Manages all player-related state
+ */
 @Composable
-fun PlayerScreen(
-    streamInfo: StreamInfo,
-    playerViewModel: PlayerViewModel,
-    watchProgressService: WatchProgressService,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val streamUrl = streamInfo.streamUrl
-    val contentType = streamInfo.contentType
-    val streamId = streamInfo.streamId
-    val seriesId = streamInfo.seriesId
-    val episodeId = streamInfo.episodeId
-    val title = streamInfo.title
-    
-    val context = LocalContext.current
-    val view = LocalView.current
-    val coroutineScope = rememberCoroutineScope()
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var hasRestoredProgress by remember { mutableStateOf(false) }
-    
-    // Player UI State
-    var showControls by remember { mutableStateOf(true) }
-    var showDebugOverlay by remember { mutableStateOf(false) }
-    var showSettingsDialog by remember { mutableStateOf(false) }
-    var focusedButton by remember { mutableStateOf<FocusedButton?>(null) }
-    var isDraggingProgress by remember { mutableStateOf(false) }
-    var playbackState by remember { mutableStateOf(Player.STATE_IDLE) }
-    var currentPosition by remember { mutableStateOf(0L) }
-    var duration by remember { mutableStateOf(0L) }
-    var bufferedPosition by remember { mutableStateOf(0L) }
-    var isPlaying by remember { mutableStateOf(false) }
-    
-    // Hide System UI in fullscreen mode
-    DisposableEffect(Unit) {
-        val window = (view.context as Activity).window
-        val windowInsetsController = WindowCompat.getInsetsController(window, view)
-        
-        // Hide system bars
-        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
-        windowInsetsController.systemBarsBehavior = 
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        
-        onDispose {
-            // Show system bars when leaving player
-            windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
-        }
+private fun rememberPlayerState() = remember {
+    object {
+        var showControls by mutableStateOf(true)
+        var showDebugOverlay by mutableStateOf(false)
+        var showSettingsDialog by mutableStateOf(false)
+        var focusedButton by mutableStateOf<FocusedButton?>(null)
+        var isDraggingProgress by mutableStateOf(false)
+        var playbackState by mutableStateOf(Player.STATE_IDLE)
+        var currentPosition by mutableStateOf(0L)
+        var duration by mutableStateOf(0L)
+        var bufferedPosition by mutableStateOf(0L)
+        var isPlaying by mutableStateOf(false)
+        var errorMessage by mutableStateOf<String?>(null)
+        var hasRestoredProgress by mutableStateOf(false)
     }
-    
+}
+
+/**
+ * Sets up ExoPlayer and manages its lifecycle
+ */
+@Composable
+private fun rememberPlayerSetup(
+    context: Context,
+    streamUrl: String,
+    onError: (String) -> Unit,
+    onPlaybackStateChanged: (Int) -> Unit,
+    onIsPlayingChanged: (Boolean) -> Unit,
+    coroutineScope: CoroutineScope
+): ExoPlayer {
     val exoPlayer = remember {
         createExoPlayer(context)
     }
-
+    
     DisposableEffect(streamUrl) {
         val listener = createPlayerListener(
-            onError = { message -> errorMessage = message },
+            onError = onError,
             onPlaybackStateChanged = { state ->
-                playbackState = state
-                if (state == Player.STATE_READY) {
-                    errorMessage = null // Clear error on successful playback
-                }
+                onPlaybackStateChanged(state)
             },
-            onIsPlayingChanged = { playing -> isPlaying = playing }
+            onIsPlayingChanged = onIsPlayingChanged
         )
         
         exoPlayer.addListener(listener)
 
-        // Prepare player asynchronously to avoid blocking main thread
         val prepareJob = coroutineScope.launch(Dispatchers.IO) {
             try {
                 val mediaItem = MediaItem.fromUri(streamUrl)
@@ -412,7 +392,7 @@ fun PlayerScreen(
             } catch (e: Exception) {
                 Log.e("PlayerScreen", "Error preparing media item", e)
                 withContext(Dispatchers.Main) {
-                    errorMessage = "Fehler beim Laden des Streams: ${e.message}"
+                    onError("Fehler beim Laden des Streams: ${e.message}")
                 }
             }
         }
@@ -424,17 +404,117 @@ fun PlayerScreen(
         }
     }
     
-    // Update position and duration continuously
-    LaunchedEffect(isPlaying) {
-        while (isPlaying) {
-            currentPosition = exoPlayer.currentPosition
-            duration = exoPlayer.duration
-            bufferedPosition = exoPlayer.bufferedPosition
-            delay(250) // Update every 250ms
+    return exoPlayer
+}
+
+/**
+ * Hides system UI in fullscreen mode
+ */
+@Composable
+private fun HideSystemUIEffect(view: android.view.View) {
+    DisposableEffect(Unit) {
+        val window = (view.context as Activity).window
+        val windowInsetsController = WindowCompat.getInsetsController(window, view)
+        
+        windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+        windowInsetsController.systemBarsBehavior = 
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        
+        onDispose {
+            windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
         }
     }
-    
-    // Restore watch progress when player is ready
+}
+
+/**
+ * Creates seek callback
+ */
+private fun createSeekCallback(
+    exoPlayer: ExoPlayer,
+    duration: Long
+): (Float) -> Unit {
+    return { seekProgress: Float ->
+        if (duration > 0) {
+            val seekPosition = (seekProgress * duration).toLong()
+            exoPlayer.seekTo(seekPosition)
+        }
+    }
+}
+
+/**
+ * Creates previous (10s back) callback
+ */
+private fun createPreviousCallback(
+    exoPlayer: ExoPlayer,
+    onShowControls: () -> Unit
+): () -> Unit {
+    return {
+        val newPosition = (exoPlayer.currentPosition - 10000).coerceAtLeast(0L)
+        exoPlayer.seekTo(newPosition)
+        onShowControls()
+    }
+}
+
+/**
+ * Creates next (10s forward) callback
+ */
+private fun createNextCallback(
+    exoPlayer: ExoPlayer,
+    duration: Long,
+    onShowControls: () -> Unit
+): () -> Unit {
+    return {
+        val newPosition = (exoPlayer.currentPosition + 10000).coerceAtMost(duration)
+        exoPlayer.seekTo(newPosition)
+        onShowControls()
+    }
+}
+
+/**
+ * Creates play/pause callback
+ */
+private fun createPlayPauseCallback(
+    exoPlayer: ExoPlayer,
+    onShowControls: () -> Unit
+): () -> Unit {
+    return {
+        if (exoPlayer.isPlaying) {
+            exoPlayer.pause()
+        } else {
+            exoPlayer.play()
+        }
+        onShowControls()
+    }
+}
+
+/**
+ * Creates video tap callback
+ */
+private fun createVideoTapCallback(
+    onToggleControls: () -> Unit,
+    onSetFocusedButton: (FocusedButton) -> Unit
+): () -> Unit {
+    return {
+        onToggleControls()
+        onSetFocusedButton(FocusedButton.PREVIOUS)
+    }
+}
+
+/**
+ * Effect to restore watch progress when player is ready
+ */
+@Composable
+private fun PlayerProgressRestoreEffect(
+    exoPlayer: ExoPlayer,
+    contentType: String,
+    streamId: Int?,
+    seriesId: Int?,
+    episodeId: Int?,
+    watchProgressService: WatchProgressService,
+    hasRestoredProgress: Boolean,
+    onRestored: () -> Unit,
+    coroutineScope: CoroutineScope
+) {
     LaunchedEffect(exoPlayer.playbackState) {
         if (exoPlayer.playbackState == Player.STATE_READY && !hasRestoredProgress) {
             coroutineScope.launch {
@@ -446,15 +526,29 @@ fun PlayerScreen(
                     episodeId = episodeId,
                     watchProgressService = watchProgressService
                 )
-                hasRestoredProgress = true
+                onRestored()
                 if (!restored) {
                     Log.d("PlayerScreen", "No saved progress found for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId")
                 }
             }
         }
     }
-    
-    // Auto-save progress every 10 seconds
+}
+
+/**
+ * Effect to auto-save watch progress periodically
+ */
+@Composable
+private fun PlayerProgressSaveEffect(
+    exoPlayer: ExoPlayer,
+    contentType: String,
+    streamId: Int?,
+    seriesId: Int?,
+    episodeId: Int?,
+    title: String?,
+    watchProgressService: WatchProgressService,
+    coroutineScope: CoroutineScope
+) {
     LaunchedEffect(contentType, streamId, seriesId, episodeId, title) {
         while (true) {
             delay(10000) // 10 seconds
@@ -471,69 +565,151 @@ fun PlayerScreen(
             }
         }
     }
-    
-    // Auto-hide controls after 3 seconds of inactivity
+}
+
+/**
+ * Effect to update player position and duration continuously
+ */
+@Composable
+private fun PlayerPositionUpdateEffect(
+    exoPlayer: ExoPlayer,
+    isPlaying: Boolean,
+    onPositionUpdate: (Long, Long, Long) -> Unit
+) {
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            onPositionUpdate(
+                exoPlayer.currentPosition,
+                exoPlayer.duration,
+                exoPlayer.bufferedPosition
+            )
+            delay(250) // Update every 250ms
+        }
+    }
+}
+
+/**
+ * Effect to auto-hide controls after inactivity
+ */
+@Composable
+private fun AutoHideControlsEffect(
+    showControls: Boolean,
+    isDraggingProgress: Boolean,
+    onHideControls: () -> Unit
+) {
     LaunchedEffect(showControls, isDraggingProgress) {
         if (showControls && !isDraggingProgress) {
             delay(3000)
             if (!isDraggingProgress) {
-                showControls = false
-                focusedButton = null
+                onHideControls()
             }
         }
     }
+}
+
+@Composable
+fun PlayerScreen(
+    streamInfo: StreamInfo,
+    watchProgressService: WatchProgressService,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val streamUrl = streamInfo.streamUrl
+    val contentType = streamInfo.contentType
+    val streamId = streamInfo.streamId
+    val seriesId = streamInfo.seriesId
+    val episodeId = streamInfo.episodeId
+    val title = streamInfo.title
+    
+    val context = LocalContext.current
+    val view = LocalView.current
+    val coroutineScope = rememberCoroutineScope()
+    val state = rememberPlayerState()
+    
+    // Setup player with callbacks
+    val exoPlayer = rememberPlayerSetup(
+        context = context,
+        streamUrl = streamUrl,
+        onError = { message -> state.errorMessage = message },
+        onPlaybackStateChanged = { playbackStateValue ->
+            state.playbackState = playbackStateValue
+            if (playbackStateValue == Player.STATE_READY) {
+                state.errorMessage = null
+            }
+        },
+        onIsPlayingChanged = { playing -> state.isPlaying = playing },
+        coroutineScope = coroutineScope
+    )
+    
+    // Hide system UI
+    HideSystemUIEffect(view)
+    
+    // Update position and duration
+    PlayerPositionUpdateEffect(
+        exoPlayer = exoPlayer,
+        isPlaying = state.isPlaying,
+        onPositionUpdate = { position, durationValue, buffered ->
+            state.currentPosition = position
+            state.duration = durationValue
+            state.bufferedPosition = buffered
+        }
+    )
+    
+    // Restore watch progress
+    PlayerProgressRestoreEffect(
+        exoPlayer = exoPlayer,
+        contentType = contentType,
+        streamId = streamId,
+        seriesId = seriesId,
+        episodeId = episodeId,
+        watchProgressService = watchProgressService,
+        hasRestoredProgress = state.hasRestoredProgress,
+        onRestored = { state.hasRestoredProgress = true },
+        coroutineScope = coroutineScope
+    )
+    
+    // Auto-save progress
+    PlayerProgressSaveEffect(
+        exoPlayer = exoPlayer,
+        contentType = contentType,
+        streamId = streamId,
+        seriesId = seriesId,
+        episodeId = episodeId,
+        title = title,
+        watchProgressService = watchProgressService,
+        coroutineScope = coroutineScope
+    )
+    
+    // Auto-hide controls
+    AutoHideControlsEffect(
+        showControls = state.showControls,
+        isDraggingProgress = state.isDraggingProgress,
+        onHideControls = {
+            state.showControls = false
+            state.focusedButton = null
+        }
+    )
     
     // Calculate progress
-    val progress = if (duration > 0) {
-        (currentPosition.toFloat() / duration).coerceIn(0f, 1f)
+    val progress = if (state.duration > 0) {
+        (state.currentPosition.toFloat() / state.duration).coerceIn(0f, 1f)
     } else {
         0f
     }
     
-    // Handle seek
-    val onSeek = { seekProgress: Float ->
-        if (duration > 0) {
-            val seekPosition = (seekProgress * duration).toLong()
-            exoPlayer.seekTo(seekPosition)
-        }
-    }
+    // Create callbacks
+    val onSeek = createSeekCallback(exoPlayer, state.duration)
+    val onPrevious = createPreviousCallback(exoPlayer) { state.showControls = true }
+    val onNext = createNextCallback(exoPlayer, state.duration) { state.showControls = true }
+    val onPlayPause = createPlayPauseCallback(exoPlayer) { state.showControls = true }
+    val onVideoTap = createVideoTapCallback(
+        onToggleControls = { state.showControls = !state.showControls },
+        onSetFocusedButton = { button -> state.focusedButton = button }
+    )
     
-    // Handle previous (10s back)
-    val onPrevious = {
-        val newPosition = (exoPlayer.currentPosition - 10000).coerceAtLeast(0L)
-        exoPlayer.seekTo(newPosition)
-        showControls = true
-    }
-    
-    // Handle next (10s forward)
-    val onNext = {
-        val newPosition = (exoPlayer.currentPosition + 10000).coerceAtMost(duration)
-        exoPlayer.seekTo(newPosition)
-        showControls = true
-    }
-    
-    // Handle play/pause
-    val onPlayPause = {
-        if (exoPlayer.isPlaying) {
-            exoPlayer.pause()
-        } else {
-            exoPlayer.play()
-        }
-        showControls = true
-    }
-    
-    // Handle tap on video to toggle controls
-    val onVideoTap = {
-        showControls = !showControls
-        if (showControls) {
-            focusedButton = FocusedButton.PREVIOUS
-        }
-    }
-    
-    // Focus requester to ensure Box receives key events
+    // Focus requester
     val playerFocusRequester = remember { FocusRequester() }
     
-    // Request focus when player screen is shown
     LaunchedEffect(Unit) {
         playerFocusRequester.requestFocus()
     }
@@ -548,9 +724,9 @@ fun PlayerScreen(
             .createSwipeGestureModifier(onBack = onBack)
             .onBackButton(onBack = onBack)
             .onDpadCenter {
-                if (!showControls) {
-                    showControls = true
-                    focusedButton = FocusedButton.PLAY_PAUSE
+                if (!state.showControls) {
+                    state.showControls = true
+                    state.focusedButton = FocusedButton.PLAY_PAUSE
                     onPlayPause()
                 }
             }
@@ -573,19 +749,19 @@ fun PlayerScreen(
         
         // Loading indicator during buffering
         PlayerLoadingIndicator(
-            isBuffering = playbackState == Player.STATE_BUFFERING,
+            isBuffering = state.playbackState == Player.STATE_BUFFERING,
             modifier = Modifier.fillMaxSize()
         )
         
         // Custom player controls
-        if (showControls) {
+        if (state.showControls) {
             CustomPlayerControls(
                 state = PlayerState(
-                    isPlaying = isPlaying,
-                    currentPosition = currentPosition,
-                    duration = duration,
+                    isPlaying = state.isPlaying,
+                    currentPosition = state.currentPosition,
+                    duration = state.duration,
                     progress = progress,
-                    bufferedPosition = bufferedPosition
+                    bufferedPosition = state.bufferedPosition
                 ),
                 callbacks = PlayerCallbacks(
                     onPrevious = onPrevious,
@@ -593,45 +769,45 @@ fun PlayerScreen(
                     onNext = onNext,
                     onSeek = onSeek,
                     onDragStart = {
-                        isDraggingProgress = true
+                        state.isDraggingProgress = true
                     },
                     onDragEnd = {
-                        isDraggingProgress = false
+                        state.isDraggingProgress = false
                     }
                 ),
                 utilityCallbacks = PlayerUtilityCallbacks(
                     onDebug = {
-                        showDebugOverlay = !showDebugOverlay
+                        state.showDebugOverlay = !state.showDebugOverlay
                     },
                     onSettings = {
-                        showSettingsDialog = true
+                        state.showSettingsDialog = true
                     },
                     onFocusChange = { button ->
-                        focusedButton = button
+                        state.focusedButton = button
                         if (button != null) {
-                            showControls = true
+                            state.showControls = true
                         }
                     }
                 ),
-                focusedButton = focusedButton,
+                focusedButton = state.focusedButton,
                 modifier = Modifier.fillMaxSize()
             )
             
             // Central play/pause button
             CentralPlayPauseButton(
-                isPlaying = isPlaying,
+                isPlaying = state.isPlaying,
                 onClick = onPlayPause,
                 modifier = Modifier.align(Alignment.Center)
             )
         }
         
         // Debug overlay
-        if (showDebugOverlay) {
+        if (state.showDebugOverlay) {
             DebugOverlay(
-                playerState = playbackState,
-                currentPosition = currentPosition,
-                duration = duration,
-                bufferedPosition = bufferedPosition,
+                playerState = state.playbackState,
+                currentPosition = state.currentPosition,
+                duration = state.duration,
+                bufferedPosition = state.bufferedPosition,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(8.dp)
@@ -639,21 +815,21 @@ fun PlayerScreen(
         }
         
         // Settings dialog
-        if (showSettingsDialog) {
+        if (state.showSettingsDialog) {
             VideoSettingsDialog(
-                onDismiss = { showSettingsDialog = false }
+                onDismiss = { state.showSettingsDialog = false }
             )
         }
         
         // Show error message if playback failed
         PlayerErrorDialog(
-            errorMessage = errorMessage,
+            errorMessage = state.errorMessage,
             onRetry = {
-                errorMessage = null
+                state.errorMessage = null
                 exoPlayer.prepare()
             },
             onDismiss = {
-                errorMessage = null
+                state.errorMessage = null
                 onBack()
             },
             modifier = Modifier.align(Alignment.Center)
