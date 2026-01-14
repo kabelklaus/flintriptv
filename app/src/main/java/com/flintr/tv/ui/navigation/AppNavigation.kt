@@ -29,7 +29,6 @@ import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.data.model.CategoryType
-import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.NavigationStateBeforePlayer
 import com.flintr.tv.data.model.Series
@@ -828,8 +827,7 @@ private fun useCategoryManagement(
     liveCategories: List<Category>,
     vodCategories: List<Category>,
     seriesCategories: List<Category>,
-    hiddenCategories: Map<CategoryType, Set<String>>,
-    favoritesRepository: FavoritesRepository
+    hiddenCategories: Map<CategoryType, Set<String>>
 ): CategoryManagementResult {
     // Determine category type based on destination
     val categoryType: CategoryType? = when (selectedDestination) {
@@ -1247,8 +1245,7 @@ fun MainContentScreen(
         liveCategories = liveCategories,
         vodCategories = vodCategories,
         seriesCategories = seriesCategories,
-        hiddenCategories = hiddenCategories,
-        favoritesRepository = favoritesRepository
+        hiddenCategories = hiddenCategories
     )
     
     // LaunchedEffects

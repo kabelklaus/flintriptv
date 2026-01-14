@@ -25,6 +25,59 @@ data class FavoritesState<T>(
 )
 
 /**
+ * Loads favorite items from repository and maps them to content items
+ */
+private suspend fun <T : Any> loadFavoriteItems(
+    favoritesRepository: FavoritesRepository,
+    cacheService: DataCacheService,
+    favoriteType: FavoriteType,
+    dataSelector: (CachedData) -> List<T>,
+    idSelector: (T) -> Int
+): List<T> {
+    val favorites = favoritesRepository.getFavoritesByType(favoriteType)
+    if (favorites.isEmpty()) {
+        return emptyList()
+    }
+    
+    val cachedData = cacheService.loadCachedDataAsync()
+    if (cachedData == null) {
+        Log.w(TAG, "No cached data available for favorites")
+        return emptyList()
+    }
+    
+    val itemsMap = dataSelector(cachedData).associateBy(idSelector)
+    return favorites.mapNotNull { favorite ->
+        itemsMap[favorite.streamId]
+    }
+}
+
+/**
+ * Periodically checks for favorites changes and updates the key if changed
+ */
+private suspend fun checkFavoritesChanges(
+    favoritesRepository: FavoritesRepository,
+    favoriteType: FavoriteType,
+    getCurrentIdsKey: () -> List<String>,
+    isFavoritesCategory: Boolean,
+    onIdsChanged: (List<String>) -> Unit
+) {
+    while (isFavoritesCategory) {
+        kotlinx.coroutines.delay(500) // Check every 500ms
+        
+        val currentFavorites = withContext(Dispatchers.IO) {
+            favoritesRepository.getFavoritesByType(favoriteType)
+        }
+        val currentIds = currentFavorites.map { it.id }
+        val currentIdsKey = getCurrentIdsKey()
+        
+        // Update key if favorites changed, which will trigger reload
+        if (currentIds != currentIdsKey) {
+            onIdsChanged(currentIds)
+        }
+    }
+}
+
+/**
  * Custom hook for loading favorites of a specific type.
  * 
  * This hook centralizes the logic for:
@@ -80,19 +133,13 @@ fun <T : Any> useFavorites(
         
         isLoadingFavorites = true
         val items = withContext(Dispatchers.IO) {
-            val favorites = favoritesRepository.getFavoritesByType(favoriteType)
-            if (favorites.isEmpty()) {
-                return@withContext emptyList<T>()
-            }
-            val cachedData = cacheService.loadCachedDataAsync()
-            if (cachedData == null) {
-                Log.w(TAG, "No cached data available for favorites")
-                return@withContext emptyList<T>()
-            }
-            val itemsMap = dataSelector(cachedData).associateBy(idSelector)
-            favorites.mapNotNull { favorite ->
-                itemsMap[favorite.streamId]
-            }
+            loadFavoriteItems(
+                favoritesRepository = favoritesRepository,
+                cacheService = cacheService,
+                favoriteType = favoriteType,
+                dataSelector = dataSelector,
+                idSelector = idSelector
+            )
         }
         favoriteItems = items
         isLoadingFavorites = false
@@ -104,19 +151,13 @@ fun <T : Any> useFavorites(
             return@LaunchedEffect
         }
         
-        while (isFavoritesCategory) {
-            kotlinx.coroutines.delay(500) // Check every 500ms
-            
-            val currentFavorites = withContext(Dispatchers.IO) {
-                favoritesRepository.getFavoritesByType(favoriteType)
-            }
-            val currentIds = currentFavorites.map { it.id }
-            
-            // Update key if favorites changed, which will trigger reload
-            if (currentIds != favoritesIdsKey) {
-                favoritesIdsKey = currentIds
-            }
-        }
+        checkFavoritesChanges(
+            favoritesRepository = favoritesRepository,
+            favoriteType = favoriteType,
+            getCurrentIdsKey = { favoritesIdsKey },
+            isFavoritesCategory = isFavoritesCategory,
+            onIdsChanged = { favoritesIdsKey = it }
+        )
     }
     
     return FavoritesState(
