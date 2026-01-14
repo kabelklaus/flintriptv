@@ -20,15 +20,178 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import android.util.Log
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.data.local.CategoryVisibilityService
-import androidx.compose.runtime.collectAsState
+
+/**
+ * Reusable component for displaying label-value pairs in settings
+ */
+@Composable
+private fun InfoRow(
+    label: String,
+    value: String,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            fontSize = FontSizes.fontSizeXL,
+            color = colors.textPrimary
+        )
+        Text(
+            text = value,
+            fontSize = FontSizes.fontSizeXL,
+            fontWeight = FontWeight.W500,
+            color = colors.textSecondary
+        )
+    }
+}
+
+/**
+ * Language settings section
+ */
+@Composable
+private fun LanguageSection(
+    selectedLanguage: AppLanguage,
+    onLanguageSelected: (AppLanguage) -> Unit,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    focusRequester: FocusRequester,
+    onBack: () -> Unit
+) {
+    SettingsCard(
+        title = stringResource(R.string.language),
+        icon = Icons.Default.Language,
+        colors = colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            LanguageSelector(
+                selectedLanguage = selectedLanguage,
+                onLanguageSelected = onLanguageSelected,
+                colors = colors,
+                focusRequester = focusRequester,
+                onBack = onBack
+            )
+        }
+    }
+}
+
+/**
+ * Theme settings section
+ */
+@Composable
+private fun ThemeSection(
+    isDarkTheme: Boolean,
+    onDarkThemeChange: (Boolean) -> Unit,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    SettingsCard(
+        title = stringResource(R.string.theme),
+        icon = Icons.Default.Palette,
+        colors = colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            SwitchSetting(
+                label = stringResource(R.string.dark_theme),
+                checked = isDarkTheme,
+                onCheckedChange = onDarkThemeChange,
+                colors = colors
+            )
+        }
+    }
+}
+
+/**
+ * Cache settings section
+ */
+@Composable
+private fun CacheSection(
+    cacheSizeMB: Int,
+    onClearCache: () -> Unit,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    focusRequester: FocusRequester
+) {
+    SettingsCard(
+        title = stringResource(R.string.cache),
+        icon = Icons.Default.Storage,
+        colors = colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            InfoRow(
+                label = stringResource(R.string.cache_size),
+                value = "$cacheSizeMB MB",
+                colors = colors
+            )
+            
+            SecondaryActionButton(
+                config = SecondaryActionButtonConfig(
+                    text = stringResource(R.string.clear_cache),
+                    icon = Icons.Default.Delete,
+                    onClick = onClearCache,
+                    focusRequester = focusRequester,
+                    colors = colors
+                )
+            )
+        }
+    }
+}
+
+/**
+ * Hidden categories settings section
+ */
+@Composable
+private fun HiddenCategoriesSection(
+    hiddenCategoriesCount: Int,
+    onNavigateToHiddenCategories: () -> Unit,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    focusRequester: FocusRequester
+) {
+    SettingsCard(
+        title = stringResource(R.string.hidden_categories),
+        icon = Icons.Default.VisibilityOff,
+        colors = colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            InfoRow(
+                label = stringResource(R.string.hidden_categories_count),
+                value = "$hiddenCategoriesCount",
+                colors = colors
+            )
+            
+            SecondaryActionButton(
+                config = SecondaryActionButtonConfig(
+                    text = stringResource(R.string.manage_categories),
+                    icon = Icons.Default.Settings,
+                    onClick = {
+                        Log.i("SettingsNav", "➡️ NAVIGATE: SettingsGeneral -> SubSettingsHiddenCategories")
+                        onNavigateToHiddenCategories()
+                    },
+                    focusRequester = focusRequester,
+                    colors = colors
+                )
+            )
+        }
+    }
+}
 
 @Composable
 fun SettingsGeneral(
@@ -84,177 +247,39 @@ fun SettingsGeneral(
                     .widthIn(max = 800.dp),
                 verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
             ) {
-                // Language Section
-                SettingsCard(
-                    title = "Sprache",
-                    icon = Icons.Default.Language,
-                    colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        LanguageSelector(
-                            selectedLanguage = selectedLanguage,
-                            onLanguageSelected = { selectedLanguage = it },
-                            colors = colors,
-                            focusRequester = languageFocusRequester,
-                            onBack = {
-                                Log.i("SettingsNav", "🔙 BACK: SettingsGeneral -> SettingsMainScreen (via D-Pad Left)")
-                                onBack()
-                            }
-                        )
+                LanguageSection(
+                    selectedLanguage = selectedLanguage,
+                    onLanguageSelected = { selectedLanguage = it },
+                    colors = colors,
+                    focusRequester = languageFocusRequester,
+                    onBack = {
+                        Log.i("SettingsNav", "🔙 BACK: SettingsGeneral -> SettingsMainScreen (via D-Pad Left)")
+                        onBack()
                     }
-                }
+                )
                 
-                // Theme Section
-                SettingsCard(
-                    title = "Theme",
-                    icon = Icons.Default.Palette,
+                ThemeSection(
+                    isDarkTheme = isDarkTheme,
+                    onDarkThemeChange = { isDarkTheme = it },
                     colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        SwitchSetting(
-                            label = "Dunkel",
-                            checked = isDarkTheme,
-                            onCheckedChange = { isDarkTheme = it },
-                            colors = colors
-                        )
-                    }
-                }
+                )
                 
-                // Cache Section
-                SettingsCard(
-                    title = "Cache",
-                    icon = Icons.Default.Storage,
-                    colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        // Cache Size Display
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Cache-Größe",
-                                fontSize = FontSizes.fontSizeXL,
-                                color = colors.textPrimary
-                            )
-                            Text(
-                                text = "$cacheSizeMB MB",
-                                fontSize = FontSizes.fontSizeXL,
-                                fontWeight = FontWeight.W500,
-                                color = colors.textSecondary
-                            )
-                        }
-                        
-                        // Clear Cache Button
-                        var isClearCacheButtonFocused by remember { mutableStateOf(false) }
-                        
-                        OutlinedButton(
-                            onClick = {
-                                cacheSizeMB = 0
-                                // Mock: Show snackbar
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(clearCacheButtonFocusRequester)
-                                .onFocusChanged { focusState ->
-                                    isClearCacheButtonFocused = focusState.isFocused
-                                },
-                            shape = RoundedCornerShape(Dimensions.radiusMD),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = if (isClearCacheButtonFocused) colors.accentColor else colors.textPrimary
-                            ),
-                            border = ButtonDefaults.outlinedButtonBorder.copy(
-                                width = if (isClearCacheButtonFocused) 2.dp else 1.dp
-                            ),
-                            contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = null,
-                                tint = if (isClearCacheButtonFocused) colors.accentColor else colors.iconColor
-                            )
-                            Spacer(modifier = Modifier.width(Dimensions.spacingXS))
-                            Text(
-                                text = "Cache leeren",
-                                fontSize = FontSizes.fontSizeXL,
-                                fontWeight = if (isClearCacheButtonFocused) FontWeight.W600 else FontWeight.Normal
-                            )
-                        }
-                    }
-                }
+                CacheSection(
+                    cacheSizeMB = cacheSizeMB,
+                    onClearCache = {
+                        cacheSizeMB = 0
+                        // Mock: Show snackbar
+                    },
+                    colors = colors,
+                    focusRequester = clearCacheButtonFocusRequester
+                )
                 
-                // Hidden Categories Section
-                SettingsCard(
-                    title = "Versteckte Kategorien",
-                    icon = Icons.Default.VisibilityOff,
-                    colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        // Hidden Categories Count Display
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Anzahl versteckter Kategorien",
-                                fontSize = FontSizes.fontSizeXL,
-                                color = colors.textPrimary
-                            )
-                            Text(
-                                text = "$hiddenCategoriesCount",
-                                fontSize = FontSizes.fontSizeXL,
-                                fontWeight = FontWeight.W500,
-                                color = colors.textSecondary
-                            )
-                        }
-                        
-                        // Manage Categories Button
-                        var isManageCategoriesButtonFocused by remember { mutableStateOf(false) }
-                        
-                        OutlinedButton(
-                            onClick = {
-                                Log.i("SettingsNav", "➡️ NAVIGATE: SettingsGeneral -> SubSettingsHiddenCategories")
-                                onNavigateToHiddenCategories()
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(manageCategoriesButtonFocusRequester)
-                                .onFocusChanged { focusState ->
-                                    isManageCategoriesButtonFocused = focusState.isFocused
-                                },
-                            shape = RoundedCornerShape(Dimensions.radiusMD),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = if (isManageCategoriesButtonFocused) colors.accentColor else colors.textPrimary
-                            ),
-                            border = ButtonDefaults.outlinedButtonBorder.copy(
-                                width = if (isManageCategoriesButtonFocused) 2.dp else 1.dp
-                            ),
-                            contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = null,
-                                tint = if (isManageCategoriesButtonFocused) colors.accentColor else colors.iconColor
-                            )
-                            Spacer(modifier = Modifier.width(Dimensions.spacingXS))
-                            Text(
-                                text = "Kategorien verwalten",
-                                fontSize = FontSizes.fontSizeXL,
-                                fontWeight = if (isManageCategoriesButtonFocused) FontWeight.W600 else FontWeight.Normal
-                            )
-                        }
-                    }
-                }
+                HiddenCategoriesSection(
+                    hiddenCategoriesCount = hiddenCategoriesCount,
+                    onNavigateToHiddenCategories = onNavigateToHiddenCategories,
+                    colors = colors,
+                    focusRequester = manageCategoriesButtonFocusRequester
+                )
             }
         }
     }
