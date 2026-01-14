@@ -13,9 +13,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
-import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.model.Category
-import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.ui.screens.HomeDestination
 import com.flintr.tv.ui.screens.HomeSidebar
 import com.flintr.tv.ui.sidebars.CategoryRow
@@ -77,28 +75,38 @@ private fun createCategorySidebarModifier(
         .onGloballyPositioned(createPositionedCallback(onCategorySidebarReady))
 }
 
+/**
+ * Parameters for MainLayout component.
+ */
+data class MainLayoutParams(
+    // Navigation
+    val selectedDestination: HomeDestination,
+    val onDestinationChange: (HomeDestination) -> Unit,
+    
+    // Categories
+    val showCategories: Boolean,
+    val categories: List<Category>,
+    val selectedCategoryId: String?,
+    val onCategorySelected: (String?) -> Unit,
+    val onCategoryHidden: (Category) -> Unit,
+    
+    // Focus Management
+    val navbarFocusRequester: FocusRequester,
+    val categorySidebarFocusRequester: FocusRequester,
+    val onNavigateToNavbar: () -> Unit,
+    val onNavigateToCategorySidebar: () -> Unit,
+    val onNavigateToContentList: () -> Unit,
+    
+    // Callbacks
+    val onSearchClick: () -> Unit = {},
+    val onNavbarReady: (() -> Unit)? = null,
+    val onCategorySidebarReady: (() -> Unit)? = null,
+    val onContentListReady: (() -> Unit)? = null
+)
 
 @Composable
 fun MainLayout(
-    selectedDestination: HomeDestination,
-    onDestinationChange: (HomeDestination) -> Unit,
-    showCategories: Boolean,
-    categories: List<Category>,
-    selectedCategoryId: String?,
-    onCategorySelected: (String?) -> Unit,
-    navbarFocusRequester: FocusRequester,
-    categorySidebarFocusRequester: FocusRequester,
-    contentListFocusRequester: FocusRequester,
-    onNavigateToNavbar: () -> Unit,
-    onNavigateToCategorySidebar: () -> Unit,
-    onNavigateToContentList: () -> Unit,
-    categoryVisibilityService: CategoryVisibilityService,
-    categoryType: CategoryType,
-    onCategoryHidden: (Category) -> Unit,
-    onSearchClick: () -> Unit = {},
-    onNavbarReady: (() -> Unit)? = null,
-    onCategorySidebarReady: (() -> Unit)? = null,
-    onContentListReady: (() -> Unit)? = null,
+    params: MainLayoutParams,
     content: @Composable () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -108,7 +116,7 @@ fun MainLayout(
     // Wrap onNavigateToNavbar to set externalFocusRequested flag
     val wrappedOnNavigateToNavbar: () -> Unit = {
         externalFocusRequested = true
-        onNavigateToNavbar()
+        params.onNavigateToNavbar()
     }
     
     Row(
@@ -118,31 +126,31 @@ fun MainLayout(
     ) {
         // Left Sidebar: Navigation
         HomeSidebar(
-            selectedDestination = selectedDestination,
+            selectedDestination = params.selectedDestination,
             onNavigate = { destination ->
                 externalFocusRequested = false // Reset when destination changes via click
-                onDestinationChange(destination)
+                params.onDestinationChange(destination)
             },
-            focusRequester = navbarFocusRequester,
+            focusRequester = params.navbarFocusRequester,
             externalFocusRequested = externalFocusRequested,
-            onNavigateRight = createNavbarOnNavigateRight(showCategories, onNavigateToCategorySidebar),
-            onSearchClick = onSearchClick,
-            modifier = createNavbarModifier(onNavbarReady)
+            onNavigateRight = createNavbarOnNavigateRight(params.showCategories, params.onNavigateToCategorySidebar),
+            onSearchClick = params.onSearchClick,
+            modifier = createNavbarModifier(params.onNavbarReady)
         )
         
         // Middle Column: Categories (if applicable)
-        if (showCategories) {
+        if (params.showCategories) {
             CategoryRow(
                 params = CategoryRowParams(
-                    categories = categories,
-                    selectedCategoryId = selectedCategoryId,
-                    onCategorySelected = onCategorySelected,
-                    focusRequester = categorySidebarFocusRequester,
+                    categories = params.categories,
+                    selectedCategoryId = params.selectedCategoryId,
+                    onCategorySelected = params.onCategorySelected,
+                    focusRequester = params.categorySidebarFocusRequester,
                     onNavigateLeft = { wrappedOnNavigateToNavbar() },
-                    onNavigateRight = { onNavigateToContentList() },
-                    onCategoryHidden = onCategoryHidden
+                    onNavigateRight = { params.onNavigateToContentList() },
+                    onCategoryHidden = params.onCategoryHidden
                 ),
-                modifier = createCategorySidebarModifier(onCategorySidebarReady)
+                modifier = createCategorySidebarModifier(params.onCategorySidebarReady)
             )
         } else {
             // Empty space for EPG or other screens without categories
@@ -159,7 +167,7 @@ fun MainLayout(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .onGloballyPositioned(createPositionedCallback(onContentListReady))
+                .onGloballyPositioned(createPositionedCallback(params.onContentListReady))
         ) {
             content()
         }

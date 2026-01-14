@@ -31,6 +31,7 @@ import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.components.MainLayout
+import com.flintr.tv.ui.components.MainLayoutParams
 import com.flintr.tv.ui.screens.DataLoadingScreen
 import com.flintr.tv.ui.screens.EPGContent
 import com.flintr.tv.ui.screens.HomeDestination
@@ -605,53 +606,52 @@ fun MainContentScreen(
     
     Box(modifier = Modifier.fillMaxSize()) {
         MainLayout(
-            selectedDestination = selectedDestination,
-            onDestinationChange = { destination ->
-                if (destination is HomeDestination.Settings) {
-                    // Navigate to separate Settings screen
-                    navController.navigate(Screen.Settings.route)
-                } else {
-                    // Reset category selection and clear streams when switching tabs
-                    selectedCategoryId = null
-                    // Clear streams from old destination
-                    clearStreamsForDestination(selectedDestination, mainViewModel)
-                    // Clear streams from new destination to prevent showing old data
-                    clearStreamsForDestination(destination, mainViewModel)
-                    selectedDestination = destination
+            params = MainLayoutParams(
+                selectedDestination = selectedDestination,
+                onDestinationChange = { destination ->
+                    if (destination is HomeDestination.Settings) {
+                        // Navigate to separate Settings screen
+                        navController.navigate(Screen.Settings.route)
+                    } else {
+                        // Reset category selection and clear streams when switching tabs
+                        selectedCategoryId = null
+                        // Clear streams from old destination
+                        clearStreamsForDestination(selectedDestination, mainViewModel)
+                        // Clear streams from new destination to prevent showing old data
+                        clearStreamsForDestination(destination, mainViewModel)
+                        selectedDestination = destination
+                    }
+                },
+                showCategories = showCategories,
+                categories = sortedCategories,
+                selectedCategoryId = selectedCategoryId,
+                onCategorySelected = { selectedCategoryId = it },
+                navbarFocusRequester = navbarFocusRequester,
+                categorySidebarFocusRequester = categorySidebarFocusRequester,
+                onNavigateToNavbar = { moveFocusToNavbar() },
+                onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
+                onNavigateToContentList = { moveFocusToContentList() },
+                onCategoryHidden = { category -> 
+                    Log.d("AppNavigation", "[CategoryHidden] Callback called for category: ${category.categoryName} (${category.categoryId})")
+                    handleCategoryHidden(category) 
+                },
+                onSearchClick = {
+                    showSearchOverlay = true
+                },
+                onNavbarReady = {
+                    // Signal that navbar is ready for focus
+                    navbarReady = true
+                },
+                onCategorySidebarReady = {
+                    // Signal that category sidebar is ready for focus
+                    categorySidebarReady = true
+                },
+                onContentListReady = {
+                    // Signal that content list is ready for focus
+                    contentListReady = true
                 }
-            },
-            showCategories = showCategories,
-            categories = sortedCategories,
-            selectedCategoryId = selectedCategoryId,
-            onCategorySelected = { selectedCategoryId = it },
-            navbarFocusRequester = navbarFocusRequester,
-            categorySidebarFocusRequester = categorySidebarFocusRequester,
-            contentListFocusRequester = contentListFocusRequester,
-            onNavigateToNavbar = { moveFocusToNavbar() },
-            onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
-            onNavigateToContentList = { moveFocusToContentList() },
-            categoryVisibilityService = categoryVisibilityService,
-            categoryType = categoryType,
-            onCategoryHidden = { category -> 
-                Log.d("AppNavigation", "[CategoryHidden] Callback aufgerufen für Kategorie: ${category.categoryName} (${category.categoryId})")
-                handleCategoryHidden(category) 
-            },
-            onSearchClick = {
-                showSearchOverlay = true
-            },
-        onNavbarReady = {
-            // Signal that navbar is ready for focus
-            navbarReady = true
-        },
-        onCategorySidebarReady = {
-            // Signal that category sidebar is ready for focus
-            categorySidebarReady = true
-        },
-        onContentListReady = {
-            // Signal that content list is ready for focus
-            contentListReady = true
-        },
-        content = {
+            ),
+            content = {
             when (selectedDestination) {
                 is HomeDestination.LiveTV -> {
                     LiveTVContent(
