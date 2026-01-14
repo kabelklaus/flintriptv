@@ -49,11 +49,179 @@ sealed class HomeDestination {
     object Settings : HomeDestination()
 }
 
-private data class NavItem(
+internal data class NavItem(
     val title: String,
     val icon: ImageVector,
     val destination: HomeDestination
 )
+
+internal data class NavItemState(
+    val selectedDestination: HomeDestination,
+    val pendingFocusDestination: HomeDestination?
+)
+
+internal data class NavItemFocusConfig(
+    val focusRequester: FocusRequester? = null,
+    val externalFocusRequester: FocusRequester? = null
+)
+
+internal data class NavItemCallbacks(
+    val onClick: () -> Unit,
+    val onNavigateRight: (() -> Unit)? = null
+)
+
+private data class ItemColors(
+    val backgroundColor: Color,
+    val borderColor: Color,
+    val iconColor: Color,
+    val textColor: Color
+)
+
+@Composable
+private fun calculateItemColors(
+    isSelected: Boolean,
+    isFocused: Boolean,
+    colors: com.flintr.tv.ui.theme.AppColors
+): ItemColors {
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            isSelected -> colors.accentColorHoverBg
+            isFocused -> colors.bgHover
+            else -> Color.Transparent
+        },
+        animationSpec = tween<Color>(
+            durationMillis = 200,
+            easing = FastOutSlowInEasing
+        ),
+        label = "backgroundColor"
+    )
+    
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected || isFocused) colors.accentColor else Color.Transparent,
+        animationSpec = tween(durationMillis = 200),
+        label = "borderColor"
+    )
+    
+    val iconColor = when {
+        isSelected -> colors.accentColor
+        isFocused -> colors.accentColor
+        else -> colors.iconColor
+    }
+    
+    val textColor = when {
+        isSelected -> colors.accentColor
+        isFocused -> colors.textPrimary
+        else -> colors.textSecondary
+    }
+    
+    return ItemColors(backgroundColor, borderColor, iconColor, textColor)
+}
+
+private fun Modifier.createItemModifier(
+    focusConfig: NavItemFocusConfig,
+    pendingFocusDestination: HomeDestination?,
+    destination: HomeDestination,
+    title: String,
+    isSelected: Boolean,
+    callbacks: NavItemCallbacks,
+    onPositioned: () -> Unit,
+    onFocusChanged: (Boolean) -> Unit
+): Modifier {
+    return this
+        .fillMaxWidth()
+        .then(
+            if (focusConfig.externalFocusRequester != null) {
+                Modifier.focusRequester(focusConfig.externalFocusRequester)
+            } else if (focusConfig.focusRequester != null) {
+                Modifier.focusRequester(focusConfig.focusRequester)
+            } else {
+                Modifier
+            }
+        )
+        .onGloballyPositioned {
+            if (focusConfig.focusRequester != null && 
+                pendingFocusDestination == destination) {
+                onPositioned()
+            }
+        }
+        .onFocusChanged { focusState ->
+            onFocusChanged(focusState.isFocused)
+        }
+        .focusable()
+        .onDpadDirection(
+            onRight = if (callbacks.onNavigateRight != null) {
+                {
+                    Log.i("TVFocus", "[MainNavbar] ➡️ D-Pad Right: '$title' -> Navigating to CategorySidebar")
+                    callbacks.onNavigateRight()
+                    true
+                }
+            } else {
+                null
+            }
+        )
+        .onClick(callbacks.onClick)
+}
+
+@Composable
+private fun NavItemBackground(
+    colors: ItemColors,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                color = colors.backgroundColor,
+                shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
+            )
+            .then(
+                if (colors.borderColor != Color.Transparent) {
+                    Modifier.border(
+                        width = Dimensions.listItemHoverBorderWidth,
+                        color = colors.borderColor,
+                        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .padding(
+                horizontal = Dimensions.navbarItemPadding,
+                vertical = Dimensions.navbarItemVerticalPadding
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun NavItemContent(
+    title: String,
+    icon: ImageVector,
+    iconColor: Color,
+    textColor: Color
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Dimensions.navbarLabelSpacing)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = title,
+            modifier = Modifier.size(Dimensions.navbarIconSize),
+            tint = iconColor
+        )
+        Text(
+            text = title,
+            fontSize = Dimensions.navbarTextSize.value.sp,
+            fontWeight = FontWeight.W500,
+            color = textColor,
+            textAlign = TextAlign.Center
+        )
+    }
+}
 
 @Composable
 fun HomeSidebar(
@@ -111,27 +279,31 @@ fun HomeSidebar(
             items(navItems.size) { index ->
                 val navItem = navItems[index]
                 HomeSidebarItem(
-                    title = navItem.title,
-                    icon = navItem.icon,
-                    destination = navItem.destination,
-                    selectedDestination = selectedDestination,
-                    pendingFocusDestination = pendingFocusDestination,
-                    onClick = {
-                        if (navItem.destination == HomeDestination.Search) {
-                            onSearchClick()
-                        } else {
-                            onNavigate(navItem.destination)
-                        }
-                    },
-                    colors = colors,
-                    focusRequester = focusRequesters[index],
-                    externalFocusRequester = getExternalFocusRequester(
+                    navItem = navItem,
+                    state = NavItemState(
                         selectedDestination = selectedDestination,
-                        destination = navItem.destination,
-                        externalFocusRequested = externalFocusRequested,
-                        focusRequester = focusRequester
+                        pendingFocusDestination = pendingFocusDestination
                     ),
-                    onNavigateRight = onNavigateRight
+                    focusConfig = NavItemFocusConfig(
+                        focusRequester = focusRequesters[index],
+                        externalFocusRequester = getExternalFocusRequester(
+                            selectedDestination = selectedDestination,
+                            destination = navItem.destination,
+                            externalFocusRequested = externalFocusRequested,
+                            focusRequester = focusRequester
+                        )
+                    ),
+                    callbacks = NavItemCallbacks(
+                        onClick = {
+                            if (navItem.destination == HomeDestination.Search) {
+                                onSearchClick()
+                            } else {
+                                onNavigate(navItem.destination)
+                            }
+                        },
+                        onNavigateRight = onNavigateRight
+                    ),
+                    colors = colors
                 )
             }
         }
@@ -172,165 +344,77 @@ private fun getExternalFocusRequester(
 }
 
 @Composable
-fun HomeSidebarItem(
-    title: String,
-    icon: ImageVector,
-    destination: HomeDestination,
-    selectedDestination: HomeDestination,
-    pendingFocusDestination: HomeDestination?,
-    onClick: () -> Unit,
+internal fun HomeSidebarItem(
+    navItem: NavItem,
+    state: NavItemState,
+    focusConfig: NavItemFocusConfig,
+    callbacks: NavItemCallbacks,
     colors: com.flintr.tv.ui.theme.AppColors,
-    modifier: Modifier = Modifier,
-    focusRequester: FocusRequester? = null,
-    externalFocusRequester: FocusRequester? = null,
-    onNavigateRight: (() -> Unit)? = null
+    modifier: Modifier = Modifier
 ) {
-    val isSelected = destination == selectedDestination
+    val isSelected = navItem.destination == state.selectedDestination
     var isFocused by remember { mutableStateOf(false) }
     var hasRequestedFocus by remember { mutableStateOf(false) }
     var isPositioned by remember { mutableStateOf(false) }
     
     // Request focus when item is positioned and should receive focus
-    LaunchedEffect(pendingFocusDestination) {
+    LaunchedEffect(state.pendingFocusDestination) {
         hasRequestedFocus = false
         isPositioned = false
     }
     
     // Request focus with delay after positioning to ensure FocusRequester is ready
-    LaunchedEffect(isPositioned, pendingFocusDestination) {
+    LaunchedEffect(isPositioned, state.pendingFocusDestination) {
         if (isPositioned && 
-            focusRequester != null && 
-            pendingFocusDestination == destination && 
+            focusConfig.focusRequester != null && 
+            state.pendingFocusDestination == navItem.destination && 
             !hasRequestedFocus) {
             hasRequestedFocus = true
-            focusRequester.safeRequestFocus("[MainNavbar]", destination.toString())
+            focusConfig.focusRequester.safeRequestFocus("[MainNavbar]", navItem.destination.toString())
         }
     }
     
-    // Animation for background color
-    val backgroundColor by animateColorAsState(
-        targetValue = when {
-            isSelected -> colors.accentColorHoverBg
-            isFocused -> colors.bgHover
-            else -> Color.Transparent
-        },
-        animationSpec = tween<Color>(
-            durationMillis = 200,
-            easing = FastOutSlowInEasing
-        ),
-        label = "backgroundColor"
-    )
+    val itemColors = calculateItemColors(isSelected, isFocused, colors)
     
-    // Border color
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected || isFocused) colors.accentColor else Color.Transparent,
-        animationSpec = tween(durationMillis = 200),
-        label = "borderColor"
-    )
-    
-    // Icon and text colors
-    val iconColor = when {
-        isSelected -> colors.accentColor
-        isFocused -> colors.accentColor
-        else -> colors.iconColor
+    val handleFocusChanged = { focused: Boolean ->
+        val wasFocused = isFocused
+        isFocused = focused
+        if (isFocused != wasFocused) {
+            if (isFocused) {
+                Log.i("TVFocus", "[MainNavbar] ✅ FOCUSED: '${navItem.title}' (Selected: $isSelected)")
+            } else {
+                Log.i("TVFocus", "[MainNavbar] ❌ UNFOCUSED: '${navItem.title}'")
+            }
+        }
     }
     
-    val textColor = when {
-        isSelected -> colors.accentColor
-        isFocused -> colors.textPrimary
-        else -> colors.textSecondary
+    val handlePositioned = {
+        if (focusConfig.focusRequester != null && 
+            state.pendingFocusDestination == navItem.destination && 
+            !isPositioned) {
+            isPositioned = true
+        }
     }
     
     Box(
-        modifier = modifier
-            .fillMaxWidth()
-            // Correct order: focusRequester -> onGloballyPositioned -> onFocusChanged -> focusable -> key handlers
-            // Apply external focusRequester if provided (for selected item), otherwise use internal one
-            .then(
-                if (externalFocusRequester != null) {
-                    Modifier.focusRequester(externalFocusRequester)
-                } else if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                }
-            )
-            .onGloballyPositioned {
-                // Signal that item is positioned - focus will be requested via LaunchedEffect
-                if (focusRequester != null && 
-                    pendingFocusDestination == destination && 
-                    !isPositioned) {
-                    isPositioned = true
-                }
-            }
-            .onFocusChanged { focusState ->
-                val wasFocused = isFocused
-                isFocused = focusState.isFocused
-                if (isFocused != wasFocused) {
-                    if (isFocused) {
-                        Log.i("TVFocus", "[MainNavbar] ✅ FOCUSED: '$title' (Selected: $isSelected)")
-                    } else {
-                        Log.i("TVFocus", "[MainNavbar] ❌ UNFOCUSED: '$title'")
-                    }
-                }
-            }
-            .focusable()
-            .onDpadDirection(
-                onRight = if (onNavigateRight != null) {
-                    {
-                        Log.i("TVFocus", "[MainNavbar] ➡️ D-Pad Right: '$title' -> Navigating to CategorySidebar")
-                        onNavigateRight()
-                        true
-                    }
-                } else {
-                    null // Let Compose handle standard navigation
-                }
-            )
-            .onClick(onClick)
+        modifier = modifier.createItemModifier(
+            focusConfig = focusConfig,
+            pendingFocusDestination = state.pendingFocusDestination,
+            destination = navItem.destination,
+            title = navItem.title,
+            isSelected = isSelected,
+            callbacks = callbacks,
+            onPositioned = handlePositioned,
+            onFocusChanged = handleFocusChanged
+        )
     ) {
-        // Background container with animation
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    color = backgroundColor,
-                    shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-                )
-                .then(
-                    if (borderColor != Color.Transparent) {
-                        Modifier.border(
-                            width = Dimensions.listItemHoverBorderWidth,
-                            color = borderColor,
-                            shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-                        )
-                    } else {
-                        Modifier
-                    }
-                )
-                .padding(
-                    horizontal = Dimensions.navbarItemPadding,
-                    vertical = Dimensions.navbarItemVerticalPadding
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(Dimensions.navbarLabelSpacing)
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    modifier = Modifier.size(Dimensions.navbarIconSize),
-                    tint = iconColor
-                )
-                Text(
-                    text = title,
-                    fontSize = Dimensions.navbarTextSize.value.sp,
-                    fontWeight = FontWeight.W500,
-                    color = textColor,
-                    textAlign = TextAlign.Center
-                )
-            }
+        NavItemBackground(colors = itemColors) {
+            NavItemContent(
+                title = navItem.title,
+                icon = navItem.icon,
+                iconColor = itemColors.iconColor,
+                textColor = itemColors.textColor
+            )
         }
     }
 }
