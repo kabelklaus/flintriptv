@@ -87,33 +87,6 @@ data class ContentGridLayoutParams<T>(
 
 @Composable
 fun <T> ContentGridLayout(
-    items: List<T>,
-    isLoading: Boolean,
-    focusRequester: FocusRequester,
-    modifier: Modifier = Modifier,
-    lazyGridState: LazyGridState = rememberLazyGridState(),
-    keySelector: ((T) -> Any)? = null,
-    contentIdSelector: ((T) -> String)? = null,
-    focusRequesterMap: MutableMap<String, FocusRequester>? = null,
-    onItemsRendered: (() -> Unit)? = null,
-    content: @Composable (item: T, index: Int, columnIndex: Int, onFocusChanged: ((Boolean) -> Unit)?, cardFocusRequester: FocusRequester?) -> Unit
-) {
-    val params = ContentGridLayoutParams(
-        items = items,
-        isLoading = isLoading,
-        focusRequester = focusRequester,
-        modifier = modifier,
-        lazyGridState = lazyGridState,
-        keySelector = keySelector,
-        contentIdSelector = contentIdSelector,
-        focusRequesterMap = focusRequesterMap,
-        onItemsRendered = onItemsRendered
-    )
-    ContentGridLayout(params, content)
-}
-
-@Composable
-private fun <T> ContentGridLayout(
     params: ContentGridLayoutParams<T>,
     content: @Composable (item: T, index: Int, columnIndex: Int, onFocusChanged: ((Boolean) -> Unit)?, cardFocusRequester: FocusRequester?) -> Unit
 ) {

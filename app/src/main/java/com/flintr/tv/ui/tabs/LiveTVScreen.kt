@@ -12,6 +12,7 @@ import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.ui.components.CardConfig
 import com.flintr.tv.ui.sidebars.ContentGridLayout
+import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.components.LiveStreamCard
 import com.flintr.tv.viewmodel.MainViewModel
 
@@ -28,33 +29,7 @@ data class LiveTVContentParams(
 )
 
 @Composable
-fun LiveTVContent(
-    viewModel: MainViewModel,
-    selectedCategoryId: String?,
-    focusRequester: FocusRequester,
-    favoritesRepository: FavoritesRepository,
-    onNavigateLeft: () -> Unit,
-    onChannelClick: (LiveStream) -> Unit,
-    modifier: Modifier = Modifier,
-    lazyGridState: LazyGridState = rememberLazyGridState(),
-    focusRequesterMap: MutableMap<String, FocusRequester>? = null
-) {
-    val params = LiveTVContentParams(
-        viewModel = viewModel,
-        selectedCategoryId = selectedCategoryId,
-        focusRequester = focusRequester,
-        favoritesRepository = favoritesRepository,
-        onNavigateLeft = onNavigateLeft,
-        onChannelClick = onChannelClick,
-        modifier = modifier,
-        lazyGridState = lazyGridState,
-        focusRequesterMap = focusRequesterMap
-    )
-    LiveTVContent(params)
-}
-
-@Composable
-private fun LiveTVContent(params: LiveTVContentParams) {
+fun LiveTVContent(params: LiveTVContentParams) {
     val streams by params.viewModel.liveStreams.collectAsState()
     val uiState by params.viewModel.uiState.collectAsState()
     
@@ -69,14 +44,16 @@ private fun LiveTVContent(params: LiveTVContentParams) {
     // This keeps the focus on the Navbar when the app starts
     
     ContentGridLayout(
-        items = streams,
-        isLoading = uiState.isLoading,
-        focusRequester = params.focusRequester,
-        modifier = params.modifier,
-        lazyGridState = params.lazyGridState,
-        keySelector = { stream -> stream.streamId },
-        contentIdSelector = { stream -> "live_${stream.streamId}" },
-        focusRequesterMap = params.focusRequesterMap,
+        params = ContentGridLayoutParams(
+            items = streams,
+            isLoading = uiState.isLoading,
+            focusRequester = params.focusRequester,
+            modifier = params.modifier,
+            lazyGridState = params.lazyGridState,
+            keySelector = { stream -> stream.streamId },
+            contentIdSelector = { stream -> "live_${stream.streamId}" },
+            focusRequesterMap = params.focusRequesterMap
+        ),
         content = { stream, index, columnIndex, onFocusChanged, cardFocusRequester ->
             LiveStreamCard(
                 stream = stream,

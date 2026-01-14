@@ -136,55 +136,7 @@ private sealed class ContentType {
 }
 
 @Composable
-fun VODCard(
-    vod: VodStream,
-    onClick: () -> Unit,
-    favoritesRepository: FavoritesRepository,
-    modifier: Modifier = Modifier,
-    isSelected: Boolean = false,
-    onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null,
-    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
-) {
-    val params = VODCardParams(
-        vod = vod,
-        onClick = onClick,
-        favoritesRepository = favoritesRepository,
-        modifier = modifier,
-        isSelected = isSelected,
-        onFocusChanged = onFocusChanged,
-        onNavigateLeft = onNavigateLeft,
-        focusRequester = focusRequester
-    )
-    VODCard(params)
-}
-
-@Composable
-fun VODCard(
-    series: Series,
-    onClick: () -> Unit,
-    favoritesRepository: FavoritesRepository,
-    modifier: Modifier = Modifier,
-    isSelected: Boolean = false,
-    onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null,
-    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
-) {
-    val params = VODCardParams(
-        series = series,
-        onClick = onClick,
-        favoritesRepository = favoritesRepository,
-        modifier = modifier,
-        isSelected = isSelected,
-        onFocusChanged = onFocusChanged,
-        onNavigateLeft = onNavigateLeft,
-        focusRequester = focusRequester
-    )
-    VODCard(params)
-}
-
-@Composable
-private fun VODCard(params: VODCardParams) {
+fun VODCard(params: VODCardParams) {
     val contentInfo = when {
         params.vod != null -> ContentInfo(
             coverImageUrl = params.vod.streamIcon ?: params.vod.cover,

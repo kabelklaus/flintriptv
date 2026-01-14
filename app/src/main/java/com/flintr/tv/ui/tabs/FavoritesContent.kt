@@ -22,7 +22,9 @@ import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.components.CardConfig
 import com.flintr.tv.ui.components.LiveStreamCard
 import com.flintr.tv.ui.components.VODCard
+import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.ui.sidebars.ContentGridLayout
+import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 
 // Sealed class to represent different favorite content types
 private sealed class FavoriteContentItem {
@@ -145,22 +147,26 @@ private fun renderFavoriteCard(
         }
         is FavoriteContentItem.Movie -> {
             VODCard(
-                vod = item.vod,
-                onClick = { params.onVodClick(item.vod) },
-                favoritesRepository = params.favoritesRepository,
-                onFocusChanged = onFocusChanged,
-                onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
-                focusRequester = cardFocusRequester
+                params = VODCardParams(
+                    vod = item.vod,
+                    onClick = { params.onVodClick(item.vod) },
+                    favoritesRepository = params.favoritesRepository,
+                    onFocusChanged = onFocusChanged,
+                    onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
+                    focusRequester = cardFocusRequester
+                )
             )
         }
         is FavoriteContentItem.SeriesItem -> {
             VODCard(
-                series = item.series,
-                onClick = { params.onSeriesClick(item.series) },
-                favoritesRepository = params.favoritesRepository,
-                onFocusChanged = onFocusChanged,
-                onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
-                focusRequester = cardFocusRequester
+                params = VODCardParams(
+                    series = item.series,
+                    onClick = { params.onSeriesClick(item.series) },
+                    favoritesRepository = params.favoritesRepository,
+                    onFocusChanged = onFocusChanged,
+                    onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
+                    focusRequester = cardFocusRequester
+                )
             )
         }
     }
@@ -216,30 +222,32 @@ fun FavoritesContent(
     }
     
     ContentGridLayout(
-        items = favoriteItems,
-        isLoading = isLoading,
-        focusRequester = params.focusRequester,
-        modifier = modifier,
-        lazyGridState = params.lazyGridState,
-        keySelector = { item ->
-            when (item) {
-                is FavoriteContentItem.Live -> item.stream.streamId
-                is FavoriteContentItem.Movie -> item.vod.streamId
-                is FavoriteContentItem.SeriesItem -> item.series.seriesId
+        params = ContentGridLayoutParams(
+            items = favoriteItems,
+            isLoading = isLoading,
+            focusRequester = params.focusRequester,
+            modifier = modifier,
+            lazyGridState = params.lazyGridState,
+            keySelector = { item ->
+                when (item) {
+                    is FavoriteContentItem.Live -> item.stream.streamId
+                    is FavoriteContentItem.Movie -> item.vod.streamId
+                    is FavoriteContentItem.SeriesItem -> item.series.seriesId
+                }
+            },
+            contentIdSelector = { item ->
+                when (item) {
+                    is FavoriteContentItem.Live -> "live_${item.stream.streamId}"
+                    is FavoriteContentItem.Movie -> "vod_${item.vod.streamId}"
+                    is FavoriteContentItem.SeriesItem -> "series_${item.series.seriesId}"
+                }
+            },
+            focusRequesterMap = params.focusRequesterMap,
+            onItemsRendered = {
+                // Items are now rendered, loading is complete
+                Log.d("FavoritesContent", "Items rendered, loading complete")
             }
-        },
-        contentIdSelector = { item ->
-            when (item) {
-                is FavoriteContentItem.Live -> "live_${item.stream.streamId}"
-                is FavoriteContentItem.Movie -> "vod_${item.vod.streamId}"
-                is FavoriteContentItem.SeriesItem -> "series_${item.series.seriesId}"
-            }
-        },
-        focusRequesterMap = params.focusRequesterMap,
-        onItemsRendered = {
-            // Items are now rendered, loading is complete
-            Log.d("FavoritesContent", "Items rendered, loading complete")
-        },
+        ),
         content = { item, index, columnIndex, onFocusChanged, cardFocusRequester ->
             renderFavoriteCard(
                 item = item,

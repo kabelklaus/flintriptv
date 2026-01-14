@@ -43,7 +43,9 @@ import com.flintr.tv.ui.screens.PlayerScreen
 import com.flintr.tv.ui.screens.StreamInfo
 import com.flintr.tv.ui.settings.SettingsScreen
 import com.flintr.tv.ui.tabs.LiveTVContent
+import com.flintr.tv.ui.tabs.LiveTVContentParams
 import com.flintr.tv.ui.tabs.VODContent
+import com.flintr.tv.ui.tabs.VODContentParams
 import com.flintr.tv.ui.tabs.SeriesContent
 import com.flintr.tv.ui.tabs.SeriesContentParams
 import com.flintr.tv.ui.tabs.FavoritesContent
@@ -295,42 +297,47 @@ private fun requestFallbackFocus(focusRequesterMap: MutableMap<String, FocusRequ
 }
 
 /**
+ * Data class grouping parameters for navigation state restoration
+ */
+private data class NavigationRestoreContext(
+    val state: NavigationStateBeforePlayer,
+    val currentDestination: HomeDestination,
+    val currentCategoryId: String?,
+    val onDestinationChanged: (HomeDestination) -> Unit,
+    val onCategoryIdChanged: (String?) -> Unit,
+    val liveCategories: List<Category>,
+    val vodCategories: List<Category>,
+    val seriesCategories: List<Category>,
+    val isLoading: Boolean,
+    val lazyGridState: androidx.compose.foundation.lazy.grid.LazyGridState,
+    val focusRequesterMap: MutableMap<String, FocusRequester>,
+    val mainViewModel: com.flintr.tv.viewmodel.MainViewModel
+)
+
+/**
  * Restores navigation state (destination, category, scroll position, focus)
  * This function handles the complete restoration process with fallbacks.
  */
-private suspend fun restoreNavigationState(
-    state: NavigationStateBeforePlayer,
-    currentDestination: HomeDestination,
-    currentCategoryId: String?,
-    onDestinationChanged: (HomeDestination) -> Unit,
-    onCategoryIdChanged: (String?) -> Unit,
-    liveCategories: List<Category>,
-    vodCategories: List<Category>,
-    seriesCategories: List<Category>,
-    isLoading: Boolean,
-    lazyGridState: androidx.compose.foundation.lazy.grid.LazyGridState,
-    focusRequesterMap: MutableMap<String, FocusRequester>,
-    mainViewModel: com.flintr.tv.viewmodel.MainViewModel
-) {
-    Log.d(LOG_TAG_MAIN_CONTENT_SCREEN, "Restoring navigation state: destinationType=${state.destinationType}, categoryId=${state.categoryId}, contentId=${state.contentId}, scrollIndex=${state.scrollIndex}, scrollOffset=${state.scrollOffset}")
+private suspend fun restoreNavigationState(context: NavigationRestoreContext) {
+    Log.d(LOG_TAG_MAIN_CONTENT_SCREEN, "Restoring navigation state: destinationType=${context.state.destinationType}, categoryId=${context.state.categoryId}, contentId=${context.state.contentId}, scrollIndex=${context.state.scrollIndex}, scrollOffset=${context.state.scrollOffset}")
     
     // 1. Set destination (tab) - with fallback
-    val destination = restoreDestination(state, currentDestination, onDestinationChanged)
+    val destination = restoreDestination(context.state, context.currentDestination, context.onDestinationChanged)
     
     // 2. Set category (if available) - with fallback
-    restoreCategory(state, destination, currentCategoryId, onCategoryIdChanged, liveCategories, vodCategories, seriesCategories)
+    restoreCategory(context.state, destination, context.currentCategoryId, context.onCategoryIdChanged, context.liveCategories, context.vodCategories, context.seriesCategories)
     
     // 3. Wait for content to be loaded (state-based check instead of fixed delay)
-    waitForContentLoaded(isLoading)
+    waitForContentLoaded(context.isLoading)
     
     // 4. Restore scroll position
-    restoreScrollPosition(state, lazyGridState)
+    restoreScrollPosition(context.state, context.lazyGridState)
     
     // 5. Set focus on content card - wait for FocusRequester to be available
-    restoreFocus(state, focusRequesterMap)
+    restoreFocus(context.state, context.focusRequesterMap)
     
     // 6. Clear pending navigation restore
-    mainViewModel.clearPendingNavigationRestore()
+    context.mainViewModel.clearPendingNavigationRestore()
     Log.d(LOG_TAG_MAIN_CONTENT_SCREEN, "Navigation state restoration completed")
 }
 
@@ -637,72 +644,80 @@ private fun MainContentBody(
     when (params.destination) {
         is HomeDestination.LiveTV -> {
             LiveTVContent(
-                viewModel = params.mainViewModel,
-                selectedCategoryId = params.selectedCategoryId,
-                focusRequester = params.contentListFocusRequester,
-                favoritesRepository = params.favoritesRepository,
-                onNavigateLeft = params.onNavigateToCategorySidebar,
-                lazyGridState = params.lazyGridState,
-                focusRequesterMap = params.focusRequesterMap,
-                onChannelClick = { stream ->
-                    val creds = params.credentials ?: return@LiveTVContent
-                    // Save navigation state before navigating to player
-                    val scrollIndex = params.lazyGridState.firstVisibleItemIndex
-                    val scrollOffset = params.lazyGridState.firstVisibleItemScrollOffset
-                    params.mainViewModel.saveNavigationStateBeforePlayer(
-                        NavigationStateBeforePlayer(
-                            destinationType = params.destination.toDestinationType(),
-                            categoryId = params.selectedCategoryId,
-                            contentId = stream.toContentId(),
-                            scrollIndex = scrollIndex,
-                            scrollOffset = scrollOffset
-                        )
-                    )
-                    val streamUrl = stream.getStreamUrl(
-                        creds.serverUrl,
-                        creds.username,
-                        creds.password
-                    )
-                    val route = Screen.Player.createRouteForLive(streamUrl)
-                    params.navController.logAndNavigate(route, "AppNavigation") {
-                        "📺 LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
+                params = LiveTVContentParams(
+                    viewModel = params.mainViewModel,
+                    selectedCategoryId = params.selectedCategoryId,
+                    focusRequester = params.contentListFocusRequester,
+                    favoritesRepository = params.favoritesRepository,
+                    onNavigateLeft = params.onNavigateToCategorySidebar,
+                    lazyGridState = params.lazyGridState,
+                    focusRequesterMap = params.focusRequesterMap,
+                    onChannelClick = { stream ->
+                        val creds = params.credentials
+                        if (creds != null) {
+                            // Save navigation state before navigating to player
+                            val scrollIndex = params.lazyGridState.firstVisibleItemIndex
+                            val scrollOffset = params.lazyGridState.firstVisibleItemScrollOffset
+                            params.mainViewModel.saveNavigationStateBeforePlayer(
+                                NavigationStateBeforePlayer(
+                                    destinationType = params.destination.toDestinationType(),
+                                    categoryId = params.selectedCategoryId,
+                                    contentId = stream.toContentId(),
+                                    scrollIndex = scrollIndex,
+                                    scrollOffset = scrollOffset
+                                )
+                            )
+                            val streamUrl = stream.getStreamUrl(
+                                creds.serverUrl,
+                                creds.username,
+                                creds.password
+                            )
+                            val route = Screen.Player.createRouteForLive(streamUrl)
+                            params.navController.logAndNavigate(route, "AppNavigation") {
+                                "📺 LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
+                            }
+                        }
                     }
-                }
+                )
             )
         }
         is HomeDestination.VOD -> {
             VODContent(
-                viewModel = params.mainViewModel,
-                selectedCategoryId = params.selectedCategoryId,
-                focusRequester = params.contentListFocusRequester,
-                favoritesRepository = params.favoritesRepository,
-                onNavigateLeft = params.onNavigateToCategorySidebar,
-                lazyGridState = params.lazyGridState,
-                focusRequesterMap = params.focusRequesterMap,
-                onVodClick = { vod ->
-                    val creds = params.credentials ?: return@VODContent
-                    // Save navigation state before navigating to player
-                    val scrollIndex = params.lazyGridState.firstVisibleItemIndex
-                    val scrollOffset = params.lazyGridState.firstVisibleItemScrollOffset
-                    params.mainViewModel.saveNavigationStateBeforePlayer(
-                        NavigationStateBeforePlayer(
-                            destinationType = params.destination.toDestinationType(),
-                            categoryId = params.selectedCategoryId,
-                            contentId = vod.toContentId(),
-                            scrollIndex = scrollIndex,
-                            scrollOffset = scrollOffset
-                        )
-                    )
-                    val streamUrl = vod.getStreamUrl(
-                        creds.serverUrl,
-                        creds.username,
-                        creds.password
-                    )
-                    val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
-                    params.navController.logAndNavigate(route, "AppNavigation") {
-                        "🎬 VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
+                params = VODContentParams(
+                    viewModel = params.mainViewModel,
+                    selectedCategoryId = params.selectedCategoryId,
+                    focusRequester = params.contentListFocusRequester,
+                    favoritesRepository = params.favoritesRepository,
+                    onNavigateLeft = params.onNavigateToCategorySidebar,
+                    lazyGridState = params.lazyGridState,
+                    focusRequesterMap = params.focusRequesterMap,
+                    onVodClick = { vod ->
+                        val creds = params.credentials
+                        if (creds != null) {
+                            // Save navigation state before navigating to player
+                            val scrollIndex = params.lazyGridState.firstVisibleItemIndex
+                            val scrollOffset = params.lazyGridState.firstVisibleItemScrollOffset
+                            params.mainViewModel.saveNavigationStateBeforePlayer(
+                                NavigationStateBeforePlayer(
+                                    destinationType = params.destination.toDestinationType(),
+                                    categoryId = params.selectedCategoryId,
+                                    contentId = vod.toContentId(),
+                                    scrollIndex = scrollIndex,
+                                    scrollOffset = scrollOffset
+                                )
+                            )
+                            val streamUrl = vod.getStreamUrl(
+                                creds.serverUrl,
+                                creds.username,
+                                creds.password
+                            )
+                            val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
+                            params.navController.logAndNavigate(route, "AppNavigation") {
+                                "🎬 VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
+                            }
+                        }
                     }
-                }
+                )
             )
         }
         is HomeDestination.Series -> {
@@ -1386,18 +1401,20 @@ fun MainContentScreen(
         if (state != null) {
             // Restore navigation state using extracted function
             restoreNavigationState(
-                state = state,
-                currentDestination = selectedDestination,
-                currentCategoryId = selectedCategoryId,
-                onDestinationChanged = { selectedDestination = it },
-                onCategoryIdChanged = { selectedCategoryId = it },
-                liveCategories = liveCategories,
-                vodCategories = vodCategories,
-                seriesCategories = seriesCategories,
-                isLoading = uiState.isLoading,
-                lazyGridState = lazyGridState,
-                focusRequesterMap = focusRequesterMap,
-                mainViewModel = mainViewModel
+                context = NavigationRestoreContext(
+                    state = state,
+                    currentDestination = selectedDestination,
+                    currentCategoryId = selectedCategoryId,
+                    onDestinationChanged = { selectedDestination = it },
+                    onCategoryIdChanged = { selectedCategoryId = it },
+                    liveCategories = liveCategories,
+                    vodCategories = vodCategories,
+                    seriesCategories = seriesCategories,
+                    isLoading = uiState.isLoading,
+                    lazyGridState = lazyGridState,
+                    focusRequesterMap = focusRequesterMap,
+                    mainViewModel = mainViewModel
+                )
             )
         } else {
             // If pendingNavigationRestore is null but there might be a state in SavedStateHandle,

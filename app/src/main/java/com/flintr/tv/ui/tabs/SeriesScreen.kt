@@ -11,7 +11,9 @@ import androidx.compose.ui.focus.FocusRequester
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.ui.components.VODCard
+import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.ui.sidebars.ContentGridLayout
+import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.viewmodel.MainViewModel
 
 /**
@@ -48,14 +50,16 @@ fun SeriesContent(
     // This keeps the focus on the Navbar when the app starts
     
     ContentGridLayout(
-        items = series,
-        isLoading = uiState.isLoading,
-        focusRequester = params.focusRequester,
-        modifier = modifier,
-        lazyGridState = params.lazyGridState,
-        keySelector = { seriesItem -> seriesItem.seriesId },
-        contentIdSelector = { seriesItem -> "series_${seriesItem.seriesId}" },
-        focusRequesterMap = params.focusRequesterMap,
+        params = ContentGridLayoutParams(
+            items = series,
+            isLoading = uiState.isLoading,
+            focusRequester = params.focusRequester,
+            modifier = modifier,
+            lazyGridState = params.lazyGridState,
+            keySelector = { seriesItem -> seriesItem.seriesId },
+            contentIdSelector = { seriesItem -> "series_${seriesItem.seriesId}" },
+            focusRequesterMap = params.focusRequesterMap
+        ),
         content = { seriesItem, _, columnIndex, onFocusChanged, cardFocusRequester ->
             SeriesItem(
                 series = seriesItem,
@@ -84,12 +88,15 @@ fun SeriesItem(
     cardConfig: com.flintr.tv.ui.components.CardConfig = com.flintr.tv.ui.components.CardConfig()
 ) {
     VODCard(
-        series = series,
-        onClick = onSeriesClick,
-        favoritesRepository = favoritesRepository,
-        isSelected = cardConfig.isSelected,
-        onFocusChanged = cardConfig.onFocusChanged,
-        onNavigateLeft = cardConfig.onNavigateLeft
+        params = VODCardParams(
+            series = series,
+            onClick = onSeriesClick,
+            favoritesRepository = favoritesRepository,
+            isSelected = cardConfig.isSelected,
+            onFocusChanged = cardConfig.onFocusChanged,
+            onNavigateLeft = cardConfig.onNavigateLeft,
+            focusRequester = cardConfig.focusRequester
+        )
     )
 }
 
