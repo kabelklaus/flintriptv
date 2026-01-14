@@ -365,14 +365,13 @@ class MainViewModel @Inject constructor(
      * This is called when returning from Player to trigger restoration.
      * Returns the state if available, null otherwise.
      */
-    fun consumeNavigationState(): NavigationStateBeforePlayer? {
+    fun consumeNavigationState() {
         val state = savedStateHandle.get<NavigationStateBeforePlayer>(KEY_NAVIGATION_STATE)
         if (state != null) {
             savedStateHandle.remove<NavigationStateBeforePlayer>(KEY_NAVIGATION_STATE)
             _pendingNavigationRestore.value = state
             Log.d("MainViewModel", "Consumed navigation state for restoration: $state")
         }
-        return state
     }
 
     /**

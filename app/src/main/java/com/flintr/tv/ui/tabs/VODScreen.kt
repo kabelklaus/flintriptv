@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import com.flintr.tv.data.local.FavoritesRepository
@@ -14,6 +13,18 @@ import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.viewmodel.MainViewModel
+
+data class VODContentParams(
+    val viewModel: MainViewModel,
+    val selectedCategoryId: String?,
+    val focusRequester: FocusRequester,
+    val favoritesRepository: FavoritesRepository,
+    val onNavigateLeft: () -> Unit,
+    val onVodClick: (VodStream) -> Unit,
+    val modifier: Modifier = Modifier,
+    val lazyGridState: LazyGridState,
+    val focusRequesterMap: MutableMap<String, FocusRequester>? = null
+)
 
 @Composable
 fun VODContent(
@@ -27,12 +38,28 @@ fun VODContent(
     lazyGridState: LazyGridState = rememberLazyGridState(),
     focusRequesterMap: MutableMap<String, FocusRequester>? = null
 ) {
-    val streams by viewModel.vodStreams.collectAsState()
-    val uiState by viewModel.uiState.collectAsState()
+    val params = VODContentParams(
+        viewModel = viewModel,
+        selectedCategoryId = selectedCategoryId,
+        focusRequester = focusRequester,
+        favoritesRepository = favoritesRepository,
+        onNavigateLeft = onNavigateLeft,
+        onVodClick = onVodClick,
+        modifier = modifier,
+        lazyGridState = lazyGridState,
+        focusRequesterMap = focusRequesterMap
+    )
+    VODContent(params)
+}
+
+@Composable
+private fun VODContent(params: VODContentParams) {
+    val streams by params.viewModel.vodStreams.collectAsState()
+    val uiState by params.viewModel.uiState.collectAsState()
     
-    LaunchedEffect(selectedCategoryId) {
-        if (selectedCategoryId != null) {
-            viewModel.loadVodStreams(selectedCategoryId)
+    LaunchedEffect(params.selectedCategoryId) {
+        if (params.selectedCategoryId != null) {
+            params.viewModel.loadVodStreams(params.selectedCategoryId)
         }
     }
     
@@ -43,20 +70,20 @@ fun VODContent(
     ContentGridLayout(
         items = streams,
         isLoading = uiState.isLoading,
-        focusRequester = focusRequester,
-        modifier = modifier,
-        lazyGridState = lazyGridState,
+        focusRequester = params.focusRequester,
+        modifier = params.modifier,
+        lazyGridState = params.lazyGridState,
         keySelector = { vod -> vod.streamId },
         contentIdSelector = { vod -> "vod_${vod.streamId}" },
-        focusRequesterMap = focusRequesterMap,
+        focusRequesterMap = params.focusRequesterMap,
         content = { vod, _, columnIndex, onFocusChanged, cardFocusRequester ->
             VODCard(
                 vod = vod,
-                onClick = { onVodClick(vod) },
-                favoritesRepository = favoritesRepository,
+                onClick = { params.onVodClick(vod) },
+                favoritesRepository = params.favoritesRepository,
                 onFocusChanged = onFocusChanged,
                 onNavigateLeft = if (columnIndex == 0) {
-                    { onNavigateLeft() }
+                    { params.onNavigateLeft() }
                 } else {
                     null
                 },

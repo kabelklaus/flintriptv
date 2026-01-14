@@ -15,6 +15,18 @@ import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.components.LiveStreamCard
 import com.flintr.tv.viewmodel.MainViewModel
 
+data class LiveTVContentParams(
+    val viewModel: MainViewModel,
+    val selectedCategoryId: String?,
+    val focusRequester: FocusRequester,
+    val favoritesRepository: FavoritesRepository,
+    val onNavigateLeft: () -> Unit,
+    val onChannelClick: (LiveStream) -> Unit,
+    val modifier: Modifier = Modifier,
+    val lazyGridState: LazyGridState,
+    val focusRequesterMap: MutableMap<String, FocusRequester>? = null
+)
+
 @Composable
 fun LiveTVContent(
     viewModel: MainViewModel,
@@ -27,12 +39,28 @@ fun LiveTVContent(
     lazyGridState: LazyGridState = rememberLazyGridState(),
     focusRequesterMap: MutableMap<String, FocusRequester>? = null
 ) {
-    val streams by viewModel.liveStreams.collectAsState()
-    val uiState by viewModel.uiState.collectAsState()
+    val params = LiveTVContentParams(
+        viewModel = viewModel,
+        selectedCategoryId = selectedCategoryId,
+        focusRequester = focusRequester,
+        favoritesRepository = favoritesRepository,
+        onNavigateLeft = onNavigateLeft,
+        onChannelClick = onChannelClick,
+        modifier = modifier,
+        lazyGridState = lazyGridState,
+        focusRequesterMap = focusRequesterMap
+    )
+    LiveTVContent(params)
+}
+
+@Composable
+private fun LiveTVContent(params: LiveTVContentParams) {
+    val streams by params.viewModel.liveStreams.collectAsState()
+    val uiState by params.viewModel.uiState.collectAsState()
     
-    LaunchedEffect(selectedCategoryId) {
-        if (selectedCategoryId != null) {
-            viewModel.loadLiveStreams(selectedCategoryId)
+    LaunchedEffect(params.selectedCategoryId) {
+        if (params.selectedCategoryId != null) {
+            params.viewModel.loadLiveStreams(params.selectedCategoryId)
         }
     }
     
@@ -43,22 +71,22 @@ fun LiveTVContent(
     ContentGridLayout(
         items = streams,
         isLoading = uiState.isLoading,
-        focusRequester = focusRequester,
-        modifier = modifier,
-        lazyGridState = lazyGridState,
+        focusRequester = params.focusRequester,
+        modifier = params.modifier,
+        lazyGridState = params.lazyGridState,
         keySelector = { stream -> stream.streamId },
         contentIdSelector = { stream -> "live_${stream.streamId}" },
-        focusRequesterMap = focusRequesterMap,
+        focusRequesterMap = params.focusRequesterMap,
         content = { stream, index, columnIndex, onFocusChanged, cardFocusRequester ->
             LiveStreamCard(
                 stream = stream,
-                onClick = { onChannelClick(stream) },
-                favoritesRepository = favoritesRepository,
+                onClick = { params.onChannelClick(stream) },
+                favoritesRepository = params.favoritesRepository,
                 config = CardConfig(
-                    focusRequester = if (index == 0 && streams.isNotEmpty()) focusRequester else null,
+                    focusRequester = if (index == 0 && streams.isNotEmpty()) params.focusRequester else null,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = if (columnIndex == 0) {
-                        { onNavigateLeft() }
+                        { params.onNavigateLeft() }
                     } else {
                         null
                     }
