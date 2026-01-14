@@ -8,13 +8,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.viewmodel.MainViewModel
+import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.useFavorites
+
+private const val TAG = "SeriesContent"
 
 /**
  * Parameters for SeriesContent composable.
@@ -25,6 +31,7 @@ data class SeriesContentParams(
     val selectedCategoryId: String?,
     val focusRequester: FocusRequester,
     val favoritesRepository: FavoritesRepository,
+    val cacheService: DataCacheService,
     val onNavigateLeft: () -> Unit,
     val onSeriesClick: (Series) -> Unit,
     val lazyGridState: LazyGridState,
@@ -39,8 +46,21 @@ fun SeriesContent(
     val series by params.viewModel.series.collectAsState()
     val uiState by params.viewModel.uiState.collectAsState()
     
+    val isFavoritesCategory = params.selectedCategoryId == FAVORITES_CATEGORY_ID
+    
+    // Load favorites using the hook
+    val favoritesState = useFavorites(
+        isFavoritesCategory = isFavoritesCategory,
+        favoritesRepository = params.favoritesRepository,
+        cacheService = params.cacheService,
+        favoriteType = FavoriteType.SERIES,
+        dataSelector = { it.series },
+        idSelector = { it.seriesId }
+    )
+    
+    // Load regular series when not in favorites category
     LaunchedEffect(params.selectedCategoryId) {
-        if (params.selectedCategoryId != null) {
+        if (!isFavoritesCategory && params.selectedCategoryId != null) {
             params.viewModel.loadSeries(params.selectedCategoryId)
         }
     }
@@ -49,10 +69,13 @@ fun SeriesContent(
     // Focus will be set manually when navigating from CategorySidebar
     // This keeps the focus on the Navbar when the app starts
     
+    val displaySeries = if (isFavoritesCategory) favoritesState.items else series
+    val isLoading = if (isFavoritesCategory) favoritesState.isLoading else uiState.isLoading
+    
     ContentGridLayout(
         params = ContentGridLayoutParams(
-            items = series,
-            isLoading = uiState.isLoading,
+            items = displaySeries,
+            isLoading = isLoading,
             focusRequester = params.focusRequester,
             modifier = modifier,
             lazyGridState = params.lazyGridState,

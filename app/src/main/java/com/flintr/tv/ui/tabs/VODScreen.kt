@@ -7,19 +7,26 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.viewmodel.MainViewModel
+import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.useFavorites
+
+private const val TAG = "VODContent"
 
 data class VODContentParams(
     val viewModel: MainViewModel,
     val selectedCategoryId: String?,
     val focusRequester: FocusRequester,
     val favoritesRepository: FavoritesRepository,
+    val cacheService: DataCacheService,
     val onNavigateLeft: () -> Unit,
     val onVodClick: (VodStream) -> Unit,
     val modifier: Modifier = Modifier,
@@ -32,8 +39,21 @@ fun VODContent(params: VODContentParams) {
     val streams by params.viewModel.vodStreams.collectAsState()
     val uiState by params.viewModel.uiState.collectAsState()
     
+    val isFavoritesCategory = params.selectedCategoryId == FAVORITES_CATEGORY_ID
+    
+    // Load favorites using the hook
+    val favoritesState = useFavorites(
+        isFavoritesCategory = isFavoritesCategory,
+        favoritesRepository = params.favoritesRepository,
+        cacheService = params.cacheService,
+        favoriteType = FavoriteType.MOVIE,
+        dataSelector = { it.movies },
+        idSelector = { it.streamId }
+    )
+    
+    // Load regular streams when not in favorites category
     LaunchedEffect(params.selectedCategoryId) {
-        if (params.selectedCategoryId != null) {
+        if (!isFavoritesCategory && params.selectedCategoryId != null) {
             params.viewModel.loadVodStreams(params.selectedCategoryId)
         }
     }
@@ -42,10 +62,13 @@ fun VODContent(params: VODContentParams) {
     // Focus will be set manually when navigating from CategorySidebar
     // This keeps the focus on the Navbar when the app starts
     
+    val displayStreams = if (isFavoritesCategory) favoritesState.items else streams
+    val isLoading = if (isFavoritesCategory) favoritesState.isLoading else uiState.isLoading
+    
     ContentGridLayout(
         params = ContentGridLayoutParams(
-            items = streams,
-            isLoading = uiState.isLoading,
+            items = displayStreams,
+            isLoading = isLoading,
             focusRequester = params.focusRequester,
             modifier = params.modifier,
             lazyGridState = params.lazyGridState,

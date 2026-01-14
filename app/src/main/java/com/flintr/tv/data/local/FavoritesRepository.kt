@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.FavoriteType
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -69,6 +70,14 @@ class FavoritesRepository @Inject constructor(
 
     suspend fun clearAllFavorites() = withContext(Dispatchers.IO) {
         sharedPreferences.edit().remove(KEY_FAVORITES).apply()
+    }
+
+    suspend fun getFavoritesByType(type: FavoriteType): List<Favorite> = withContext(Dispatchers.IO) {
+        return@withContext getAllFavorites().filter { it.type == type }
+    }
+
+    suspend fun getFavoriteCountByType(type: FavoriteType): Int = withContext(Dispatchers.IO) {
+        return@withContext getAllFavorites().count { it.type == type }
     }
 
     private suspend fun saveFavorites(favorites: List<Favorite>): Boolean = withContext(Dispatchers.IO) {

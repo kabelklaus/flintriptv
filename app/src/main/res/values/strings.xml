@@ -28,7 +28,7 @@
     <string name="download_and_install_update">Update herunterladen und installieren</string>
     <string name="download_progress">Download: %1$d%%</string>
     <string name="version_info">Version: %1$s</string>
-    <string name="app_name_info">IPTV Player App</string>
+    <string name="app_name_info">flintrTV</string>
     
     <!-- Update ViewModel Error Messages -->
     <string name="error_checking_updates">Fehler beim Prüfen auf Updates: %1$s</string>
@@ -61,6 +61,7 @@
     
     <!-- Category Management -->
     <string name="category_hidden">Kategorie wurde ausgeblendet</string>
+    <string name="favorites">Favoriten</string>
     
     <!-- Settings General Screen -->
     <string name="language">Sprache</string>
