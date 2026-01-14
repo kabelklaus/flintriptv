@@ -48,7 +48,6 @@ import com.flintr.tv.ui.tabs.FavoritesContent
 import com.flintr.tv.ui.tabs.FavoritesContentParams
 import com.flintr.tv.ui.screens.SeriesEpisodesScreen
 import com.flintr.tv.viewmodel.MainViewModel
-import com.flintr.tv.viewmodel.PlayerViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
 import com.flintr.tv.data.model.UpdateInfo
 import com.flintr.tv.utils.DownloadProgress
@@ -163,8 +162,7 @@ data class AppNavigationDependencies(
 fun AppNavigation(
     navController: NavHostController,
     dependencies: AppNavigationDependencies,
-    mainViewModel: MainViewModel = hiltViewModel(),
-    playerViewModel: PlayerViewModel = hiltViewModel()
+    mainViewModel: MainViewModel = hiltViewModel()
 ) {
     NavHost(
         navController = navController,

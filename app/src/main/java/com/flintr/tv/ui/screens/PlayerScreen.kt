@@ -488,47 +488,55 @@ private fun createPlayPauseCallback(
 }
 
 /**
- * Creates video tap callback
+ * Data class grouping parameters for PlayerProgressRestoreEffect
  */
-private fun createVideoTapCallback(
-    onToggleControls: () -> Unit,
-    onSetFocusedButton: (FocusedButton) -> Unit
-): () -> Unit {
-    return {
-        onToggleControls()
-        onSetFocusedButton(FocusedButton.PREVIOUS)
-    }
-}
+private data class PlayerProgressRestoreParams(
+    val exoPlayer: ExoPlayer,
+    val contentType: String,
+    val streamId: Int?,
+    val seriesId: Int?,
+    val episodeId: Int?,
+    val watchProgressService: WatchProgressService,
+    val hasRestoredProgress: Boolean,
+    val onRestored: () -> Unit,
+    val coroutineScope: CoroutineScope
+)
+
+/**
+ * Data class grouping parameters for PlayerProgressSaveEffect
+ */
+private data class PlayerProgressSaveParams(
+    val exoPlayer: ExoPlayer,
+    val contentType: String,
+    val streamId: Int?,
+    val seriesId: Int?,
+    val episodeId: Int?,
+    val title: String?,
+    val watchProgressService: WatchProgressService,
+    val coroutineScope: CoroutineScope
+)
 
 /**
  * Effect to restore watch progress when player is ready
  */
 @Composable
 private fun PlayerProgressRestoreEffect(
-    exoPlayer: ExoPlayer,
-    contentType: String,
-    streamId: Int?,
-    seriesId: Int?,
-    episodeId: Int?,
-    watchProgressService: WatchProgressService,
-    hasRestoredProgress: Boolean,
-    onRestored: () -> Unit,
-    coroutineScope: CoroutineScope
+    params: PlayerProgressRestoreParams
 ) {
-    LaunchedEffect(exoPlayer.playbackState) {
-        if (exoPlayer.playbackState == Player.STATE_READY && !hasRestoredProgress) {
-            coroutineScope.launch {
+    LaunchedEffect(params.exoPlayer.playbackState) {
+        if (params.exoPlayer.playbackState == Player.STATE_READY && !params.hasRestoredProgress) {
+            params.coroutineScope.launch {
                 val restored = restoreWatchProgress(
-                    exoPlayer = exoPlayer,
-                    contentType = contentType,
-                    streamId = streamId,
-                    seriesId = seriesId,
-                    episodeId = episodeId,
-                    watchProgressService = watchProgressService
+                    exoPlayer = params.exoPlayer,
+                    contentType = params.contentType,
+                    streamId = params.streamId,
+                    seriesId = params.seriesId,
+                    episodeId = params.episodeId,
+                    watchProgressService = params.watchProgressService
                 )
-                onRestored()
+                params.onRestored()
                 if (!restored) {
-                    Log.d("PlayerScreen", "No saved progress found for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId")
+                    Log.d("PlayerScreen", "No saved progress found for contentType: ${params.contentType}, streamId: ${params.streamId}, seriesId: ${params.seriesId}, episodeId: ${params.episodeId}")
                 }
             }
         }
@@ -540,27 +548,20 @@ private fun PlayerProgressRestoreEffect(
  */
 @Composable
 private fun PlayerProgressSaveEffect(
-    exoPlayer: ExoPlayer,
-    contentType: String,
-    streamId: Int?,
-    seriesId: Int?,
-    episodeId: Int?,
-    title: String?,
-    watchProgressService: WatchProgressService,
-    coroutineScope: CoroutineScope
+    params: PlayerProgressSaveParams
 ) {
-    LaunchedEffect(contentType, streamId, seriesId, episodeId, title) {
+    LaunchedEffect(params.contentType, params.streamId, params.seriesId, params.episodeId, params.title) {
         while (true) {
             delay(10000) // 10 seconds
-            coroutineScope.launch {
+            params.coroutineScope.launch {
                 saveWatchProgress(
-                    exoPlayer = exoPlayer,
-                    contentType = contentType,
-                    streamId = streamId,
-                    seriesId = seriesId,
-                    episodeId = episodeId,
-                    title = title,
-                    watchProgressService = watchProgressService
+                    exoPlayer = params.exoPlayer,
+                    contentType = params.contentType,
+                    streamId = params.streamId,
+                    seriesId = params.seriesId,
+                    episodeId = params.episodeId,
+                    title = params.title,
+                    watchProgressService = params.watchProgressService
                 )
             }
         }
@@ -657,27 +658,31 @@ fun PlayerScreen(
     
     // Restore watch progress
     PlayerProgressRestoreEffect(
-        exoPlayer = exoPlayer,
-        contentType = contentType,
-        streamId = streamId,
-        seriesId = seriesId,
-        episodeId = episodeId,
-        watchProgressService = watchProgressService,
-        hasRestoredProgress = state.hasRestoredProgress,
-        onRestored = { state.hasRestoredProgress = true },
-        coroutineScope = coroutineScope
+        params = PlayerProgressRestoreParams(
+            exoPlayer = exoPlayer,
+            contentType = contentType,
+            streamId = streamId,
+            seriesId = seriesId,
+            episodeId = episodeId,
+            watchProgressService = watchProgressService,
+            hasRestoredProgress = state.hasRestoredProgress,
+            onRestored = { state.hasRestoredProgress = true },
+            coroutineScope = coroutineScope
+        )
     )
     
     // Auto-save progress
     PlayerProgressSaveEffect(
-        exoPlayer = exoPlayer,
-        contentType = contentType,
-        streamId = streamId,
-        seriesId = seriesId,
-        episodeId = episodeId,
-        title = title,
-        watchProgressService = watchProgressService,
-        coroutineScope = coroutineScope
+        params = PlayerProgressSaveParams(
+            exoPlayer = exoPlayer,
+            contentType = contentType,
+            streamId = streamId,
+            seriesId = seriesId,
+            episodeId = episodeId,
+            title = title,
+            watchProgressService = watchProgressService,
+            coroutineScope = coroutineScope
+        )
     )
     
     // Auto-hide controls
@@ -698,14 +703,26 @@ fun PlayerScreen(
     }
     
     // Create callbacks
-    val onSeek = createSeekCallback(exoPlayer, state.duration)
-    val onPrevious = createPreviousCallback(exoPlayer) { state.showControls = true }
-    val onNext = createNextCallback(exoPlayer, state.duration) { state.showControls = true }
-    val onPlayPause = createPlayPauseCallback(exoPlayer) { state.showControls = true }
-    val onVideoTap = createVideoTapCallback(
-        onToggleControls = { state.showControls = !state.showControls },
-        onSetFocusedButton = { button -> state.focusedButton = button }
-    )
+    val onSeek = remember(exoPlayer, state.duration) {
+        createSeekCallback(exoPlayer, state.duration)
+    }
+    val onPrevious = remember(exoPlayer) {
+        createPreviousCallback(exoPlayer) { state.showControls = true }
+    }
+    val onNext = remember(exoPlayer, state.duration) {
+        createNextCallback(exoPlayer, state.duration) { state.showControls = true }
+    }
+    val onPlayPause = remember(exoPlayer) {
+        createPlayPauseCallback(exoPlayer) { state.showControls = true }
+    }
+    val onVideoTap = {
+        state.showControls = !state.showControls
+        if (state.showControls) {
+            state.focusedButton = FocusedButton.PREVIOUS
+        } else {
+            state.focusedButton = null
+        }
+    }
     
     // Focus requester
     val playerFocusRequester = remember { FocusRequester() }
