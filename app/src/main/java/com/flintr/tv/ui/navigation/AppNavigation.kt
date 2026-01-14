@@ -21,6 +21,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.flintr.tv.data.local.CategoryVisibilityService
+import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
@@ -49,6 +50,8 @@ import com.flintr.tv.ui.screens.SeriesEpisodesScreen
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
+import com.flintr.tv.data.model.UpdateInfo
+import com.flintr.tv.utils.DownloadProgress
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
 import com.flintr.tv.ui.components.SearchOverlay
@@ -105,6 +108,15 @@ private fun NavHostController.logAndNavigate(route: String, tag: String, message
 }
 
 private const val LOG_TAG_MAIN_CONTENT_SCREEN = "[MainContentScreen]"
+
+/**
+ * Data class grouping search click handlers for MainContentScreen
+ */
+private data class SearchClickHandlers(
+    val onLiveStreamClick: (LiveStream) -> Unit,
+    val onVodClick: (VodStream) -> Unit,
+    val onSeriesClick: (Series) -> Unit
+)
 
 @Composable
 private fun InitialRoutingScreen(
@@ -360,6 +372,240 @@ private fun clearStreamsForDestination(
     }
 }
 
+/**
+ * Data class grouping parameters for MainContentBody
+ */
+private data class MainContentBodyParams(
+    val destination: HomeDestination,
+    val selectedCategoryId: String?,
+    val credentials: Credentials?,
+    val mainViewModel: MainViewModel,
+    val favoritesRepository: FavoritesRepository,
+    val cacheService: DataCacheService,
+    val contentListFocusRequester: FocusRequester,
+    val navController: NavHostController,
+    val onNavigateToCategorySidebar: () -> Unit,
+    val onNavigateToNavbar: () -> Unit,
+    val onFavoritesSeriesClick: (Series) -> Unit
+)
+
+/**
+ * Composable rendering the main content body based on selected destination
+ */
+@Composable
+private fun MainContentBody(
+    params: MainContentBodyParams
+) {
+    when (params.destination) {
+        is HomeDestination.LiveTV -> {
+            LiveTVContent(
+                viewModel = params.mainViewModel,
+                selectedCategoryId = params.selectedCategoryId,
+                focusRequester = params.contentListFocusRequester,
+                favoritesRepository = params.favoritesRepository,
+                onNavigateLeft = params.onNavigateToCategorySidebar,
+                onChannelClick = { stream ->
+                    val creds = params.credentials ?: return@LiveTVContent
+                    val streamUrl = stream.getStreamUrl(
+                        creds.serverUrl,
+                        creds.username,
+                        creds.password
+                    )
+                    val route = Screen.Player.createRouteForLive(streamUrl)
+                    params.navController.logAndNavigate(route, "AppNavigation") {
+                        "📺 LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
+                    }
+                }
+            )
+        }
+        is HomeDestination.VOD -> {
+            VODContent(
+                viewModel = params.mainViewModel,
+                selectedCategoryId = params.selectedCategoryId,
+                focusRequester = params.contentListFocusRequester,
+                favoritesRepository = params.favoritesRepository,
+                onNavigateLeft = params.onNavigateToCategorySidebar,
+                onVodClick = { vod ->
+                    val creds = params.credentials ?: return@VODContent
+                    val streamUrl = vod.getStreamUrl(
+                        creds.serverUrl,
+                        creds.username,
+                        creds.password
+                    )
+                    val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
+                    params.navController.logAndNavigate(route, "AppNavigation") {
+                        "🎬 VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
+                    }
+                }
+            )
+        }
+        is HomeDestination.Series -> {
+            SeriesContent(
+                params = SeriesContentParams(
+                    viewModel = params.mainViewModel,
+                    selectedCategoryId = params.selectedCategoryId,
+                    focusRequester = params.contentListFocusRequester,
+                    favoritesRepository = params.favoritesRepository,
+                    onNavigateLeft = params.onNavigateToCategorySidebar,
+                    onSeriesClick = { series ->
+                        val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
+                        params.navController.logAndNavigate(route, "AppNavigation") {
+                            "📺 Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
+                        }
+                    }
+                )
+            )
+        }
+        is HomeDestination.EPG -> {
+            EPGContent(
+                viewModel = params.mainViewModel,
+                onProgramClick = { _, stream ->
+                    val creds = params.credentials ?: return@EPGContent
+                    val streamUrl = stream.getStreamUrl(
+                        creds.serverUrl,
+                        creds.username,
+                        creds.password
+                    )
+                    val route = Screen.Player.createRouteForLive(streamUrl)
+                    params.navController.logAndNavigate(route, "AppNavigation") {
+                        "📅 EPG onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
+                    }
+                }
+            )
+        }
+        is HomeDestination.Favorites -> {
+            val onLiveStreamClick: (LiveStream) -> Unit = { stream ->
+                val creds = params.credentials
+                if (creds != null) {
+                    val streamUrl = stream.getStreamUrl(
+                        creds.serverUrl,
+                        creds.username,
+                        creds.password
+                    )
+                    val route = Screen.Player.createRouteForLive(streamUrl)
+                    params.navController.logAndNavigate(route, "AppNavigation") {
+                        "⭐ Favorites LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
+                    }
+                }
+            }
+            val onVodClick: (VodStream) -> Unit = { vod ->
+                val creds = params.credentials
+                if (creds != null) {
+                    val streamUrl = vod.getStreamUrl(
+                        creds.serverUrl,
+                        creds.username,
+                        creds.password
+                    )
+                    val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
+                    params.navController.logAndNavigate(route, "AppNavigation") {
+                        "⭐ Favorites VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
+                    }
+                }
+            }
+            val onSeriesClick: (Series) -> Unit = params.onFavoritesSeriesClick
+            FavoritesContent(
+                params = FavoritesContentParams(
+                    favoritesRepository = params.favoritesRepository,
+                    cacheService = params.cacheService,
+                    focusRequester = params.contentListFocusRequester,
+                    onNavigateLeft = params.onNavigateToNavbar,
+                    onLiveStreamClick = onLiveStreamClick,
+                    onVodClick = onVodClick,
+                    onSeriesClick = onSeriesClick
+                )
+            )
+        }
+        is HomeDestination.Search -> {
+            // Search screen will be implemented in Story 12.2
+            Box {}
+        }
+        is HomeDestination.Settings -> {
+            // Settings navigates to separate screen, this should not be reached
+            // but kept for exhaustiveness
+            Box {}
+        }
+    }
+}
+
+/**
+ * Composable for update dialog display logic
+ */
+@Composable
+private fun UpdateDialogContent(
+    showUpdateDialog: Boolean,
+    updateInfo: UpdateInfo?,
+    currentVersion: String?,
+    downloadProgress: DownloadProgress?,
+    updateViewModel: UpdateViewModel,
+    onDismiss: () -> Unit
+) {
+    if (showUpdateDialog && updateInfo != null) {
+        UpdateDialog(
+            updateInfo = updateInfo,
+            currentVersion = currentVersion,
+            downloadProgress = downloadProgress,
+            isDownloading = downloadProgress != null && !downloadProgress.isComplete && downloadProgress.error == null,
+            onUpdateNow = {
+                updateInfo.downloadUrl?.let { url ->
+                    updateInfo.stableVersion?.let { version ->
+                        updateViewModel.downloadUpdate(url, version)
+                    }
+                }
+            },
+            onLater = onDismiss
+        )
+    }
+}
+
+/**
+ * Creates search click handlers for SearchOverlay
+ */
+private fun createSearchClickHandlers(
+    credentials: Credentials?,
+    navController: NavHostController,
+    mainViewModel: MainViewModel,
+    onDismiss: () -> Unit
+): SearchClickHandlers {
+    return SearchClickHandlers(
+        onLiveStreamClick = { stream ->
+            val creds = credentials ?: return@SearchClickHandlers
+            val streamUrl = stream.getStreamUrl(
+                creds.serverUrl,
+                creds.username,
+                creds.password
+            )
+            val route = Screen.Player.createRouteForLive(streamUrl)
+            mainViewModel.clearSearch()
+            onDismiss()
+            navController.logAndNavigate(route, "AppNavigation") {
+                "🔍 Search LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
+            }
+        },
+        onVodClick = { vod ->
+            val creds = credentials ?: return@SearchClickHandlers
+            val streamUrl = vod.getStreamUrl(
+                creds.serverUrl,
+                creds.username,
+                creds.password
+            )
+            val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
+            mainViewModel.clearSearch()
+            onDismiss()
+            navController.logAndNavigate(route, "AppNavigation") {
+                "🔍 Search VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
+            }
+        },
+        onSeriesClick = { series ->
+            val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
+            mainViewModel.clearSearch()
+            onDismiss()
+            navController.logAndNavigate(route, "AppNavigation") {
+                "🔍 Search Series onClick - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
+            }
+        }
+    )
+}
+
 @Composable
 fun MainContentScreen(
     navController: NavHostController,
@@ -582,46 +828,59 @@ fun MainContentScreen(
     // When destination changes and categories are shown, move focus to CategoryRow
     // For Favorites (no categories), move focus directly to content list
     
-    // Update Dialog
-    val currentUpdateInfo = updateInfo
-    val currentDownloadProgress = downloadProgress
-    if (showUpdateDialog && currentUpdateInfo != null) {
-        UpdateDialog(
-            updateInfo = currentUpdateInfo,
-            currentVersion = currentVersionFromViewModel,
-            downloadProgress = currentDownloadProgress,
-            isDownloading = currentDownloadProgress != null && !currentDownloadProgress.isComplete && currentDownloadProgress.error == null,
-            onUpdateNow = {
-                currentUpdateInfo.downloadUrl?.let { url ->
-                    currentUpdateInfo.stableVersion?.let { version ->
-                        updateViewModel.downloadUpdate(url, version)
-                    }
-                }
-            },
-            onLater = {
-                showUpdateDialog = false
+    // Handle destination change
+    fun handleDestinationChange(destination: HomeDestination) {
+        if (destination is HomeDestination.Settings) {
+            // Navigate to separate Settings screen
+            navController.navigate(Screen.Settings.route)
+        } else {
+            // Reset category selection and clear streams when switching tabs
+            selectedCategoryId = null
+            // Clear streams from old destination
+            clearStreamsForDestination(selectedDestination, mainViewModel)
+            // Clear streams from new destination to prevent showing old data
+            clearStreamsForDestination(destination, mainViewModel)
+            selectedDestination = destination
+        }
+    }
+    
+    // Handle favorites series click - needs to update destination and category
+    fun handleFavoritesSeriesClick(series: Series) {
+        handleDestinationChange(HomeDestination.Series)
+        val categoryId = mainViewModel.showSeriesFromFavorites(series)
+        if (categoryId != null) {
+            selectedCategoryId = categoryId
+        }
+    }
+    
+    // Create search click handlers
+    val searchClickHandlers = remember(credentials, showSearchOverlay) {
+        createSearchClickHandlers(
+            credentials = credentials,
+            navController = navController,
+            mainViewModel = mainViewModel,
+            onDismiss = {
+                showSearchOverlay = false
+                moveFocusToNavbar()
             }
         )
     }
+    
+    // Update Dialog
+    UpdateDialogContent(
+        showUpdateDialog = showUpdateDialog,
+        updateInfo = updateInfo,
+        currentVersion = currentVersionFromViewModel,
+        downloadProgress = downloadProgress,
+        updateViewModel = updateViewModel,
+        onDismiss = { showUpdateDialog = false }
+    )
     
     Box(modifier = Modifier.fillMaxSize()) {
         MainLayout(
             params = MainLayoutParams(
                 selectedDestination = selectedDestination,
-                onDestinationChange = { destination ->
-                    if (destination is HomeDestination.Settings) {
-                        // Navigate to separate Settings screen
-                        navController.navigate(Screen.Settings.route)
-                    } else {
-                        // Reset category selection and clear streams when switching tabs
-                        selectedCategoryId = null
-                        // Clear streams from old destination
-                        clearStreamsForDestination(selectedDestination, mainViewModel)
-                        // Clear streams from new destination to prevent showing old data
-                        clearStreamsForDestination(destination, mainViewModel)
-                        selectedDestination = destination
-                    }
-                },
+                onDestinationChange = ::handleDestinationChange,
                 showCategories = showCategories,
                 categories = sortedCategories,
                 selectedCategoryId = selectedCategoryId,
@@ -652,144 +911,22 @@ fun MainContentScreen(
                 }
             ),
             content = {
-            when (selectedDestination) {
-                is HomeDestination.LiveTV -> {
-                    LiveTVContent(
-                        viewModel = mainViewModel,
+                MainContentBody(
+                    params = MainContentBodyParams(
+                        destination = selectedDestination,
                         selectedCategoryId = selectedCategoryId,
-                        focusRequester = contentListFocusRequester,
+                        credentials = credentials,
+                        mainViewModel = mainViewModel,
                         favoritesRepository = favoritesRepository,
-                        onNavigateLeft = { moveFocusToCategorySidebar() },
-                        onChannelClick = { stream ->
-                            val creds = credentials ?: return@LiveTVContent
-                            val streamUrl = stream.getStreamUrl(
-                                creds.serverUrl,
-                                creds.username,
-                                creds.password
-                            )
-                            val route = Screen.Player.createRouteForLive(streamUrl)
-                            navController.logAndNavigate(route, "AppNavigation") {
-                                "📺 LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
-                            }
-                        }
+                        cacheService = cacheService,
+                        contentListFocusRequester = contentListFocusRequester,
+                        navController = navController,
+                        onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
+                        onNavigateToNavbar = { moveFocusToNavbar() },
+                        onFavoritesSeriesClick = ::handleFavoritesSeriesClick
                     )
-                }
-                is HomeDestination.VOD -> {
-                    VODContent(
-                        viewModel = mainViewModel,
-                        selectedCategoryId = selectedCategoryId,
-                        focusRequester = contentListFocusRequester,
-                        favoritesRepository = favoritesRepository,
-                        onNavigateLeft = { moveFocusToCategorySidebar() },
-                        onVodClick = { vod ->
-                            val creds = credentials ?: return@VODContent
-                            val streamUrl = vod.getStreamUrl(
-                                creds.serverUrl,
-                                creds.username,
-                                creds.password
-                            )
-                            val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
-                            navController.logAndNavigate(route, "AppNavigation") {
-                                "🎬 VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
-                            }
-                        }
-                    )
-                }
-                is HomeDestination.Series -> {
-                    SeriesContent(
-                        params = SeriesContentParams(
-                            viewModel = mainViewModel,
-                            selectedCategoryId = selectedCategoryId,
-                            focusRequester = contentListFocusRequester,
-                            favoritesRepository = favoritesRepository,
-                            onNavigateLeft = { moveFocusToCategorySidebar() },
-                            onSeriesClick = { series ->
-                                val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
-                                navController.logAndNavigate(route, "AppNavigation") {
-                                    "📺 Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
-                                }
-                            }
-                        )
-                    )
-                }
-                is HomeDestination.EPG -> {
-                    EPGContent(
-                        viewModel = mainViewModel,
-                        onProgramClick = { _, stream ->
-                            val creds = credentials ?: return@EPGContent
-                            val streamUrl = stream.getStreamUrl(
-                                creds.serverUrl,
-                                creds.username,
-                                creds.password
-                            )
-                            val route = Screen.Player.createRouteForLive(streamUrl)
-                            navController.logAndNavigate(route, "AppNavigation") {
-                                "📅 EPG onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
-                            }
-                        }
-                    )
-                }
-                is HomeDestination.Favorites -> {
-                    val onLiveStreamClick: (LiveStream) -> Unit = { stream ->
-                        val creds = credentials
-                        if (creds != null) {
-                            val streamUrl = stream.getStreamUrl(
-                                creds.serverUrl,
-                                creds.username,
-                                creds.password
-                            )
-                            val route = Screen.Player.createRouteForLive(streamUrl)
-                            navController.logAndNavigate(route, "AppNavigation") {
-                                "⭐ Favorites LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
-                            }
-                        }
-                    }
-                    val onVodClick: (VodStream) -> Unit = { vod ->
-                        val creds = credentials
-                        if (creds != null) {
-                            val streamUrl = vod.getStreamUrl(
-                                creds.serverUrl,
-                                creds.username,
-                                creds.password
-                            )
-                            val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
-                            navController.logAndNavigate(route, "AppNavigation") {
-                                "⭐ Favorites VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
-                            }
-                        }
-                    }
-                    val onSeriesClick: (Series) -> Unit = { series ->
-                        // Navigate to Series tab
-                        selectedDestination = HomeDestination.Series
-                        // Use ViewModel to handle business logic
-                        val categoryId = mainViewModel.showSeriesFromFavorites(series)
-                        if (categoryId != null) {
-                            selectedCategoryId = categoryId
-                        }
-                    }
-                    FavoritesContent(
-                        params = FavoritesContentParams(
-                            favoritesRepository = favoritesRepository,
-                            cacheService = cacheService,
-                            focusRequester = contentListFocusRequester,
-                            onNavigateLeft = { moveFocusToNavbar() },
-                            onLiveStreamClick = onLiveStreamClick,
-                            onVodClick = onVodClick,
-                            onSeriesClick = onSeriesClick
-                        )
-                    )
-                }
-                is HomeDestination.Search -> {
-                    // Search screen will be implemented in Story 12.2
-                    Box {}
-                }
-                is HomeDestination.Settings -> {
-                    // Settings navigates to separate screen, this should not be reached
-                    // but kept for exhaustiveness
-                    Box {}
-                }
+                )
             }
-        }
         )
         
         // Snackbar for feedback messages
@@ -814,42 +951,9 @@ fun MainContentScreen(
                     // Return focus to search button
                     moveFocusToNavbar()
                 },
-                onLiveStreamClick = { stream ->
-                    val creds = credentials ?: return@SearchOverlay
-                    val streamUrl = stream.getStreamUrl(
-                        creds.serverUrl,
-                        creds.username,
-                        creds.password
-                    )
-                    val route = Screen.Player.createRouteForLive(streamUrl)
-                    mainViewModel.clearSearch()
-                    showSearchOverlay = false
-                    navController.logAndNavigate(route, "AppNavigation") {
-                        "🔍 Search LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
-                    }
-                },
-                onVodClick = { vod ->
-                    val creds = credentials ?: return@SearchOverlay
-                    val streamUrl = vod.getStreamUrl(
-                        creds.serverUrl,
-                        creds.username,
-                        creds.password
-                    )
-                    val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
-                    mainViewModel.clearSearch()
-                    showSearchOverlay = false
-                    navController.logAndNavigate(route, "AppNavigation") {
-                        "🔍 Search VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
-                    }
-                },
-                onSeriesClick = { series ->
-                    val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
-                    mainViewModel.clearSearch()
-                    showSearchOverlay = false
-                    navController.logAndNavigate(route, "AppNavigation") {
-                        "🔍 Search Series onClick - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
-                    }
-                }
+                onLiveStreamClick = searchClickHandlers.onLiveStreamClick,
+                onVodClick = searchClickHandlers.onVodClick,
+                onSeriesClick = searchClickHandlers.onSeriesClick
             )
         }
     }

@@ -32,6 +32,317 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.collectAsState
 import com.flintr.tv.utils.loadPackageInfo
 import com.flintr.tv.utils.PackageInfoData
+import com.flintr.tv.data.model.UpdateInfo
+import com.flintr.tv.utils.DownloadProgress
+
+/**
+ * Composable for the check updates button
+ */
+@Composable
+private fun UpdateCheckButton(
+    packageInfo: PackageInfoData?,
+    isCheckingUpdates: Boolean,
+    onCheckUpdates: () -> Unit,
+    onBack: () -> Unit,
+    focusRequester: FocusRequester,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    var isCheckUpdatesButtonFocused by remember { mutableStateOf(false) }
+    
+    Button(
+        onClick = {
+            packageInfo?.let {
+                onCheckUpdates()
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .onDpadDirection(
+                onLeft = {
+                    Log.i("SettingsNav", "🔙 BACK: SettingsInfo -> SettingsMainScreen (via D-Pad Left)")
+                    onBack()
+                    true
+                }
+            )
+            .focusRequester(focusRequester)
+            .onFocusChanged { focusState ->
+                isCheckUpdatesButtonFocused = focusState.isFocused
+            }
+            .then(
+                if (isCheckUpdatesButtonFocused) {
+                    Modifier.border(
+                        width = 2.dp,
+                        color = Color.White,
+                        shape = RoundedCornerShape(Dimensions.radiusMD)
+                    )
+                } else {
+                    Modifier
+                }
+            ),
+        enabled = !isCheckingUpdates,
+        shape = RoundedCornerShape(Dimensions.radiusMD),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (isCheckUpdatesButtonFocused) colors.buttonPrimaryHover else colors.buttonPrimary,
+            contentColor = Color.White,
+            disabledContainerColor = colors.buttonPrimary.copy(alpha = 0.6f),
+            disabledContentColor = Color.White.copy(alpha = 0.6f)
+        ),
+        contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
+    ) {
+        if (isCheckingUpdates) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                color = Color.White,
+                strokeWidth = 2.dp
+            )
+            Spacer(modifier = Modifier.width(Dimensions.spacingXS))
+            Text(
+                text = stringResource(R.string.checking_for_updates),
+                fontSize = FontSizes.fontSizeXL,
+                fontWeight = FontWeight.W600
+            )
+        } else {
+            Text(
+                text = stringResource(R.string.check_for_updates),
+                fontSize = FontSizes.fontSizeXL,
+                fontWeight = FontWeight.W600
+            )
+        }
+    }
+}
+
+/**
+ * Composable for error message display
+ */
+@Composable
+private fun ErrorMessageCard(
+    error: String,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = colors.errorColor.copy(alpha = 0.1f)
+        ),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(Dimensions.radiusMD)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(Dimensions.spacingMD),
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Error,
+                contentDescription = null,
+                tint = colors.errorColor,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = error,
+                color = colors.textPrimary,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+/**
+ * Composable for download progress display
+ */
+@Composable
+private fun DownloadProgressCard(
+    progress: DownloadProgress,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    if (!progress.isComplete && progress.error == null) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = colors.bgHover
+            ),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(Dimensions.radiusMD)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(Dimensions.spacingMD),
+                verticalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        progress = progress.progress,
+                        color = colors.accentColor
+                    )
+                    Text(
+                        text = stringResource(R.string.download_progress, (progress.progress * 100).toInt()),
+                        color = colors.textPrimary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    progress = progress.progress,
+                    color = colors.accentColor
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Composable for displaying available update with download button
+ */
+@Composable
+private fun UpdateAvailableCard(
+    updateInfo: UpdateInfo,
+    downloadProgress: DownloadProgress?,
+    onDownloadClick: () -> Unit,
+    downloadButtonFocusRequester: FocusRequester,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = colors.successGreen.copy(alpha = 0.1f)
+        ),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(Dimensions.radiusMD)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(Dimensions.spacingMD),
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.SystemUpdate,
+                    contentDescription = null,
+                    tint = colors.successGreen
+                )
+                Text(
+                    text = stringResource(R.string.updates_available),
+                    color = colors.successGreen,
+                    fontWeight = FontWeight.W600,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            
+            if (updateInfo.stableVersion != null) {
+                Text(
+                    text = stringResource(R.string.version_info, updateInfo.stableVersion),
+                    color = colors.textPrimary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            
+            // Download Button
+            var isDownloadButtonFocused by remember { mutableStateOf(false) }
+            
+            Button(
+                onClick = onDownloadClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(downloadButtonFocusRequester)
+                    .onFocusChanged { focusState ->
+                        isDownloadButtonFocused = focusState.isFocused
+                    }
+                    .then(
+                        if (isDownloadButtonFocused) {
+                            Modifier.border(
+                                width = 2.dp,
+                                color = Color.White,
+                                shape = RoundedCornerShape(Dimensions.radiusMD)
+                            )
+                        } else {
+                            Modifier
+                        }
+                    ),
+                enabled = downloadProgress?.isComplete != true && downloadProgress?.error == null,
+                shape = RoundedCornerShape(Dimensions.radiusMD),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDownloadButtonFocused) colors.buttonPrimaryHover else colors.buttonPrimary,
+                    contentColor = Color.White
+                ),
+                contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
+            ) {
+                Text(
+                    text = stringResource(R.string.download_and_install_update),
+                    fontSize = FontSizes.fontSizeXL,
+                    fontWeight = FontWeight.W600
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Composable for displaying latest version message
+ */
+@Composable
+private fun LatestVersionCard(
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = colors.bgHover
+        ),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(Dimensions.radiusMD)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(Dimensions.spacingMD),
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = colors.accentColor,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = stringResource(R.string.latest_version),
+                color = colors.textPrimary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+/**
+ * Composable for update status display (available update, download button, or latest version)
+ */
+@Composable
+private fun UpdateStatusDisplay(
+    updateInfo: UpdateInfo,
+    downloadProgress: DownloadProgress?,
+    onDownloadClick: () -> Unit,
+    downloadButtonFocusRequester: FocusRequester,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    if (updateInfo.hasUpdate && updateInfo.downloadUrl != null) {
+        UpdateAvailableCard(
+            updateInfo = updateInfo,
+            downloadProgress = downloadProgress,
+            onDownloadClick = onDownloadClick,
+            downloadButtonFocusRequester = downloadButtonFocusRequester,
+            colors = colors
+        )
+    } else if (!updateInfo.hasUpdate) {
+        LatestVersionCard(colors = colors)
+    }
+}
 
 @Composable
 fun SettingsInfo(
@@ -137,255 +448,50 @@ fun SettingsInfo(
                         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
                     ) {
                         // Check for Updates Button
-                        var isCheckUpdatesButtonFocused by remember { mutableStateOf(false) }
-                        
-                        Button(
-                            onClick = {
+                        UpdateCheckButton(
+                            packageInfo = packageInfo,
+                            isCheckingUpdates = isCheckingUpdates,
+                            onCheckUpdates = {
                                 packageInfo?.let { info ->
                                     viewModel.checkForUpdates(info.versionName)
                                 }
                             },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onDpadDirection(
-                                    onLeft = {
-                                        Log.i("SettingsNav", "🔙 BACK: SettingsInfo -> SettingsMainScreen (via D-Pad Left)")
-                                        onBack()
-                                        true
-                                    }
-                                )
-                                .focusRequester(checkUpdatesButtonFocusRequester)
-                                .onFocusChanged { focusState ->
-                                    isCheckUpdatesButtonFocused = focusState.isFocused
-                                }
-                                .then(
-                                    if (isCheckUpdatesButtonFocused) {
-                                        Modifier.border(
-                                            width = 2.dp,
-                                            color = Color.White,
-                                            shape = RoundedCornerShape(Dimensions.radiusMD)
-                                        )
-                                    } else {
-                                        Modifier
-                                    }
-                                ),
-                            enabled = !isCheckingUpdates,
-                            shape = RoundedCornerShape(Dimensions.radiusMD),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isCheckUpdatesButtonFocused) colors.buttonPrimaryHover else colors.buttonPrimary,
-                                contentColor = Color.White,
-                                disabledContainerColor = colors.buttonPrimary.copy(alpha = 0.6f),
-                                disabledContentColor = Color.White.copy(alpha = 0.6f)
-                            ),
-                            contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
-                        ) {
-                            if (isCheckingUpdates) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(modifier = Modifier.width(Dimensions.spacingXS))
-                                Text(
-                                    text = stringResource(R.string.checking_for_updates),
-                                    fontSize = FontSizes.fontSizeXL,
-                                    fontWeight = FontWeight.W600
-                                )
-                            } else {
-                                Text(
-                                    text = stringResource(R.string.check_for_updates),
-                                    fontSize = FontSizes.fontSizeXL,
-                                    fontWeight = FontWeight.W600
-                                )
-                            }
-                        }
+                            onBack = onBack,
+                            focusRequester = checkUpdatesButtonFocusRequester,
+                            colors = colors
+                        )
                         
                         // Error Message
                         errorMessage?.let { error ->
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = colors.errorColor.copy(alpha = 0.1f)
-                                ),
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(Dimensions.radiusMD)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(Dimensions.spacingMD),
-                                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Error,
-                                        contentDescription = null,
-                                        tint = colors.errorColor,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Text(
-                                        text = error,
-                                        color = colors.textPrimary,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                            }
+                            ErrorMessageCard(
+                                error = error,
+                                colors = colors
+                            )
                         }
                         
                         // Download Progress
                         downloadProgress?.let { progress ->
-                            if (!progress.isComplete && progress.error == null) {
-                                Card(
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = colors.bgHover
-                                    ),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(Dimensions.radiusMD)
-                                ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(Dimensions.spacingMD),
-                                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
-                                    ) {
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(20.dp),
-                                                progress = progress.progress,
-                                                color = colors.accentColor
-                                            )
-                                            Text(
-                                                text = stringResource(R.string.download_progress, (progress.progress * 100).toInt()),
-                                                color = colors.textPrimary,
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
-                                        }
-                                        LinearProgressIndicator(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            progress = progress.progress,
-                                            color = colors.accentColor
-                                        )
-                                    }
-                                }
-                            }
+                            DownloadProgressCard(
+                                progress = progress,
+                                colors = colors
+                            )
                         }
                         
                         // Update Info Display
                         updateInfo?.let { info ->
-                            if (info.hasUpdate && info.downloadUrl != null) {
-                                Card(
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = colors.successGreen.copy(alpha = 0.1f)
-                                    ),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(Dimensions.radiusMD)
-                                ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(Dimensions.spacingMD),
-                                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
-                                    ) {
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.SystemUpdate,
-                                                contentDescription = null,
-                                                tint = colors.successGreen
-                                            )
-                                            Text(
-                                                text = stringResource(R.string.updates_available),
-                                                color = colors.successGreen,
-                                                fontWeight = FontWeight.W600,
-                                                style = MaterialTheme.typography.bodyMedium
-                                            )
-                                        }
-                                        
-                                        if (info.stableVersion != null) {
-                                            Text(
-                                                text = stringResource(R.string.version_info, info.stableVersion),
-                                                color = colors.textPrimary,
-                                                style = MaterialTheme.typography.bodySmall
-                                            )
-                                        }
-                                        
-                                        // Download Button
-                                        var isDownloadButtonFocused by remember { mutableStateOf(false) }
-                                        
-                                        Button(
-                                            onClick = {
-                                                info.downloadUrl?.let { url ->
-                                                    info.stableVersion?.let { version ->
-                                                        viewModel.downloadUpdate(url, version)
-                                                    }
-                                                }
-                                            },
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .focusRequester(downloadButtonFocusRequester)
-                                                .onFocusChanged { focusState ->
-                                                    isDownloadButtonFocused = focusState.isFocused
-                                                }
-                                                .then(
-                                                    if (isDownloadButtonFocused) {
-                                                        Modifier.border(
-                                                            width = 2.dp,
-                                                            color = Color.White,
-                                                            shape = RoundedCornerShape(Dimensions.radiusMD)
-                                                        )
-                                                    } else {
-                                                        Modifier
-                                                    }
-                                                ),
-                                            enabled = downloadProgress?.isComplete != true && downloadProgress?.error == null,
-                                            shape = RoundedCornerShape(Dimensions.radiusMD),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = if (isDownloadButtonFocused) colors.buttonPrimaryHover else colors.buttonPrimary,
-                                                contentColor = Color.White
-                                            ),
-                                            contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
-                                        ) {
-                                            Text(
-                                                text = stringResource(R.string.download_and_install_update),
-                                                fontSize = FontSizes.fontSizeXL,
-                                                fontWeight = FontWeight.W600
-                                            )
+                            UpdateStatusDisplay(
+                                updateInfo = info,
+                                downloadProgress = downloadProgress,
+                                onDownloadClick = {
+                                    info.downloadUrl?.let { url ->
+                                        info.stableVersion?.let { version ->
+                                            viewModel.downloadUpdate(url, version)
                                         }
                                     }
-                                }
-                            } else if (!info.hasUpdate) {
-                                Card(
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = colors.bgHover
-                                    ),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(Dimensions.radiusMD)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(Dimensions.spacingMD),
-                                        horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = null,
-                                            tint = colors.accentColor,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Text(
-                                            text = stringResource(R.string.latest_version),
-                                            color = colors.textPrimary,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    }
-                                }
-                            }
+                                },
+                                downloadButtonFocusRequester = downloadButtonFocusRequester,
+                                colors = colors
+                            )
                         }
                     }
                 }
