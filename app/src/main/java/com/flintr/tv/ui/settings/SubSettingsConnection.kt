@@ -14,6 +14,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
 import android.util.Log
+import androidx.compose.ui.res.stringResource
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.theme.SharedColors
@@ -29,7 +31,8 @@ fun SettingsConnection(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsConnectionViewModel = hiltViewModel(),
-    credentialsRepository: CredentialsRepository
+    credentialsRepository: CredentialsRepository,
+    onShowSnackbar: (String) -> Unit
 ) {
     val colors = appColors()
     val scrollState = rememberScrollState()
@@ -54,6 +57,9 @@ fun SettingsConnection(
         warningColor = SharedColors.orange,
         expiredColor = colors.dangerText
     )
+    
+    // String resources for callbacks
+    val settingsSavedText = stringResource(R.string.settings_saved)
     
     // Focus requesters
     val serverUrlFocusRequester = remember { FocusRequester() }
@@ -95,169 +101,208 @@ fun SettingsConnection(
                 verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
             ) {
                 ServerSection(
-                    serverUrl = serverUrl,
-                    onServerUrlChange = { serverUrl = it },
-                    playlistName = playlistName,
-                    onPlaylistNameChange = { playlistName = it },
-                    serverUrlFocusRequester = serverUrlFocusRequester,
-                    playlistNameFocusRequester = playlistNameFocusRequester,
-                    colors = colors,
-                    onBack = onBack
+                    config = ServerSectionConfig(
+                        serverUrl = serverUrl,
+                        onServerUrlChange = { serverUrl = it },
+                        playlistName = playlistName,
+                        onPlaylistNameChange = { playlistName = it },
+                        serverUrlFocusRequester = serverUrlFocusRequester,
+                        playlistNameFocusRequester = playlistNameFocusRequester,
+                        colors = colors,
+                        onBack = onBack
+                    )
                 )
                 
                 UserSection(
-                    username = username,
-                    onUsernameChange = { username = it },
-                    password = password,
-                    onPasswordChange = { password = it },
-                    usernameFocusRequester = usernameFocusRequester,
-                    passwordFocusRequester = passwordFocusRequester,
-                    colors = colors
+                    config = UserSectionConfig(
+                        username = username,
+                        onUsernameChange = { username = it },
+                        password = password,
+                        onPasswordChange = { password = it },
+                        usernameFocusRequester = usernameFocusRequester,
+                        passwordFocusRequester = passwordFocusRequester,
+                        colors = colors
+                    )
                 )
                 
                 ConnectionSection(
-                    connectionTestState = connectionTestState,
-                    expirationDateText = expirationDateText,
-                    expirationDateColor = expirationDateColor,
-                    testButtonFocusRequester = testButtonFocusRequester,
-                    reloadButtonFocusRequester = reloadButtonFocusRequester,
-                    saveButtonFocusRequester = saveButtonFocusRequester,
-                    onTestConnection = { viewModel.testConnection(serverUrl, username, password) },
-                    isFormValid = serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
-                    colors = colors
+                    config = ConnectionSectionConfig(
+                        connectionTestState = connectionTestState,
+                        expirationDateText = expirationDateText,
+                        expirationDateColor = expirationDateColor,
+                        testButtonFocusRequester = testButtonFocusRequester,
+                        reloadButtonFocusRequester = reloadButtonFocusRequester,
+                        saveButtonFocusRequester = saveButtonFocusRequester,
+                        onTestConnection = { viewModel.testConnection(serverUrl, username, password) },
+                        onReloadData = { viewModel.reloadServerInfo() },
+                        onSaveSettings = {
+                            credentialsRepository.saveCredentials(
+                                com.flintr.tv.data.local.Credentials(
+                                    serverUrl = serverUrl,
+                                    username = username,
+                                    password = password
+                                )
+                            )
+                            onShowSnackbar(settingsSavedText)
+                        },
+                        isFormValid = serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
+                        colors = colors
+                    )
                 )
             }
         }
     }
 }
 
+private data class ServerSectionConfig(
+    val serverUrl: String,
+    val onServerUrlChange: (String) -> Unit,
+    val playlistName: String,
+    val onPlaylistNameChange: (String) -> Unit,
+    val serverUrlFocusRequester: FocusRequester,
+    val playlistNameFocusRequester: FocusRequester,
+    val colors: com.flintr.tv.ui.theme.AppColors,
+    val onBack: () -> Unit
+)
+
 @Composable
 private fun ServerSection(
-    serverUrl: String,
-    onServerUrlChange: (String) -> Unit,
-    playlistName: String,
-    onPlaylistNameChange: (String) -> Unit,
-    serverUrlFocusRequester: FocusRequester,
-    playlistNameFocusRequester: FocusRequester,
-    colors: com.flintr.tv.ui.theme.AppColors,
-    onBack: () -> Unit
+    config: ServerSectionConfig
 ) {
     SettingsCard(
-        title = "Server",
+        title = stringResource(R.string.server),
         icon = Icons.Default.Storage,
-        colors = colors
+        colors = config.colors
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
         ) {
             ConnectionTextField(
-                value = serverUrl,
-                onValueChange = onServerUrlChange,
-                label = "Serveradresse",
-                placeholder = "http://example.com",
-                leadingIcon = Icons.Default.Link,
-                focusRequester = serverUrlFocusRequester,
-                colors = colors,
-                onDpadLeft = {
-                    Log.i("SettingsNav", "🔙 BACK: SettingsConnection -> SettingsMainScreen (via D-Pad Left)")
-                    onBack()
-                }
+                config = ConnectionTextFieldConfig(
+                    value = config.serverUrl,
+                    onValueChange = config.onServerUrlChange,
+                    label = stringResource(R.string.server_address),
+                    placeholder = stringResource(R.string.server_address_placeholder),
+                    leadingIcon = Icons.Default.Link,
+                    focusRequester = config.serverUrlFocusRequester,
+                    colors = config.colors,
+                    onDpadLeft = {
+                        Log.i("SettingsNav", "🔙 BACK: SettingsConnection -> SettingsMainScreen (via D-Pad Left)")
+                        config.onBack()
+                    }
+                )
             )
             
             ConnectionTextField(
-                value = playlistName,
-                onValueChange = onPlaylistNameChange,
-                label = "Playlist-Name (optional)",
-                placeholder = "Meine Playlist",
-                leadingIcon = Icons.Default.PlaylistPlay,
-                focusRequester = playlistNameFocusRequester,
-                colors = colors
+                config = ConnectionTextFieldConfig(
+                    value = config.playlistName,
+                    onValueChange = config.onPlaylistNameChange,
+                    label = stringResource(R.string.playlist_name_optional),
+                    placeholder = stringResource(R.string.playlist_name_placeholder),
+                    leadingIcon = Icons.Default.PlaylistPlay,
+                    focusRequester = config.playlistNameFocusRequester,
+                    colors = config.colors
+                )
             )
         }
     }
 }
+
+private data class UserSectionConfig(
+    val username: String,
+    val onUsernameChange: (String) -> Unit,
+    val password: String,
+    val onPasswordChange: (String) -> Unit,
+    val usernameFocusRequester: FocusRequester,
+    val passwordFocusRequester: FocusRequester,
+    val colors: com.flintr.tv.ui.theme.AppColors
+)
 
 @Composable
 private fun UserSection(
-    username: String,
-    onUsernameChange: (String) -> Unit,
-    password: String,
-    onPasswordChange: (String) -> Unit,
-    usernameFocusRequester: FocusRequester,
-    passwordFocusRequester: FocusRequester,
-    colors: com.flintr.tv.ui.theme.AppColors
+    config: UserSectionConfig
 ) {
     SettingsCard(
-        title = "Benutzer",
+        title = stringResource(R.string.user),
         icon = Icons.Default.Person,
-        colors = colors
+        colors = config.colors
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
         ) {
             ConnectionTextField(
-                value = username,
-                onValueChange = onUsernameChange,
-                label = "Benutzername",
-                placeholder = "Ihr Benutzername",
-                leadingIcon = Icons.Default.Person,
-                focusRequester = usernameFocusRequester,
-                colors = colors
+                config = ConnectionTextFieldConfig(
+                    value = config.username,
+                    onValueChange = config.onUsernameChange,
+                    label = stringResource(R.string.username),
+                    placeholder = stringResource(R.string.your_username),
+                    leadingIcon = Icons.Default.Person,
+                    focusRequester = config.usernameFocusRequester,
+                    colors = config.colors
+                )
             )
             
             ConnectionPasswordField(
-                value = password,
-                onValueChange = onPasswordChange,
-                focusRequester = passwordFocusRequester,
-                colors = colors
+                value = config.password,
+                onValueChange = config.onPasswordChange,
+                focusRequester = config.passwordFocusRequester,
+                colors = config.colors
             )
         }
     }
 }
 
+private data class ConnectionSectionConfig(
+    val connectionTestState: com.flintr.tv.viewmodel.ConnectionTestState,
+    val expirationDateText: String?,
+    val expirationDateColor: androidx.compose.ui.graphics.Color,
+    val testButtonFocusRequester: FocusRequester,
+    val reloadButtonFocusRequester: FocusRequester,
+    val saveButtonFocusRequester: FocusRequester,
+    val onTestConnection: () -> Unit,
+    val onReloadData: () -> Unit,
+    val onSaveSettings: () -> Unit,
+    val isFormValid: Boolean,
+    val colors: com.flintr.tv.ui.theme.AppColors
+)
+
 @Composable
 private fun ConnectionSection(
-    connectionTestState: com.flintr.tv.viewmodel.ConnectionTestState,
-    expirationDateText: String?,
-    expirationDateColor: androidx.compose.ui.graphics.Color,
-    testButtonFocusRequester: FocusRequester,
-    reloadButtonFocusRequester: FocusRequester,
-    saveButtonFocusRequester: FocusRequester,
-    onTestConnection: () -> Unit,
-    isFormValid: Boolean,
-    colors: com.flintr.tv.ui.theme.AppColors
+    config: ConnectionSectionConfig
 ) {
     SettingsCard(
-        title = "Verbindung",
+        title = stringResource(R.string.connection),
         icon = Icons.Default.Settings,
-        colors = colors
+        colors = config.colors
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
         ) {
             PrimaryActionButton(
-                text = "Verbindung testen",
-                onClick = onTestConnection,
-                enabled = !connectionTestState.isLoading && isFormValid,
-                isLoading = connectionTestState.isLoading,
-                loadingText = "Wird getestet...",
-                focusRequester = testButtonFocusRequester,
-                colors = colors
+                config = PrimaryActionButtonConfig(
+                    text = stringResource(R.string.test_connection),
+                    onClick = config.onTestConnection,
+                    enabled = !config.connectionTestState.isLoading && config.isFormValid,
+                    isLoading = config.connectionTestState.isLoading,
+                    loadingText = stringResource(R.string.testing_connection),
+                    focusRequester = config.testButtonFocusRequester,
+                    colors = config.colors
+                )
             )
             
-            connectionTestState.error?.let { error ->
+            config.connectionTestState.error?.let { error ->
                 StatusCard(
                     message = error,
                     icon = Icons.Default.Error,
-                    iconTint = colors.dangerText,
-                    backgroundColor = colors.dangerBg,
-                    textColor = colors.dangerText
+                    iconTint = config.colors.dangerText,
+                    backgroundColor = config.colors.dangerBg,
+                    textColor = config.colors.dangerText
                 )
             }
             
-            connectionTestState.serverInfo?.let {
+            config.connectionTestState.serverInfo?.let {
                 StatusCard(
-                    message = "Verbindung erfolgreich!",
+                    message = stringResource(R.string.connection_successful),
                     icon = Icons.Default.CheckCircle,
                     iconTint = SharedColors.successGreen,
                     backgroundColor = SharedColors.successGreen.copy(alpha = 0.1f),
@@ -265,30 +310,34 @@ private fun ConnectionSection(
                 )
             }
             
-            expirationDateText?.let { info ->
+            config.expirationDateText?.let { info ->
                 StatusCard(
                     message = info,
                     icon = Icons.Default.CalendarToday,
-                    iconTint = expirationDateColor,
-                    backgroundColor = colors.bgHover,
-                    textColor = expirationDateColor
+                    iconTint = config.expirationDateColor,
+                    backgroundColor = config.colors.bgHover,
+                    textColor = config.expirationDateColor
                 )
             }
             
             SecondaryActionButton(
-                text = "Daten neu laden",
-                icon = Icons.Default.Refresh,
-                onClick = { /* Mock: Show snackbar */ },
-                focusRequester = reloadButtonFocusRequester,
-                colors = colors
+                config = SecondaryActionButtonConfig(
+                    text = stringResource(R.string.reload_data),
+                    icon = Icons.Default.Refresh,
+                    onClick = config.onReloadData,
+                    focusRequester = config.reloadButtonFocusRequester,
+                    colors = config.colors
+                )
             )
             
             SecondaryActionButton(
-                text = "Einstellungen speichern",
-                icon = Icons.Default.Save,
-                onClick = { /* Mock: Show snackbar */ },
-                focusRequester = saveButtonFocusRequester,
-                colors = colors
+                config = SecondaryActionButtonConfig(
+                    text = stringResource(R.string.save_settings),
+                    icon = Icons.Default.Save,
+                    onClick = config.onSaveSettings,
+                    focusRequester = config.saveButtonFocusRequester,
+                    colors = config.colors
+                )
             )
         }
     }

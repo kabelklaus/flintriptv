@@ -114,7 +114,10 @@ fun SettingsScreen(
                     onBack = {
                         currentDestination = SettingsDestination.Main
                     },
-                    credentialsRepository = credentialsRepository
+                    credentialsRepository = credentialsRepository,
+                    onShowSnackbar = { message ->
+                        snackbarMessage = message
+                    }
                 )
             }
             is SettingsDestination.Playback -> {

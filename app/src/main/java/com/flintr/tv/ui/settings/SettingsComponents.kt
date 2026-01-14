@@ -17,10 +17,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.utils.onDpadCenter
@@ -131,59 +133,66 @@ fun SwitchSetting(
 }
 
 /**
+ * Configuration data class for ConnectionTextField
+ */
+data class ConnectionTextFieldConfig(
+    val value: String,
+    val onValueChange: (String) -> Unit,
+    val label: String,
+    val placeholder: String,
+    val leadingIcon: ImageVector,
+    val focusRequester: FocusRequester? = null,
+    val colors: com.flintr.tv.ui.theme.AppColors,
+    val onDpadLeft: (() -> Unit)? = null
+)
+
+/**
  * Reusable text field component for connection settings
  */
 @Composable
 fun ConnectionTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    placeholder: String,
-    leadingIcon: ImageVector,
-    modifier: Modifier = Modifier,
-    focusRequester: FocusRequester? = null,
-    colors: com.flintr.tv.ui.theme.AppColors,
-    onDpadLeft: (() -> Unit)? = null
+    config: ConnectionTextFieldConfig,
+    modifier: Modifier = Modifier
 ) {
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        placeholder = { Text(placeholder) },
+        value = config.value,
+        onValueChange = config.onValueChange,
+        label = { Text(config.label) },
+        placeholder = { Text(config.placeholder) },
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (onDpadLeft != null) {
-                    Modifier.onDpadDirection(onLeft = { onDpadLeft(); true })
+                if (config.onDpadLeft != null) {
+                    Modifier.onDpadDirection(onLeft = { config.onDpadLeft(); true })
                 } else {
                     Modifier
                 }
             )
             .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
+                if (config.focusRequester != null) {
+                    Modifier.focusRequester(config.focusRequester)
                 } else {
                     Modifier
                 }
             ),
         leadingIcon = {
             Icon(
-                imageVector = leadingIcon,
+                imageVector = config.leadingIcon,
                 contentDescription = null
             )
         },
         singleLine = true,
         shape = RoundedCornerShape(Dimensions.radiusMD),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = colors.accentColor,
-            unfocusedBorderColor = colors.cardBorder,
-            focusedLabelColor = colors.textPrimary,
-            unfocusedLabelColor = colors.textSecondary,
-            focusedTextColor = colors.textPrimary,
-            unfocusedTextColor = colors.textPrimary,
-            cursorColor = colors.accentColor,
-            focusedLeadingIconColor = colors.accentColor,
-            unfocusedLeadingIconColor = colors.iconColor
+            focusedBorderColor = config.colors.accentColor,
+            unfocusedBorderColor = config.colors.cardBorder,
+            focusedLabelColor = config.colors.textPrimary,
+            unfocusedLabelColor = config.colors.textSecondary,
+            focusedTextColor = config.colors.textPrimary,
+            unfocusedTextColor = config.colors.textPrimary,
+            cursorColor = config.colors.accentColor,
+            focusedLeadingIconColor = config.colors.accentColor,
+            unfocusedLeadingIconColor = config.colors.iconColor
         )
     )
 }
@@ -204,8 +213,8 @@ fun ConnectionPasswordField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text("Kennwort") },
-        placeholder = { Text("Ihr Kennwort") },
+        label = { Text(stringResource(R.string.password)) },
+        placeholder = { Text(stringResource(R.string.your_password)) },
         modifier = modifier
             .fillMaxWidth()
             .then(
@@ -225,7 +234,7 @@ fun ConnectionPasswordField(
             IconButton(onClick = { passwordVisible = !passwordVisible }) {
                 Icon(
                     imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                    contentDescription = if (passwordVisible) "Passwort verbergen" else "Passwort anzeigen"
+                    contentDescription = if (passwordVisible) stringResource(R.string.hide_password) else stringResource(R.string.show_password)
                 )
             }
         },
@@ -247,28 +256,35 @@ fun ConnectionPasswordField(
 }
 
 /**
+ * Configuration data class for PrimaryActionButton
+ */
+data class PrimaryActionButtonConfig(
+    val text: String,
+    val onClick: () -> Unit,
+    val enabled: Boolean = true,
+    val isLoading: Boolean = false,
+    val loadingText: String,
+    val focusRequester: FocusRequester? = null,
+    val colors: com.flintr.tv.ui.theme.AppColors
+)
+
+/**
  * Primary action button with focus border and loading state
  */
 @Composable
 fun PrimaryActionButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    isLoading: Boolean = false,
-    loadingText: String = "Wird geladen...",
-    focusRequester: FocusRequester? = null,
-    colors: com.flintr.tv.ui.theme.AppColors
+    config: PrimaryActionButtonConfig,
+    modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
     
     Button(
-        onClick = onClick,
+        onClick = config.onClick,
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
+                if (config.focusRequester != null) {
+                    Modifier.focusRequester(config.focusRequester)
                 } else {
                     Modifier
                 }
@@ -287,17 +303,17 @@ fun PrimaryActionButton(
                     Modifier
                 }
             ),
-        enabled = enabled,
+        enabled = config.enabled,
         shape = RoundedCornerShape(Dimensions.radiusMD),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (isFocused) colors.buttonPrimaryHover else colors.buttonPrimary,
+            containerColor = if (isFocused) config.colors.buttonPrimaryHover else config.colors.buttonPrimary,
             contentColor = Color.White,
-            disabledContainerColor = colors.buttonPrimary.copy(alpha = 0.6f),
+            disabledContainerColor = config.colors.buttonPrimary.copy(alpha = 0.6f),
             disabledContentColor = Color.White.copy(alpha = 0.6f)
         ),
         contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
     ) {
-        if (isLoading) {
+        if (config.isLoading) {
             CircularProgressIndicator(
                 modifier = Modifier.size(20.dp),
                 color = Color.White,
@@ -305,14 +321,14 @@ fun PrimaryActionButton(
             )
             Spacer(modifier = Modifier.width(Dimensions.spacingXS))
             Text(
-                text = loadingText,
-                fontSize = FontSizes.fontSizeXL,
+                text = config.loadingText,
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.W600
             )
         } else {
             Text(
-                text = text,
-                fontSize = FontSizes.fontSizeXL,
+                text = config.text,
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.W600
             )
         }
@@ -320,26 +336,33 @@ fun PrimaryActionButton(
 }
 
 /**
+ * Configuration data class for SecondaryActionButton
+ */
+data class SecondaryActionButtonConfig(
+    val text: String,
+    val icon: ImageVector,
+    val onClick: () -> Unit,
+    val focusRequester: FocusRequester? = null,
+    val colors: com.flintr.tv.ui.theme.AppColors
+)
+
+/**
  * Secondary action button (outlined) with focus highlight
  */
 @Composable
 fun SecondaryActionButton(
-    text: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    focusRequester: FocusRequester? = null,
-    colors: com.flintr.tv.ui.theme.AppColors
+    config: SecondaryActionButtonConfig,
+    modifier: Modifier = Modifier
 ) {
     var isFocused by remember { mutableStateOf(false) }
     
     OutlinedButton(
-        onClick = onClick,
+        onClick = config.onClick,
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
+                if (config.focusRequester != null) {
+                    Modifier.focusRequester(config.focusRequester)
                 } else {
                     Modifier
                 }
@@ -349,7 +372,7 @@ fun SecondaryActionButton(
             },
         shape = RoundedCornerShape(Dimensions.radiusMD),
         colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = if (isFocused) colors.accentColor else colors.textPrimary
+            contentColor = if (isFocused) config.colors.accentColor else config.colors.textPrimary
         ),
         border = ButtonDefaults.outlinedButtonBorder.copy(
             width = if (isFocused) 2.dp else 1.dp
@@ -357,14 +380,14 @@ fun SecondaryActionButton(
         contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
     ) {
         Icon(
-            imageVector = icon,
+            imageVector = config.icon,
             contentDescription = null,
-            tint = if (isFocused) colors.accentColor else colors.iconColor
+            tint = if (isFocused) config.colors.accentColor else config.colors.iconColor
         )
         Spacer(modifier = Modifier.width(Dimensions.spacingXS))
         Text(
-            text = text,
-            fontSize = FontSizes.fontSizeXL,
+            text = config.text,
+            style = MaterialTheme.typography.labelLarge,
             fontWeight = if (isFocused) FontWeight.W600 else FontWeight.Normal
         )
     }

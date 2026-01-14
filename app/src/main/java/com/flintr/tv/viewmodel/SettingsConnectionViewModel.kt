@@ -66,6 +66,47 @@ class SettingsConnectionViewModel @Inject constructor(
     }
 
     /**
+     * Reloads server info based on currently saved credentials.
+     * Public method that can be called from UI to refresh server information.
+     */
+    fun reloadServerInfo() {
+        val credentials = credentialsRepository.getCredentials() ?: run {
+            _connectionTestState.value = ConnectionTestState(
+                error = "Keine gespeicherten Anmeldedaten gefunden"
+            )
+            return
+        }
+        
+        viewModelScope.launch {
+            _connectionTestState.value = ConnectionTestState(isLoading = true, error = null)
+            
+            try {
+                repository.getServerInfo(credentials.username, credentials.password)
+                    .onSuccess { serverInfo ->
+                        _connectionTestState.value = ConnectionTestState(
+                            isLoading = false,
+                            serverInfo = serverInfo
+                        )
+                        Log.d("SettingsConnectionViewModel", "Server info reloaded successfully")
+                    }
+                    .onFailure { error ->
+                        _connectionTestState.value = ConnectionTestState(
+                            isLoading = false,
+                            error = "Fehler beim Neuladen: ${error.message}"
+                        )
+                        Log.w("SettingsConnectionViewModel", "Failed to reload server info", error)
+                    }
+            } catch (e: Exception) {
+                _connectionTestState.value = ConnectionTestState(
+                    isLoading = false,
+                    error = "Fehler beim Neuladen: ${e.message}"
+                )
+                Log.e("SettingsConnectionViewModel", "Error reloading server info", e)
+            }
+        }
+    }
+
+    /**
      * Tests connection with provided credentials and loads server info.
      */
     fun testConnection(serverUrl: String, username: String, password: String) {
