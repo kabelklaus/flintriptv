@@ -6,10 +6,8 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!-- Include non-sensitive user preferences -->
-    <include domain="sharedpref" path="category_visibility_prefs.xml"/>
-    <include domain="sharedpref" path="favorites_prefs.xml"/>
-    <include domain="sharedpref" path="watch_progress_prefs.xml"/>
+    <!-- Include all SharedPreferences files first, then exclude sensitive ones -->
+    <include domain="sharedpref" path="."/>
     
     <!-- Explicitly exclude sensitive credentials -->
     <exclude domain="sharedpref" path="credentials_prefs.xml"/>

@@ -1,10 +1,8 @@
 package com.flintr.tv.ui.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -13,20 +11,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
 import android.util.Log
+import androidx.compose.ui.res.stringResource
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
-import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.theme.SharedColors
-import com.flintr.tv.ui.utils.onDpadDirection
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.collectAsState
 import com.flintr.tv.viewmodel.SettingsConnectionViewModel
@@ -39,7 +31,8 @@ fun SettingsConnection(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsConnectionViewModel = hiltViewModel(),
-    credentialsRepository: CredentialsRepository
+    credentialsRepository: CredentialsRepository,
+    onShowSnackbar: (String) -> Unit
 ) {
     val colors = appColors()
     val scrollState = rememberScrollState()
@@ -55,7 +48,6 @@ fun SettingsConnection(
     var playlistName by remember { mutableStateOf("") }
     var username by remember { mutableStateOf(savedCredentials?.username ?: "") }
     var password by remember { mutableStateOf(savedCredentials?.password ?: "") }
-    var passwordVisible by remember { mutableStateOf(false) }
     
     // Format expiration date if available
     val expirationDateText = formatExpirationDate(connectionTestState.serverInfo?.userInfo?.expDate)
@@ -65,6 +57,9 @@ fun SettingsConnection(
         warningColor = SharedColors.orange,
         expiredColor = colors.dangerText
     )
+    
+    // String resources for callbacks
+    val settingsSavedText = stringResource(R.string.settings_saved)
     
     // Focus requesters
     val serverUrlFocusRequester = remember { FocusRequester() }
@@ -105,395 +100,246 @@ fun SettingsConnection(
                     .widthIn(max = 800.dp),
                 verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
             ) {
-                // Server Section
-                SettingsCard(
-                    title = "Server",
-                    icon = Icons.Default.Storage,
-                    colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        OutlinedTextField(
-                            value = serverUrl,
-                            onValueChange = { serverUrl = it },
-                            label = { Text("Serveradresse") },
-                            placeholder = { Text("http://example.com") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onDpadDirection(
-                                    onLeft = {
-                                        Log.i("SettingsNav", "🔙 BACK: SettingsConnection -> SettingsMainScreen (via D-Pad Left)")
-                                        onBack()
-                                        true
-                                    }
-                                )
-                                .focusRequester(serverUrlFocusRequester),
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Link,
-                                    contentDescription = null
-                                )
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(Dimensions.radiusMD),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = colors.accentColor,
-                                unfocusedBorderColor = colors.cardBorder,
-                                focusedLabelColor = colors.textPrimary,
-                                unfocusedLabelColor = colors.textSecondary,
-                                focusedTextColor = colors.textPrimary,
-                                unfocusedTextColor = colors.textPrimary,
-                                cursorColor = colors.accentColor,
-                                focusedLeadingIconColor = colors.accentColor,
-                                unfocusedLeadingIconColor = colors.iconColor
-                            )
-                        )
-                        
-                        OutlinedTextField(
-                            value = playlistName,
-                            onValueChange = { playlistName = it },
-                            label = { Text("Playlist-Name (optional)") },
-                            placeholder = { Text("Meine Playlist") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(playlistNameFocusRequester),
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.PlaylistPlay,
-                                    contentDescription = null
-                                )
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(Dimensions.radiusMD),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = colors.accentColor,
-                                unfocusedBorderColor = colors.cardBorder,
-                                focusedLabelColor = colors.textPrimary,
-                                unfocusedLabelColor = colors.textSecondary,
-                                focusedTextColor = colors.textPrimary,
-                                unfocusedTextColor = colors.textPrimary,
-                                cursorColor = colors.accentColor,
-                                focusedLeadingIconColor = colors.accentColor,
-                                unfocusedLeadingIconColor = colors.iconColor
-                            )
-                        )
-                    }
-                }
+                ServerSection(
+                    config = ServerSectionConfig(
+                        serverUrl = serverUrl,
+                        onServerUrlChange = { serverUrl = it },
+                        playlistName = playlistName,
+                        onPlaylistNameChange = { playlistName = it },
+                        serverUrlFocusRequester = serverUrlFocusRequester,
+                        playlistNameFocusRequester = playlistNameFocusRequester,
+                        colors = colors,
+                        onBack = onBack
+                    )
+                )
                 
-                // User Section
-                SettingsCard(
-                    title = "Benutzer",
-                    icon = Icons.Default.Person,
-                    colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        OutlinedTextField(
-                            value = username,
-                            onValueChange = { username = it },
-                            label = { Text("Benutzername") },
-                            placeholder = { Text("Ihr Benutzername") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(usernameFocusRequester),
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Person,
-                                    contentDescription = null
-                                )
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(Dimensions.radiusMD),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = colors.accentColor,
-                                unfocusedBorderColor = colors.cardBorder,
-                                focusedLabelColor = colors.textPrimary,
-                                unfocusedLabelColor = colors.textSecondary,
-                                focusedTextColor = colors.textPrimary,
-                                unfocusedTextColor = colors.textPrimary,
-                                cursorColor = colors.accentColor,
-                                focusedLeadingIconColor = colors.accentColor,
-                                unfocusedLeadingIconColor = colors.iconColor
-                            )
-                        )
-                        
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = { password = it },
-                            label = { Text("Kennwort") },
-                            placeholder = { Text("Ihr Kennwort") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(passwordFocusRequester),
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = null
-                                )
-                            },
-                            trailingIcon = {
-                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                    Icon(
-                                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                        contentDescription = if (passwordVisible) "Passwort verbergen" else "Passwort anzeigen"
-                                    )
-                                }
-                            },
-                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            singleLine = true,
-                            shape = RoundedCornerShape(Dimensions.radiusMD),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = colors.accentColor,
-                                unfocusedBorderColor = colors.cardBorder,
-                                focusedLabelColor = colors.textPrimary,
-                                unfocusedLabelColor = colors.textSecondary,
-                                focusedTextColor = colors.textPrimary,
-                                unfocusedTextColor = colors.textPrimary,
-                                cursorColor = colors.accentColor,
-                                focusedLeadingIconColor = colors.accentColor,
-                                unfocusedLeadingIconColor = colors.iconColor
-                            )
-                        )
-                    }
-                }
+                UserSection(
+                    config = UserSectionConfig(
+                        username = username,
+                        onUsernameChange = { username = it },
+                        password = password,
+                        onPasswordChange = { password = it },
+                        usernameFocusRequester = usernameFocusRequester,
+                        passwordFocusRequester = passwordFocusRequester,
+                        colors = colors
+                    )
+                )
                 
-                // Connection Section
-                SettingsCard(
-                    title = "Verbindung",
-                    icon = Icons.Default.Settings,
-                    colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        // Test Connection Button
-                        var isTestButtonFocused by remember { mutableStateOf(false) }
-                        
-                        Button(
-                            onClick = {
-                                viewModel.testConnection(serverUrl, username, password)
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(testButtonFocusRequester)
-                                .onFocusChanged { focusState ->
-                                    isTestButtonFocused = focusState.isFocused
-                                }
-                                .then(
-                                    if (isTestButtonFocused) {
-                                        Modifier.border(
-                                            width = 2.dp,
-                                            color = Color.White,
-                                            shape = RoundedCornerShape(Dimensions.radiusMD)
-                                        )
-                                    } else {
-                                        Modifier
-                                    }
-                                ),
-                            enabled = !connectionTestState.isLoading && serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
-                            shape = RoundedCornerShape(Dimensions.radiusMD),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isTestButtonFocused) colors.buttonPrimaryHover else colors.buttonPrimary,
-                                contentColor = Color.White,
-                                disabledContainerColor = colors.buttonPrimary.copy(alpha = 0.6f),
-                                disabledContentColor = Color.White.copy(alpha = 0.6f)
-                            ),
-                            contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
-                        ) {
-                            if (connectionTestState.isLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    color = Color.White,
-                                    strokeWidth = 2.dp
+                ConnectionSection(
+                    config = ConnectionSectionConfig(
+                        connectionTestState = connectionTestState,
+                        expirationDateText = expirationDateText,
+                        expirationDateColor = expirationDateColor,
+                        testButtonFocusRequester = testButtonFocusRequester,
+                        reloadButtonFocusRequester = reloadButtonFocusRequester,
+                        saveButtonFocusRequester = saveButtonFocusRequester,
+                        onTestConnection = { viewModel.testConnection(serverUrl, username, password) },
+                        onReloadData = { viewModel.reloadServerInfo() },
+                        onSaveSettings = {
+                            credentialsRepository.saveCredentials(
+                                com.flintr.tv.data.local.Credentials(
+                                    serverUrl = serverUrl,
+                                    username = username,
+                                    password = password
                                 )
-                                Spacer(modifier = Modifier.width(Dimensions.spacingXS))
-                                Text(
-                                    text = "Wird getestet...",
-                                    fontSize = FontSizes.fontSizeXL,
-                                    fontWeight = FontWeight.W600
-                                )
-                            } else {
-                                Text(
-                                    text = "Verbindung testen",
-                                    fontSize = FontSizes.fontSizeXL,
-                                    fontWeight = FontWeight.W600
-                                )
-                            }
-                        }
-                        
-                        // Connection Result
-                        connectionTestState.error?.let { error ->
-                            ConnectionResult.Error(error)
-                        }?.let { result ->
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = colors.dangerBg
-                                ),
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(Dimensions.radiusMD)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(Dimensions.spacingMD),
-                                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Error,
-                                        contentDescription = null,
-                                        tint = colors.dangerText
-                                    )
-                                    Text(
-                                        text = result.message,
-                                        color = colors.dangerText,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                            }
-                        }
-                        
-                        connectionTestState.serverInfo?.let {
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = SharedColors.successGreen.copy(alpha = 0.1f)
-                                ),
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(Dimensions.radiusMD)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(Dimensions.spacingMD),
-                                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = null,
-                                        tint = SharedColors.successGreen
-                                    )
-                                    Text(
-                                        text = "Verbindung erfolgreich!",
-                                        color = SharedColors.successGreen,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                            }
-                        }
-                        
-                        // Account Expiration Info
-                        expirationDateText?.let { info ->
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = colors.bgHover
-                                ),
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(Dimensions.radiusMD)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(Dimensions.spacingMD),
-                                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CalendarToday,
-                                        contentDescription = null,
-                                        tint = expirationDateColor,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Text(
-                                        text = info,
-                                        color = expirationDateColor,
-                                        fontWeight = FontWeight.W500,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                            }
-                        }
-                        
-                        // Reload Data Button
-                        var isReloadButtonFocused by remember { mutableStateOf(false) }
-                        
-                        OutlinedButton(
-                            onClick = {
-                                // Mock: Show snackbar
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(reloadButtonFocusRequester)
-                                .onFocusChanged { focusState ->
-                                    isReloadButtonFocused = focusState.isFocused
-                                },
-                            shape = RoundedCornerShape(Dimensions.radiusMD),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = if (isReloadButtonFocused) colors.accentColor else colors.textPrimary
-                            ),
-                            border = ButtonDefaults.outlinedButtonBorder.copy(
-                                width = if (isReloadButtonFocused) 2.dp else 1.dp
-                            ),
-                            contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = null,
-                                tint = if (isReloadButtonFocused) colors.accentColor else colors.iconColor
                             )
-                            Spacer(modifier = Modifier.width(Dimensions.spacingXS))
-                            Text(
-                                text = "Daten neu laden",
-                                fontSize = FontSizes.fontSizeXL,
-                                fontWeight = if (isReloadButtonFocused) FontWeight.W600 else FontWeight.Normal
-                            )
-                        }
-                        
-                        // Save Button
-                        var isSaveButtonFocused by remember { mutableStateOf(false) }
-                        
-                        OutlinedButton(
-                            onClick = {
-                                // Mock: Show snackbar
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(saveButtonFocusRequester)
-                                .onFocusChanged { focusState ->
-                                    isSaveButtonFocused = focusState.isFocused
-                                },
-                            shape = RoundedCornerShape(Dimensions.radiusMD),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = if (isSaveButtonFocused) colors.accentColor else colors.textPrimary
-                            ),
-                            border = ButtonDefaults.outlinedButtonBorder.copy(
-                                width = if (isSaveButtonFocused) 2.dp else 1.dp
-                            ),
-                            contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Save,
-                                contentDescription = null,
-                                tint = if (isSaveButtonFocused) colors.accentColor else colors.iconColor
-                            )
-                            Spacer(modifier = Modifier.width(Dimensions.spacingXS))
-                            Text(
-                                text = "Einstellungen speichern",
-                                fontSize = FontSizes.fontSizeXL,
-                                fontWeight = if (isSaveButtonFocused) FontWeight.W600 else FontWeight.Normal
-                            )
-                        }
-                    }
-                }
+                            onShowSnackbar(settingsSavedText)
+                        },
+                        isFormValid = serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank(),
+                        colors = colors
+                    )
+                )
             }
         }
     }
 }
 
-sealed class ConnectionResult(val message: String) {
-    class Success(message: String) : ConnectionResult(message)
-    class Error(message: String) : ConnectionResult(message)
+private data class ServerSectionConfig(
+    val serverUrl: String,
+    val onServerUrlChange: (String) -> Unit,
+    val playlistName: String,
+    val onPlaylistNameChange: (String) -> Unit,
+    val serverUrlFocusRequester: FocusRequester,
+    val playlistNameFocusRequester: FocusRequester,
+    val colors: com.flintr.tv.ui.theme.AppColors,
+    val onBack: () -> Unit
+)
+
+@Composable
+private fun ServerSection(
+    config: ServerSectionConfig
+) {
+    SettingsCard(
+        title = stringResource(R.string.server),
+        icon = Icons.Default.Storage,
+        colors = config.colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            ConnectionTextField(
+                config = ConnectionTextFieldConfig(
+                    value = config.serverUrl,
+                    onValueChange = config.onServerUrlChange,
+                    label = stringResource(R.string.server_address),
+                    placeholder = stringResource(R.string.server_address_placeholder),
+                    leadingIcon = Icons.Default.Link,
+                    focusRequester = config.serverUrlFocusRequester,
+                    colors = config.colors,
+                    onDpadLeft = {
+                        Log.i("SettingsNav", "🔙 BACK: SettingsConnection -> SettingsMainScreen (via D-Pad Left)")
+                        config.onBack()
+                    }
+                )
+            )
+            
+            ConnectionTextField(
+                config = ConnectionTextFieldConfig(
+                    value = config.playlistName,
+                    onValueChange = config.onPlaylistNameChange,
+                    label = stringResource(R.string.playlist_name_optional),
+                    placeholder = stringResource(R.string.playlist_name_placeholder),
+                    leadingIcon = Icons.Default.PlaylistPlay,
+                    focusRequester = config.playlistNameFocusRequester,
+                    colors = config.colors
+                )
+            )
+        }
+    }
+}
+
+private data class UserSectionConfig(
+    val username: String,
+    val onUsernameChange: (String) -> Unit,
+    val password: String,
+    val onPasswordChange: (String) -> Unit,
+    val usernameFocusRequester: FocusRequester,
+    val passwordFocusRequester: FocusRequester,
+    val colors: com.flintr.tv.ui.theme.AppColors
+)
+
+@Composable
+private fun UserSection(
+    config: UserSectionConfig
+) {
+    SettingsCard(
+        title = stringResource(R.string.user),
+        icon = Icons.Default.Person,
+        colors = config.colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            ConnectionTextField(
+                config = ConnectionTextFieldConfig(
+                    value = config.username,
+                    onValueChange = config.onUsernameChange,
+                    label = stringResource(R.string.username),
+                    placeholder = stringResource(R.string.your_username),
+                    leadingIcon = Icons.Default.Person,
+                    focusRequester = config.usernameFocusRequester,
+                    colors = config.colors
+                )
+            )
+            
+            ConnectionPasswordField(
+                value = config.password,
+                onValueChange = config.onPasswordChange,
+                focusRequester = config.passwordFocusRequester,
+                colors = config.colors
+            )
+        }
+    }
+}
+
+private data class ConnectionSectionConfig(
+    val connectionTestState: com.flintr.tv.viewmodel.ConnectionTestState,
+    val expirationDateText: String?,
+    val expirationDateColor: androidx.compose.ui.graphics.Color,
+    val testButtonFocusRequester: FocusRequester,
+    val reloadButtonFocusRequester: FocusRequester,
+    val saveButtonFocusRequester: FocusRequester,
+    val onTestConnection: () -> Unit,
+    val onReloadData: () -> Unit,
+    val onSaveSettings: () -> Unit,
+    val isFormValid: Boolean,
+    val colors: com.flintr.tv.ui.theme.AppColors
+)
+
+@Composable
+private fun ConnectionSection(
+    config: ConnectionSectionConfig
+) {
+    SettingsCard(
+        title = stringResource(R.string.connection),
+        icon = Icons.Default.Settings,
+        colors = config.colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            PrimaryActionButton(
+                config = PrimaryActionButtonConfig(
+                    text = stringResource(R.string.test_connection),
+                    onClick = config.onTestConnection,
+                    enabled = !config.connectionTestState.isLoading && config.isFormValid,
+                    isLoading = config.connectionTestState.isLoading,
+                    loadingText = stringResource(R.string.testing_connection),
+                    focusRequester = config.testButtonFocusRequester,
+                    colors = config.colors
+                )
+            )
+            
+            config.connectionTestState.error?.let { error ->
+                StatusCard(
+                    message = error,
+                    icon = Icons.Default.Error,
+                    iconTint = config.colors.dangerText,
+                    backgroundColor = config.colors.dangerBg,
+                    textColor = config.colors.dangerText
+                )
+            }
+            
+            config.connectionTestState.serverInfo?.let {
+                StatusCard(
+                    message = stringResource(R.string.connection_successful),
+                    icon = Icons.Default.CheckCircle,
+                    iconTint = SharedColors.successGreen,
+                    backgroundColor = SharedColors.successGreen.copy(alpha = 0.1f),
+                    textColor = SharedColors.successGreen
+                )
+            }
+            
+            config.expirationDateText?.let { info ->
+                StatusCard(
+                    message = info,
+                    icon = Icons.Default.CalendarToday,
+                    iconTint = config.expirationDateColor,
+                    backgroundColor = config.colors.bgHover,
+                    textColor = config.expirationDateColor
+                )
+            }
+            
+            SecondaryActionButton(
+                config = SecondaryActionButtonConfig(
+                    text = stringResource(R.string.reload_data),
+                    icon = Icons.Default.Refresh,
+                    onClick = config.onReloadData,
+                    focusRequester = config.reloadButtonFocusRequester,
+                    colors = config.colors
+                )
+            )
+            
+            SecondaryActionButton(
+                config = SecondaryActionButtonConfig(
+                    text = stringResource(R.string.save_settings),
+                    icon = Icons.Default.Save,
+                    onClick = config.onSaveSettings,
+                    focusRequester = config.saveButtonFocusRequester,
+                    colors = config.colors
+                )
+            )
+        }
+    }
 }
 
