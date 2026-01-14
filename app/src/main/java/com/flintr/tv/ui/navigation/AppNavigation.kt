@@ -632,7 +632,7 @@ fun MainContentScreen(
                 onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
                 onNavigateToContentList = { moveFocusToContentList() },
                 onCategoryHidden = { category -> 
-                    Log.d("AppNavigation", "[CategoryHidden] Callback aufgerufen für Kategorie: ${category.categoryName} (${category.categoryId})")
+                    Log.d("AppNavigation", "[CategoryHidden] Callback called for category: ${category.categoryName} (${category.categoryId})")
                     handleCategoryHidden(category) 
                 },
                 onSearchClick = {
