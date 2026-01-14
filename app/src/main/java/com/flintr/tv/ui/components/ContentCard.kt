@@ -83,6 +83,18 @@ data class CardConfig(
     val focusRequester: androidx.compose.ui.focus.FocusRequester? = null
 )
 
+data class VODCardParams(
+    val vod: VodStream? = null,
+    val series: Series? = null,
+    val onClick: () -> Unit,
+    val favoritesRepository: FavoritesRepository,
+    val modifier: Modifier = Modifier,
+    val isSelected: Boolean = false,
+    val onFocusChanged: ((Boolean) -> Unit)? = null,
+    val onNavigateLeft: (() -> Unit)? = null,
+    val focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+)
+
 private data class CardVisualState(
     val borderColor: Color,
     val shadowElevation: Float,
@@ -124,58 +136,39 @@ private sealed class ContentType {
 }
 
 @Composable
-fun VODCard(
-    vod: VodStream,
-    onClick: () -> Unit,
-    favoritesRepository: FavoritesRepository,
-    modifier: Modifier = Modifier,
-    isSelected: Boolean = false,
-    onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null
-) {
+fun VODCard(params: VODCardParams) {
+    val contentInfo = when {
+        params.vod != null -> ContentInfo(
+            coverImageUrl = params.vod.streamIcon ?: params.vod.cover,
+            title = params.vod.name,
+            rating = ContentParser.getRating(params.vod)
+        )
+        params.series != null -> ContentInfo(
+            coverImageUrl = params.series.cover,
+            title = params.series.name,
+            rating = ContentParser.getRating(params.series)
+        )
+        else -> throw IllegalArgumentException("Either vod or series must be provided")
+    }
+    
+    val contentType = when {
+        params.vod != null -> ContentType.Movie(params.vod)
+        params.series != null -> ContentType.Series(params.series)
+        else -> throw IllegalArgumentException("Either vod or series must be provided")
+    }
+    
     ContentCardInternal(
-        contentInfo = ContentInfo(
-            coverImageUrl = vod.streamIcon ?: vod.cover,
-            title = vod.name,
-            rating = ContentParser.getRating(vod)
-        ),
-        onClick = onClick,
-        modifier = modifier,
+        contentInfo = contentInfo,
+        onClick = params.onClick,
+        modifier = params.modifier,
         config = CardConfig(
-            isSelected = isSelected,
-            onFocusChanged = onFocusChanged,
-            onNavigateLeft = onNavigateLeft
+            isSelected = params.isSelected,
+            onFocusChanged = params.onFocusChanged,
+            onNavigateLeft = params.onNavigateLeft,
+            focusRequester = params.focusRequester
         ),
-        contentType = ContentType.Movie(vod),
-        favoritesRepository = favoritesRepository
-    )
-}
-
-@Composable
-fun VODCard(
-    series: Series,
-    onClick: () -> Unit,
-    favoritesRepository: FavoritesRepository,
-    modifier: Modifier = Modifier,
-    isSelected: Boolean = false,
-    onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null
-) {
-    ContentCardInternal(
-        contentInfo = ContentInfo(
-            coverImageUrl = series.cover,
-            title = series.name,
-            rating = ContentParser.getRating(series)
-        ),
-        onClick = onClick,
-        modifier = modifier,
-        config = CardConfig(
-            isSelected = isSelected,
-            onFocusChanged = onFocusChanged,
-            onNavigateLeft = onNavigateLeft
-        ),
-        contentType = ContentType.Series(series),
-        favoritesRepository = favoritesRepository
+        contentType = contentType,
+        favoritesRepository = params.favoritesRepository
     )
 }
 
@@ -339,7 +332,8 @@ fun LiveStreamCard(
     onClick: () -> Unit,
     favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
-    config: CardConfig = CardConfig()
+    config: CardConfig = CardConfig(),
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
 ) {
     ContentCardInternal(
         contentInfo = ContentInfo(
@@ -350,7 +344,7 @@ fun LiveStreamCard(
         onClick = onClick,
         favoritesRepository = favoritesRepository,
         modifier = modifier,
-        config = config,
+        config = config.copy(focusRequester = focusRequester ?: config.focusRequester),
         contentType = ContentType.Live(stream)
     )
 }
