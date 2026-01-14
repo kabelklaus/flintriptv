@@ -1,6 +1,11 @@
 package com.flintr.tv.viewmodel
 
 import android.util.Log
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.flintr.tv.data.local.CredentialsRepository
@@ -24,6 +29,7 @@ enum class LoadingStatus {
 
 data class LoadingStep(
     val label: String,
+    val icon: ImageVector? = null,
     var status: LoadingStatus = LoadingStatus.Pending,
     var itemCount: Int? = null,
     var errorMessage: String? = null
@@ -31,9 +37,9 @@ data class LoadingStep(
 
 data class DataLoadingUiState(
     val steps: List<LoadingStep> = listOf(
-        LoadingStep("TV Kanäle"),
-        LoadingStep("Filme"),
-        LoadingStep("Serien")
+        LoadingStep("TV Kanäle", icon = Icons.Default.Tv),
+        LoadingStep("Filme", icon = Icons.Default.Movie),
+        LoadingStep("Serien", icon = Icons.Default.PlayArrow)
     ),
     val overallProgress: Float = 0f,
     val error: String? = null,
@@ -225,7 +231,14 @@ class DataLoadingViewModel @Inject constructor(
 
     fun retry() {
         // Reset all steps to pending
-        val resetSteps = _uiState.value.steps.map { it.copy(status = LoadingStatus.Pending, itemCount = null, errorMessage = null) }
+        val resetSteps = _uiState.value.steps.map { 
+            it.copy(
+                status = LoadingStatus.Pending, 
+                itemCount = null, 
+                errorMessage = null,
+                icon = it.icon // Preserve icon when resetting
+            ) 
+        }
         _uiState.value = _uiState.value.copy(
             steps = resetSteps,
             overallProgress = 0f,

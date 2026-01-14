@@ -70,6 +70,11 @@ internal data class NavItemCallbacks(
     val onNavigateRight: (() -> Unit)? = null
 )
 
+internal data class NavItemConfig(
+    val title: String,
+    val isSelected: Boolean
+)
+
 private data class ItemColors(
     val backgroundColor: Color,
     val borderColor: Color,
@@ -121,8 +126,7 @@ private fun Modifier.createItemModifier(
     focusConfig: NavItemFocusConfig,
     pendingFocusDestination: HomeDestination?,
     destination: HomeDestination,
-    title: String,
-    isSelected: Boolean,
+    itemConfig: NavItemConfig,
     callbacks: NavItemCallbacks,
     onPositioned: () -> Unit,
     onFocusChanged: (Boolean) -> Unit
@@ -151,7 +155,7 @@ private fun Modifier.createItemModifier(
         .onDpadDirection(
             onRight = if (callbacks.onNavigateRight != null) {
                 {
-                    Log.i("TVFocus", "[MainNavbar] ➡️ D-Pad Right: '$title' -> Navigating to CategorySidebar")
+                    Log.i("TVFocus", "[MainNavbar] ➡️ D-Pad Right: '${itemConfig.title}' -> Navigating to CategorySidebar")
                     callbacks.onNavigateRight()
                     true
                 }
@@ -389,9 +393,7 @@ internal fun HomeSidebarItem(
     }
     
     val handlePositioned = {
-        if (focusConfig.focusRequester != null && 
-            state.pendingFocusDestination == navItem.destination && 
-            !isPositioned) {
+        if (!isPositioned) {
             isPositioned = true
         }
     }
@@ -401,8 +403,10 @@ internal fun HomeSidebarItem(
             focusConfig = focusConfig,
             pendingFocusDestination = state.pendingFocusDestination,
             destination = navItem.destination,
-            title = navItem.title,
-            isSelected = isSelected,
+            itemConfig = NavItemConfig(
+                title = navItem.title,
+                isSelected = isSelected
+            ),
             callbacks = callbacks,
             onPositioned = handlePositioned,
             onFocusChanged = handleFocusChanged

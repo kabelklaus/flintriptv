@@ -24,12 +24,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.flintr.tv.R
 import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
@@ -37,7 +39,6 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.viewmodel.DataLoadingViewModel
 import com.flintr.tv.viewmodel.LoadingStatus
 import java.text.NumberFormat
-import java.util.Locale
 
 private const val STATUS_ANIMATION_DURATION_MS = 300
 
@@ -111,7 +112,7 @@ private fun LoadingScreenHeader(
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
     Text(
-        text = "Inhalte werden geladen",
+        text = stringResource(R.string.loading_content),
         style = MaterialTheme.typography.headlineMedium.copy(
             fontWeight = FontWeight.Bold,
             fontSize = if (isLandscape) 20.sp else MaterialTheme.typography.headlineMedium.fontSize
@@ -121,7 +122,7 @@ private fun LoadingScreenHeader(
     )
 
     Text(
-        text = "Bitte warten...",
+        text = stringResource(R.string.please_wait),
         style = MaterialTheme.typography.bodyMedium.copy(
             fontSize = if (isLandscape) 14.sp else MaterialTheme.typography.bodyMedium.fontSize
         ),
@@ -144,7 +145,7 @@ private fun LoadingProgressSection(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            text = "Fortschritt",
+            text = stringResource(R.string.progress),
             style = MaterialTheme.typography.bodySmall.copy(
                 fontSize = if (isLandscape) 12.sp else MaterialTheme.typography.bodySmall.fontSize
             ),
@@ -217,7 +218,7 @@ private fun GlobalRetryButton(
         contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
     ) {
         Text(
-            text = "Alle erneut versuchen",
+            text = stringResource(R.string.retry_all),
             fontSize = FontSizes.fontSizeXL,
             fontWeight = FontWeight.W600
         )
@@ -403,7 +404,7 @@ private fun StepItem(
     modifier: Modifier = Modifier
 ) {
     val dimensions = getStepDimensions(isLandscape)
-    val stepIcon = getStepIcon(index)
+    val stepIcon = step.icon ?: getStepIcon(index) // Use step.icon if available, fallback to index-based
 
     Column(
         modifier = modifier,
@@ -489,7 +490,10 @@ private fun SuccessStatusWidget(
     statusIconSize: androidx.compose.ui.unit.Dp,
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
-    val numberFormat = remember { NumberFormat.getNumberInstance(Locale.GERMAN) }
+    val configuration = LocalConfiguration.current
+    val numberFormat = remember(configuration.locales) { 
+        NumberFormat.getNumberInstance(configuration.locales[0]) 
+    }
     val formattedCount = itemCount?.let { numberFormat.format(it) } ?: "0"
     
     Row(
@@ -540,7 +544,7 @@ private fun ErrorStatusWidget(
             )
         ) {
             Text(
-                text = "Wiederholen",
+                text = stringResource(R.string.retry),
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = if (isLandscape) 10.sp else 11.sp,
                     fontWeight = FontWeight.W600

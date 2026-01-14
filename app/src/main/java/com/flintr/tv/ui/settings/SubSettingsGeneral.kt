@@ -20,17 +20,16 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import android.util.Log
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.data.local.CategoryVisibilityService
-import androidx.compose.runtime.collectAsState
-import com.flintr.tv.ui.settings.SecondaryActionButton
-import com.flintr.tv.ui.settings.SecondaryActionButtonConfig
 
 /**
  * Reusable component for displaying label-value pairs in settings
@@ -72,7 +71,7 @@ private fun LanguageSection(
     onBack: () -> Unit
 ) {
     SettingsCard(
-        title = "Sprache",
+        title = stringResource(R.string.language),
         icon = Icons.Default.Language,
         colors = colors
     ) {
@@ -100,7 +99,7 @@ private fun ThemeSection(
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
     SettingsCard(
-        title = "Theme",
+        title = stringResource(R.string.theme),
         icon = Icons.Default.Palette,
         colors = colors
     ) {
@@ -108,7 +107,7 @@ private fun ThemeSection(
             verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
         ) {
             SwitchSetting(
-                label = "Dunkel",
+                label = stringResource(R.string.dark_theme),
                 checked = isDarkTheme,
                 onCheckedChange = onDarkThemeChange,
                 colors = colors
@@ -128,7 +127,7 @@ private fun CacheSection(
     focusRequester: FocusRequester
 ) {
     SettingsCard(
-        title = "Cache",
+        title = stringResource(R.string.cache),
         icon = Icons.Default.Storage,
         colors = colors
     ) {
@@ -136,14 +135,14 @@ private fun CacheSection(
             verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
         ) {
             InfoRow(
-                label = "Cache-Größe",
+                label = stringResource(R.string.cache_size),
                 value = "$cacheSizeMB MB",
                 colors = colors
             )
             
             SecondaryActionButton(
                 config = SecondaryActionButtonConfig(
-                    text = "Cache leeren",
+                    text = stringResource(R.string.clear_cache),
                     icon = Icons.Default.Delete,
                     onClick = onClearCache,
                     focusRequester = focusRequester,
@@ -165,7 +164,7 @@ private fun HiddenCategoriesSection(
     focusRequester: FocusRequester
 ) {
     SettingsCard(
-        title = "Versteckte Kategorien",
+        title = stringResource(R.string.hidden_categories),
         icon = Icons.Default.VisibilityOff,
         colors = colors
     ) {
@@ -173,14 +172,14 @@ private fun HiddenCategoriesSection(
             verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
         ) {
             InfoRow(
-                label = "Anzahl versteckter Kategorien",
+                label = stringResource(R.string.hidden_categories_count),
                 value = "$hiddenCategoriesCount",
                 colors = colors
             )
             
             SecondaryActionButton(
                 config = SecondaryActionButtonConfig(
-                    text = "Kategorien verwalten",
+                    text = stringResource(R.string.manage_categories),
                     icon = Icons.Default.Settings,
                     onClick = {
                         Log.i("SettingsNav", "➡️ NAVIGATE: SettingsGeneral -> SubSettingsHiddenCategories")
