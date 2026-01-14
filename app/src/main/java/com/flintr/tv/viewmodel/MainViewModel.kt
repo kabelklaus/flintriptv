@@ -1,6 +1,7 @@
 package com.flintr.tv.viewmodel
 
 import android.util.Log
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.flintr.tv.data.local.CredentialsRepository
@@ -17,6 +18,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
+    private val savedStateHandle: SavedStateHandle,
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
     private val cacheService: DataCacheService
@@ -49,11 +51,15 @@ class MainViewModel @Inject constructor(
     private val _searchState = MutableStateFlow(SearchState())
     val searchState: StateFlow<SearchState> = _searchState.asStateFlow()
 
+    private val _pendingNavigationRestore = MutableStateFlow<NavigationStateBeforePlayer?>(null)
+    val pendingNavigationRestore: StateFlow<NavigationStateBeforePlayer?> = _pendingNavigationRestore.asStateFlow()
+
     private var searchJob: Job? = null
 
     companion object {
         private const val MIN_QUERY_LENGTH = 2
         private const val MAX_RESULTS_PER_CATEGORY = 50
+        private const val KEY_NAVIGATION_STATE = "navigation_state_before_player"
     }
 
     init {
@@ -343,6 +349,39 @@ class MainViewModel @Inject constructor(
     fun clearSearch() {
         searchJob?.cancel()
         _searchState.value = SearchState()
+    }
+
+    /**
+     * Save navigation state before navigating to Player.
+     * This state will be used to restore the navigation position when user returns from Player.
+     */
+    fun saveNavigationStateBeforePlayer(state: NavigationStateBeforePlayer) {
+        savedStateHandle[KEY_NAVIGATION_STATE] = state
+        Log.d("MainViewModel", "Saved navigation state: destinationType=${state.destinationType}, categoryId=${state.categoryId}, contentId=${state.contentId}, scrollIndex=${state.scrollIndex}, scrollOffset=${state.scrollOffset}")
+    }
+
+    /**
+     * Consume navigation state from SavedStateHandle and emit it via StateFlow.
+     * This is called when returning from Player to trigger restoration.
+     * Returns the state if available, null otherwise.
+     */
+    fun consumeNavigationState(): NavigationStateBeforePlayer? {
+        val state = savedStateHandle.get<NavigationStateBeforePlayer>(KEY_NAVIGATION_STATE)
+        if (state != null) {
+            savedStateHandle.remove<NavigationStateBeforePlayer>(KEY_NAVIGATION_STATE)
+            _pendingNavigationRestore.value = state
+            Log.d("MainViewModel", "Consumed navigation state for restoration: $state")
+        }
+        return state
+    }
+
+    /**
+     * Clear the pending navigation restore state.
+     * Called after successful restoration to prevent re-triggering.
+     */
+    fun clearPendingNavigationRestore() {
+        _pendingNavigationRestore.value = null
+        Log.d("MainViewModel", "Cleared pending navigation restore state")
     }
 }
 

@@ -131,7 +131,8 @@ fun VODCard(
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null
+    onNavigateLeft: (() -> Unit)? = null,
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
 ) {
     ContentCardInternal(
         contentInfo = ContentInfo(
@@ -144,7 +145,8 @@ fun VODCard(
         config = CardConfig(
             isSelected = isSelected,
             onFocusChanged = onFocusChanged,
-            onNavigateLeft = onNavigateLeft
+            onNavigateLeft = onNavigateLeft,
+            focusRequester = focusRequester
         ),
         contentType = ContentType.Movie(vod),
         favoritesRepository = favoritesRepository
@@ -159,7 +161,8 @@ fun VODCard(
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onFocusChanged: ((Boolean) -> Unit)? = null,
-    onNavigateLeft: (() -> Unit)? = null
+    onNavigateLeft: (() -> Unit)? = null,
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
 ) {
     ContentCardInternal(
         contentInfo = ContentInfo(
@@ -172,7 +175,8 @@ fun VODCard(
         config = CardConfig(
             isSelected = isSelected,
             onFocusChanged = onFocusChanged,
-            onNavigateLeft = onNavigateLeft
+            onNavigateLeft = onNavigateLeft,
+            focusRequester = focusRequester
         ),
         contentType = ContentType.Series(series),
         favoritesRepository = favoritesRepository
@@ -339,7 +343,8 @@ fun LiveStreamCard(
     onClick: () -> Unit,
     favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
-    config: CardConfig = CardConfig()
+    config: CardConfig = CardConfig(),
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
 ) {
     ContentCardInternal(
         contentInfo = ContentInfo(
@@ -350,7 +355,7 @@ fun LiveStreamCard(
         onClick = onClick,
         favoritesRepository = favoritesRepository,
         modifier = modifier,
-        config = config,
+        config = config.copy(focusRequester = focusRequester ?: config.focusRequester),
         contentType = ContentType.Live(stream)
     )
 }

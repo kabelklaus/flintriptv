@@ -1,5 +1,7 @@
 package com.flintr.tv.ui.tabs
 
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,7 +43,9 @@ data class FavoritesContentParams(
     val onNavigateLeft: () -> Unit,
     val onLiveStreamClick: (LiveStream) -> Unit,
     val onVodClick: (VodStream) -> Unit,
-    val onSeriesClick: (Series) -> Unit
+    val onSeriesClick: (Series) -> Unit,
+    val lazyGridState: LazyGridState,
+    val focusRequesterMap: MutableMap<String, FocusRequester>? = null
 )
 
 /**
@@ -123,7 +127,8 @@ private fun renderFavoriteCard(
     columnIndex: Int,
     params: FavoritesContentParams,
     favoriteItems: List<FavoriteContentItem>,
-    onFocusChanged: ((Boolean) -> Unit)?
+    onFocusChanged: ((Boolean) -> Unit)?,
+    cardFocusRequester: androidx.compose.ui.focus.FocusRequester?
 ) {
     when (item) {
         is FavoriteContentItem.Live -> {
@@ -135,7 +140,8 @@ private fun renderFavoriteCard(
                     focusRequester = if (index == 0 && favoriteItems.isNotEmpty()) params.focusRequester else null,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft)
-                )
+                ),
+                focusRequester = cardFocusRequester
             )
         }
         is FavoriteContentItem.Movie -> {
@@ -144,7 +150,8 @@ private fun renderFavoriteCard(
                 onClick = { params.onVodClick(item.vod) },
                 favoritesRepository = params.favoritesRepository,
                 onFocusChanged = onFocusChanged,
-                onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft)
+                onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
+                focusRequester = cardFocusRequester
             )
         }
         is FavoriteContentItem.SeriesItem -> {
@@ -153,7 +160,8 @@ private fun renderFavoriteCard(
                 onClick = { params.onSeriesClick(item.series) },
                 favoritesRepository = params.favoritesRepository,
                 onFocusChanged = onFocusChanged,
-                onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft)
+                onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
+                focusRequester = cardFocusRequester
             )
         }
     }
@@ -213,6 +221,7 @@ fun FavoritesContent(
         isLoading = isLoading,
         focusRequester = params.focusRequester,
         modifier = modifier,
+        lazyGridState = params.lazyGridState,
         keySelector = { item ->
             when (item) {
                 is FavoriteContentItem.Live -> item.stream.streamId
@@ -220,18 +229,27 @@ fun FavoritesContent(
                 is FavoriteContentItem.SeriesItem -> item.series.seriesId
             }
         },
+        contentIdSelector = { item ->
+            when (item) {
+                is FavoriteContentItem.Live -> "live_${item.stream.streamId}"
+                is FavoriteContentItem.Movie -> "vod_${item.vod.streamId}"
+                is FavoriteContentItem.SeriesItem -> "series_${item.series.seriesId}"
+            }
+        },
+        focusRequesterMap = params.focusRequesterMap,
         onItemsRendered = {
             // Items are now rendered, loading is complete
             Log.d("FavoritesContent", "Items rendered, loading complete")
         },
-        content = { item, index, columnIndex, onFocusChanged ->
+        content = { item, index, columnIndex, onFocusChanged, cardFocusRequester ->
             renderFavoriteCard(
                 item = item,
                 index = index,
                 columnIndex = columnIndex,
                 params = params,
                 favoriteItems = favoriteItems,
-                onFocusChanged = onFocusChanged
+                onFocusChanged = onFocusChanged,
+                cardFocusRequester = cardFocusRequester
             )
         }
     )

@@ -1,6 +1,8 @@
 package com.flintr.tv.ui.tabs
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -23,7 +25,9 @@ data class SeriesContentParams(
     val focusRequester: FocusRequester,
     val favoritesRepository: FavoritesRepository,
     val onNavigateLeft: () -> Unit,
-    val onSeriesClick: (Series) -> Unit
+    val onSeriesClick: (Series) -> Unit,
+    val lazyGridState: LazyGridState,
+    val focusRequesterMap: MutableMap<String, FocusRequester>? = null
 )
 
 @Composable
@@ -49,8 +53,11 @@ fun SeriesContent(
         isLoading = uiState.isLoading,
         focusRequester = params.focusRequester,
         modifier = modifier,
+        lazyGridState = params.lazyGridState,
         keySelector = { seriesItem -> seriesItem.seriesId },
-        content = { seriesItem, _, columnIndex, onFocusChanged ->
+        contentIdSelector = { seriesItem -> "series_${seriesItem.seriesId}" },
+        focusRequesterMap = params.focusRequesterMap,
+        content = { seriesItem, _, columnIndex, onFocusChanged, cardFocusRequester ->
             SeriesItem(
                 series = seriesItem,
                 favoritesRepository = params.favoritesRepository,
@@ -62,7 +69,8 @@ fun SeriesContent(
                         { params.onNavigateLeft() }
                     } else {
                         null
-                    }
+                    },
+                    focusRequester = cardFocusRequester
                 )
             )
         }

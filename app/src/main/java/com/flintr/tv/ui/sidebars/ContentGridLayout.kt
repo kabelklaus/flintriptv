@@ -2,7 +2,9 @@ package com.flintr.tv.ui.sidebars
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,9 +26,12 @@ fun <T> ContentGridLayout(
     isLoading: Boolean,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
+    lazyGridState: LazyGridState = rememberLazyGridState(),
     keySelector: ((T) -> Any)? = null,
+    contentIdSelector: ((T) -> String)? = null,
+    focusRequesterMap: MutableMap<String, FocusRequester>? = null,
     onItemsRendered: (() -> Unit)? = null,
-    content: @Composable (item: T, index: Int, columnIndex: Int, onFocusChanged: ((Boolean) -> Unit)?) -> Unit
+    content: @Composable (item: T, index: Int, columnIndex: Int, onFocusChanged: ((Boolean) -> Unit)?, cardFocusRequester: FocusRequester?) -> Unit
 ) {
     val density = LocalDensity.current
     var gridWidth by remember { mutableStateOf(0.dp) }
@@ -48,6 +53,7 @@ fun <T> ContentGridLayout(
             )
         } else {
             LazyVerticalGrid(
+                state = lazyGridState,
                 columns = GridCells.Adaptive(minSize = Dimensions.contentCardMaxCrossAxisExtent),
                 modifier = Modifier
                     .fillMaxSize()
@@ -80,6 +86,13 @@ fun <T> ContentGridLayout(
                 ) { index ->
                     val item = items[index]
                     val columnIndex = index % columns
+                    // Get or create FocusRequester for this content item
+                    val cardFocusRequester = if (contentIdSelector != null && focusRequesterMap != null) {
+                        val contentId = contentIdSelector(item)
+                        focusRequesterMap.getOrPut(contentId) { FocusRequester() }
+                    } else {
+                        null
+                    }
                     content(
                         item,
                         index,
@@ -87,7 +100,8 @@ fun <T> ContentGridLayout(
                         { _ ->
                             // onFocusChanged is passed through to content composable
                             // No need to track focusedIndex here as it's unused
-                        }
+                        },
+                        cardFocusRequester
                     )
                 }
             }

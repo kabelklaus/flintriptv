@@ -1,9 +1,12 @@
 package com.flintr.tv.ui.tabs
 
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import com.flintr.tv.data.local.FavoritesRepository
@@ -20,7 +23,9 @@ fun VODContent(
     favoritesRepository: FavoritesRepository,
     onNavigateLeft: () -> Unit,
     onVodClick: (VodStream) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lazyGridState: LazyGridState = rememberLazyGridState(),
+    focusRequesterMap: MutableMap<String, FocusRequester>? = null
 ) {
     val streams by viewModel.vodStreams.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
@@ -40,8 +45,11 @@ fun VODContent(
         isLoading = uiState.isLoading,
         focusRequester = focusRequester,
         modifier = modifier,
+        lazyGridState = lazyGridState,
         keySelector = { vod -> vod.streamId },
-        content = { vod, _, columnIndex, onFocusChanged ->
+        contentIdSelector = { vod -> "vod_${vod.streamId}" },
+        focusRequesterMap = focusRequesterMap,
+        content = { vod, _, columnIndex, onFocusChanged, cardFocusRequester ->
             VODCard(
                 vod = vod,
                 onClick = { onVodClick(vod) },
@@ -51,7 +59,8 @@ fun VODContent(
                     { onNavigateLeft() }
                 } else {
                     null
-                }
+                },
+                focusRequester = cardFocusRequester
             )
         }
     )

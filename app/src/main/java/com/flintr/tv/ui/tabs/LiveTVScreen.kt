@@ -1,5 +1,7 @@
 package com.flintr.tv.ui.tabs
 
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -21,7 +23,9 @@ fun LiveTVContent(
     favoritesRepository: FavoritesRepository,
     onNavigateLeft: () -> Unit,
     onChannelClick: (LiveStream) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lazyGridState: LazyGridState = rememberLazyGridState(),
+    focusRequesterMap: MutableMap<String, FocusRequester>? = null
 ) {
     val streams by viewModel.liveStreams.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
@@ -41,8 +45,11 @@ fun LiveTVContent(
         isLoading = uiState.isLoading,
         focusRequester = focusRequester,
         modifier = modifier,
+        lazyGridState = lazyGridState,
         keySelector = { stream -> stream.streamId },
-        content = { stream, index, columnIndex, onFocusChanged ->
+        contentIdSelector = { stream -> "live_${stream.streamId}" },
+        focusRequesterMap = focusRequesterMap,
+        content = { stream, index, columnIndex, onFocusChanged, cardFocusRequester ->
             LiveStreamCard(
                 stream = stream,
                 onClick = { onChannelClick(stream) },
@@ -55,7 +62,8 @@ fun LiveTVContent(
                     } else {
                         null
                     }
-                )
+                ),
+                focusRequester = cardFocusRequester
             )
         }
     )
