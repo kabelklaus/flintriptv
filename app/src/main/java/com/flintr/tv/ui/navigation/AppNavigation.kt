@@ -139,7 +139,6 @@ private fun HomeDestination.toDestinationType(): com.flintr.tv.data.model.Destin
         is HomeDestination.LiveTV -> com.flintr.tv.data.model.DestinationType.LIVE_TV
         is HomeDestination.VOD -> com.flintr.tv.data.model.DestinationType.VOD
         is HomeDestination.Series -> com.flintr.tv.data.model.DestinationType.SERIES
-        is HomeDestination.Favorites -> com.flintr.tv.data.model.DestinationType.FAVORITES
         else -> com.flintr.tv.data.model.DestinationType.UNKNOWN
     }
 }
@@ -152,12 +151,13 @@ private fun com.flintr.tv.data.model.DestinationType.toHomeDestination(): HomeDe
         com.flintr.tv.data.model.DestinationType.LIVE_TV -> HomeDestination.LiveTV
         com.flintr.tv.data.model.DestinationType.VOD -> HomeDestination.VOD
         com.flintr.tv.data.model.DestinationType.SERIES -> HomeDestination.Series
-        com.flintr.tv.data.model.DestinationType.FAVORITES -> HomeDestination.Favorites
         com.flintr.tv.data.model.DestinationType.UNKNOWN -> HomeDestination.LiveTV // Default fallback
+        else -> HomeDestination.LiveTV // Default fallback for FAVORITES and other types
     }
 }
 
 private const val LOG_TAG_MAIN_CONTENT_SCREEN = "[MainContentScreen]"
+private const val FAVORITES_CATEGORY_ID = "__favorites__"
 
 /**
  * Restores the destination (tab) and waits for UI propagation.
@@ -603,9 +603,6 @@ private fun clearStreamsForDestination(
         is HomeDestination.EPG -> {
             // EPG doesn't have streams to clear
         }
-        is HomeDestination.Favorites -> {
-            // Favorites doesn't have streams to clear
-        }
         is HomeDestination.Search -> {
             // Search doesn't have streams to clear
         }
@@ -630,8 +627,7 @@ private data class MainContentBodyParams(
     val lazyGridState: LazyGridState,
     val focusRequesterMap: MutableMap<String, FocusRequester>,
     val onNavigateToCategorySidebar: () -> Unit,
-    val onNavigateToNavbar: () -> Unit,
-    val onFavoritesSeriesClick: (Series) -> Unit
+    val onNavigateToNavbar: () -> Unit
 )
 
 /**
@@ -649,6 +645,7 @@ private fun MainContentBody(
                     selectedCategoryId = params.selectedCategoryId,
                     focusRequester = params.contentListFocusRequester,
                     favoritesRepository = params.favoritesRepository,
+                    cacheService = params.cacheService,
                     onNavigateLeft = params.onNavigateToCategorySidebar,
                     lazyGridState = params.lazyGridState,
                     focusRequesterMap = params.focusRequesterMap,
@@ -688,6 +685,7 @@ private fun MainContentBody(
                     selectedCategoryId = params.selectedCategoryId,
                     focusRequester = params.contentListFocusRequester,
                     favoritesRepository = params.favoritesRepository,
+                    cacheService = params.cacheService,
                     onNavigateLeft = params.onNavigateToCategorySidebar,
                     lazyGridState = params.lazyGridState,
                     focusRequesterMap = params.focusRequesterMap,
@@ -727,6 +725,7 @@ private fun MainContentBody(
                     selectedCategoryId = params.selectedCategoryId,
                     focusRequester = params.contentListFocusRequester,
                     favoritesRepository = params.favoritesRepository,
+                    cacheService = params.cacheService,
                     onNavigateLeft = params.onNavigateToCategorySidebar,
                     lazyGridState = params.lazyGridState,
                     focusRequesterMap = params.focusRequesterMap,
@@ -768,74 +767,6 @@ private fun MainContentBody(
                         "📅 EPG onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
                     }
                 }
-            )
-        }
-        is HomeDestination.Favorites -> {
-            val onLiveStreamClick: (LiveStream) -> Unit = { stream ->
-                val creds = params.credentials
-                if (creds != null) {
-                    // Save navigation state before navigating to player
-                    val scrollIndex = params.lazyGridState.firstVisibleItemIndex
-                    val scrollOffset = params.lazyGridState.firstVisibleItemScrollOffset
-                    params.mainViewModel.saveNavigationStateBeforePlayer(
-                        NavigationStateBeforePlayer(
-                            destinationType = params.destination.toDestinationType(),
-                            categoryId = null, // Favorites doesn't have categories
-                            contentId = stream.toContentId(),
-                            scrollIndex = scrollIndex,
-                            scrollOffset = scrollOffset
-                        )
-                    )
-                    val streamUrl = stream.getStreamUrl(
-                        creds.serverUrl,
-                        creds.username,
-                        creds.password
-                    )
-                    val route = Screen.Player.createRouteForLive(streamUrl)
-                    params.navController.logAndNavigate(route, "AppNavigation") {
-                        "⭐ Favorites LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
-                    }
-                }
-            }
-            val onVodClick: (VodStream) -> Unit = { vod ->
-                val creds = params.credentials
-                if (creds != null) {
-                    // Save navigation state before navigating to player
-                    val scrollIndex = params.lazyGridState.firstVisibleItemIndex
-                    val scrollOffset = params.lazyGridState.firstVisibleItemScrollOffset
-                    params.mainViewModel.saveNavigationStateBeforePlayer(
-                        NavigationStateBeforePlayer(
-                            destinationType = params.destination.toDestinationType(),
-                            categoryId = null, // Favorites doesn't have categories
-                            contentId = vod.toContentId(),
-                            scrollIndex = scrollIndex,
-                            scrollOffset = scrollOffset
-                        )
-                    )
-                    val streamUrl = vod.getStreamUrl(
-                        creds.serverUrl,
-                        creds.username,
-                        creds.password
-                    )
-                    val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
-                    params.navController.logAndNavigate(route, "AppNavigation") {
-                        "⭐ Favorites VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
-                    }
-                }
-            }
-            val onSeriesClick: (Series) -> Unit = params.onFavoritesSeriesClick
-            FavoritesContent(
-                params = FavoritesContentParams(
-                    favoritesRepository = params.favoritesRepository,
-                    cacheService = params.cacheService,
-                    focusRequester = params.contentListFocusRequester,
-                    onNavigateLeft = params.onNavigateToNavbar,
-                    lazyGridState = params.lazyGridState,
-                    focusRequesterMap = params.focusRequesterMap,
-                    onLiveStreamClick = onLiveStreamClick,
-                    onVodClick = onVodClick,
-                    onSeriesClick = onSeriesClick
-                )
             )
         }
         is HomeDestination.Search -> {
@@ -886,7 +817,8 @@ private fun UpdateDialogContent(
 private data class CategoryManagementResult(
     val categoryType: CategoryType?,
     val sortedCategories: List<Category>,
-    val showCategories: Boolean
+    val showCategories: Boolean,
+    val favoritesCount: Int = 0
 )
 
 /**
@@ -898,14 +830,16 @@ private fun useCategoryManagement(
     liveCategories: List<Category>,
     vodCategories: List<Category>,
     seriesCategories: List<Category>,
-    hiddenCategories: Map<CategoryType, Set<String>>
+    hiddenCategories: Map<CategoryType, Set<String>>,
+    favoritesRepository: FavoritesRepository,
+    cacheService: DataCacheService
 ): CategoryManagementResult {
     // Determine category type based on destination
     val categoryType: CategoryType? = when (selectedDestination) {
         is HomeDestination.LiveTV -> CategoryType.LIVE_TV
         is HomeDestination.VOD -> CategoryType.VOD
         is HomeDestination.Series -> CategoryType.SERIES
-        else -> null // EPG, Favorites, Search, Settings don't have categories
+        else -> null // EPG, Search, Settings don't have categories
     }
     
     // Select categories based on destination
@@ -914,7 +848,6 @@ private fun useCategoryManagement(
         is HomeDestination.VOD -> vodCategories
         is HomeDestination.Series -> seriesCategories
         is HomeDestination.EPG -> emptyList()
-        is HomeDestination.Favorites -> emptyList() // Favorites doesn't have categories
         is HomeDestination.Search -> emptyList() // Search doesn't have categories
         is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
     }
@@ -929,14 +862,42 @@ private fun useCategoryManagement(
     // Sort categories the same way as in CategoryRow for consistency
     val sortedCategories = filteredCategories.sortedBy { it.categoryName }
     
+    // Calculate favorites count for current tab
+    var favoritesCount by remember { mutableStateOf(0) }
+    LaunchedEffect(selectedDestination) {
+        favoritesCount = when (selectedDestination) {
+            is HomeDestination.LiveTV -> favoritesRepository.getFavoriteCountByType(com.flintr.tv.data.model.FavoriteType.LIVE)
+            is HomeDestination.VOD -> favoritesRepository.getFavoriteCountByType(com.flintr.tv.data.model.FavoriteType.MOVIE)
+            is HomeDestination.Series -> favoritesRepository.getFavoriteCountByType(com.flintr.tv.data.model.FavoriteType.SERIES)
+            else -> 0
+        }
+    }
+    
+    // Create favorites category and prepend to sorted categories
+    val categoriesWithFavorites = remember(sortedCategories, favoritesCount, selectedDestination) {
+        if (selectedDestination is HomeDestination.LiveTV ||
+            selectedDestination is HomeDestination.VOD ||
+            selectedDestination is HomeDestination.Series) {
+            val favoritesCategory = Category(
+                categoryId = FAVORITES_CATEGORY_ID,
+                categoryName = "Favoriten",
+                parentId = 0
+            )
+            listOf(favoritesCategory) + sortedCategories
+        } else {
+            sortedCategories
+        }
+    }
+    
     val showCategories = selectedDestination is HomeDestination.LiveTV ||
             selectedDestination is HomeDestination.VOD ||
             selectedDestination is HomeDestination.Series
     
     return CategoryManagementResult(
         categoryType = categoryType,
-        sortedCategories = sortedCategories,
-        showCategories = showCategories
+        sortedCategories = categoriesWithFavorites,
+        showCategories = showCategories,
+        favoritesCount = favoritesCount
     )
 }
 
@@ -1089,7 +1050,6 @@ private fun CategorySidebarFocusEffect(
         if (categorySidebarReady && 
             !categorySidebarFocusSet &&
             pendingFocusDestination != null && 
-            pendingFocusDestination !is HomeDestination.Favorites &&
             showCategories && sortedCategories.isNotEmpty()) {
             onFocusSet()
             categorySidebarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
@@ -1108,14 +1068,6 @@ private fun ContentListFocusEffect(
     contentListFocusRequester: FocusRequester,
     onFocusSet: () -> Unit
 ) {
-    LaunchedEffect(contentListReady, pendingFocusDestination) {
-        if (contentListReady && 
-            !contentListFocusSet &&
-            pendingFocusDestination is HomeDestination.Favorites) {
-            onFocusSet()
-            contentListFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CONTENT_LIST")
-        }
-    }
 }
 
 /**
@@ -1322,7 +1274,9 @@ fun MainContentScreen(
         liveCategories = liveCategories,
         vodCategories = vodCategories,
         seriesCategories = seriesCategories,
-        hiddenCategories = hiddenCategories
+        hiddenCategories = hiddenCategories,
+        favoritesRepository = favoritesRepository,
+        cacheService = cacheService
     )
     
     // LaunchedEffects
@@ -1437,14 +1391,6 @@ fun MainContentScreen(
         }
     }
     
-    fun handleFavoritesSeriesClick(series: Series) {
-        handleDestinationChange(HomeDestination.Series)
-        val categoryId = mainViewModel.showSeriesFromFavorites(series)
-        if (categoryId != null) {
-            selectedCategoryId = categoryId
-        }
-    }
-    
     // Search click handlers
     val searchClickHandlers = remember(credentials, showSearchOverlay) {
         createSearchClickHandlers(
@@ -1471,6 +1417,15 @@ fun MainContentScreen(
     // String resources
     val categoryHiddenMessage = stringResource(R.string.category_hidden)
     
+    // Create itemCounts map for favorites category
+    val itemCounts = remember(categoryManagement.favoritesCount) {
+        if (categoryManagement.favoritesCount > 0) {
+            mapOf(FAVORITES_CATEGORY_ID to categoryManagement.favoritesCount)
+        } else {
+            emptyMap<String, Int>()
+        }
+    }
+    
     // Main UI
     Box(modifier = Modifier.fillMaxSize()) {
         MainLayout(
@@ -1481,6 +1436,7 @@ fun MainContentScreen(
                 categories = categoryManagement.sortedCategories,
                 selectedCategoryId = selectedCategoryId,
                 onCategorySelected = { selectedCategoryId = it },
+                itemCounts = itemCounts,
                 navbarFocusRequester = navbarFocusRequester,
                 categorySidebarFocusRequester = categorySidebarFocusRequester,
                 onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
@@ -1520,8 +1476,7 @@ fun MainContentScreen(
                         lazyGridState = lazyGridState,
                         focusRequesterMap = focusRequesterMap,
                         onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
-                        onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
-                        onFavoritesSeriesClick = ::handleFavoritesSeriesClick
+                        onNavigateToNavbar = { focusManager.moveFocusToNavbar() }
                     )
                 )
             }

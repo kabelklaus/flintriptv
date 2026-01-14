@@ -89,6 +89,7 @@ data class MainLayoutParams(
     val selectedCategoryId: String?,
     val onCategorySelected: (String?) -> Unit,
     val onCategoryHidden: (Category) -> Unit,
+    val itemCounts: Map<String, Int>? = null,
     
     // Focus Management
     val navbarFocusRequester: FocusRequester,
@@ -145,10 +146,16 @@ fun MainLayout(
                     categories = params.categories,
                     selectedCategoryId = params.selectedCategoryId,
                     onCategorySelected = params.onCategorySelected,
+                    itemCounts = params.itemCounts,
                     focusRequester = params.categorySidebarFocusRequester,
                     onNavigateLeft = { wrappedOnNavigateToNavbar() },
                     onNavigateRight = { params.onNavigateToContentList() },
-                    onCategoryHidden = params.onCategoryHidden
+                    onCategoryHidden = { category ->
+                        // Don't allow hiding favorites category
+                        if (category.categoryId != "__favorites__") {
+                            params.onCategoryHidden(category)
+                        }
+                    }
                 ),
                 modifier = createCategorySidebarModifier(params.onCategorySidebarReady)
             )
