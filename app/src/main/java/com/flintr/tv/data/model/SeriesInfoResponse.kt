@@ -9,7 +9,7 @@ import com.squareup.moshi.JsonClass
  * - Series info is nested in "info" object
  * - Episodes are grouped by season number in "episodes" object
  */
-@JsonClass(generateAdapter = true)
+@JsonClass(generateAdapter = false)
 data class SeriesInfoResponse(
     @Json(name = "seasons")
     val seasons: List<Season>?,

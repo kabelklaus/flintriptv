@@ -31,6 +31,167 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.viewmodel.LoginViewModel
+import androidx.compose.ui.graphics.vector.ImageVector
+
+/**
+ * Returns standardized text field colors for login form
+ */
+@Composable
+private fun loginTextFieldColors(colors: com.flintr.tv.ui.theme.AppColors): TextFieldColors {
+    return OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = colors.accentColor,
+        unfocusedBorderColor = colors.cardBorder,
+        focusedLabelColor = colors.accentColor,
+        unfocusedLabelColor = colors.textSecondary,
+        focusedTextColor = colors.textPrimary,
+        unfocusedTextColor = colors.textPrimary,
+        cursorColor = colors.accentColor,
+        focusedPlaceholderColor = colors.textSecondary,
+        unfocusedPlaceholderColor = colors.textSecondary,
+        focusedLeadingIconColor = colors.accentColor,
+        unfocusedLeadingIconColor = colors.iconColor
+    )
+}
+
+/**
+ * Reusable login text field component
+ */
+@Composable
+private fun LoginTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    placeholder: String,
+    leadingIcon: ImageVector,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    focusRequester: FocusRequester? = null,
+    onGloballyPositioned: (() -> Unit)? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        placeholder = { Text(placeholder) },
+        leadingIcon = {
+            Icon(
+                imageVector = leadingIcon,
+                contentDescription = null
+            )
+        },
+        trailingIcon = trailingIcon,
+        modifier = modifier
+            .fillMaxWidth()
+            .then(
+                if (focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                }
+            )
+            .then(
+                if (onGloballyPositioned != null) {
+                    Modifier.onGloballyPositioned { onGloballyPositioned() }
+                } else {
+                    Modifier
+                }
+            ),
+        singleLine = true,
+        enabled = enabled,
+        shape = RoundedCornerShape(Dimensions.radiusMD),
+        colors = loginTextFieldColors(colors),
+        visualTransformation = visualTransformation
+    )
+}
+
+/**
+ * Login button with focus animation and loading state
+ */
+@Composable
+private fun LoginButton(
+    onClick: () -> Unit,
+    isLoading: Boolean,
+    isFormValid: Boolean,
+    modifier: Modifier = Modifier,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    var isButtonFocused by remember { mutableStateOf(false) }
+    
+    // Animated scale for focus
+    val scale by animateFloatAsState(
+        targetValue = if (isButtonFocused && isFormValid) 1.02f else 1f,
+        animationSpec = tween(durationMillis = 200),
+        label = "buttonScale"
+    )
+    
+    Button(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .scale(scale)
+            .onFocusChanged { focusState ->
+                isButtonFocused = focusState.isFocused
+            }
+            .then(
+                if (isButtonFocused && isFormValid) {
+                    Modifier
+                        .border(
+                            width = 2.dp,
+                            color = Color.White,
+                            shape = RoundedCornerShape(Dimensions.radiusMD)
+                        )
+                        .shadow(
+                            elevation = 6.dp,
+                            shape = RoundedCornerShape(Dimensions.radiusMD),
+                            spotColor = colors.accentColor.copy(alpha = 0.4f)
+                        )
+                } else {
+                    Modifier
+                }
+            ),
+        enabled = !isLoading,
+        shape = RoundedCornerShape(Dimensions.radiusMD),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = when {
+                isButtonFocused && isFormValid -> colors.buttonPrimaryHover
+                !isFormValid -> colors.buttonPrimary.copy(alpha = 0.6f)
+                else -> colors.buttonPrimary
+            },
+            contentColor = Color.White,
+            disabledContainerColor = colors.buttonPrimary.copy(alpha = 0.6f),
+            disabledContentColor = Color.White.copy(alpha = 0.6f)
+        ),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = if (isButtonFocused && isFormValid) 6.dp else if (!isFormValid) 0.dp else 2.dp,
+            pressedElevation = if (isButtonFocused && isFormValid) 8.dp else if (!isFormValid) 0.dp else 4.dp,
+            disabledElevation = 0.dp
+        ),
+        contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                color = Color.White,
+                strokeWidth = 2.dp
+            )
+            Spacer(modifier = Modifier.width(Dimensions.spacingXS))
+            Text(
+                text = "Wird angemeldet...",
+                fontSize = FontSizes.fontSizeXL,
+                fontWeight = FontWeight.W600
+            )
+        } else {
+            Text(
+                text = "Anmelden",
+                fontSize = FontSizes.fontSizeXL,
+                fontWeight = FontWeight.W600
+            )
+        }
+    }
+}
 
 @Composable
 fun LoginScreen(
@@ -106,92 +267,47 @@ fun LoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
             ) {
-                OutlinedTextField(
+                LoginTextField(
                     value = serverUrl,
                     onValueChange = { serverUrl = it },
-                    label = { Text("Serveradresse") },
-                    placeholder = { Text("http://example.com") },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Dns,
-                            contentDescription = null
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(serverUrlFocusRequester)
-                        .onGloballyPositioned {
-                            // Request focus only once when component is first laid out
-                            if (!hasRequestedInitialFocus) {
-                                try {
-                                    serverUrlFocusRequester.requestFocus()
-                                    hasRequestedInitialFocus = true
-                                } catch (e: IllegalStateException) {
-                                    // Component not ready for focus yet
-                                }
-                            }
-                        },
-                    singleLine = true,
+                    label = "Serveradresse",
+                    placeholder = "http://example.com",
+                    leadingIcon = Icons.Default.Dns,
                     enabled = !uiState.isLoading,
-                    shape = RoundedCornerShape(Dimensions.radiusMD),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = colors.accentColor,
-                        unfocusedBorderColor = colors.cardBorder,
-                        focusedLabelColor = colors.accentColor,
-                        unfocusedLabelColor = colors.textSecondary,
-                        focusedTextColor = colors.textPrimary,
-                        unfocusedTextColor = colors.textPrimary,
-                        cursorColor = colors.accentColor,
-                        focusedPlaceholderColor = colors.textSecondary,
-                        unfocusedPlaceholderColor = colors.textSecondary,
-                        focusedLeadingIconColor = colors.accentColor,
-                        unfocusedLeadingIconColor = colors.iconColor
-                    )
+                    focusRequester = serverUrlFocusRequester,
+                    onGloballyPositioned = {
+                        // Request focus only once when component is first laid out
+                        if (!hasRequestedInitialFocus) {
+                            try {
+                                serverUrlFocusRequester.requestFocus()
+                                hasRequestedInitialFocus = true
+                            } catch (e: IllegalStateException) {
+                                // Component not ready for focus yet
+                            }
+                        }
+                    },
+                    colors = colors
                 )
 
-                OutlinedTextField(
+                LoginTextField(
                     value = username,
                     onValueChange = { username = it },
-                    label = { Text("Benutzername") },
-                    placeholder = { Text("Ihr Benutzername") },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(usernameFocusRequester),
-                    singleLine = true,
+                    label = "Benutzername",
+                    placeholder = "Ihr Benutzername",
+                    leadingIcon = Icons.Default.Person,
                     enabled = !uiState.isLoading,
-                    shape = RoundedCornerShape(Dimensions.radiusMD),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = colors.accentColor,
-                        unfocusedBorderColor = colors.cardBorder,
-                        focusedLabelColor = colors.accentColor,
-                        unfocusedLabelColor = colors.textSecondary,
-                        focusedTextColor = colors.textPrimary,
-                        unfocusedTextColor = colors.textPrimary,
-                        cursorColor = colors.accentColor,
-                        focusedPlaceholderColor = colors.textSecondary,
-                        unfocusedPlaceholderColor = colors.textSecondary,
-                        focusedLeadingIconColor = colors.accentColor,
-                        unfocusedLeadingIconColor = colors.iconColor
-                    )
+                    focusRequester = usernameFocusRequester,
+                    colors = colors
                 )
 
-                OutlinedTextField(
+                LoginTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Passwort") },
-                    placeholder = { Text("Ihr Passwort") },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null
-                        )
-                    },
+                    label = "Passwort",
+                    placeholder = "Ihr Passwort",
+                    leadingIcon = Icons.Default.Lock,
+                    enabled = !uiState.isLoading,
+                    focusRequester = passwordFocusRequester,
                     trailingIcon = {
                         IconButton(onClick = { passwordVisible = !passwordVisible }) {
                             Icon(
@@ -200,26 +316,8 @@ fun LoginScreen(
                             )
                         }
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(passwordFocusRequester),
                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    singleLine = true,
-                    enabled = !uiState.isLoading,
-                    shape = RoundedCornerShape(Dimensions.radiusMD),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = colors.accentColor,
-                        unfocusedBorderColor = colors.cardBorder,
-                        focusedLabelColor = colors.accentColor,
-                        unfocusedLabelColor = colors.textSecondary,
-                        focusedTextColor = colors.textPrimary,
-                        unfocusedTextColor = colors.textPrimary,
-                        cursorColor = colors.accentColor,
-                        focusedPlaceholderColor = colors.textSecondary,
-                        unfocusedPlaceholderColor = colors.textSecondary,
-                        focusedLeadingIconColor = colors.accentColor,
-                        unfocusedLeadingIconColor = colors.iconColor
-                    )
+                    colors = colors
                 )
 
                 if (uiState.error != null) {
@@ -241,86 +339,19 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(Dimensions.spacingMD))
 
-                var isButtonFocused by remember { mutableStateOf(false) }
-                
                 val isFormValid = serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
                 
-                // Animated scale for focus
-                val scale by animateFloatAsState(
-                    targetValue = if (isButtonFocused && isFormValid) 1.02f else 1f,
-                    animationSpec = tween(durationMillis = 200),
-                    label = "buttonScale"
-                )
-                
-                Button(
+                LoginButton(
                     onClick = {
                         if (isFormValid) {
                             viewModel.login(serverUrl.trim(), username.trim(), password)
                         }
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .scale(scale)
-                        .focusRequester(buttonFocusRequester)
-                        .onFocusChanged { focusState ->
-                            isButtonFocused = focusState.isFocused
-                        }
-                        .then(
-                            if (isButtonFocused && isFormValid) {
-                                Modifier
-                                    .border(
-                                        width = 2.dp,
-                                        color = Color.White,
-                                        shape = RoundedCornerShape(Dimensions.radiusMD)
-                                    )
-                                    .shadow(
-                                        elevation = 6.dp,
-                                        shape = RoundedCornerShape(Dimensions.radiusMD),
-                                        spotColor = colors.accentColor.copy(alpha = 0.4f)
-                                    )
-                            } else {
-                                Modifier
-                            }
-                        ),
-                    enabled = !uiState.isLoading,
-                    shape = RoundedCornerShape(Dimensions.radiusMD),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = when {
-                            isButtonFocused && isFormValid -> colors.buttonPrimaryHover
-                            !isFormValid -> colors.buttonPrimary.copy(alpha = 0.6f)
-                            else -> colors.buttonPrimary
-                        },
-                        contentColor = Color.White,
-                        disabledContainerColor = colors.buttonPrimary.copy(alpha = 0.6f),
-                        disabledContentColor = Color.White.copy(alpha = 0.6f)
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(
-                        defaultElevation = if (isButtonFocused && isFormValid) 6.dp else if (!isFormValid) 0.dp else 2.dp,
-                        pressedElevation = if (isButtonFocused && isFormValid) 8.dp else if (!isFormValid) 0.dp else 4.dp,
-                        disabledElevation = 0.dp
-                    ),
-                    contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
-                ) {
-                    if (uiState.isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(Dimensions.spacingXS))
-                        Text(
-                            text = "Wird angemeldet...",
-                            fontSize = FontSizes.fontSizeXL,
-                            fontWeight = FontWeight.W600
-                        )
-                    } else {
-                        Text(
-                            text = "Anmelden",
-                            fontSize = FontSizes.fontSizeXL,
-                            fontWeight = FontWeight.W600
-                        )
-                    }
-                }
+                    isLoading = uiState.isLoading,
+                    isFormValid = isFormValid,
+                    modifier = Modifier.focusRequester(buttonFocusRequester),
+                    colors = colors
+                )
             }
         }
     }

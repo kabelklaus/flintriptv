@@ -7,6 +7,7 @@ import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchProgressService
+import com.flintr.tv.data.model.SeriesInfoResponseAdapterFactory
 import com.flintr.tv.data.repository.UpdateRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.utils.UpdateDownloadService
@@ -35,6 +36,7 @@ object AppModule {
     @Singleton
     fun provideMoshi(): Moshi {
         return Moshi.Builder()
+            .add(SeriesInfoResponseAdapterFactory())
             .addLast(KotlinJsonAdapterFactory())
             .build()
     }
