@@ -558,6 +558,303 @@ private fun UpdateDialogContent(
 }
 
 /**
+ * Data class grouping category management results
+ */
+private data class CategoryManagementResult(
+    val categoryType: CategoryType,
+    val sortedCategories: List<Category>,
+    val showCategories: Boolean
+)
+
+/**
+ * Composable function managing category logic (filtering, sorting, type determination)
+ */
+@Composable
+private fun useCategoryManagement(
+    selectedDestination: HomeDestination,
+    liveCategories: List<Category>,
+    vodCategories: List<Category>,
+    seriesCategories: List<Category>,
+    hiddenCategories: Map<CategoryType, Set<String>>
+): CategoryManagementResult {
+    // Determine category type based on destination
+    val categoryType = when (selectedDestination) {
+        is HomeDestination.LiveTV -> CategoryType.LIVE_TV
+        is HomeDestination.VOD -> CategoryType.VOD
+        is HomeDestination.Series -> CategoryType.SERIES
+        is HomeDestination.EPG -> CategoryType.LIVE_TV // Not used for EPG
+        is HomeDestination.Favorites -> CategoryType.LIVE_TV // Not used for Favorites
+        is HomeDestination.Search -> CategoryType.LIVE_TV // Not used for Search
+        is HomeDestination.Settings -> CategoryType.LIVE_TV // Not used for Settings
+    }
+    
+    // Select categories based on destination
+    val categories = when (selectedDestination) {
+        is HomeDestination.LiveTV -> liveCategories
+        is HomeDestination.VOD -> vodCategories
+        is HomeDestination.Series -> seriesCategories
+        is HomeDestination.EPG -> emptyList()
+        is HomeDestination.Favorites -> emptyList() // Favorites doesn't have categories
+        is HomeDestination.Search -> emptyList() // Search doesn't have categories
+        is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
+    }
+    
+    // Filter out hidden categories using StateFlow
+    val filteredCategories = categories.filter { 
+        !(hiddenCategories[categoryType]?.contains(it.categoryId) ?: false)
+    }
+    
+    // Sort categories the same way as in CategoryRow for consistency
+    val sortedCategories = filteredCategories.sortedBy { it.categoryName }
+    
+    val showCategories = selectedDestination is HomeDestination.LiveTV ||
+            selectedDestination is HomeDestination.VOD ||
+            selectedDestination is HomeDestination.Series
+    
+    return CategoryManagementResult(
+        categoryType = categoryType,
+        sortedCategories = sortedCategories,
+        showCategories = showCategories
+    )
+}
+
+/**
+ * LaunchedEffect for checking updates once
+ */
+@Composable
+private fun UpdateCheckEffect(
+    hasCheckedForUpdates: Boolean,
+    updateViewModel: UpdateViewModel,
+    context: android.content.Context,
+    onUpdateChecked: () -> Unit
+) {
+    LaunchedEffect(Unit) {
+        if (!hasCheckedForUpdates) {
+            onUpdateChecked()
+            val packageInfo = loadPackageInfo(context)
+            val version = packageInfo?.versionName
+            if (version != null) {
+                updateViewModel.checkForUpdates(version)
+            }
+        }
+    }
+}
+
+/**
+ * LaunchedEffect for showing update dialog when update becomes available
+ */
+@Composable
+private fun UpdateDialogEffect(
+    updateInfo: UpdateInfo?,
+    onShowDialog: () -> Unit
+) {
+    LaunchedEffect(updateInfo?.hasUpdate) {
+        if (updateInfo?.hasUpdate == true && updateInfo?.downloadUrl != null) {
+            onShowDialog()
+        }
+    }
+}
+
+/**
+ * LaunchedEffect for auto-closing dialog when installation starts
+ */
+@Composable
+private fun AutoCloseDialogEffect(
+    downloadProgress: DownloadProgress?,
+    onCloseDialog: () -> Unit
+) {
+    LaunchedEffect(downloadProgress?.isComplete) {
+        if (downloadProgress?.isComplete == true) {
+            onCloseDialog()
+        }
+    }
+}
+
+/**
+ * LaunchedEffect for category selection when destination or categories change
+ */
+@Composable
+private fun CategorySelectionEffect(
+    selectedDestination: HomeDestination,
+    sortedCategories: List<Category>,
+    selectedCategoryId: String?,
+    onCategoryIdChanged: (String?) -> Unit
+) {
+    LaunchedEffect(selectedDestination, sortedCategories) {
+        if (sortedCategories.isEmpty()) {
+            onCategoryIdChanged(null)
+        } else {
+            // Always select first category if none selected or selected category doesn't exist in current list
+            val currentCategoryExists = selectedCategoryId != null && 
+                sortedCategories.any { it.categoryId == selectedCategoryId }
+            if (!currentCategoryExists) {
+                onCategoryIdChanged(sortedCategories.first().categoryId)
+            }
+        }
+    }
+}
+
+/**
+ * LaunchedEffect for showing snackbar messages
+ */
+@Composable
+private fun SnackbarEffect(
+    snackbarMessage: String?,
+    snackbarHostState: SnackbarHostState,
+    onMessageShown: () -> Unit
+) {
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            onMessageShown()
+        }
+    }
+}
+
+/**
+ * LaunchedEffect for handling destination changes and resetting focus flags
+ */
+@Composable
+private fun DestinationChangeEffect(
+    selectedDestination: HomeDestination,
+    onDestinationChanged: (HomeDestination) -> Unit,
+    onResetFocusFlags: () -> Unit
+) {
+    LaunchedEffect(selectedDestination) {
+        onDestinationChanged(selectedDestination)
+        onResetFocusFlags()
+    }
+}
+
+/**
+ * LaunchedEffect for setting initial focus on Navbar when ready
+ */
+@Composable
+private fun NavbarFocusEffect(
+    navbarReady: Boolean,
+    initialFocusSet: Boolean,
+    navbarFocusRequester: FocusRequester,
+    onFocusSet: () -> Unit
+) {
+    LaunchedEffect(navbarReady) {
+        if (navbarReady && !initialFocusSet) {
+            onFocusSet()
+            navbarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "NAVBAR")
+        }
+    }
+}
+
+/**
+ * LaunchedEffect for setting focus on CategorySidebar when ready
+ */
+@Composable
+private fun CategorySidebarFocusEffect(
+    categorySidebarReady: Boolean,
+    categorySidebarFocusSet: Boolean,
+    pendingFocusDestination: HomeDestination?,
+    showCategories: Boolean,
+    sortedCategories: List<Category>,
+    categorySidebarFocusRequester: FocusRequester,
+    onFocusSet: () -> Unit
+) {
+    LaunchedEffect(categorySidebarReady, pendingFocusDestination, showCategories, sortedCategories.size) {
+        if (categorySidebarReady && 
+            !categorySidebarFocusSet &&
+            pendingFocusDestination != null && 
+            pendingFocusDestination !is HomeDestination.Favorites &&
+            showCategories && sortedCategories.isNotEmpty()) {
+            onFocusSet()
+            categorySidebarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
+        }
+    }
+}
+
+/**
+ * LaunchedEffect for setting focus on ContentList when ready
+ */
+@Composable
+private fun ContentListFocusEffect(
+    contentListReady: Boolean,
+    contentListFocusSet: Boolean,
+    pendingFocusDestination: HomeDestination?,
+    contentListFocusRequester: FocusRequester,
+    onFocusSet: () -> Unit
+) {
+    LaunchedEffect(contentListReady, pendingFocusDestination) {
+        if (contentListReady && 
+            !contentListFocusSet &&
+            pendingFocusDestination is HomeDestination.Favorites) {
+            onFocusSet()
+            contentListFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CONTENT_LIST")
+        }
+    }
+}
+
+/**
+ * Focus management class encapsulating focus navigation logic
+ */
+private class FocusManager(
+    private val navbarFocusRequester: FocusRequester,
+    private val categorySidebarFocusRequester: FocusRequester,
+    private val contentListFocusRequester: FocusRequester,
+    private val logTag: String
+) {
+    fun moveFocusToNavbar() {
+        Log.i("TVFocus", "$logTag 🎯 Requesting focus: NAVBAR")
+        try {
+            navbarFocusRequester.requestFocus()
+        } catch (e: IllegalStateException) {
+            Log.w("TVFocus", "$logTag ⚠️ Navbar FocusRequester not initialized yet")
+        }
+    }
+    
+    fun moveFocusToCategorySidebar() {
+        Log.i("TVFocus", "$logTag 🎯 Requesting focus: CATEGORY_SIDEBAR")
+        try {
+            categorySidebarFocusRequester.requestFocus()
+        } catch (e: IllegalStateException) {
+            Log.w("TVFocus", "$logTag ⚠️ CategorySidebar FocusRequester not initialized yet")
+        }
+    }
+    
+    fun moveFocusToContentList() {
+        Log.i("TVFocus", "$logTag 🎯 Requesting focus: CONTENT_LIST")
+        try {
+            contentListFocusRequester.requestFocus()
+        } catch (e: IllegalStateException) {
+            // FocusRequester not yet initialized - this can happen if called before content is loaded
+            // The content will request focus automatically when streams are loaded
+            Log.w("TVFocus", "$logTag ⚠️ ContentList FocusRequester not initialized yet, will focus when content loads")
+        }
+    }
+}
+
+/**
+ * Handler function for category hiding logic
+ */
+private fun handleCategoryHidden(
+    category: Category,
+    categoryType: CategoryType,
+    selectedCategoryId: String?,
+    sortedCategories: List<Category>,
+    categoryVisibilityService: CategoryVisibilityService,
+    onCategoryIdChanged: (String?) -> Unit,
+    onSnackbarMessage: (String) -> Unit
+) {
+    // Hide the category
+    categoryVisibilityService.hideCategory(category.categoryId, categoryType)
+    
+    // If the hidden category was currently selected, select the first available category
+    if (selectedCategoryId == category.categoryId) {
+        val remainingCategories = sortedCategories.filter { it.categoryId != category.categoryId }
+        onCategoryIdChanged(remainingCategories.firstOrNull()?.categoryId)
+    }
+    
+    // Show snackbar feedback
+    onSnackbarMessage("Kategorie wurde ausgeblendet")
+}
+
+/**
  * Creates search click handlers for SearchOverlay
  */
 private fun createSearchClickHandlers(
@@ -616,235 +913,132 @@ fun MainContentScreen(
     categoryVisibilityService: CategoryVisibilityService,
     updateViewModel: UpdateViewModel = hiltViewModel()
 ) {
+    // State initialization
     val credentials = credentialsRepository.getCredentials()
     val context = LocalContext.current
     var selectedDestination by remember { mutableStateOf<HomeDestination>(HomeDestination.LiveTV) }
     var selectedCategoryId by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     var snackbarMessage by remember { mutableStateOf<String?>(null) }
-    
-    // Update check state
     var hasCheckedForUpdates by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
-    
-    // Search overlay state
     var showSearchOverlay by remember { mutableStateOf(false) }
-    val searchState by mainViewModel.searchState.collectAsState()
-    
-    // UpdateViewModel state
-    val updateInfo by updateViewModel.updateInfo.collectAsState()
-    val downloadProgress by updateViewModel.downloadProgress.collectAsState()
-    val currentVersionFromViewModel by updateViewModel.currentVersion.collectAsState()
-    
-    // Load package info and check for updates once
-    LaunchedEffect(Unit) {
-        if (!hasCheckedForUpdates) {
-            hasCheckedForUpdates = true
-            val packageInfo = loadPackageInfo(context)
-            val version = packageInfo?.versionName
-            if (version != null) {
-                updateViewModel.checkForUpdates(version)
-            }
-        }
-    }
-    
-    // Show update dialog when update becomes available
-    LaunchedEffect(updateInfo?.hasUpdate) {
-        if (updateInfo?.hasUpdate == true && updateInfo?.downloadUrl != null) {
-            showUpdateDialog = true
-        }
-    }
-    
-    // Auto-close dialog when installation starts
-    LaunchedEffect(downloadProgress?.isComplete) {
-        if (downloadProgress?.isComplete == true) {
-            showUpdateDialog = false
-        }
-    }
-    
-    // Focus requesters for each panel
-    val navbarFocusRequester = remember { FocusRequester() }
-    val categorySidebarFocusRequester = remember { FocusRequester() }
-    val contentListFocusRequester = remember { FocusRequester() }
-    
-    val liveCategories by mainViewModel.liveCategories.collectAsState()
-    val vodCategories by mainViewModel.vodCategories.collectAsState()
-    val seriesCategories by mainViewModel.seriesCategories.collectAsState()
-    
-    // Collect hidden categories state reactively
-    val hiddenCategories by categoryVisibilityService.hiddenCategories.collectAsState()
-    
-    // Determine category type based on destination
-    val categoryType = when (selectedDestination) {
-        is HomeDestination.LiveTV -> CategoryType.LIVE_TV
-        is HomeDestination.VOD -> CategoryType.VOD
-        is HomeDestination.Series -> CategoryType.SERIES
-        is HomeDestination.EPG -> CategoryType.LIVE_TV // Not used for EPG
-        is HomeDestination.Favorites -> CategoryType.LIVE_TV // Not used for Favorites
-        is HomeDestination.Search -> CategoryType.LIVE_TV // Not used for Search
-        is HomeDestination.Settings -> CategoryType.LIVE_TV // Not used for Settings
-    }
-    
-    // Select first category when destination changes or categories are loaded
-    val categories = when (selectedDestination) {
-        is HomeDestination.LiveTV -> liveCategories
-        is HomeDestination.VOD -> vodCategories
-        is HomeDestination.Series -> seriesCategories
-        is HomeDestination.EPG -> emptyList()
-        is HomeDestination.Favorites -> emptyList() // Favorites doesn't have categories
-        is HomeDestination.Search -> emptyList() // Search doesn't have categories
-        is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
-    }
-    
-    // Filter out hidden categories using StateFlow
-    val filteredCategories = categories.filter { 
-        !(hiddenCategories[categoryType]?.contains(it.categoryId) ?: false)
-    }
-    
-    // Sort categories the same way as in CategoryRow for consistency
-    val sortedCategories = filteredCategories.sortedBy { it.categoryName }
-    
-    LaunchedEffect(selectedDestination, sortedCategories) {
-        if (sortedCategories.isEmpty()) {
-            selectedCategoryId = null
-        } else {
-            // Always select first category if none selected or selected category doesn't exist in current list
-            val currentCategoryExists = selectedCategoryId != null && 
-                sortedCategories.any { it.categoryId == selectedCategoryId }
-            if (!currentCategoryExists) {
-                selectedCategoryId = sortedCategories.first().categoryId
-            }
-        }
-    }
-    
-    // Handle category hiding callback
-    fun handleCategoryHidden(category: Category) {
-        // Hide the category
-        categoryVisibilityService.hideCategory(category.categoryId, categoryType)
-        
-        // If the hidden category was currently selected, select the first available category
-        if (selectedCategoryId == category.categoryId) {
-            val remainingCategories = sortedCategories.filter { it.categoryId != category.categoryId }
-            selectedCategoryId = remainingCategories.firstOrNull()?.categoryId
-        }
-        
-        // Show snackbar feedback
-        snackbarMessage = "Kategorie wurde ausgeblendet"
-    }
-    
-    // Show snackbar when message is set
-    LaunchedEffect(snackbarMessage) {
-        snackbarMessage?.let { message ->
-            snackbarHostState.showSnackbar(message)
-            snackbarMessage = null
-        }
-    }
-    
-    val showCategories = selectedDestination is HomeDestination.LiveTV ||
-            selectedDestination is HomeDestination.VOD ||
-            selectedDestination is HomeDestination.Series
-    
-    // Focus navigation functions (defined before LaunchedEffect to be available in closures)
-    fun moveFocusToNavbar() {
-        Log.i("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN 🎯 Requesting focus: NAVBAR")
-        try {
-            navbarFocusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ Navbar FocusRequester not initialized yet")
-        }
-    }
-    
-    fun moveFocusToCategorySidebar() {
-        Log.i("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN 🎯 Requesting focus: CATEGORY_SIDEBAR")
-        try {
-            categorySidebarFocusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ CategorySidebar FocusRequester not initialized yet")
-        }
-    }
-    
-    fun moveFocusToContentList() {
-        Log.i("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN 🎯 Requesting focus: CONTENT_LIST")
-        try {
-            contentListFocusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            // FocusRequester not yet initialized - this can happen if called before content is loaded
-            // The content will request focus automatically when streams are loaded
-            Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ ContentList FocusRequester not initialized yet, will focus when content loads")
-        }
-    }
-    
-    // Track if initial focus has been set
     var initialFocusSet by remember { mutableStateOf(false) }
     var pendingFocusDestination by remember { mutableStateOf<HomeDestination?>(null) }
     var categorySidebarFocusSet by remember { mutableStateOf(false) }
     var contentListFocusSet by remember { mutableStateOf(false) }
-    
-    // State flags to trigger focus requests after components are ready
     var navbarReady by remember { mutableStateOf(false) }
     var categorySidebarReady by remember { mutableStateOf(false) }
     var contentListReady by remember { mutableStateOf(false) }
     
-    // When destination changes, track which focus should be requested and reset flags
-    LaunchedEffect(selectedDestination) {
-        pendingFocusDestination = selectedDestination
-        categorySidebarFocusSet = false
-        contentListFocusSet = false
-        categorySidebarReady = false
-        contentListReady = false
+    // ViewModel state collection
+    val searchState by mainViewModel.searchState.collectAsState()
+    val updateInfo by updateViewModel.updateInfo.collectAsState()
+    val downloadProgress by updateViewModel.downloadProgress.collectAsState()
+    val currentVersionFromViewModel by updateViewModel.currentVersion.collectAsState()
+    val liveCategories by mainViewModel.liveCategories.collectAsState()
+    val vodCategories by mainViewModel.vodCategories.collectAsState()
+    val seriesCategories by mainViewModel.seriesCategories.collectAsState()
+    val hiddenCategories by categoryVisibilityService.hiddenCategories.collectAsState()
+    
+    // Focus requesters
+    val navbarFocusRequester = remember { FocusRequester() }
+    val categorySidebarFocusRequester = remember { FocusRequester() }
+    val contentListFocusRequester = remember { FocusRequester() }
+    
+    // Focus manager
+    val focusManager = remember {
+        FocusManager(navbarFocusRequester, categorySidebarFocusRequester, contentListFocusRequester, LOG_TAG_MAIN_CONTENT_SCREEN)
     }
     
-    // Set initial focus on Navbar when ready
-    LaunchedEffect(navbarReady) {
-        if (navbarReady && !initialFocusSet) {
-            initialFocusSet = true
-            navbarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "NAVBAR")
+    // Category management
+    val categoryManagement = useCategoryManagement(
+        selectedDestination = selectedDestination,
+        liveCategories = liveCategories,
+        vodCategories = vodCategories,
+        seriesCategories = seriesCategories,
+        hiddenCategories = hiddenCategories
+    )
+    
+    // LaunchedEffects
+    UpdateCheckEffect(
+        hasCheckedForUpdates = hasCheckedForUpdates,
+        updateViewModel = updateViewModel,
+        context = context,
+        onUpdateChecked = { hasCheckedForUpdates = true }
+    )
+    
+    UpdateDialogEffect(
+        updateInfo = updateInfo,
+        onShowDialog = { showUpdateDialog = true }
+    )
+    
+    AutoCloseDialogEffect(
+        downloadProgress = downloadProgress,
+        onCloseDialog = { showUpdateDialog = false }
+    )
+    
+    CategorySelectionEffect(
+        selectedDestination = selectedDestination,
+        sortedCategories = categoryManagement.sortedCategories,
+        selectedCategoryId = selectedCategoryId,
+        onCategoryIdChanged = { selectedCategoryId = it }
+    )
+    
+    SnackbarEffect(
+        snackbarMessage = snackbarMessage,
+        snackbarHostState = snackbarHostState,
+        onMessageShown = { snackbarMessage = null }
+    )
+    
+    DestinationChangeEffect(
+        selectedDestination = selectedDestination,
+        onDestinationChanged = { pendingFocusDestination = it },
+        onResetFocusFlags = {
+            categorySidebarFocusSet = false
+            contentListFocusSet = false
+            categorySidebarReady = false
+            contentListReady = false
         }
-    }
+    )
     
-    // Set focus on CategorySidebar when ready and conditions are met
-    LaunchedEffect(categorySidebarReady, pendingFocusDestination, showCategories, sortedCategories.size) {
-        if (categorySidebarReady && 
-            !categorySidebarFocusSet &&
-            pendingFocusDestination != null && 
-            pendingFocusDestination !is HomeDestination.Favorites &&
-            showCategories && sortedCategories.isNotEmpty()) {
-            categorySidebarFocusSet = true
-            categorySidebarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
-        }
-    }
+    NavbarFocusEffect(
+        navbarReady = navbarReady,
+        initialFocusSet = initialFocusSet,
+        navbarFocusRequester = navbarFocusRequester,
+        onFocusSet = { initialFocusSet = true }
+    )
     
-    // Set focus on ContentList when ready and conditions are met
-    LaunchedEffect(contentListReady, pendingFocusDestination) {
-        if (contentListReady && 
-            !contentListFocusSet &&
-            pendingFocusDestination is HomeDestination.Favorites) {
-            contentListFocusSet = true
-            contentListFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CONTENT_LIST")
-        }
-    }
+    CategorySidebarFocusEffect(
+        categorySidebarReady = categorySidebarReady,
+        categorySidebarFocusSet = categorySidebarFocusSet,
+        pendingFocusDestination = pendingFocusDestination,
+        showCategories = categoryManagement.showCategories,
+        sortedCategories = categoryManagement.sortedCategories,
+        categorySidebarFocusRequester = categorySidebarFocusRequester,
+        onFocusSet = { categorySidebarFocusSet = true }
+    )
     
-    // Set initial focus on Navbar when app starts (via onNavbarReady callback)
-    // When destination changes and categories are shown, move focus to CategoryRow
-    // For Favorites (no categories), move focus directly to content list
+    ContentListFocusEffect(
+        contentListReady = contentListReady,
+        contentListFocusSet = contentListFocusSet,
+        pendingFocusDestination = pendingFocusDestination,
+        contentListFocusRequester = contentListFocusRequester,
+        onFocusSet = { contentListFocusSet = true }
+    )
     
-    // Handle destination change
+    // Handler functions
     fun handleDestinationChange(destination: HomeDestination) {
         if (destination is HomeDestination.Settings) {
-            // Navigate to separate Settings screen
             navController.navigate(Screen.Settings.route)
         } else {
-            // Reset category selection and clear streams when switching tabs
             selectedCategoryId = null
-            // Clear streams from old destination
             clearStreamsForDestination(selectedDestination, mainViewModel)
-            // Clear streams from new destination to prevent showing old data
             clearStreamsForDestination(destination, mainViewModel)
             selectedDestination = destination
         }
     }
     
-    // Handle favorites series click - needs to update destination and category
     fun handleFavoritesSeriesClick(series: Series) {
         handleDestinationChange(HomeDestination.Series)
         val categoryId = mainViewModel.showSeriesFromFavorites(series)
@@ -853,7 +1047,7 @@ fun MainContentScreen(
         }
     }
     
-    // Create search click handlers
+    // Search click handlers
     val searchClickHandlers = remember(credentials, showSearchOverlay) {
         createSearchClickHandlers(
             credentials = credentials,
@@ -861,7 +1055,7 @@ fun MainContentScreen(
             mainViewModel = mainViewModel,
             onDismiss = {
                 showSearchOverlay = false
-                moveFocusToNavbar()
+                focusManager.moveFocusToNavbar()
             }
         )
     }
@@ -876,39 +1070,37 @@ fun MainContentScreen(
         onDismiss = { showUpdateDialog = false }
     )
     
+    // Main UI
     Box(modifier = Modifier.fillMaxSize()) {
         MainLayout(
             params = MainLayoutParams(
                 selectedDestination = selectedDestination,
                 onDestinationChange = ::handleDestinationChange,
-                showCategories = showCategories,
-                categories = sortedCategories,
+                showCategories = categoryManagement.showCategories,
+                categories = categoryManagement.sortedCategories,
                 selectedCategoryId = selectedCategoryId,
                 onCategorySelected = { selectedCategoryId = it },
                 navbarFocusRequester = navbarFocusRequester,
                 categorySidebarFocusRequester = categorySidebarFocusRequester,
-                onNavigateToNavbar = { moveFocusToNavbar() },
-                onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
-                onNavigateToContentList = { moveFocusToContentList() },
-                onCategoryHidden = { category -> 
+                onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
+                onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
+                onNavigateToContentList = { focusManager.moveFocusToContentList() },
+                onCategoryHidden = { category ->
                     Log.d("AppNavigation", "[CategoryHidden] Callback called for category: ${category.categoryName} (${category.categoryId})")
-                    handleCategoryHidden(category) 
+                    handleCategoryHidden(
+                        category = category,
+                        categoryType = categoryManagement.categoryType,
+                        selectedCategoryId = selectedCategoryId,
+                        sortedCategories = categoryManagement.sortedCategories,
+                        categoryVisibilityService = categoryVisibilityService,
+                        onCategoryIdChanged = { selectedCategoryId = it },
+                        onSnackbarMessage = { snackbarMessage = it }
+                    )
                 },
-                onSearchClick = {
-                    showSearchOverlay = true
-                },
-                onNavbarReady = {
-                    // Signal that navbar is ready for focus
-                    navbarReady = true
-                },
-                onCategorySidebarReady = {
-                    // Signal that category sidebar is ready for focus
-                    categorySidebarReady = true
-                },
-                onContentListReady = {
-                    // Signal that content list is ready for focus
-                    contentListReady = true
-                }
+                onSearchClick = { showSearchOverlay = true },
+                onNavbarReady = { navbarReady = true },
+                onCategorySidebarReady = { categorySidebarReady = true },
+                onContentListReady = { contentListReady = true }
             ),
             content = {
                 MainContentBody(
@@ -921,35 +1113,28 @@ fun MainContentScreen(
                         cacheService = cacheService,
                         contentListFocusRequester = contentListFocusRequester,
                         navController = navController,
-                        onNavigateToCategorySidebar = { moveFocusToCategorySidebar() },
-                        onNavigateToNavbar = { moveFocusToNavbar() },
+                        onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
+                        onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
                         onFavoritesSeriesClick = ::handleFavoritesSeriesClick
                     )
                 )
             }
         )
         
-        // Snackbar for feedback messages
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
         )
         
-        // Search Overlay (rendered last to be on top)
         if (showSearchOverlay) {
             SearchOverlay(
                 searchState = searchState,
-                onQueryChange = { query ->
-                    mainViewModel.searchContent(query)
-                },
-                onSearchImmediate = {
-                    mainViewModel.searchContentImmediate()
-                },
+                onQueryChange = { mainViewModel.searchContent(it) },
+                onSearchImmediate = { mainViewModel.searchContentImmediate() },
                 onDismiss = {
                     mainViewModel.clearSearch()
                     showSearchOverlay = false
-                    // Return focus to search button
-                    moveFocusToNavbar()
+                    focusManager.moveFocusToNavbar()
                 },
                 onLiveStreamClick = searchClickHandlers.onLiveStreamClick,
                 onVodClick = searchClickHandlers.onVodClick,

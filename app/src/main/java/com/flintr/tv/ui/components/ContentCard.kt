@@ -86,6 +86,7 @@ data class CardConfig(
 private data class CardVisualState(
     val borderColor: Color,
     val shadowElevation: Float,
+    val backgroundColor: Color,
     val isFocused: Boolean
 )
 
@@ -249,111 +250,50 @@ private fun ContentCardInternal(
     val colors = appColors()
     val coroutineScope = rememberCoroutineScope()
     
-    // Check favorite status
     val favoriteId = remember(contentType) {
         contentType?.toFavoriteId()
     }
-    var isFavorite by remember { mutableStateOf(false) }
     
-    // Asynchronously load favorite status when favoriteId changes
-    LaunchedEffect(favoriteId) {
-        if (favoriteId != null) {
-            isFavorite = favoritesRepository.isFavorite(favoriteId)
-        }
-    }
+    var favoriteRefreshTrigger by remember { mutableStateOf(0) }
+    val (isFavorite, setIsFavorite) = useFavoriteState(
+        favoriteId = favoriteId,
+        showMenu = showMenu,
+        favoritesRepository = favoritesRepository,
+        refreshTrigger = favoriteRefreshTrigger
+    )
+    useLongPressState(longPressDetected, contentInfo.title) { longPressDetected = it }
+    useMenuStateLogging(showMenu, contentInfo.title)
     
-    // Update favorite status when menu opens
-    LaunchedEffect(showMenu) {
-        if (showMenu && favoriteId != null) {
-            isFavorite = favoritesRepository.isFavorite(favoriteId)
-        }
-    }
-    
-    // Unified click handler to avoid duplication
-    val performClick: () -> Unit = {
-        if (!showMenu && !longPressDetected) {
-            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - clickable() aufgerufen (normaler Click)")
-            onClick()
-        } else {
-            if (showMenu) {
-                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - clickable() blockiert - Menü ist offen")
-            } else {
-                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - clickable() verhindert (Long-Press wurde erkannt)")
-            }
-        }
-    }
-    
-    // Log menu state changes
-    LaunchedEffect(showMenu) {
-        Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - showMenu State geändert: $showMenu")
-    }
-    
-    // Reset longPressDetected flag after a short delay
-    LaunchedEffect(longPressDetected) {
-        if (longPressDetected) {
-            kotlinx.coroutines.delay(100)
-            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Reset longPressDetected Flag")
-            longPressDetected = false
-        }
-    }
-    
-    // Border color with animation
-    val borderColor by animateColorAsState(
-        targetValue = if (config.isSelected || isFocused) colors.accentColor else Color.Transparent,
-        animationSpec = tween(durationMillis = 200),
-        label = "borderColor"
+    val performClick = createPerformClickHandler(
+        showMenu = showMenu,
+        longPressDetected = longPressDetected,
+        title = contentInfo.title,
+        onClick = onClick
     )
     
-    // Background color with animation
-    val backgroundColor by animateColorAsState(
-        targetValue = when {
-            config.isSelected -> colors.accentColorHoverBg
-            isFocused -> colors.categoryHoverBg
-            else -> colors.bgCard
-        },
-        animationSpec = tween(durationMillis = 200),
-        label = "backgroundColor"
-    )
-    
-    // Shadow elevation for selected items
-    val shadowElevation by animateFloatAsState(
-        targetValue = if (config.isSelected) 4f else 0f,
-        animationSpec = tween(durationMillis = 200),
-        label = "shadowElevation"
-    )
+    val visualState = useCardVisualState(config, isFocused, colors)
     
     val cardModifier = buildCardModifier(
         baseModifier = modifier,
         config = config,
         colors = colors,
-        visualState = CardVisualState(
-            borderColor = borderColor,
-            shadowElevation = shadowElevation,
-            isFocused = isFocused
-        ),
+        visualState = visualState,
         handlers = CardInteractionHandlers(
-            onFocusChanged = { focusState ->
-                val wasFocused = isFocused
-                isFocused = focusState.isFocused
-                if (isFocused != wasFocused) {
-                    config.onFocusChanged?.invoke(isFocused)
-                }
-            },
-            onLongPress = {
-                Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Long-Press Callback erhalten!")
-                Log.d("ContentCard", "[ContentCard] Setze longPressDetected = true")
-                longPressDetected = true
-                Log.d("ContentCard", "[ContentCard] Setze showMenu = true")
-                showMenu = true
-            },
-            onNormalClick = {
-                if (showMenu) {
-                    Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - onNormalClick() blockiert - Menü ist offen")
-                } else {
-                    Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - onNormalClick() aufgerufen (Timer abgebrochen)")
-                    performClick()
-                }
-            },
+            onFocusChanged = createFocusChangedHandler(
+                isFocused = isFocused,
+                onFocusChanged = config.onFocusChanged,
+                setIsFocused = { isFocused = it }
+            ),
+            onLongPress = createLongPressHandler(
+                title = contentInfo.title,
+                setLongPressDetected = { longPressDetected = it },
+                setShowMenu = { showMenu = it }
+            ),
+            onNormalClick = createNormalClickHandler(
+                showMenu = showMenu,
+                title = contentInfo.title,
+                performClick = performClick
+            ),
             performClick = performClick
         )
     )
@@ -362,7 +302,7 @@ private fun ContentCardInternal(
         modifier = cardModifier,
         shape = RoundedCornerShape(ContentCardBorderRadius),
         colors = CardDefaults.cardColors(
-            containerColor = backgroundColor
+            containerColor = visualState.backgroundColor
         )
     ) {
         CardContent(
@@ -374,48 +314,27 @@ private fun ContentCardInternal(
         )
     }
     
-    // Menu dialog
-    val removeFromFavoritesText = stringResource(R.string.remove_from_favorites)
-    val addToFavoritesText = stringResource(R.string.add_to_favorites)
-    val menuOptions = remember(isFavorite, contentType, removeFromFavoritesText, addToFavoritesText) {
-        if (contentType != null) {
-            if (isFavorite) {
-                listOf(removeFromFavoritesText)
-            } else {
-                listOf(addToFavoritesText)
-            }
-        } else {
-            emptyList()
-        }
-    }
+    val menuOptions = createMenuOptions(contentType, isFavorite)
     
     PopupMenu(
         isOpen = showMenu && menuOptions.isNotEmpty(),
         menuOptions = menuOptions,
-        onDismiss = {
-            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Menü onDismiss() aufgerufen")
-            Log.d("ContentCard", "[ContentCard] Setze showMenu = false")
-            showMenu = false
-        },
-        onOptionSelected = { index ->
-            Log.d("ContentCard", "[ContentCard] Card '${contentInfo.title}' - Option $index wurde ausgewählt")
-            if (contentType != null && favoriteId != null) {
-                coroutineScope.launch {
-                    if (isFavorite) {
-                        // Remove from favorites
-                        favoritesRepository.removeFavorite(favoriteId)
-                        isFavorite = false
-                        Log.d("ContentCard", "[ContentCard] Favorit entfernt: $favoriteId")
-                    } else {
-                        // Add to favorites
-                        val favorite = contentType.toFavorite()
-                        favoritesRepository.addFavorite(favorite)
-                        isFavorite = true
-                        Log.d("ContentCard", "[ContentCard] Favorit hinzugefügt: $favoriteId")
-                    }
-                }
+        onDismiss = createMenuDismissHandler(
+            title = contentInfo.title,
+            setShowMenu = { showMenu = it }
+        ),
+        onOptionSelected = createMenuOptionSelectedHandler(
+            contentType = contentType,
+            favoriteId = favoriteId,
+            isFavorite = isFavorite,
+            title = contentInfo.title,
+            favoritesRepository = favoritesRepository,
+            coroutineScope = coroutineScope,
+            setIsFavorite = { newValue ->
+                setIsFavorite(newValue)
+                favoriteRefreshTrigger++
             }
-        }
+        )
     )
 }
 
@@ -438,6 +357,226 @@ fun LiveStreamCard(
         modifier = modifier,
         config = config,
         contentType = ContentType.Live(stream)
+    )
+}
+
+// Event Handler Functions
+private fun createPerformClickHandler(
+    showMenu: Boolean,
+    longPressDetected: Boolean,
+    title: String,
+    onClick: () -> Unit
+): () -> Unit {
+    return {
+        if (!showMenu && !longPressDetected) {
+            Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() aufgerufen (normaler Click)")
+            onClick()
+        } else {
+            if (showMenu) {
+                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() blockiert - Menü ist offen")
+            } else {
+                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() verhindert (Long-Press wurde erkannt)")
+            }
+        }
+    }
+}
+
+private fun createFocusChangedHandler(
+    isFocused: Boolean,
+    onFocusChanged: ((Boolean) -> Unit)?,
+    setIsFocused: (Boolean) -> Unit
+): (androidx.compose.ui.focus.FocusState) -> Unit {
+    return { focusState ->
+        val wasFocused = isFocused
+        setIsFocused(focusState.isFocused)
+        if (focusState.isFocused != wasFocused) {
+            onFocusChanged?.invoke(focusState.isFocused)
+        }
+    }
+}
+
+private fun createLongPressHandler(
+    title: String,
+    setLongPressDetected: (Boolean) -> Unit,
+    setShowMenu: (Boolean) -> Unit
+): () -> Unit {
+    return {
+        Log.d("ContentCard", "[ContentCard] Card '$title' - Long-Press Callback erhalten!")
+        Log.d("ContentCard", "[ContentCard] Setze longPressDetected = true")
+        setLongPressDetected(true)
+        Log.d("ContentCard", "[ContentCard] Setze showMenu = true")
+        setShowMenu(true)
+    }
+}
+
+private fun createNormalClickHandler(
+    showMenu: Boolean,
+    title: String,
+    performClick: () -> Unit
+): () -> Unit {
+    return {
+        if (showMenu) {
+            Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() blockiert - Menü ist offen")
+        } else {
+            Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() aufgerufen (Timer abgebrochen)")
+            performClick()
+        }
+    }
+}
+
+// Menu Logic Functions
+@Composable
+private fun createMenuOptions(
+    contentType: ContentType?,
+    isFavorite: Boolean
+): List<String> {
+    val removeFromFavoritesText = stringResource(R.string.remove_from_favorites)
+    val addToFavoritesText = stringResource(R.string.add_to_favorites)
+    
+    return remember(contentType, isFavorite, removeFromFavoritesText, addToFavoritesText) {
+        if (contentType != null) {
+            if (isFavorite) {
+                listOf(removeFromFavoritesText)
+            } else {
+                listOf(addToFavoritesText)
+            }
+        } else {
+            emptyList()
+        }
+    }
+}
+
+private fun createMenuDismissHandler(
+    title: String,
+    setShowMenu: (Boolean) -> Unit
+): () -> Unit {
+    return {
+        Log.d("ContentCard", "[ContentCard] Card '$title' - Menü onDismiss() aufgerufen")
+        Log.d("ContentCard", "[ContentCard] Setze showMenu = false")
+        setShowMenu(false)
+    }
+}
+
+private fun createMenuOptionSelectedHandler(
+    contentType: ContentType?,
+    favoriteId: String?,
+    isFavorite: Boolean,
+    title: String,
+    favoritesRepository: FavoritesRepository,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    setIsFavorite: (Boolean) -> Unit
+): (Int) -> Unit {
+    return { index ->
+        Log.d("ContentCard", "[ContentCard] Card '$title' - Option $index wurde ausgewählt")
+        if (contentType != null && favoriteId != null) {
+            coroutineScope.launch {
+                if (isFavorite) {
+                    favoritesRepository.removeFavorite(favoriteId)
+                    setIsFavorite(false)
+                    Log.d("ContentCard", "[ContentCard] Favorit entfernt: $favoriteId")
+                } else {
+                    val favorite = contentType.toFavorite()
+                    favoritesRepository.addFavorite(favorite)
+                    setIsFavorite(true)
+                    Log.d("ContentCard", "[ContentCard] Favorit hinzugefügt: $favoriteId")
+                }
+            }
+        }
+    }
+}
+
+// State Management Functions
+@Composable
+private fun useFavoriteState(
+    favoriteId: String?,
+    showMenu: Boolean,
+    favoritesRepository: FavoritesRepository,
+    refreshTrigger: Int = 0
+): Pair<Boolean, (Boolean) -> Unit> {
+    var isFavorite by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(favoriteId) {
+        if (favoriteId != null) {
+            isFavorite = favoritesRepository.isFavorite(favoriteId)
+        }
+    }
+    
+    LaunchedEffect(showMenu) {
+        if (showMenu && favoriteId != null) {
+            isFavorite = favoritesRepository.isFavorite(favoriteId)
+        }
+    }
+    
+    LaunchedEffect(refreshTrigger) {
+        if (favoriteId != null && refreshTrigger > 0) {
+            isFavorite = favoritesRepository.isFavorite(favoriteId)
+        }
+    }
+    
+    return Pair(isFavorite) { newValue ->
+        isFavorite = newValue
+    }
+}
+
+@Composable
+private fun useLongPressState(
+    longPressDetected: Boolean,
+    title: String,
+    setLongPressDetected: (Boolean) -> Unit
+) {
+    LaunchedEffect(longPressDetected) {
+        if (longPressDetected) {
+            kotlinx.coroutines.delay(100)
+            Log.d("ContentCard", "[ContentCard] Card '$title' - Reset longPressDetected Flag")
+            setLongPressDetected(false)
+        }
+    }
+}
+
+@Composable
+private fun useMenuStateLogging(
+    showMenu: Boolean,
+    title: String
+) {
+    LaunchedEffect(showMenu) {
+        Log.d("ContentCard", "[ContentCard] Card '$title' - showMenu State geändert: $showMenu")
+    }
+}
+
+// Visual State Functions
+@Composable
+private fun useCardVisualState(
+    config: CardConfig,
+    isFocused: Boolean,
+    colors: com.flintr.tv.ui.theme.AppColors
+): CardVisualState {
+    val borderColor by animateColorAsState(
+        targetValue = if (config.isSelected || isFocused) colors.accentColor else Color.Transparent,
+        animationSpec = tween(durationMillis = 200),
+        label = "borderColor"
+    )
+    
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            config.isSelected -> colors.accentColorHoverBg
+            isFocused -> colors.categoryHoverBg
+            else -> colors.bgCard
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "backgroundColor"
+    )
+    
+    val shadowElevation by animateFloatAsState(
+        targetValue = if (config.isSelected) 4f else 0f,
+        animationSpec = tween(durationMillis = 200),
+        label = "shadowElevation"
+    )
+    
+    return CardVisualState(
+        borderColor = borderColor,
+        shadowElevation = shadowElevation,
+        backgroundColor = backgroundColor,
+        isFocused = isFocused
     )
 }
 
