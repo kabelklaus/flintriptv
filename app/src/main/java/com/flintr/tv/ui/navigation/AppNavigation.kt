@@ -29,6 +29,7 @@ import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.data.model.CategoryType
+import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.NavigationStateBeforePlayer
 import com.flintr.tv.data.model.Series
@@ -48,8 +49,6 @@ import com.flintr.tv.ui.tabs.VODContent
 import com.flintr.tv.ui.tabs.VODContentParams
 import com.flintr.tv.ui.tabs.SeriesContent
 import com.flintr.tv.ui.tabs.SeriesContentParams
-import com.flintr.tv.ui.tabs.FavoritesContent
-import com.flintr.tv.ui.tabs.FavoritesContentParams
 import com.flintr.tv.ui.screens.SeriesEpisodesScreen
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
@@ -58,6 +57,7 @@ import com.flintr.tv.utils.DownloadProgress
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
 import com.flintr.tv.ui.components.SearchOverlay
+import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.CircularProgressIndicator
@@ -157,7 +157,6 @@ private fun com.flintr.tv.data.model.DestinationType.toHomeDestination(): HomeDe
 }
 
 private const val LOG_TAG_MAIN_CONTENT_SCREEN = "[MainContentScreen]"
-private const val FAVORITES_CATEGORY_ID = "__favorites__"
 
 /**
  * Restores the destination (tab) and waits for UI propagation.
@@ -817,8 +816,7 @@ private fun UpdateDialogContent(
 private data class CategoryManagementResult(
     val categoryType: CategoryType?,
     val sortedCategories: List<Category>,
-    val showCategories: Boolean,
-    val favoritesCount: Int = 0
+    val showCategories: Boolean
 )
 
 /**
@@ -831,8 +829,7 @@ private fun useCategoryManagement(
     vodCategories: List<Category>,
     seriesCategories: List<Category>,
     hiddenCategories: Map<CategoryType, Set<String>>,
-    favoritesRepository: FavoritesRepository,
-    cacheService: DataCacheService
+    favoritesRepository: FavoritesRepository
 ): CategoryManagementResult {
     // Determine category type based on destination
     val categoryType: CategoryType? = when (selectedDestination) {
@@ -862,25 +859,15 @@ private fun useCategoryManagement(
     // Sort categories the same way as in CategoryRow for consistency
     val sortedCategories = filteredCategories.sortedBy { it.categoryName }
     
-    // Calculate favorites count for current tab
-    var favoritesCount by remember { mutableStateOf(0) }
-    LaunchedEffect(selectedDestination) {
-        favoritesCount = when (selectedDestination) {
-            is HomeDestination.LiveTV -> favoritesRepository.getFavoriteCountByType(com.flintr.tv.data.model.FavoriteType.LIVE)
-            is HomeDestination.VOD -> favoritesRepository.getFavoriteCountByType(com.flintr.tv.data.model.FavoriteType.MOVIE)
-            is HomeDestination.Series -> favoritesRepository.getFavoriteCountByType(com.flintr.tv.data.model.FavoriteType.SERIES)
-            else -> 0
-        }
-    }
-    
     // Create favorites category and prepend to sorted categories
-    val categoriesWithFavorites = remember(sortedCategories, favoritesCount, selectedDestination) {
+    val favoritesCategoryName = stringResource(R.string.favorites)
+    val categoriesWithFavorites = remember(sortedCategories, selectedDestination, favoritesCategoryName) {
         if (selectedDestination is HomeDestination.LiveTV ||
             selectedDestination is HomeDestination.VOD ||
             selectedDestination is HomeDestination.Series) {
             val favoritesCategory = Category(
                 categoryId = FAVORITES_CATEGORY_ID,
-                categoryName = "Favoriten",
+                categoryName = favoritesCategoryName,
                 parentId = 0
             )
             listOf(favoritesCategory) + sortedCategories
@@ -896,8 +883,7 @@ private fun useCategoryManagement(
     return CategoryManagementResult(
         categoryType = categoryType,
         sortedCategories = categoriesWithFavorites,
-        showCategories = showCategories,
-        favoritesCount = favoritesCount
+        showCategories = showCategories
     )
 }
 
@@ -1055,19 +1041,6 @@ private fun CategorySidebarFocusEffect(
             categorySidebarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
         }
     }
-}
-
-/**
- * LaunchedEffect for setting focus on ContentList when ready
- */
-@Composable
-private fun ContentListFocusEffect(
-    contentListReady: Boolean,
-    contentListFocusSet: Boolean,
-    pendingFocusDestination: HomeDestination?,
-    contentListFocusRequester: FocusRequester,
-    onFocusSet: () -> Unit
-) {
 }
 
 /**
@@ -1275,8 +1248,7 @@ fun MainContentScreen(
         vodCategories = vodCategories,
         seriesCategories = seriesCategories,
         hiddenCategories = hiddenCategories,
-        favoritesRepository = favoritesRepository,
-        cacheService = cacheService
+        favoritesRepository = favoritesRepository
     )
     
     // LaunchedEffects
@@ -1332,14 +1304,6 @@ fun MainContentScreen(
         sortedCategories = categoryManagement.sortedCategories,
         categorySidebarFocusRequester = categorySidebarFocusRequester,
         onFocusSet = { focusState.categorySidebarFocusSet = true }
-    )
-    
-    ContentListFocusEffect(
-        contentListReady = focusState.contentListReady,
-        contentListFocusSet = focusState.contentListFocusSet,
-        pendingFocusDestination = focusState.pendingFocusDestination,
-        contentListFocusRequester = contentListFocusRequester,
-        onFocusSet = { focusState.contentListFocusSet = true }
     )
     
     // Check for navigation state when returning from Player or SeriesEpisodesScreen
@@ -1417,14 +1381,8 @@ fun MainContentScreen(
     // String resources
     val categoryHiddenMessage = stringResource(R.string.category_hidden)
     
-    // Create itemCounts map for favorites category
-    val itemCounts = remember(categoryManagement.favoritesCount) {
-        if (categoryManagement.favoritesCount > 0) {
-            mapOf(FAVORITES_CATEGORY_ID to categoryManagement.favoritesCount)
-        } else {
-            emptyMap<String, Int>()
-        }
-    }
+    // No item counts displayed for categories
+    val itemCounts = emptyMap<String, Int>()
     
     // Main UI
     Box(modifier = Modifier.fillMaxSize()) {

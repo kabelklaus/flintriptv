@@ -5,14 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.FavoriteType
@@ -22,8 +16,10 @@ import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.components.LiveStreamCard
 import com.flintr.tv.viewmodel.MainViewModel
+import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.useFavorites
 
-private const val FAVORITES_CATEGORY_ID = "__favorites__"
+private const val TAG = "LiveTVContent"
 
 data class LiveTVContentParams(
     val viewModel: MainViewModel,
@@ -43,37 +39,22 @@ fun LiveTVContent(params: LiveTVContentParams) {
     val streams by params.viewModel.liveStreams.collectAsState()
     val uiState by params.viewModel.uiState.collectAsState()
     
-    var favoriteStreams by remember { mutableStateOf<List<LiveStream>>(emptyList()) }
-    var isLoadingFavorites by remember { mutableStateOf(false) }
-    
     val isFavoritesCategory = params.selectedCategoryId == FAVORITES_CATEGORY_ID
     
-    // Load favorites if favorites category is selected
+    // Load favorites using the hook
+    val favoritesState = useFavorites(
+        isFavoritesCategory = isFavoritesCategory,
+        favoritesRepository = params.favoritesRepository,
+        cacheService = params.cacheService,
+        favoriteType = FavoriteType.LIVE,
+        dataSelector = { it.channels },
+        idSelector = { it.streamId }
+    )
+    
+    // Load regular streams when not in favorites category
     LaunchedEffect(params.selectedCategoryId) {
-        if (isFavoritesCategory) {
-            isLoadingFavorites = true
-            val items = withContext(Dispatchers.IO) {
-                val favorites = params.favoritesRepository.getFavoritesByType(FavoriteType.LIVE)
-                if (favorites.isEmpty()) {
-                    return@withContext emptyList<LiveStream>()
-                }
-                val cachedData = params.cacheService.loadCachedDataAsync()
-                if (cachedData == null) {
-                    Log.w("LiveTVContent", "No cached data available for favorites")
-                    return@withContext emptyList<LiveStream>()
-                }
-                val channelsMap = cachedData.channels.associateBy { it.streamId }
-                favorites.mapNotNull { favorite ->
-                    channelsMap[favorite.streamId]
-                }
-            }
-            favoriteStreams = items
-            isLoadingFavorites = false
-        } else {
-            favoriteStreams = emptyList()
-            if (params.selectedCategoryId != null) {
-                params.viewModel.loadLiveStreams(params.selectedCategoryId)
-            }
+        if (!isFavoritesCategory && params.selectedCategoryId != null) {
+            params.viewModel.loadLiveStreams(params.selectedCategoryId)
         }
     }
     
@@ -81,8 +62,8 @@ fun LiveTVContent(params: LiveTVContentParams) {
     // Focus will be set manually when navigating from CategorySidebar
     // This keeps the focus on the Navbar when the app starts
     
-    val displayStreams = if (isFavoritesCategory) favoriteStreams else streams
-    val isLoading = if (isFavoritesCategory) isLoadingFavorites else uiState.isLoading
+    val displayStreams = if (isFavoritesCategory) favoritesState.items else streams
+    val isLoading = if (isFavoritesCategory) favoritesState.isLoading else uiState.isLoading
     
     ContentGridLayout(
         params = ContentGridLayoutParams(
