@@ -856,30 +856,37 @@ private class FocusManager(
 }
 
 /**
+ * Data class grouping parameters for category hiding logic
+ */
+private data class CategoryHiddenContext(
+    val categoryType: CategoryType?,
+    val selectedCategoryId: String?,
+    val sortedCategories: List<Category>,
+    val categoryVisibilityService: CategoryVisibilityService,
+    val onCategoryIdChanged: (String?) -> Unit,
+    val onSnackbarMessage: (String) -> Unit,
+    val categoryHiddenMessage: String
+)
+
+/**
  * Handler function for category hiding logic
  */
 private fun handleCategoryHidden(
     category: Category,
-    categoryType: CategoryType?,
-    selectedCategoryId: String?,
-    sortedCategories: List<Category>,
-    categoryVisibilityService: CategoryVisibilityService,
-    onCategoryIdChanged: (String?) -> Unit,
-    onSnackbarMessage: (String) -> Unit,
-    categoryHiddenMessage: String
+    context: CategoryHiddenContext
 ) {
     // Hide the category (only if categoryType is not null)
-    categoryType?.let { type ->
-        categoryVisibilityService.hideCategory(category.categoryId, type)
+    context.categoryType?.let { type ->
+        context.categoryVisibilityService.hideCategory(category.categoryId, type)
         
         // If the hidden category was currently selected, select the first available category
-        if (selectedCategoryId == category.categoryId) {
-            val remainingCategories = sortedCategories.filter { it.categoryId != category.categoryId }
-            onCategoryIdChanged(remainingCategories.firstOrNull()?.categoryId)
+        if (context.selectedCategoryId == category.categoryId) {
+            val remainingCategories = context.sortedCategories.filter { it.categoryId != category.categoryId }
+            context.onCategoryIdChanged(remainingCategories.firstOrNull()?.categoryId)
         }
         
         // Show snackbar feedback
-        onSnackbarMessage(categoryHiddenMessage)
+        context.onSnackbarMessage(context.categoryHiddenMessage)
     }
 }
 
@@ -1110,13 +1117,15 @@ fun MainContentScreen(
                     Log.d("AppNavigation", "[CategoryHidden] Callback called for category: ${category.categoryName} (${category.categoryId})")
                     handleCategoryHidden(
                         category = category,
-                        categoryType = categoryManagement.categoryType,
-                        selectedCategoryId = selectedCategoryId,
-                        sortedCategories = categoryManagement.sortedCategories,
-                        categoryVisibilityService = categoryVisibilityService,
-                        onCategoryIdChanged = { selectedCategoryId = it },
-                        onSnackbarMessage = { snackbarMessage = it },
-                        categoryHiddenMessage = categoryHiddenMessage
+                        context = CategoryHiddenContext(
+                            categoryType = categoryManagement.categoryType,
+                            selectedCategoryId = selectedCategoryId,
+                            sortedCategories = categoryManagement.sortedCategories,
+                            categoryVisibilityService = categoryVisibilityService,
+                            onCategoryIdChanged = { selectedCategoryId = it },
+                            onSnackbarMessage = { snackbarMessage = it },
+                            categoryHiddenMessage = categoryHiddenMessage
+                        )
                     )
                 },
                 onSearchClick = { showSearchOverlay = true },
