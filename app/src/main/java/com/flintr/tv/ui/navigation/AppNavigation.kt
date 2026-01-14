@@ -60,6 +60,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.ui.res.stringResource
+import com.flintr.tv.R
 import com.flintr.tv.utils.loadPackageInfo
 
 sealed class Screen(val route: String) {
@@ -561,7 +563,7 @@ private fun UpdateDialogContent(
  * Data class grouping category management results
  */
 private data class CategoryManagementResult(
-    val categoryType: CategoryType,
+    val categoryType: CategoryType?,
     val sortedCategories: List<Category>,
     val showCategories: Boolean
 )
@@ -578,14 +580,11 @@ private fun useCategoryManagement(
     hiddenCategories: Map<CategoryType, Set<String>>
 ): CategoryManagementResult {
     // Determine category type based on destination
-    val categoryType = when (selectedDestination) {
+    val categoryType: CategoryType? = when (selectedDestination) {
         is HomeDestination.LiveTV -> CategoryType.LIVE_TV
         is HomeDestination.VOD -> CategoryType.VOD
         is HomeDestination.Series -> CategoryType.SERIES
-        is HomeDestination.EPG -> CategoryType.LIVE_TV // Not used for EPG
-        is HomeDestination.Favorites -> CategoryType.LIVE_TV // Not used for Favorites
-        is HomeDestination.Search -> CategoryType.LIVE_TV // Not used for Search
-        is HomeDestination.Settings -> CategoryType.LIVE_TV // Not used for Settings
+        else -> null // EPG, Favorites, Search, Settings don't have categories
     }
     
     // Select categories based on destination
@@ -601,7 +600,9 @@ private fun useCategoryManagement(
     
     // Filter out hidden categories using StateFlow
     val filteredCategories = categories.filter { 
-        !(hiddenCategories[categoryType]?.contains(it.categoryId) ?: false)
+        categoryType?.let { type ->
+            !(hiddenCategories[type]?.contains(it.categoryId) ?: false)
+        } ?: true // If no categoryType, don't filter
     }
     
     // Sort categories the same way as in CategoryRow for consistency
@@ -649,7 +650,7 @@ private fun UpdateDialogEffect(
     onShowDialog: () -> Unit
 ) {
     LaunchedEffect(updateInfo?.hasUpdate) {
-        if (updateInfo?.hasUpdate == true && updateInfo?.downloadUrl != null) {
+        if (updateInfo?.hasUpdate == true && updateInfo.downloadUrl != null) {
             onShowDialog()
         }
     }
@@ -791,6 +792,31 @@ private fun ContentListFocusEffect(
 }
 
 /**
+ * State holder class encapsulating focus-related state
+ */
+private class MainContentFocusState {
+    var initialFocusSet by mutableStateOf(false)
+    var pendingFocusDestination by mutableStateOf<HomeDestination?>(null)
+    var categorySidebarFocusSet by mutableStateOf(false)
+    var contentListFocusSet by mutableStateOf(false)
+    var navbarReady by mutableStateOf(false)
+    var categorySidebarReady by mutableStateOf(false)
+    var contentListReady by mutableStateOf(false)
+
+    fun resetFocusFlags() {
+        categorySidebarFocusSet = false
+        contentListFocusSet = false
+        categorySidebarReady = false
+        contentListReady = false
+    }
+}
+
+@Composable
+private fun rememberMainContentFocusState(): MainContentFocusState {
+    return remember { MainContentFocusState() }
+}
+
+/**
  * Focus management class encapsulating focus navigation logic
  */
 private class FocusManager(
@@ -834,24 +860,27 @@ private class FocusManager(
  */
 private fun handleCategoryHidden(
     category: Category,
-    categoryType: CategoryType,
+    categoryType: CategoryType?,
     selectedCategoryId: String?,
     sortedCategories: List<Category>,
     categoryVisibilityService: CategoryVisibilityService,
     onCategoryIdChanged: (String?) -> Unit,
-    onSnackbarMessage: (String) -> Unit
+    onSnackbarMessage: (String) -> Unit,
+    categoryHiddenMessage: String
 ) {
-    // Hide the category
-    categoryVisibilityService.hideCategory(category.categoryId, categoryType)
-    
-    // If the hidden category was currently selected, select the first available category
-    if (selectedCategoryId == category.categoryId) {
-        val remainingCategories = sortedCategories.filter { it.categoryId != category.categoryId }
-        onCategoryIdChanged(remainingCategories.firstOrNull()?.categoryId)
+    // Hide the category (only if categoryType is not null)
+    categoryType?.let { type ->
+        categoryVisibilityService.hideCategory(category.categoryId, type)
+        
+        // If the hidden category was currently selected, select the first available category
+        if (selectedCategoryId == category.categoryId) {
+            val remainingCategories = sortedCategories.filter { it.categoryId != category.categoryId }
+            onCategoryIdChanged(remainingCategories.firstOrNull()?.categoryId)
+        }
+        
+        // Show snackbar feedback
+        onSnackbarMessage(categoryHiddenMessage)
     }
-    
-    // Show snackbar feedback
-    onSnackbarMessage("Kategorie wurde ausgeblendet")
 }
 
 /**
@@ -923,13 +952,7 @@ fun MainContentScreen(
     var hasCheckedForUpdates by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showSearchOverlay by remember { mutableStateOf(false) }
-    var initialFocusSet by remember { mutableStateOf(false) }
-    var pendingFocusDestination by remember { mutableStateOf<HomeDestination?>(null) }
-    var categorySidebarFocusSet by remember { mutableStateOf(false) }
-    var contentListFocusSet by remember { mutableStateOf(false) }
-    var navbarReady by remember { mutableStateOf(false) }
-    var categorySidebarReady by remember { mutableStateOf(false) }
-    var contentListReady by remember { mutableStateOf(false) }
+    val focusState = rememberMainContentFocusState()
     
     // ViewModel state collection
     val searchState by mainViewModel.searchState.collectAsState()
@@ -993,38 +1016,33 @@ fun MainContentScreen(
     
     DestinationChangeEffect(
         selectedDestination = selectedDestination,
-        onDestinationChanged = { pendingFocusDestination = it },
-        onResetFocusFlags = {
-            categorySidebarFocusSet = false
-            contentListFocusSet = false
-            categorySidebarReady = false
-            contentListReady = false
-        }
+        onDestinationChanged = { focusState.pendingFocusDestination = it },
+        onResetFocusFlags = { focusState.resetFocusFlags() }
     )
     
     NavbarFocusEffect(
-        navbarReady = navbarReady,
-        initialFocusSet = initialFocusSet,
+        navbarReady = focusState.navbarReady,
+        initialFocusSet = focusState.initialFocusSet,
         navbarFocusRequester = navbarFocusRequester,
-        onFocusSet = { initialFocusSet = true }
+        onFocusSet = { focusState.initialFocusSet = true }
     )
     
     CategorySidebarFocusEffect(
-        categorySidebarReady = categorySidebarReady,
-        categorySidebarFocusSet = categorySidebarFocusSet,
-        pendingFocusDestination = pendingFocusDestination,
+        categorySidebarReady = focusState.categorySidebarReady,
+        categorySidebarFocusSet = focusState.categorySidebarFocusSet,
+        pendingFocusDestination = focusState.pendingFocusDestination,
         showCategories = categoryManagement.showCategories,
         sortedCategories = categoryManagement.sortedCategories,
         categorySidebarFocusRequester = categorySidebarFocusRequester,
-        onFocusSet = { categorySidebarFocusSet = true }
+        onFocusSet = { focusState.categorySidebarFocusSet = true }
     )
     
     ContentListFocusEffect(
-        contentListReady = contentListReady,
-        contentListFocusSet = contentListFocusSet,
-        pendingFocusDestination = pendingFocusDestination,
+        contentListReady = focusState.contentListReady,
+        contentListFocusSet = focusState.contentListFocusSet,
+        pendingFocusDestination = focusState.pendingFocusDestination,
         contentListFocusRequester = contentListFocusRequester,
-        onFocusSet = { contentListFocusSet = true }
+        onFocusSet = { focusState.contentListFocusSet = true }
     )
     
     // Handler functions
@@ -1070,6 +1088,9 @@ fun MainContentScreen(
         onDismiss = { showUpdateDialog = false }
     )
     
+    // String resources
+    val categoryHiddenMessage = stringResource(R.string.category_hidden)
+    
     // Main UI
     Box(modifier = Modifier.fillMaxSize()) {
         MainLayout(
@@ -1094,13 +1115,14 @@ fun MainContentScreen(
                         sortedCategories = categoryManagement.sortedCategories,
                         categoryVisibilityService = categoryVisibilityService,
                         onCategoryIdChanged = { selectedCategoryId = it },
-                        onSnackbarMessage = { snackbarMessage = it }
+                        onSnackbarMessage = { snackbarMessage = it },
+                        categoryHiddenMessage = categoryHiddenMessage
                     )
                 },
                 onSearchClick = { showSearchOverlay = true },
-                onNavbarReady = { navbarReady = true },
-                onCategorySidebarReady = { categorySidebarReady = true },
-                onContentListReady = { contentListReady = true }
+                onNavbarReady = { focusState.navbarReady = true },
+                onCategorySidebarReady = { focusState.categorySidebarReady = true },
+                onContentListReady = { focusState.contentListReady = true }
             ),
             content = {
                 MainContentBody(

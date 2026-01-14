@@ -254,12 +254,10 @@ private fun ContentCardInternal(
         contentType?.toFavoriteId()
     }
     
-    var favoriteRefreshTrigger by remember { mutableStateOf(0) }
     val (isFavorite, setIsFavorite) = useFavoriteState(
         favoriteId = favoriteId,
         showMenu = showMenu,
-        favoritesRepository = favoritesRepository,
-        refreshTrigger = favoriteRefreshTrigger
+        favoritesRepository = favoritesRepository
     )
     useLongPressState(longPressDetected, contentInfo.title) { longPressDetected = it }
     useMenuStateLogging(showMenu, contentInfo.title)
@@ -330,10 +328,7 @@ private fun ContentCardInternal(
             title = contentInfo.title,
             favoritesRepository = favoritesRepository,
             coroutineScope = coroutineScope,
-            setIsFavorite = { newValue ->
-                setIsFavorite(newValue)
-                favoriteRefreshTrigger++
-            }
+            setIsFavorite = setIsFavorite
         )
     )
 }
@@ -369,13 +364,13 @@ private fun createPerformClickHandler(
 ): () -> Unit {
     return {
         if (!showMenu && !longPressDetected) {
-            Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() aufgerufen (normaler Click)")
+            Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() called (normal click)")
             onClick()
         } else {
             if (showMenu) {
-                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() blockiert - Menü ist offen")
+                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() blocked - menu is open")
             } else {
-                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() verhindert (Long-Press wurde erkannt)")
+                Log.d("ContentCard", "[ContentCard] Card '$title' - clickable() prevented (long press detected)")
             }
         }
     }
@@ -401,10 +396,10 @@ private fun createLongPressHandler(
     setShowMenu: (Boolean) -> Unit
 ): () -> Unit {
     return {
-        Log.d("ContentCard", "[ContentCard] Card '$title' - Long-Press Callback erhalten!")
-        Log.d("ContentCard", "[ContentCard] Setze longPressDetected = true")
+        Log.d("ContentCard", "[ContentCard] Card '$title' - Long press callback received!")
+        Log.d("ContentCard", "[ContentCard] Setting longPressDetected = true")
         setLongPressDetected(true)
-        Log.d("ContentCard", "[ContentCard] Setze showMenu = true")
+        Log.d("ContentCard", "[ContentCard] Setting showMenu = true")
         setShowMenu(true)
     }
 }
@@ -416,9 +411,9 @@ private fun createNormalClickHandler(
 ): () -> Unit {
     return {
         if (showMenu) {
-            Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() blockiert - Menü ist offen")
+            Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() blocked - menu is open")
         } else {
-            Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() aufgerufen (Timer abgebrochen)")
+            Log.d("ContentCard", "[ContentCard] Card '$title' - onNormalClick() called (timer cancelled)")
             performClick()
         }
     }
@@ -451,8 +446,8 @@ private fun createMenuDismissHandler(
     setShowMenu: (Boolean) -> Unit
 ): () -> Unit {
     return {
-        Log.d("ContentCard", "[ContentCard] Card '$title' - Menü onDismiss() aufgerufen")
-        Log.d("ContentCard", "[ContentCard] Setze showMenu = false")
+        Log.d("ContentCard", "[ContentCard] Card '$title' - Menu onDismiss() called")
+        Log.d("ContentCard", "[ContentCard] Setting showMenu = false")
         setShowMenu(false)
     }
 }
@@ -490,25 +485,13 @@ private fun createMenuOptionSelectedHandler(
 private fun useFavoriteState(
     favoriteId: String?,
     showMenu: Boolean,
-    favoritesRepository: FavoritesRepository,
-    refreshTrigger: Int = 0
+    favoritesRepository: FavoritesRepository
 ): Pair<Boolean, (Boolean) -> Unit> {
     var isFavorite by remember { mutableStateOf(false) }
     
-    LaunchedEffect(favoriteId) {
+    LaunchedEffect(favoriteId, showMenu) {
         if (favoriteId != null) {
-            isFavorite = favoritesRepository.isFavorite(favoriteId)
-        }
-    }
-    
-    LaunchedEffect(showMenu) {
-        if (showMenu && favoriteId != null) {
-            isFavorite = favoritesRepository.isFavorite(favoriteId)
-        }
-    }
-    
-    LaunchedEffect(refreshTrigger) {
-        if (favoriteId != null && refreshTrigger > 0) {
+            // Re-fetch when card changes or when menu is about to be shown
             isFavorite = favoritesRepository.isFavorite(favoriteId)
         }
     }
@@ -527,7 +510,7 @@ private fun useLongPressState(
     LaunchedEffect(longPressDetected) {
         if (longPressDetected) {
             kotlinx.coroutines.delay(100)
-            Log.d("ContentCard", "[ContentCard] Card '$title' - Reset longPressDetected Flag")
+            Log.d("ContentCard", "[ContentCard] Card '$title' - Resetting longPressDetected flag")
             setLongPressDetected(false)
         }
     }
@@ -539,7 +522,7 @@ private fun useMenuStateLogging(
     title: String
 ) {
     LaunchedEffect(showMenu) {
-        Log.d("ContentCard", "[ContentCard] Card '$title' - showMenu State geändert: $showMenu")
+        Log.d("ContentCard", "[ContentCard] Card '$title' - showMenu state changed: $showMenu")
     }
 }
 
