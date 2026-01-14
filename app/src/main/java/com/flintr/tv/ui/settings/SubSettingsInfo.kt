@@ -51,7 +51,7 @@ private fun UpdateCheckButton(
     
     Button(
         onClick = {
-            packageInfo?.let { info ->
+            packageInfo?.let {
                 onCheckUpdates()
             }
         },
@@ -196,6 +196,131 @@ private fun DownloadProgressCard(
 }
 
 /**
+ * Composable for displaying available update with download button
+ */
+@Composable
+private fun UpdateAvailableCard(
+    updateInfo: UpdateInfo,
+    downloadProgress: DownloadProgress?,
+    onDownloadClick: () -> Unit,
+    downloadButtonFocusRequester: FocusRequester,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = colors.successGreen.copy(alpha = 0.1f)
+        ),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(Dimensions.radiusMD)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(Dimensions.spacingMD),
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.SystemUpdate,
+                    contentDescription = null,
+                    tint = colors.successGreen
+                )
+                Text(
+                    text = stringResource(R.string.updates_available),
+                    color = colors.successGreen,
+                    fontWeight = FontWeight.W600,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            
+            if (updateInfo.stableVersion != null) {
+                Text(
+                    text = stringResource(R.string.version_info, updateInfo.stableVersion),
+                    color = colors.textPrimary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            
+            // Download Button
+            var isDownloadButtonFocused by remember { mutableStateOf(false) }
+            
+            Button(
+                onClick = onDownloadClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(downloadButtonFocusRequester)
+                    .onFocusChanged { focusState ->
+                        isDownloadButtonFocused = focusState.isFocused
+                    }
+                    .then(
+                        if (isDownloadButtonFocused) {
+                            Modifier.border(
+                                width = 2.dp,
+                                color = Color.White,
+                                shape = RoundedCornerShape(Dimensions.radiusMD)
+                            )
+                        } else {
+                            Modifier
+                        }
+                    ),
+                enabled = downloadProgress?.isComplete != true && downloadProgress?.error == null,
+                shape = RoundedCornerShape(Dimensions.radiusMD),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDownloadButtonFocused) colors.buttonPrimaryHover else colors.buttonPrimary,
+                    contentColor = Color.White
+                ),
+                contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
+            ) {
+                Text(
+                    text = stringResource(R.string.download_and_install_update),
+                    fontSize = FontSizes.fontSizeXL,
+                    fontWeight = FontWeight.W600
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Composable for displaying latest version message
+ */
+@Composable
+private fun LatestVersionCard(
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = colors.bgHover
+        ),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(Dimensions.radiusMD)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(Dimensions.spacingMD),
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = colors.accentColor,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = stringResource(R.string.latest_version),
+                color = colors.textPrimary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+/**
  * Composable for update status display (available update, download button, or latest version)
  */
 @Composable
@@ -207,110 +332,15 @@ private fun UpdateStatusDisplay(
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
     if (updateInfo.hasUpdate && updateInfo.downloadUrl != null) {
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = colors.successGreen.copy(alpha = 0.1f)
-            ),
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(Dimensions.radiusMD)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(Dimensions.spacingMD),
-                verticalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.SystemUpdate,
-                        contentDescription = null,
-                        tint = colors.successGreen
-                    )
-                    Text(
-                        text = stringResource(R.string.updates_available),
-                        color = colors.successGreen,
-                        fontWeight = FontWeight.W600,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-                
-                if (updateInfo.stableVersion != null) {
-                    Text(
-                        text = stringResource(R.string.version_info, updateInfo.stableVersion),
-                        color = colors.textPrimary,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                
-                // Download Button
-                var isDownloadButtonFocused by remember { mutableStateOf(false) }
-                
-                Button(
-                    onClick = onDownloadClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(downloadButtonFocusRequester)
-                        .onFocusChanged { focusState ->
-                            isDownloadButtonFocused = focusState.isFocused
-                        }
-                        .then(
-                            if (isDownloadButtonFocused) {
-                                Modifier.border(
-                                    width = 2.dp,
-                                    color = Color.White,
-                                    shape = RoundedCornerShape(Dimensions.radiusMD)
-                                )
-                            } else {
-                                Modifier
-                            }
-                        ),
-                    enabled = downloadProgress?.isComplete != true && downloadProgress?.error == null,
-                    shape = RoundedCornerShape(Dimensions.radiusMD),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDownloadButtonFocused) colors.buttonPrimaryHover else colors.buttonPrimary,
-                        contentColor = Color.White
-                    ),
-                    contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
-                ) {
-                    Text(
-                        text = stringResource(R.string.download_and_install_update),
-                        fontSize = FontSizes.fontSizeXL,
-                        fontWeight = FontWeight.W600
-                    )
-                }
-            }
-        }
+        UpdateAvailableCard(
+            updateInfo = updateInfo,
+            downloadProgress = downloadProgress,
+            onDownloadClick = onDownloadClick,
+            downloadButtonFocusRequester = downloadButtonFocusRequester,
+            colors = colors
+        )
     } else if (!updateInfo.hasUpdate) {
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = colors.bgHover
-            ),
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(Dimensions.radiusMD)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(Dimensions.spacingMD),
-                horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = colors.accentColor,
-                    modifier = Modifier.size(20.dp)
-                )
-                Text(
-                    text = stringResource(R.string.latest_version),
-                    color = colors.textPrimary,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        }
+        LatestVersionCard(colors = colors)
     }
 }
 

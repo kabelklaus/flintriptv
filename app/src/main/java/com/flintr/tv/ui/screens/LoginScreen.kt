@@ -54,56 +54,99 @@ private fun loginTextFieldColors(colors: com.flintr.tv.ui.theme.AppColors): Text
 }
 
 /**
+ * Configuration data class for LoginTextField to reduce parameter count
+ */
+data class LoginTextFieldConfig(
+    val label: String,
+    val placeholder: String,
+    val leadingIcon: ImageVector,
+    val enabled: Boolean = true,
+    val focusRequester: FocusRequester? = null,
+    val onGloballyPositioned: (() -> Unit)? = null,
+    val trailingIcon: @Composable (() -> Unit)? = null,
+    val visualTransformation: VisualTransformation = VisualTransformation.None
+)
+
+/**
  * Reusable login text field component
  */
 @Composable
 private fun LoginTextField(
     value: String,
     onValueChange: (String) -> Unit,
-    label: String,
-    placeholder: String,
-    leadingIcon: ImageVector,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    focusRequester: FocusRequester? = null,
-    onGloballyPositioned: (() -> Unit)? = null,
-    trailingIcon: @Composable (() -> Unit)? = null,
-    visualTransformation: VisualTransformation = VisualTransformation.None,
-    colors: com.flintr.tv.ui.theme.AppColors
+    config: LoginTextFieldConfig,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    modifier: Modifier = Modifier
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label) },
-        placeholder = { Text(placeholder) },
+        label = { Text(config.label) },
+        placeholder = { Text(config.placeholder) },
         leadingIcon = {
             Icon(
-                imageVector = leadingIcon,
+                imageVector = config.leadingIcon,
                 contentDescription = null
             )
         },
-        trailingIcon = trailingIcon,
+        trailingIcon = config.trailingIcon,
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
+                if (config.focusRequester != null) {
+                    Modifier.focusRequester(config.focusRequester)
                 } else {
                     Modifier
                 }
             )
             .then(
-                if (onGloballyPositioned != null) {
-                    Modifier.onGloballyPositioned { onGloballyPositioned() }
+                if (config.onGloballyPositioned != null) {
+                    Modifier.onGloballyPositioned { config.onGloballyPositioned() }
                 } else {
                     Modifier
                 }
             ),
         singleLine = true,
-        enabled = enabled,
+        enabled = config.enabled,
         shape = RoundedCornerShape(Dimensions.radiusMD),
         colors = loginTextFieldColors(colors),
-        visualTransformation = visualTransformation
+        visualTransformation = config.visualTransformation
+    )
+}
+
+/**
+ * Returns button colors based on focus and form validation state
+ */
+@Composable
+private fun loginButtonColors(
+    isFocused: Boolean,
+    isFormValid: Boolean,
+    colors: com.flintr.tv.ui.theme.AppColors
+): ButtonColors {
+    return ButtonDefaults.buttonColors(
+        containerColor = when {
+            isFocused && isFormValid -> colors.buttonPrimaryHover
+            !isFormValid -> colors.buttonPrimary.copy(alpha = 0.6f)
+            else -> colors.buttonPrimary
+        },
+        contentColor = Color.White,
+        disabledContainerColor = colors.buttonPrimary.copy(alpha = 0.6f),
+        disabledContentColor = Color.White.copy(alpha = 0.6f)
+    )
+}
+
+/**
+ * Returns button elevation based on focus and form validation state
+ */
+@Composable
+private fun loginButtonElevation(
+    isFocused: Boolean,
+    isFormValid: Boolean
+): ButtonElevation {
+    return ButtonDefaults.buttonElevation(
+        defaultElevation = if (isFocused && isFormValid) 6.dp else if (!isFormValid) 0.dp else 2.dp,
+        pressedElevation = if (isFocused && isFormValid) 8.dp else if (!isFormValid) 0.dp else 4.dp,
+        disabledElevation = 0.dp
     )
 }
 
@@ -154,20 +197,14 @@ private fun LoginButton(
             ),
         enabled = !isLoading,
         shape = RoundedCornerShape(Dimensions.radiusMD),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = when {
-                isButtonFocused && isFormValid -> colors.buttonPrimaryHover
-                !isFormValid -> colors.buttonPrimary.copy(alpha = 0.6f)
-                else -> colors.buttonPrimary
-            },
-            contentColor = Color.White,
-            disabledContainerColor = colors.buttonPrimary.copy(alpha = 0.6f),
-            disabledContentColor = Color.White.copy(alpha = 0.6f)
+        colors = loginButtonColors(
+            isFocused = isButtonFocused,
+            isFormValid = isFormValid,
+            colors = colors
         ),
-        elevation = ButtonDefaults.buttonElevation(
-            defaultElevation = if (isButtonFocused && isFormValid) 6.dp else if (!isFormValid) 0.dp else 2.dp,
-            pressedElevation = if (isButtonFocused && isFormValid) 8.dp else if (!isFormValid) 0.dp else 4.dp,
-            disabledElevation = 0.dp
+        elevation = loginButtonElevation(
+            isFocused = isButtonFocused,
+            isFormValid = isFormValid
         ),
         contentPadding = PaddingValues(vertical = Dimensions.spacingMD)
     ) {
@@ -270,53 +307,59 @@ fun LoginScreen(
                 LoginTextField(
                     value = serverUrl,
                     onValueChange = { serverUrl = it },
-                    label = "Serveradresse",
-                    placeholder = "http://example.com",
-                    leadingIcon = Icons.Default.Dns,
-                    enabled = !uiState.isLoading,
-                    focusRequester = serverUrlFocusRequester,
-                    onGloballyPositioned = {
-                        // Request focus only once when component is first laid out
-                        if (!hasRequestedInitialFocus) {
-                            try {
-                                serverUrlFocusRequester.requestFocus()
-                                hasRequestedInitialFocus = true
-                            } catch (e: IllegalStateException) {
-                                // Component not ready for focus yet
+                    config = LoginTextFieldConfig(
+                        label = "Serveradresse",
+                        placeholder = "http://example.com",
+                        leadingIcon = Icons.Default.Dns,
+                        enabled = !uiState.isLoading,
+                        focusRequester = serverUrlFocusRequester,
+                        onGloballyPositioned = {
+                            // Request focus only once when component is first laid out
+                            if (!hasRequestedInitialFocus) {
+                                try {
+                                    serverUrlFocusRequester.requestFocus()
+                                    hasRequestedInitialFocus = true
+                                } catch (e: IllegalStateException) {
+                                    // Component not ready for focus yet
+                                }
                             }
                         }
-                    },
+                    ),
                     colors = colors
                 )
 
                 LoginTextField(
                     value = username,
                     onValueChange = { username = it },
-                    label = "Benutzername",
-                    placeholder = "Ihr Benutzername",
-                    leadingIcon = Icons.Default.Person,
-                    enabled = !uiState.isLoading,
-                    focusRequester = usernameFocusRequester,
+                    config = LoginTextFieldConfig(
+                        label = "Benutzername",
+                        placeholder = "Ihr Benutzername",
+                        leadingIcon = Icons.Default.Person,
+                        enabled = !uiState.isLoading,
+                        focusRequester = usernameFocusRequester
+                    ),
                     colors = colors
                 )
 
                 LoginTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = "Passwort",
-                    placeholder = "Ihr Passwort",
-                    leadingIcon = Icons.Default.Lock,
-                    enabled = !uiState.isLoading,
-                    focusRequester = passwordFocusRequester,
-                    trailingIcon = {
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(
-                                imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = if (passwordVisible) "Passwort verbergen" else "Passwort anzeigen"
-                            )
-                        }
-                    },
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    config = LoginTextFieldConfig(
+                        label = "Passwort",
+                        placeholder = "Ihr Passwort",
+                        leadingIcon = Icons.Default.Lock,
+                        enabled = !uiState.isLoading,
+                        focusRequester = passwordFocusRequester,
+                        trailingIcon = {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(
+                                    imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = if (passwordVisible) "Passwort verbergen" else "Passwort anzeigen"
+                                )
+                            }
+                        },
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation()
+                    ),
                     colors = colors
                 )
 

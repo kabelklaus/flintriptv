@@ -30,8 +30,8 @@ class SeriesInfoResponseAdapter(
                         episodes = null
                     )
                 } else {
-                    // Non-empty array - this shouldn't happen, but delegate to standard adapter
-                    throw IllegalStateException("Expected empty array or object, got non-empty array")
+                    // A non-empty array is an unexpected format, so throw an exception.
+                    error("Expected empty array or object, got non-empty array")
                 }
             }
             JsonReader.Token.BEGIN_OBJECT -> {
@@ -43,7 +43,7 @@ class SeriesInfoResponseAdapter(
                 null
             }
             else -> {
-                throw IllegalStateException("Expected array or object, got ${reader.peek()}")
+                error("Expected array or object, got ${reader.peek()}")
             }
         }
     }
