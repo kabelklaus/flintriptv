@@ -158,6 +158,143 @@ private fun com.flintr.tv.data.model.DestinationType.toHomeDestination(): HomeDe
 private const val LOG_TAG_MAIN_CONTENT_SCREEN = "[MainContentScreen]"
 
 /**
+ * Restores the destination (tab) and waits for UI propagation.
+ */
+private suspend fun restoreDestination(
+    state: NavigationStateBeforePlayer,
+    currentDestination: HomeDestination,
+    onDestinationChanged: (HomeDestination) -> Unit
+): HomeDestination {
+    val destination = state.destinationType.toHomeDestination()
+    if (currentDestination != destination) {
+        onDestinationChanged(destination)
+        // Wait for destination change to propagate (minimal delay for UI composition)
+        kotlinx.coroutines.delay(50)
+    }
+    return destination
+}
+
+/**
+ * Restores the category with fallback logic if category no longer exists.
+ */
+private suspend fun restoreCategory(
+    state: NavigationStateBeforePlayer,
+    destination: HomeDestination,
+    currentCategoryId: String?,
+    onCategoryIdChanged: (String?) -> Unit,
+    liveCategories: List<Category>,
+    vodCategories: List<Category>,
+    seriesCategories: List<Category>
+) {
+    if (state.categoryId == null) return
+    
+    // Check if category still exists
+    val categoryExists = when (destination) {
+        is HomeDestination.LiveTV -> liveCategories.any { it.categoryId == state.categoryId }
+        is HomeDestination.VOD -> vodCategories.any { it.categoryId == state.categoryId }
+        is HomeDestination.Series -> seriesCategories.any { it.categoryId == state.categoryId }
+        else -> false
+    }
+    
+    if (categoryExists) {
+        if (currentCategoryId != state.categoryId) {
+            onCategoryIdChanged(state.categoryId)
+        }
+    } else {
+        // Fallback: Select first available category
+        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Category ${state.categoryId} no longer exists, selecting first available category")
+        val firstCategory = when (destination) {
+            is HomeDestination.LiveTV -> liveCategories.firstOrNull()
+            is HomeDestination.VOD -> vodCategories.firstOrNull()
+            is HomeDestination.Series -> seriesCategories.firstOrNull()
+            else -> null
+        }
+        onCategoryIdChanged(firstCategory?.categoryId)
+    }
+}
+
+/**
+ * Waits for content to be loaded with timeout.
+ */
+private suspend fun waitForContentLoaded(isLoading: Boolean) {
+    var retryCount = 0
+    val maxRetries = 20
+    while (isLoading && retryCount < maxRetries) {
+        kotlinx.coroutines.delay(100)
+        retryCount++
+    }
+    if (retryCount >= maxRetries && isLoading) {
+        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Timeout waiting for content to load, proceeding anyway")
+    }
+}
+
+/**
+ * Restores the scroll position to the saved index and offset.
+ */
+private suspend fun restoreScrollPosition(
+    state: NavigationStateBeforePlayer,
+    lazyGridState: androidx.compose.foundation.lazy.grid.LazyGridState
+) {
+    try {
+        if (state.scrollIndex >= 0) {
+            lazyGridState.scrollToItem(
+                index = state.scrollIndex,
+                scrollOffset = state.scrollOffset
+            )
+            // Minimal delay for scroll animation to start (UI stabilization)
+            kotlinx.coroutines.delay(50)
+        }
+    } catch (e: Exception) {
+        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Failed to restore scroll position: ${e.message}")
+    }
+}
+
+/**
+ * Restores focus on the content card with retry logic and fallback.
+ */
+private suspend fun restoreFocus(
+    state: NavigationStateBeforePlayer,
+    focusRequesterMap: MutableMap<String, FocusRequester>
+) {
+    // Try to find FocusRequester, with retries if not immediately available
+    var focusRetryCount = 0
+    val maxFocusRetries = 10
+    var focusRequester: FocusRequester? = null
+    
+    while (focusRetryCount < maxFocusRetries && focusRequester == null) {
+        focusRequester = focusRequesterMap[state.contentId]
+        if (focusRequester == null) {
+            kotlinx.coroutines.delay(50)
+            focusRetryCount++
+        }
+    }
+    
+    if (focusRequester != null) {
+        try {
+            focusRequester.requestFocus()
+            Log.d(LOG_TAG_MAIN_CONTENT_SCREEN, "Focus restored on content card: ${state.contentId}")
+        } catch (e: Exception) {
+            Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Failed to restore focus: ${e.message}")
+            requestFallbackFocus(focusRequesterMap)
+        }
+    } else {
+        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "FocusRequester not found for contentId: ${state.contentId} after retries, focusing first available card")
+        requestFallbackFocus(focusRequesterMap)
+    }
+}
+
+/**
+ * Attempts to focus the first available card as fallback.
+ */
+private fun requestFallbackFocus(focusRequesterMap: MutableMap<String, FocusRequester>) {
+    try {
+        focusRequesterMap.values.firstOrNull()?.requestFocus()
+    } catch (e: Exception) {
+        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Fallback focus failed: ${e.message}")
+    }
+}
+
+/**
  * Restores navigation state (destination, category, scroll position, focus)
  * This function handles the complete restoration process with fallbacks.
  */
@@ -178,103 +315,19 @@ private suspend fun restoreNavigationState(
     Log.d(LOG_TAG_MAIN_CONTENT_SCREEN, "Restoring navigation state: destinationType=${state.destinationType}, categoryId=${state.categoryId}, contentId=${state.contentId}, scrollIndex=${state.scrollIndex}, scrollOffset=${state.scrollOffset}")
     
     // 1. Set destination (tab) - with fallback
-    val destination = state.destinationType.toHomeDestination()
-    if (currentDestination != destination) {
-        onDestinationChanged(destination)
-        // Wait for destination change to propagate (minimal delay for UI composition)
-        kotlinx.coroutines.delay(50)
-    }
+    val destination = restoreDestination(state, currentDestination, onDestinationChanged)
     
     // 2. Set category (if available) - with fallback
-    if (state.categoryId != null) {
-        // Check if category still exists
-        val categoryExists = when (destination) {
-            is HomeDestination.LiveTV -> liveCategories.any { it.categoryId == state.categoryId }
-            is HomeDestination.VOD -> vodCategories.any { it.categoryId == state.categoryId }
-            is HomeDestination.Series -> seriesCategories.any { it.categoryId == state.categoryId }
-            else -> false
-        }
-        
-        if (categoryExists) {
-            if (currentCategoryId != state.categoryId) {
-                onCategoryIdChanged(state.categoryId)
-                // Wait for category change to propagate - will wait for isLoading below
-            }
-        } else {
-            // Fallback: Select first available category
-            Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Category ${state.categoryId} no longer exists, selecting first available category")
-            val firstCategory = when (destination) {
-                is HomeDestination.LiveTV -> liveCategories.firstOrNull()
-                is HomeDestination.VOD -> vodCategories.firstOrNull()
-                is HomeDestination.Series -> seriesCategories.firstOrNull()
-                else -> null
-            }
-            onCategoryIdChanged(firstCategory?.categoryId)
-        }
-    }
+    restoreCategory(state, destination, currentCategoryId, onCategoryIdChanged, liveCategories, vodCategories, seriesCategories)
     
     // 3. Wait for content to be loaded (state-based check instead of fixed delay)
-    // This replaces the previous delay(200) after category change
-    var retryCount = 0
-    val maxRetries = 20
-    while (isLoading && retryCount < maxRetries) {
-        kotlinx.coroutines.delay(100)
-        retryCount++
-    }
-    if (retryCount >= maxRetries && isLoading) {
-        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Timeout waiting for content to load, proceeding anyway")
-    }
+    waitForContentLoaded(isLoading)
     
     // 4. Restore scroll position
-    try {
-        if (state.scrollIndex >= 0) {
-            lazyGridState.scrollToItem(
-                index = state.scrollIndex,
-                scrollOffset = state.scrollOffset
-            )
-            // Minimal delay for scroll animation to start (UI stabilization)
-            kotlinx.coroutines.delay(50)
-        }
-    } catch (e: Exception) {
-        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Failed to restore scroll position: ${e.message}")
-    }
+    restoreScrollPosition(state, lazyGridState)
     
     // 5. Set focus on content card - wait for FocusRequester to be available
-    // Try to find FocusRequester, with retries if not immediately available
-    var focusRetryCount = 0
-    val maxFocusRetries = 10
-    var focusRequester: FocusRequester? = null
-    
-    while (focusRetryCount < maxFocusRetries && focusRequester == null) {
-        focusRequester = focusRequesterMap[state.contentId]
-        if (focusRequester == null) {
-            kotlinx.coroutines.delay(50)
-            focusRetryCount++
-        }
-    }
-    
-    if (focusRequester != null) {
-        try {
-            focusRequester.requestFocus()
-            Log.d(LOG_TAG_MAIN_CONTENT_SCREEN, "Focus restored on content card: ${state.contentId}")
-        } catch (e: Exception) {
-            Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Failed to restore focus: ${e.message}")
-            // Fallback: Focus first available card
-            try {
-                focusRequesterMap.values.firstOrNull()?.requestFocus()
-            } catch (fallbackException: Exception) {
-                Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Fallback focus also failed: ${fallbackException.message}")
-            }
-        }
-    } else {
-        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "FocusRequester not found for contentId: ${state.contentId} after retries, focusing first available card")
-        // Fallback: Focus first available card
-        try {
-            focusRequesterMap.values.firstOrNull()?.requestFocus()
-        } catch (e: Exception) {
-            Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Fallback focus failed: ${e.message}")
-        }
-    }
+    restoreFocus(state, focusRequesterMap)
     
     // 6. Clear pending navigation restore
     mainViewModel.clearPendingNavigationRestore()
