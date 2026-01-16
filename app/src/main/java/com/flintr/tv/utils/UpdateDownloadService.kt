@@ -79,9 +79,12 @@ class UpdateDownloadService @Inject constructor(
     }.flowOn(Dispatchers.IO)
     
     private fun deleteFileSafely(file: File): Boolean {
-        return if (file.exists() && !file.delete()) {
-            Log.w("UpdateDownloadService", "Failed to delete file: ${file.name}")
-            false
+        return if (file.exists()) {
+            file.delete().also { deleted ->
+                if (!deleted) {
+                    Log.w("UpdateDownloadService", "Failed to delete file: ${file.name}")
+                }
+            }
         } else {
             true
         }
@@ -99,12 +102,14 @@ class UpdateDownloadService @Inject constructor(
     ): ResponseBody? {
         if (!response.isSuccessful) {
             emit(DownloadProgress(0, 0, false, Exception("HTTP ${response.code}: ${response.message}")))
+            response.close()
             return null
         }
         
         val body = response.body
         if (body == null) {
             emit(DownloadProgress(0, 0, false, Exception("Response body is null")))
+            response.close()
             return null
         }
         
@@ -139,14 +144,6 @@ class UpdateDownloadService @Inject constructor(
         val fileName = "app-v$version.apk"
         val cacheDir = context.cacheDir
         val file = File(cacheDir, fileName)
-        return if (file.exists()) {
-            file.delete().also { deleted ->
-                if (!deleted) {
-                    Log.w("UpdateDownloadService", "Failed to delete APK: $fileName")
-                }
-            }
-        } else {
-            true // File doesn't exist, consider it "deleted"
-        }
+        return deleteFileSafely(file)
     }
 }
