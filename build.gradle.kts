@@ -9,7 +9,22 @@ plugins {
 }
 sonar {
     properties {
-        property("sonar.projectKey", System.getenv("SONAR_PROJECT_KEY") ?: findProperty("sonar.projectKey") as String?)
-        property("sonar.projectName", System.getenv("SONAR_PROJECT_NAME") ?: findProperty("sonar.projectName") as String?)
+        val sonarProjectKey = System.getenv("SONAR_PROJECT_KEY") ?: findProperty("sonar.projectKey")?.toString() ?: ""
+        val sonarProjectName = System.getenv("SONAR_PROJECT_NAME") ?: findProperty("sonar.projectName")?.toString() ?: ""
+
+        property("sonar.projectKey", sonarProjectKey)
+        property("sonar.projectName", sonarProjectName)
+        
+        // Exclude test directories from analysis
+        property("sonar.exclusions", "**/test/**,**/androidTest/**,**/*Test.kt,**/*Tests.kt")
+        property("sonar.test.exclusions", "**/*")
+        
+        // Android Lint report path
+        property("sonar.androidLint.reportPaths", "app/build/reports/lint-results-debug.xml")
     }
+}
+
+// Ensure lint report is generated before sonar task
+tasks.named("sonar").configure {
+    dependsOn(":app:lintReportDebug")
 }
