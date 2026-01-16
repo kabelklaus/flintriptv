@@ -5,11 +5,11 @@ plugins {
     alias(libs.plugins.kotlin.ksp) apply false
     alias(libs.plugins.hilt) apply false
     alias(libs.plugins.compose.compiler) apply false
-    id("org.sonarqube") version "7.2.2.6593"
+    alias(libs.plugins.sonarqube)
 }
 sonar {
     properties {
-        property("sonar.projectKey", "kabelklaus_flintriptv_31e48b26-a944-4433-93e4-81e2e9b53a91")
-        property("sonar.projectName", "flintriptv")
+        property("sonar.projectKey", System.getenv("SONAR_PROJECT_KEY") ?: findProperty("sonar.projectKey") as String?)
+        property("sonar.projectName", System.getenv("SONAR_PROJECT_NAME") ?: findProperty("sonar.projectName") as String?)
     }
 }
