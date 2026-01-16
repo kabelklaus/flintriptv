@@ -81,7 +81,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'  # Android Gradle Plugin 8.13.2 requires Java 17
+          java-version: '21'  # Required by compileOptions in build.gradle.kts
 
       - name: Cache Gradle
         if: steps.should_release.outputs.should_release == 'true'
@@ -91,9 +91,9 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             ~/.gradle/build-cache
-          key: gradle-${{ runner.os }}-java17-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-${{ runner.os }}-java21-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
-            gradle-${{ runner.os }}-java17-
+            gradle-${{ runner.os }}-java21-
             gradle-${{ runner.os }}-
 
       - name: Setup signing key
