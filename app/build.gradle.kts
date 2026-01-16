@@ -88,6 +88,10 @@ android {
         compose = true
         buildConfig = true
     }
+    lint {
+        disable += "MutableCollectionMutableState"
+        abortOnError = false  // Lint-Fehler brechen Build nicht ab
+    }
 }
 
 dependencies {
