@@ -19,6 +19,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -215,6 +218,11 @@ fun ConnectionPasswordField(
         onValueChange = onValueChange,
         label = { Text(stringResource(R.string.password)) },
         placeholder = { Text(stringResource(R.string.your_password)) },
+        keyboardOptions = KeyboardOptions(
+            autoCorrect = false,
+            keyboardType = KeyboardType.Password,
+            imeAction = ImeAction.Done
+        ),
         modifier = modifier
             .fillMaxWidth()
             .then(
