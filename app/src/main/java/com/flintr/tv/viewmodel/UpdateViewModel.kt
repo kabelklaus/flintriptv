@@ -18,9 +18,9 @@ import javax.inject.Inject
 
 @HiltViewModel
 class UpdateViewModel @Inject constructor(
-    val updateRepository: UpdateRepository,
-    val downloadService: UpdateDownloadService,
-    val installer: UpdateInstaller,
+    private val updateRepository: UpdateRepository,
+    private val downloadService: UpdateDownloadService,
+    private val installer: UpdateInstaller,
     private val resourcesProvider: ResourcesProvider
 ) : ViewModel() {
     
@@ -51,7 +51,7 @@ class UpdateViewModel @Inject constructor(
             } catch (e: Exception) {
                 _errorMessage.value = resourcesProvider.getString(
                     R.string.error_checking_updates,
-                    e.message ?: "Unknown error"
+                    e.message ?: resourcesProvider.getString(R.string.unknown_error)
                 )
             } finally {
                 _isCheckingUpdates.value = false
@@ -73,7 +73,7 @@ class UpdateViewModel @Inject constructor(
                 } else if (progress.error != null) {
                     _errorMessage.value = resourcesProvider.getString(
                         R.string.download_error,
-                        progress.error.message ?: "Unknown error"
+                        progress.error.message ?: resourcesProvider.getString(R.string.unknown_error)
                     )
                 }
             }

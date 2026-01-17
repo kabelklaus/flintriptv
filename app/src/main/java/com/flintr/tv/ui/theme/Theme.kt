@@ -94,7 +94,7 @@ fun FlintRTVTheme(
 
 /**
  * Data class containing all theme-specific color properties
- * Used to reduce parameter count in createAppColorsWithSharedColors()
+ * Used to reduce parameter count in conversion functions
  */
 private data class ThemeSpecificColors(
     val bgSidebar: Color,
@@ -130,56 +130,10 @@ private data class ThemeSpecificColors(
 )
 
 /**
- * Helper function to create ThemeSpecificColors from a color object
- * Centralizes the property mapping logic to eliminate duplication
- */
-private fun createThemeSpecificColors(
-    bgSidebar: Color,
-    bgSidebarCard: Color,
-    bgList: Color,
-    bgPreview: Color,
-    bgSelected: Color,
-    bgHover: Color,
-    bgCard: Color,
-    cardBorder: Color,
-    textPrimary: Color,
-    textSecondary: Color,
-    accentColor: Color,
-    accentColorHoverBg: Color,
-    accentColorBorderLight: Color,
-    navActiveBg: Color,
-    navActiveText: Color,
-    badgeBg: Color,
-    badgeText: Color,
-    dangerBg: Color,
-    dangerBorder: Color,
-    dangerText: Color,
-    successColor: Color,
-    errorColor: Color,
-    successGreen: Color,
-    buttonPrimary: Color,
-    buttonPrimaryHover: Color,
-    proBadgeBg: Color,
-    iconColor: Color,
-    iconColorHover: Color,
-    categoryHoverBg: Color,
-    categoryDefaultText: Color
-): ThemeSpecificColors {
-    return ThemeSpecificColors(
-        bgSidebar, bgSidebarCard, bgList, bgPreview, bgSelected, bgHover,
-        bgCard, cardBorder, textPrimary, textSecondary, accentColor,
-        accentColorHoverBg, accentColorBorderLight, navActiveBg, navActiveText,
-        badgeBg, badgeText, dangerBg, dangerBorder, dangerText,
-        successColor, errorColor, successGreen, buttonPrimary, buttonPrimaryHover,
-        proBadgeBg, iconColor, iconColorHover, categoryHoverBg, categoryDefaultText
-    )
-}
-
-/**
  * Extension function to convert LightColors to ThemeSpecificColors
  */
 private fun LightColors.toThemeSpecificColors(): ThemeSpecificColors {
-    return createThemeSpecificColors(
+    return ThemeSpecificColors(
         bgSidebar, bgSidebarCard, bgList, bgPreview, bgSelected, bgHover,
         bgCard, cardBorder, textPrimary, textSecondary, accentColor,
         accentColorHoverBg, accentColorBorderLight, navActiveBg, navActiveText,
@@ -193,7 +147,7 @@ private fun LightColors.toThemeSpecificColors(): ThemeSpecificColors {
  * Extension function to convert DarkColors to ThemeSpecificColors
  */
 private fun DarkColors.toThemeSpecificColors(): ThemeSpecificColors {
-    return createThemeSpecificColors(
+    return ThemeSpecificColors(
         bgSidebar, bgSidebarCard, bgList, bgPreview, bgSelected, bgHover,
         bgCard, cardBorder, textPrimary, textSecondary, accentColor,
         accentColorHoverBg, accentColorBorderLight, navActiveBg, navActiveText,
@@ -204,43 +158,48 @@ private fun DarkColors.toThemeSpecificColors(): ThemeSpecificColors {
 }
 
 /**
- * Helper function to copy theme-specific properties to AppColors
- * Centralizes the first 30 property mappings
+ * Extension function to convert ThemeSpecificColors to AppColors
+ * Copies all theme-specific properties and adds shared colors from SharedColors
+ * 
+ * Note: The first 30 properties of AppColors are identical to ThemeSpecificColors.
+ * This duplication is structurally necessary because:
+ * 1. AppColors is a data class used throughout the codebase with direct property access
+ * 2. ThemeSpecificColors serves as an intermediate type to reduce parameter count
+ * 3. Both need to be data classes for proper destructuring and equality checks
+ * The explicit property copying ensures type safety and maintains API compatibility.
  */
-private fun copyThemePropertiesToAppColors(
-    theme: ThemeSpecificColors
-): AppColors {
+private fun ThemeSpecificColors.toAppColors(): AppColors {
     return AppColors(
-        bgSidebar = theme.bgSidebar,
-        bgSidebarCard = theme.bgSidebarCard,
-        bgList = theme.bgList,
-        bgPreview = theme.bgPreview,
-        bgSelected = theme.bgSelected,
-        bgHover = theme.bgHover,
-        bgCard = theme.bgCard,
-        cardBorder = theme.cardBorder,
-        textPrimary = theme.textPrimary,
-        textSecondary = theme.textSecondary,
-        accentColor = theme.accentColor,
-        accentColorHoverBg = theme.accentColorHoverBg,
-        accentColorBorderLight = theme.accentColorBorderLight,
-        navActiveBg = theme.navActiveBg,
-        navActiveText = theme.navActiveText,
-        badgeBg = theme.badgeBg,
-        badgeText = theme.badgeText,
-        dangerBg = theme.dangerBg,
-        dangerBorder = theme.dangerBorder,
-        dangerText = theme.dangerText,
-        successColor = theme.successColor,
-        errorColor = theme.errorColor,
-        successGreen = theme.successGreen,
-        buttonPrimary = theme.buttonPrimary,
-        buttonPrimaryHover = theme.buttonPrimaryHover,
-        proBadgeBg = theme.proBadgeBg,
-        iconColor = theme.iconColor,
-        iconColorHover = theme.iconColorHover,
-        categoryHoverBg = theme.categoryHoverBg,
-        categoryDefaultText = theme.categoryDefaultText,
+        bgSidebar = bgSidebar,
+        bgSidebarCard = bgSidebarCard,
+        bgList = bgList,
+        bgPreview = bgPreview,
+        bgSelected = bgSelected,
+        bgHover = bgHover,
+        bgCard = bgCard,
+        cardBorder = cardBorder,
+        textPrimary = textPrimary,
+        textSecondary = textSecondary,
+        accentColor = accentColor,
+        accentColorHoverBg = accentColorHoverBg,
+        accentColorBorderLight = accentColorBorderLight,
+        navActiveBg = navActiveBg,
+        navActiveText = navActiveText,
+        badgeBg = badgeBg,
+        badgeText = badgeText,
+        dangerBg = dangerBg,
+        dangerBorder = dangerBorder,
+        dangerText = dangerText,
+        successColor = successColor,
+        errorColor = errorColor,
+        successGreen = successGreen,
+        buttonPrimary = buttonPrimary,
+        buttonPrimaryHover = buttonPrimaryHover,
+        proBadgeBg = proBadgeBg,
+        iconColor = iconColor,
+        iconColorHover = iconColorHover,
+        categoryHoverBg = categoryHoverBg,
+        categoryDefaultText = categoryDefaultText,
         // Shared colors
         colorBlocked = SharedColors.blocked,
         avatarPlaceholder = SharedColors.avatarPlaceholder,
@@ -265,31 +224,6 @@ private fun copyThemePropertiesToAppColors(
 }
 
 /**
- * Extension function to convert ThemeSpecificColors to AppColors
- * Copies all theme-specific properties and adds shared colors from SharedColors
- * 
- * Note: The first 30 properties of AppColors are identical to ThemeSpecificColors.
- * This duplication is structurally necessary because:
- * 1. AppColors is a data class used throughout the codebase with direct property access
- * 2. ThemeSpecificColors serves as an intermediate type to reduce parameter count
- * 3. Both need to be data classes for proper destructuring and equality checks
- * The explicit property copying ensures type safety and maintains API compatibility.
- */
-private fun ThemeSpecificColors.toAppColors(): AppColors {
-    return copyThemePropertiesToAppColors(this)
-}
-
-/**
- * Helper function to create AppColors with theme-specific properties
- * and shared colors from SharedColors
- */
-private fun createAppColorsWithSharedColors(
-    themeColors: ThemeSpecificColors
-): AppColors {
-    return themeColors.toAppColors()
-}
-
-/**
  * Helper to get custom colors based on current theme
  * Similar to AppTheme.colorsOf(context) in Flutter
  */
@@ -298,9 +232,9 @@ fun appColors(): AppColors {
     val colorScheme = MaterialTheme.colorScheme
     val isDark = colorScheme.isDark
     return if (isDark) {
-        createAppColorsWithSharedColors(DarkColors.toThemeSpecificColors())
+        DarkColors.toThemeSpecificColors().toAppColors()
     } else {
-        createAppColorsWithSharedColors(LightColors.toThemeSpecificColors())
+        LightColors.toThemeSpecificColors().toAppColors()
     }
 }
 

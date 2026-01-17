@@ -34,6 +34,7 @@
     <string name="download_error">Download-Fehler: %1$s</string>
     <string name="installation_failed">Installation fehlgeschlagen</string>
     <string name="apk_not_found">APK-Datei nicht gefunden</string>
+    <string name="unknown_error">Unbekannter Fehler</string>
     
     <!-- Settings Connection Screen -->
     <string name="password">Kennwort</string>
