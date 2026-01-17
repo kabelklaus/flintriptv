@@ -20,8 +20,8 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 41
-        versionName = "1.40"
+        versionCode = 42
+        versionName = "1.41"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -80,6 +80,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
+        isCoreLibraryDesugaringEnabled = true
     }
     @Suppress("DEPRECATION")
     kotlinOptions {
@@ -144,6 +145,9 @@ dependencies {
     
     // Security
     implementation(libs.security.crypto)
+    
+    // Desugaring
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     
     // Testing
     testImplementation(libs.junit)

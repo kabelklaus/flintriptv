@@ -23,6 +23,7 @@ coil = "2.5.0"
 navigation = "2.7.6"
 leanback = "1.0.0"
 securityCrypto = "1.1.0-alpha06"
+desugarJdkLibs = "2.0.4"
 sonarqube = "5.1.0.4882"
 
 [libraries]
@@ -75,6 +76,9 @@ leanback = { group = "androidx.leanback", name = "leanback", version.ref = "lean
 
 # Security
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+
+# Desugaring
+desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
