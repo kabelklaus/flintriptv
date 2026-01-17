@@ -721,11 +721,8 @@ fun PlayerScreen(
     }
     
     // Create callbacks
-    val baseOnSeek = remember(exoPlayer, state.duration) {
-        createSeekCallback(exoPlayer, state.duration)
-    }
     val onSeek = { seekProgress: Float ->
-        baseOnSeek(seekProgress)
+        createSeekCallback(exoPlayer, state.duration)(seekProgress)
         // Only reset timer if not dragging (i.e., tap seek)
         if (!state.isDraggingProgress) {
             resetControlsTimer()
