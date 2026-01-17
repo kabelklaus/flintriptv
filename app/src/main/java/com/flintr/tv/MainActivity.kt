@@ -13,6 +13,7 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
+import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.ui.navigation.AppNavigation
 import com.flintr.tv.ui.navigation.AppNavigationDependencies
 import com.flintr.tv.ui.theme.FlintRTVTheme
@@ -36,6 +37,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var categoryVisibilityService: CategoryVisibilityService
 
+    @Inject
+    lateinit var xtreamRepository: XtreamRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -52,7 +56,8 @@ class MainActivity : ComponentActivity() {
                             cacheService = cacheService,
                             favoritesRepository = favoritesRepository,
                             watchProgressService = watchProgressService,
-                            categoryVisibilityService = categoryVisibilityService
+                            categoryVisibilityService = categoryVisibilityService,
+                            xtreamRepository = xtreamRepository
                         )
                     )
                 }

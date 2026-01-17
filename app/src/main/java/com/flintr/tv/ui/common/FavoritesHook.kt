@@ -12,7 +12,6 @@ import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.FavoriteType
-import com.flintr.tv.data.local.CachedData
 
 private const val TAG = "FavoritesHook"
 
@@ -25,13 +24,13 @@ data class FavoritesState<T>(
 )
 
 /**
- * Loads favorite items from repository and maps them to content items
+ * Loads favorite items from repository and maps them to content items.
+ * Only loads needed data by IDs to prevent OutOfMemoryError.
  */
 private suspend fun <T : Any> loadFavoriteItems(
     favoritesRepository: FavoritesRepository,
     cacheService: DataCacheService,
     favoriteType: FavoriteType,
-    dataSelector: (CachedData) -> List<T>,
     idSelector: (T) -> Int
 ): List<T> {
     val favorites = favoritesRepository.getFavoritesByType(favoriteType)
@@ -39,13 +38,37 @@ private suspend fun <T : Any> loadFavoriteItems(
         return emptyList()
     }
     
-    val cachedData = cacheService.loadCachedDataAsync()
-    if (cachedData == null) {
-        Log.w(TAG, "No cached data available for favorites")
+    // Extract streamIds/seriesIds from favorites to load only needed data
+    val streamIds = favorites.mapNotNull { it.streamId }
+    
+    // Load only needed data by IDs (not all cached data)
+    val items = when (favoriteType) {
+        FavoriteType.LIVE -> {
+            val channels = cacheService.loadChannelsByIds(streamIds)
+            @Suppress("UNCHECKED_CAST")
+            (channels ?: emptyList()) as List<T>
+        }
+        FavoriteType.MOVIE -> {
+            val movies = cacheService.loadMoviesByIds(streamIds)
+            @Suppress("UNCHECKED_CAST")
+            (movies ?: emptyList()) as List<T>
+        }
+        FavoriteType.SERIES -> {
+            val series = cacheService.loadSeriesByIds(streamIds)
+            @Suppress("UNCHECKED_CAST")
+            (series ?: emptyList()) as List<T>
+        }
+    }
+    
+    if (items.isEmpty()) {
+        Log.w(TAG, "No cached data available for favorites of type: $favoriteType")
         return emptyList()
     }
     
-    val itemsMap = dataSelector(cachedData).associateBy(idSelector)
+    // Create map for efficient lookup
+    val itemsMap = items.associateBy(idSelector)
+    
+    // Match favorites to items
     return favorites.mapNotNull { favorite ->
         itemsMap[favorite.streamId]
     }
@@ -90,7 +113,6 @@ private suspend fun checkFavoritesChanges(
  * @param favoritesRepository Repository for accessing favorites
  * @param cacheService Service for loading cached data
  * @param favoriteType The type of favorites to load (LIVE, MOVIE, SERIES)
- * @param dataSelector Function to extract the relevant list from CachedData
  * @param idSelector Function to extract the ID from a content item for mapping
  * @return FavoritesState containing the loaded items and loading state
  */
@@ -100,7 +122,6 @@ fun <T : Any> useFavorites(
     favoritesRepository: FavoritesRepository,
     cacheService: DataCacheService,
     favoriteType: FavoriteType,
-    dataSelector: (CachedData) -> List<T>,
     idSelector: (T) -> Int
 ): FavoritesState<T> {
     var favoriteItems by remember { mutableStateOf<List<T>>(emptyList()) }
@@ -137,7 +158,6 @@ fun <T : Any> useFavorites(
                 favoritesRepository = favoritesRepository,
                 cacheService = cacheService,
                 favoriteType = favoriteType,
-                dataSelector = dataSelector,
                 idSelector = idSelector
             )
         }

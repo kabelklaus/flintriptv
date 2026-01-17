@@ -299,11 +299,12 @@ class MainViewModel @Inject constructor(
     
     /**
      * Performs the actual search operation
+     * Note: cachedData is loaded locally and not stored in ViewModel to prevent OutOfMemoryError
      */
     private suspend fun performSearch(trimmedQuery: String) {
         _searchState.value = _searchState.value.copy(isSearching = true)
         
-        // Load cached data
+        // Load cached data temporarily (not stored in ViewModel)
         val cachedData = cacheService.loadCachedData()
         if (cachedData == null) {
             Log.w("MainViewModel", "No cached data available for search")
@@ -334,6 +335,9 @@ class MainViewModel @Inject constructor(
             vod = vodResults,
             series = seriesResults
         )
+        
+        // cachedData is no longer referenced after this point and will be garbage collected
+        // Results are stored in searchState, not the full cachedData
         
         Log.d("MainViewModel", "Search completed: query='$trimmedQuery', results=${results.totalCount} (LiveTV: ${results.liveTV.size}, VOD: ${results.vod.size}, Series: ${results.series.size})")
         

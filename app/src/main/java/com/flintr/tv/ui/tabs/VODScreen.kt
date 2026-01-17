@@ -42,12 +42,11 @@ fun VODContent(params: VODContentParams) {
     val isFavoritesCategory = params.selectedCategoryId == FAVORITES_CATEGORY_ID
     
     // Load favorites using the hook
-    val favoritesState = useFavorites(
+    val favoritesState = useFavorites<VodStream>(
         isFavoritesCategory = isFavoritesCategory,
         favoritesRepository = params.favoritesRepository,
         cacheService = params.cacheService,
         favoriteType = FavoriteType.MOVIE,
-        dataSelector = { it.movies },
         idSelector = { it.streamId }
     )
     

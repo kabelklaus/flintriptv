@@ -17,6 +17,7 @@ import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.components.LiveStreamCard
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
 import com.flintr.tv.ui.common.useFavorites
 
 private const val TAG = "LiveTVContent"
@@ -40,20 +41,20 @@ fun LiveTVContent(params: LiveTVContentParams) {
     val uiState by params.viewModel.uiState.collectAsState()
     
     val isFavoritesCategory = params.selectedCategoryId == FAVORITES_CATEGORY_ID
+    val isInProgressCategory = params.selectedCategoryId == IN_PROGRESS_CATEGORY_ID
     
     // Load favorites using the hook
-    val favoritesState = useFavorites(
+    val favoritesState = useFavorites<LiveStream>(
         isFavoritesCategory = isFavoritesCategory,
         favoritesRepository = params.favoritesRepository,
         cacheService = params.cacheService,
         favoriteType = FavoriteType.LIVE,
-        dataSelector = { it.channels },
         idSelector = { it.streamId }
     )
     
-    // Load regular streams when not in favorites category
+    // Load regular streams when not in favorites or in-progress category
     LaunchedEffect(params.selectedCategoryId) {
-        if (!isFavoritesCategory && params.selectedCategoryId != null) {
+        if (!isFavoritesCategory && !isInProgressCategory && params.selectedCategoryId != null) {
             params.viewModel.loadLiveStreams(params.selectedCategoryId)
         }
     }
@@ -62,8 +63,18 @@ fun LiveTVContent(params: LiveTVContentParams) {
     // Focus will be set manually when navigating from CategorySidebar
     // This keeps the focus on the Navbar when the app starts
     
-    val displayStreams = if (isFavoritesCategory) favoritesState.items else streams
-    val isLoading = if (isFavoritesCategory) favoritesState.isLoading else uiState.isLoading
+    // In-progress category should not be shown in LiveTV (contains only movies/episodes)
+    // Show empty list if in-progress category is selected
+    val displayStreams = when {
+        isFavoritesCategory -> favoritesState.items
+        isInProgressCategory -> emptyList() // In-progress category not applicable for LiveTV
+        else -> streams
+    }
+    val isLoading = when {
+        isFavoritesCategory -> favoritesState.isLoading
+        isInProgressCategory -> false // No loading needed for empty list
+        else -> uiState.isLoading
+    }
     
     ContentGridLayout(
         params = ContentGridLayoutParams(

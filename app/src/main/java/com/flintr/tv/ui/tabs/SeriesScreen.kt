@@ -49,12 +49,11 @@ fun SeriesContent(
     val isFavoritesCategory = params.selectedCategoryId == FAVORITES_CATEGORY_ID
     
     // Load favorites using the hook
-    val favoritesState = useFavorites(
+    val favoritesState = useFavorites<Series>(
         isFavoritesCategory = isFavoritesCategory,
         favoritesRepository = params.favoritesRepository,
         cacheService = params.cacheService,
         favoriteType = FavoriteType.SERIES,
-        dataSelector = { it.series },
         idSelector = { it.seriesId }
     )
     

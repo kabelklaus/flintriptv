@@ -6,6 +6,7 @@ import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
+import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.SeriesInfoResponseAdapterFactory
 import com.flintr.tv.data.repository.UpdateRepository
@@ -21,6 +22,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
@@ -30,6 +33,11 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
+    
+    @Provides
+    @Singleton
+    @Named("IO")
+    fun provideIODispatcher(): CoroutineDispatcher = Dispatchers.IO
     
     @Provides
     @Singleton
@@ -220,9 +228,11 @@ object AppModule {
     @Singleton
     fun provideWatchProgressService(
         @ApplicationContext context: Context,
-        moshi: Moshi
+        moshi: Moshi,
+        favoritesRepository: FavoritesRepository,
+        @Named("IO") ioDispatcher: CoroutineDispatcher
     ): WatchProgressService {
-        return WatchProgressService(context, moshi)
+        return WatchProgressService(context, moshi, favoritesRepository, ioDispatcher)
     }
     
     @Provides

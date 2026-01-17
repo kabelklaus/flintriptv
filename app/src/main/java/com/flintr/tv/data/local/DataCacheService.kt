@@ -6,11 +6,12 @@ import com.flintr.tv.data.model.*
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 
 data class CachedData(
@@ -25,7 +26,8 @@ data class CachedData(
 @Singleton
 class DataCacheService @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val moshi: Moshi
+    private val moshi: Moshi,
+    @Named("IO") private val ioDispatcher: CoroutineDispatcher
 ) {
     private val sharedPreferences: SharedPreferences = context.getSharedPreferences(
         "iptv_cache_prefs",
@@ -208,12 +210,114 @@ class DataCacheService @Inject constructor(
      * Loads cached data asynchronously on a background thread.
      * Use this instead of loadCachedData() to avoid blocking the main thread.
      */
-    suspend fun loadCachedDataAsync(): CachedData? = withContext(Dispatchers.IO) {
+    suspend fun loadCachedDataAsync(): CachedData? = withContext(ioDispatcher) {
         loadCachedDataInternal()
     }
 
     fun clearCache() {
         sharedPreferences.edit().clear().apply()
+    }
+
+    /**
+     * Loads only specific channels by their stream IDs from cache.
+     * This is more memory-efficient than loading all channels when only a few are needed.
+     * 
+     * @param streamIds List of stream IDs to load
+     * @return List of LiveStream objects matching the IDs, or null if cache is invalid
+     */
+    suspend fun loadChannelsByIds(streamIds: List<Int>): List<LiveStream>? = withContext(ioDispatcher) {
+        if (streamIds.isEmpty()) {
+            return@withContext emptyList()
+        }
+        
+        try {
+            val channelsJson = sharedPreferences.getString(KEY_CACHE_CHANNELS, null)
+            if (channelsJson.isNullOrBlank()) {
+                return@withContext null
+            }
+
+            val listType = Types.newParameterizedType(List::class.java, LiveStream::class.java)
+            val adapter = moshi.adapter<List<LiveStream>>(listType)
+            val allChannels = adapter.fromJson(channelsJson) ?: return@withContext null
+
+            // Filter to only include channels with matching streamIds
+            val streamIdsSet = streamIds.toSet()
+            val filteredChannels = allChannels.filter { it.streamId in streamIdsSet }
+            
+            android.util.Log.d("DataCacheService", "Loaded ${filteredChannels.size} channels from ${allChannels.size} total (requested ${streamIds.size} IDs)")
+            return@withContext filteredChannels
+        } catch (e: Exception) {
+            android.util.Log.e("DataCacheService", "Failed to load channels by IDs", e)
+            return@withContext null
+        }
+    }
+
+    /**
+     * Loads only specific movies by their stream IDs from cache.
+     * This is more memory-efficient than loading all movies when only a few are needed.
+     * 
+     * @param streamIds List of stream IDs to load
+     * @return List of VodStream objects matching the IDs, or null if cache is invalid
+     */
+    suspend fun loadMoviesByIds(streamIds: List<Int>): List<VodStream>? = withContext(ioDispatcher) {
+        if (streamIds.isEmpty()) {
+            return@withContext emptyList()
+        }
+        
+        try {
+            val moviesJson = sharedPreferences.getString(KEY_CACHE_MOVIES, null)
+            if (moviesJson.isNullOrBlank()) {
+                return@withContext null
+            }
+
+            val vodListType = Types.newParameterizedType(List::class.java, VodStream::class.java)
+            val vodAdapter = moshi.adapter<List<VodStream>>(vodListType)
+            val allMovies = vodAdapter.fromJson(moviesJson) ?: return@withContext null
+
+            // Filter to only include movies with matching streamIds
+            val streamIdsSet = streamIds.toSet()
+            val filteredMovies = allMovies.filter { it.streamId in streamIdsSet }
+            
+            android.util.Log.d("DataCacheService", "Loaded ${filteredMovies.size} movies from ${allMovies.size} total (requested ${streamIds.size} IDs)")
+            return@withContext filteredMovies
+        } catch (e: Exception) {
+            android.util.Log.e("DataCacheService", "Failed to load movies by IDs", e)
+            return@withContext null
+        }
+    }
+
+    /**
+     * Loads only specific series by their series IDs from cache.
+     * This is more memory-efficient than loading all series when only a few are needed.
+     * 
+     * @param seriesIds List of series IDs to load
+     * @return List of Series objects matching the IDs, or null if cache is invalid
+     */
+    suspend fun loadSeriesByIds(seriesIds: List<Int>): List<Series>? = withContext(ioDispatcher) {
+        if (seriesIds.isEmpty()) {
+            return@withContext emptyList()
+        }
+        
+        try {
+            val seriesJson = sharedPreferences.getString(KEY_CACHE_SERIES, null)
+            if (seriesJson.isNullOrBlank()) {
+                return@withContext null
+            }
+
+            val seriesListType = Types.newParameterizedType(List::class.java, Series::class.java)
+            val seriesAdapter = moshi.adapter<List<Series>>(seriesListType)
+            val allSeries = seriesAdapter.fromJson(seriesJson) ?: return@withContext null
+
+            // Filter to only include series with matching seriesIds
+            val seriesIdsSet = seriesIds.toSet()
+            val filteredSeries = allSeries.filter { it.seriesId in seriesIdsSet }
+            
+            android.util.Log.d("DataCacheService", "Loaded ${filteredSeries.size} series from ${allSeries.size} total (requested ${seriesIds.size} IDs)")
+            return@withContext filteredSeries
+        } catch (e: Exception) {
+            android.util.Log.e("DataCacheService", "Failed to load series by IDs", e)
+            return@withContext null
+        }
     }
 }
 

@@ -61,14 +61,13 @@ class XtreamRepository @Inject constructor(
         dynamicApiServiceBaseUrl = baseUrl
         return dynamicApiService
     }
-    // In-memory cache
+    // In-memory cache (only for small data structures)
     private var cachedServerInfo: ServerInfo? = null
     private var cachedLiveCategories: List<Category>? = null
-    private var cachedLiveStreams: List<LiveStream>? = null
     private var cachedVodCategories: List<Category>? = null
-    private var cachedVodStreams: List<VodStream>? = null
     private var cachedSeriesCategories: List<Category>? = null
-    private var cachedSeries: List<Series>? = null
+    // Note: Large lists (LiveStreams, VodStreams, Series) are not cached in-memory
+    // to avoid OutOfMemoryError. They are only loaded from persistent cache when needed.
     
     // Caching for dynamically created API service
     private var dynamicApiService: XtreamApiService? = null
@@ -110,39 +109,29 @@ class XtreamRepository @Inject constructor(
     }
 
     /**
-     * Generic helper function to retrieve cached data from in-memory or persistent cache.
-     * @param inMemoryCache The in-memory cache value (nullable)
-     * @param setInMemoryCache Lambda to set the in-memory cache
+     * Generic helper function to retrieve cached data from persistent cache only.
+     * In-memory caching for large lists is removed to prevent OutOfMemoryError.
      * @param getFromCachedData Lambda to extract the data from CachedData
      * @param categoryId Optional category ID to filter by
      * @param filterByCategory Lambda to filter data by categoryId (returns true if item matches categoryId)
      * @return Result containing the cached data or an error if no cache is available
      */
     private inline fun <T> getCachedData(
-        inMemoryCache: List<T>?,
-        setInMemoryCache: (List<T>) -> Unit,
         getFromCachedData: (CachedData) -> List<T>,
         categoryId: String? = null,
         filterByCategory: (T, String) -> Boolean = { _, _ -> true }
     ): Result<List<T>> {
         return try {
-            // Try to get from cache first
-            val allData = when {
-                // First check in-memory cache
-                inMemoryCache != null -> inMemoryCache
-                // Then check persistent cache
-                cacheService.isCacheValid() -> {
-                    val cachedData = cacheService.loadCachedData()
-                    if (cachedData != null) {
-                        // Fill in-memory cache for next time
-                        val data = getFromCachedData(cachedData)
-                        setInMemoryCache(data)
-                        data
-                    } else {
-                        null
-                    }
+            // Only use persistent cache (no in-memory cache for large lists)
+            val allData = if (cacheService.isCacheValid()) {
+                val cachedData = cacheService.loadCachedData()
+                if (cachedData != null) {
+                    getFromCachedData(cachedData)
+                } else {
+                    null
                 }
-                else -> null
+            } else {
+                null
             }
 
             // If we have cached data, filter by categoryId if needed
@@ -164,8 +153,6 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getLiveStreams(username: String, password: String, categoryId: String? = null): Result<List<LiveStream>> {
         return getCachedData(
-            inMemoryCache = cachedLiveStreams,
-            setInMemoryCache = { cachedLiveStreams = it },
             getFromCachedData = { it.channels },
             categoryId = categoryId,
             filterByCategory = { stream, catId -> stream.categoryId == catId }
@@ -178,7 +165,7 @@ class XtreamRepository @Inject constructor(
             val response = service.getLiveStreams(username, password)
             if (response.isSuccessful && response.body() != null) {
                 val streams = response.body()!!
-                cachedLiveStreams = streams
+                // Don't cache in-memory to prevent OutOfMemoryError
                 Result.success(streams)
             } else {
                 Result.failure(Exception("Failed to get live streams: ${response.code()}"))
@@ -210,8 +197,6 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getVodStreams(username: String, password: String, categoryId: String? = null): Result<List<VodStream>> {
         return getCachedData(
-            inMemoryCache = cachedVodStreams,
-            setInMemoryCache = { cachedVodStreams = it },
             getFromCachedData = { it.movies },
             categoryId = categoryId,
             filterByCategory = { stream, catId -> stream.categoryId == catId }
@@ -224,7 +209,7 @@ class XtreamRepository @Inject constructor(
             val response = service.getVodStreams(username, password)
             if (response.isSuccessful && response.body() != null) {
                 val streams = response.body()!!
-                cachedVodStreams = streams
+                // Don't cache in-memory to prevent OutOfMemoryError
                 Result.success(streams)
             } else {
                 Result.failure(Exception("Failed to get VOD streams: ${response.code()}"))
@@ -256,8 +241,6 @@ class XtreamRepository @Inject constructor(
 
     suspend fun getSeries(username: String, password: String, categoryId: String? = null): Result<List<Series>> {
         return getCachedData(
-            inMemoryCache = cachedSeries,
-            setInMemoryCache = { cachedSeries = it },
             getFromCachedData = { it.series },
             categoryId = categoryId,
             filterByCategory = { series, catId -> series.categoryId == catId }
@@ -270,7 +253,7 @@ class XtreamRepository @Inject constructor(
             val response = service.getSeries(username, password)
             if (response.isSuccessful && response.body() != null) {
                 val series = response.body()!!
-                cachedSeries = series
+                // Don't cache in-memory to prevent OutOfMemoryError
                 Result.success(series)
             } else {
                 Result.failure(Exception("Failed to get series: ${response.code()}"))
@@ -330,11 +313,9 @@ class XtreamRepository @Inject constructor(
     fun clearCache() {
         cachedServerInfo = null
         cachedLiveCategories = null
-        cachedLiveStreams = null
         cachedVodCategories = null
-        cachedVodStreams = null
         cachedSeriesCategories = null
-        cachedSeries = null
+        // Note: Large lists are no longer cached in-memory
         dynamicApiService = null
         dynamicApiServiceBaseUrl = null
     }
