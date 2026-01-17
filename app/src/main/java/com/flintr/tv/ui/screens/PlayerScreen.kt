@@ -68,6 +68,9 @@ data class StreamInfo(
 private const val SWIPE_EDGE_THRESHOLD_PX = 50f
 private const val MIN_SWIPE_VELOCITY_PX_PER_S = 500f
 
+// Player controls constants
+private const val CONTROLS_VISIBILITY_DURATION_MS = 5000L
+
 /**
  * Creates and configures an ExoPlayer instance with optimized settings
  */
@@ -352,6 +355,7 @@ private fun rememberPlayerState() = remember {
         var isPlaying by mutableStateOf(false)
         var errorMessage by mutableStateOf<String?>(null)
         var hasRestoredProgress by mutableStateOf(false)
+        var lastInteractionTime by mutableStateOf(System.currentTimeMillis())
     }
 }
 
@@ -590,20 +594,30 @@ private fun PlayerPositionUpdateEffect(
 }
 
 /**
- * Effect to auto-hide controls after inactivity
+ * Effect to auto-hide controls after inactivity (5 seconds minimum display duration)
  */
 @Composable
 private fun AutoHideControlsEffect(
     showControls: Boolean,
     isDraggingProgress: Boolean,
+    lastInteractionTime: Long,
     onHideControls: () -> Unit
 ) {
-    LaunchedEffect(showControls, isDraggingProgress) {
-        if (showControls && !isDraggingProgress) {
-            delay(3000)
-            if (!isDraggingProgress) {
-                onHideControls()
+    LaunchedEffect(showControls, isDraggingProgress, lastInteractionTime) {
+        if (!showControls || isDraggingProgress) return@LaunchedEffect
+        
+        while (true) {
+            val timeSinceInteraction = System.currentTimeMillis() - lastInteractionTime
+            val remainingTime = CONTROLS_VISIBILITY_DURATION_MS - timeSinceInteraction
+            
+            if (remainingTime <= 0) {
+                if (!isDraggingProgress && showControls) {
+                    onHideControls()
+                }
+                break
             }
+            
+            delay(remainingTime.coerceAtMost(1000L)) // Max 1s steps for responsiveness
         }
     }
 }
@@ -689,6 +703,7 @@ fun PlayerScreen(
     AutoHideControlsEffect(
         showControls = state.showControls,
         isDraggingProgress = state.isDraggingProgress,
+        lastInteractionTime = state.lastInteractionTime,
         onHideControls = {
             state.showControls = false
             state.focusedButton = null
@@ -702,23 +717,34 @@ fun PlayerScreen(
         0f
     }
     
+    // Reset controls timer function
+    val resetControlsTimer = {
+        state.showControls = true
+        state.lastInteractionTime = System.currentTimeMillis()
+    }
+    
     // Create callbacks
-    val onSeek = remember(exoPlayer, state.duration) {
-        createSeekCallback(exoPlayer, state.duration)
+    val onSeek = { seekProgress: Float ->
+        createSeekCallback(exoPlayer, state.duration)(seekProgress)
+        // Only reset timer if not dragging (i.e., tap seek)
+        if (!state.isDraggingProgress) {
+            resetControlsTimer()
+        }
     }
     val onPrevious = remember(exoPlayer) {
-        createPreviousCallback(exoPlayer) { state.showControls = true }
+        createPreviousCallback(exoPlayer, resetControlsTimer)
     }
     val onNext = remember(exoPlayer, state.duration) {
-        createNextCallback(exoPlayer, state.duration) { state.showControls = true }
+        createNextCallback(exoPlayer, state.duration, resetControlsTimer)
     }
     val onPlayPause = remember(exoPlayer) {
-        createPlayPauseCallback(exoPlayer) { state.showControls = true }
+        createPlayPauseCallback(exoPlayer, resetControlsTimer)
     }
     val onVideoTap = {
         state.showControls = !state.showControls
         if (state.showControls) {
             state.focusedButton = FocusedButton.PREVIOUS
+            resetControlsTimer()
         } else {
             state.focusedButton = null
         }
@@ -742,7 +768,7 @@ fun PlayerScreen(
             .onBackButton(onBack = onBack)
             .onDpadCenter {
                 if (!state.showControls) {
-                    state.showControls = true
+                    resetControlsTimer()
                     state.focusedButton = FocusedButton.PLAY_PAUSE
                     onPlayPause()
                 }
@@ -790,6 +816,7 @@ fun PlayerScreen(
                     },
                     onDragEnd = {
                         state.isDraggingProgress = false
+                        resetControlsTimer()
                     }
                 ),
                 utilityCallbacks = PlayerUtilityCallbacks(
@@ -802,7 +829,7 @@ fun PlayerScreen(
                     onFocusChange = { button ->
                         state.focusedButton = button
                         if (button != null) {
-                            state.showControls = true
+                            resetControlsTimer()
                         }
                     }
                 ),
