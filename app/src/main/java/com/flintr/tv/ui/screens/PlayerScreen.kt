@@ -68,6 +68,9 @@ data class StreamInfo(
 private const val SWIPE_EDGE_THRESHOLD_PX = 50f
 private const val MIN_SWIPE_VELOCITY_PX_PER_S = 500f
 
+// Player controls constants
+private const val CONTROLS_VISIBILITY_DURATION_MS = 5000L
+
 /**
  * Creates and configures an ExoPlayer instance with optimized settings
  */
@@ -605,7 +608,7 @@ private fun AutoHideControlsEffect(
         
         while (true) {
             val timeSinceInteraction = System.currentTimeMillis() - lastInteractionTime
-            val remainingTime = 5000L - timeSinceInteraction
+            val remainingTime = CONTROLS_VISIBILITY_DURATION_MS - timeSinceInteraction
             
             if (remainingTime <= 0) {
                 if (!isDraggingProgress && showControls) {
