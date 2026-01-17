@@ -101,39 +101,10 @@ object LightColors {
     // Icon colors
     val iconColor = Color(0xFF5F6368)
     val iconColorHover = textPrimary
-    val colorBlocked = SharedColors.blocked
-    
-    // Avatar colors
-    val avatarPlaceholder = SharedColors.avatarPlaceholder
-    val avatarAccentBg = SharedColors.avatarAccentBg
-    val avatarAccentText = SharedColors.avatarAccentText
-    
-    // Gradient colors for settings cards
-    val gradientIndigoStart = SharedColors.indigo
-    val gradientIndigoEnd = SharedColors.indigoEnd
-    val gradientPinkStart = SharedColors.pink
-    val gradientPinkEnd = SharedColors.pinkEnd
-    val gradientTealStart = SharedColors.teal
-    val gradientTealEnd = SharedColors.tealEnd
-    val gradientOrangeStart = SharedColors.orange
-    val gradientRedEnd = SharedColors.red
-    
-    // Video player colors
-    val videoPlayerBg = SharedColors.videoPlayerBg
-    
-    // Favorite type colors
-    val favoriteLive = SharedColors.indigo
-    val favoriteMovie = SharedColors.pink
-    val favoriteSeries = SharedColors.teal
-    
-    // Overlay colors
-    val overlayBlack = SharedColors.overlayBlack
-    val overlayWhite = SharedColors.overlayWhite
     
     // Category Sidebar colors
     val categoryHoverBg = Color(0xFFE2E8F0)
     val categoryDefaultText = Color(0xFF475569)
-    val categoryChannelCountText = SharedColors.slate400
 }
 
 /**
@@ -187,39 +158,10 @@ object DarkColors {
     // Icon colors
     val iconColor = Color(0xFFBDC1C6)
     val iconColorHover = textPrimary
-    val colorBlocked = SharedColors.blocked
-    
-    // Avatar colors
-    val avatarPlaceholder = SharedColors.avatarPlaceholder
-    val avatarAccentBg = SharedColors.avatarAccentBg
-    val avatarAccentText = SharedColors.avatarAccentText
-    
-    // Gradient colors for settings cards
-    val gradientIndigoStart = SharedColors.indigo
-    val gradientIndigoEnd = SharedColors.indigoEnd
-    val gradientPinkStart = SharedColors.pink
-    val gradientPinkEnd = SharedColors.pinkEnd
-    val gradientTealStart = SharedColors.teal
-    val gradientTealEnd = SharedColors.tealEnd
-    val gradientOrangeStart = SharedColors.orange
-    val gradientRedEnd = SharedColors.red
-    
-    // Video player colors
-    val videoPlayerBg = SharedColors.videoPlayerBg
-    
-    // Favorite type colors
-    val favoriteLive = SharedColors.indigo
-    val favoriteMovie = SharedColors.pink
-    val favoriteSeries = SharedColors.teal
-    
-    // Overlay colors
-    val overlayBlack = SharedColors.overlayBlack
-    val overlayWhite = SharedColors.overlayWhite
     
     // Category Sidebar colors
     val categoryHoverBg = Color(0x0DFFFFFF)
     val categoryDefaultText = Color(0xFFCBD5E1)
-    val categoryChannelCountText = SharedColors.slate400
 }
 
 // Legacy compatibility - keep for existing code

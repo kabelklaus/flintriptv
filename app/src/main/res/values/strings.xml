@@ -1,6 +1,5 @@
 <resources>
     <string name="app_name">flintrTV</string>
-    <string name="menu">Menü</string>
     <string name="remove_from_favorites">Aus Favoriten entfernen</string>
     <string name="add_to_favorites">Zu Favoriten hinzufügen</string>
     
@@ -42,7 +41,6 @@
     <string name="hide_password">Passwort verbergen</string>
     <string name="show_password">Passwort anzeigen</string>
     <string name="testing_connection">Wird getestet…</string>
-    <string name="loading">Wird geladen…</string>
     <string name="server_address">Serveradresse</string>
     <string name="server_address_placeholder">http://example.com</string>
     <string name="playlist_name_optional">Playlist-Name (optional)</string>
@@ -53,7 +51,6 @@
     <string name="reload_data">Daten neu laden</string>
     <string name="save_settings">Einstellungen speichern</string>
     <string name="settings_saved">Einstellungen gespeichert</string>
-    <string name="reloading_data">Daten werden neu geladen…</string>
     <string name="server">Server</string>
     <string name="user">Benutzer</string>
     <string name="connection">Verbindung</string>
@@ -76,7 +73,7 @@
     
     <!-- Data Loading Screen -->
     <string name="loading_content">Inhalte werden geladen</string>
-    <string name="please_wait">Bitte warten...</string>
+    <string name="please_wait">Bitte warten…</string>
     <string name="progress">Fortschritt</string>
     <string name="retry_all">Alle erneut versuchen</string>
     <string name="retry">Wiederholen</string>
