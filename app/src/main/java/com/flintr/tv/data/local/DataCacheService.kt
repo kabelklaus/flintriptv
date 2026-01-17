@@ -6,11 +6,12 @@ import com.flintr.tv.data.model.*
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 
 data class CachedData(
@@ -25,7 +26,8 @@ data class CachedData(
 @Singleton
 class DataCacheService @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val moshi: Moshi
+    private val moshi: Moshi,
+    @Named("IO") private val ioDispatcher: CoroutineDispatcher
 ) {
     private val sharedPreferences: SharedPreferences = context.getSharedPreferences(
         "iptv_cache_prefs",
@@ -208,12 +210,85 @@ class DataCacheService @Inject constructor(
      * Loads cached data asynchronously on a background thread.
      * Use this instead of loadCachedData() to avoid blocking the main thread.
      */
-    suspend fun loadCachedDataAsync(): CachedData? = withContext(Dispatchers.IO) {
+    suspend fun loadCachedDataAsync(): CachedData? = withContext(ioDispatcher) {
         loadCachedDataInternal()
     }
 
     fun clearCache() {
         sharedPreferences.edit().clear().apply()
     }
+
+    /**
+     * Generic helper to load specific items by their IDs from a cached JSON list.
+     * This is more memory-efficient than loading all items when only a few are needed.
+     *
+     * @param T The type of item to load (e.g., LiveStream, VodStream, Series).
+     * @param cacheKey The SharedPreferences key for the JSON list.
+     * @param ids The list of IDs to load.
+     * @param itemClass The class of the item, for Moshi type creation.
+     * @param idSelector A function to extract the ID from an item.
+     * @return A list of items matching the IDs, or null if the cache is invalid.
+     */
+    private suspend fun <T : Any> loadItemsByIds(
+        cacheKey: String,
+        ids: List<Int>,
+        itemClass: Class<T>,
+        idSelector: (T) -> Int
+    ): List<T>? = withContext(ioDispatcher) {
+        if (ids.isEmpty()) {
+            return@withContext emptyList()
+        }
+
+        try {
+            val json = sharedPreferences.getString(cacheKey, null)
+            if (json.isNullOrBlank()) {
+                return@withContext null
+            }
+
+            val listType = Types.newParameterizedType(List::class.java, itemClass)
+            val adapter = moshi.adapter<List<T>>(listType)
+            val allItems = adapter.fromJson(json) ?: return@withContext null
+
+            // Use a map for efficient O(1) lookup instead of filtering
+            val itemsById = allItems.associateBy(idSelector)
+            val filteredItems = ids.mapNotNull { itemsById[it] }
+
+            android.util.Log.d("DataCacheService", "Loaded ${filteredItems.size} ${itemClass.simpleName}s from ${allItems.size} total (requested ${ids.size} IDs)")
+            return@withContext filteredItems
+        } catch (e: Exception) {
+            android.util.Log.e("DataCacheService", "Failed to load ${itemClass.simpleName}s by IDs for key $cacheKey", e)
+            return@withContext null
+        }
+    }
+
+    /**
+     * Loads only specific channels by their stream IDs from cache.
+     * This is more memory-efficient than loading all channels when only a few are needed.
+     * 
+     * @param streamIds List of stream IDs to load
+     * @return List of LiveStream objects matching the IDs, or null if cache is invalid
+     */
+    suspend fun loadChannelsByIds(streamIds: List<Int>): List<LiveStream>? =
+        loadItemsByIds(KEY_CACHE_CHANNELS, streamIds, LiveStream::class.java) { it.streamId }
+
+    /**
+     * Loads only specific movies by their stream IDs from cache.
+     * This is more memory-efficient than loading all movies when only a few are needed.
+     * 
+     * @param streamIds List of stream IDs to load
+     * @return List of VodStream objects matching the IDs, or null if cache is invalid
+     */
+    suspend fun loadMoviesByIds(streamIds: List<Int>): List<VodStream>? =
+        loadItemsByIds(KEY_CACHE_MOVIES, streamIds, VodStream::class.java) { it.streamId }
+
+    /**
+     * Loads only specific series by their series IDs from cache.
+     * This is more memory-efficient than loading all series when only a few are needed.
+     * 
+     * @param seriesIds List of series IDs to load
+     * @return List of Series objects matching the IDs, or null if cache is invalid
+     */
+    suspend fun loadSeriesByIds(seriesIds: List<Int>): List<Series>? =
+        loadItemsByIds(KEY_CACHE_SERIES, seriesIds, Series::class.java) { it.seriesId }
 }
 

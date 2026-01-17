@@ -249,8 +249,18 @@ fun DataLoadingScreen(
 
     // Navigate on loading complete
     LaunchedEffect(uiState.loadingComplete) {
-        if (uiState.loadingComplete && uiState.cachedData != null) {
-            onLoadingComplete(uiState.cachedData!!)
+        if (uiState.loadingComplete) {
+            // Create empty CachedData for callback (parameter is ignored anyway)
+            // cachedData is no longer stored in StateFlow to prevent OutOfMemoryError
+            val emptyCachedData = CachedData(
+                channels = emptyList(),
+                movies = emptyList(),
+                series = emptyList(),
+                liveCategories = emptyList(),
+                vodCategories = emptyList(),
+                seriesCategories = emptyList()
+            )
+            onLoadingComplete(emptyCachedData)
         }
     }
 

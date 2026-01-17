@@ -10,8 +10,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.Favorite
@@ -49,60 +47,6 @@ data class FavoritesContentParams(
     val focusRequesterMap: MutableMap<String, FocusRequester>? = null
 )
 
-/**
- * Data class to hold maps for efficient favorite matching.
- */
-private data class FavoriteMaps(
-    val channelsMap: Map<Int, LiveStream>,
-    val moviesMap: Map<Int, VodStream>,
-    val seriesMap: Map<Int, Series>
-)
-
-/**
- * Creates maps for O(1) lookups from cached data.
- */
-private fun createFavoriteMaps(cachedData: com.flintr.tv.data.local.CachedData): FavoriteMaps {
-    return FavoriteMaps(
-        channelsMap = cachedData.channels.associateBy<LiveStream, Int> { it.streamId },
-        moviesMap = cachedData.movies.associateBy<VodStream, Int> { it.streamId },
-        seriesMap = cachedData.series.associateBy<Series, Int> { it.seriesId }
-    )
-}
-
-/**
- * Matches a single favorite to its corresponding content item.
- */
-private fun matchFavoriteToContentItem(
-    favorite: Favorite,
-    maps: FavoriteMaps
-): FavoriteContentItem? {
-    return when (favorite.type) {
-        FavoriteType.LIVE -> {
-            maps.channelsMap[favorite.streamId]?.let { stream ->
-                FavoriteContentItem.Live(stream, favorite)
-            } ?: run {
-                Log.w("FavoritesContent", "LiveStream not found for favorite: ${favorite.id}")
-                null
-            }
-        }
-        FavoriteType.MOVIE -> {
-            maps.moviesMap[favorite.streamId]?.let { vod ->
-                FavoriteContentItem.Movie(vod, favorite)
-            } ?: run {
-                Log.w("FavoritesContent", "VodStream not found for favorite: ${favorite.id}")
-                null
-            }
-        }
-        FavoriteType.SERIES -> {
-            maps.seriesMap[favorite.streamId]?.let { series ->
-                FavoriteContentItem.SeriesItem(series, favorite)
-            } ?: run {
-                Log.w("FavoritesContent", "Series not found for favorite: ${favorite.id}")
-                null
-            }
-        }
-    }
-}
 
 /**
  * Creates the onNavigateLeft callback based on column index.
@@ -116,6 +60,124 @@ private fun createOnNavigateLeft(
     } else {
         null
     }
+}
+
+/**
+ * Data class to hold loaded favorite data.
+ */
+private data class FavoriteData(
+    val channels: List<LiveStream>,
+    val movies: List<VodStream>,
+    val series: List<Series>
+)
+
+/**
+ * Loads favorite data (channels, movies, series) based on favorite IDs.
+ */
+private suspend fun loadFavoriteData(
+    favorites: List<Favorite>,
+    cacheService: DataCacheService
+): FavoriteData {
+    val liveStreamIds = favorites.filter { it.type == FavoriteType.LIVE }.mapNotNull { it.streamId }
+    val movieStreamIds = favorites.filter { it.type == FavoriteType.MOVIE }.mapNotNull { it.streamId }
+    val seriesIds = favorites.filter { it.type == FavoriteType.SERIES }.mapNotNull { it.streamId }
+    
+    val channels = if (liveStreamIds.isNotEmpty()) {
+        cacheService.loadChannelsByIds(liveStreamIds) ?: emptyList()
+    } else {
+        emptyList()
+    }
+    
+    val movies = if (movieStreamIds.isNotEmpty()) {
+        cacheService.loadMoviesByIds(movieStreamIds) ?: emptyList()
+    } else {
+        emptyList()
+    }
+    
+    val series = if (seriesIds.isNotEmpty()) {
+        cacheService.loadSeriesByIds(seriesIds) ?: emptyList()
+    } else {
+        emptyList()
+    }
+    
+    return FavoriteData(channels, movies, series)
+}
+
+/**
+ * Matches live stream favorites with loaded channels.
+ */
+private fun matchLiveStreamFavorites(
+    favorites: List<Favorite>,
+    channelsMap: Map<Int, LiveStream>
+): List<FavoriteContentItem.Live> {
+    return favorites
+        .filter { it.type == FavoriteType.LIVE }
+        .mapNotNull { favorite ->
+            channelsMap[favorite.streamId]?.let { stream ->
+                FavoriteContentItem.Live(stream, favorite)
+            } ?: run {
+                Log.w("FavoritesContent", "LiveStream not found for favorite: ${favorite.id}")
+                null
+            }
+        }
+}
+
+/**
+ * Matches movie favorites with loaded movies.
+ */
+private fun matchMovieFavorites(
+    favorites: List<Favorite>,
+    moviesMap: Map<Int, VodStream>
+): List<FavoriteContentItem.Movie> {
+    return favorites
+        .filter { it.type == FavoriteType.MOVIE }
+        .mapNotNull { favorite ->
+            moviesMap[favorite.streamId]?.let { vod ->
+                FavoriteContentItem.Movie(vod, favorite)
+            } ?: run {
+                Log.w("FavoritesContent", "VodStream not found for favorite: ${favorite.id}")
+                null
+            }
+        }
+}
+
+/**
+ * Matches series favorites with loaded series.
+ */
+private fun matchSeriesFavorites(
+    favorites: List<Favorite>,
+    seriesMap: Map<Int, Series>
+): List<FavoriteContentItem.SeriesItem> {
+    return favorites
+        .filter { it.type == FavoriteType.SERIES }
+        .mapNotNull { favorite ->
+            seriesMap[favorite.streamId]?.let { seriesItem ->
+                FavoriteContentItem.SeriesItem(seriesItem, favorite)
+            } ?: run {
+                Log.w("FavoritesContent", "Series not found for favorite: ${favorite.id}")
+                null
+            }
+        }
+}
+
+/**
+ * Matches all favorites to content items.
+ */
+private suspend fun matchFavoritesToItems(
+    favorites: List<Favorite>,
+    cacheService: DataCacheService
+): List<FavoriteContentItem> {
+    val favoriteData = loadFavoriteData(favorites, cacheService)
+    
+    val channelsMap = favoriteData.channels.associateBy { it.streamId }
+    val moviesMap = favoriteData.movies.associateBy { it.streamId }
+    val seriesMap = favoriteData.series.associateBy { it.seriesId }
+    
+    val liveItems = matchLiveStreamFavorites(favorites, channelsMap)
+    val movieItems = matchMovieFavorites(favorites, moviesMap)
+    val seriesItems = matchSeriesFavorites(favorites, seriesMap)
+    
+    return liveItems + movieItems + seriesItems
 }
 
 /**
@@ -188,7 +250,7 @@ fun FavoritesContent(
         Log.d("FavoritesContent", "Loaded ${favorites.size} favorites")
     }
     
-    // Load cached data and match favorites with streams/series on background thread
+    // Load only needed streams/series and match favorites on background thread
     LaunchedEffect(favorites) {
         if (favorites.isEmpty()) {
             favoriteItems = emptyList()
@@ -196,25 +258,10 @@ fun FavoritesContent(
             return@LaunchedEffect
         }
         
-        // Perform all heavy operations on background thread
-        val items = withContext(Dispatchers.IO) {
-            val cachedData = params.cacheService.loadCachedDataAsync()
-            if (cachedData == null) {
-                Log.w("FavoritesContent", "No cached data available")
-                return@withContext emptyList<FavoriteContentItem>()
-            }
-            
-            // Create maps for O(1) lookups instead of O(n) searches
-            val maps = createFavoriteMaps(cachedData)
-            
-            // Match favorites using map lookups (O(1) instead of O(n))
-            favorites.mapNotNull { favorite ->
-                matchFavoriteToContentItem(favorite, maps)
-            }
-        }
+        val items = matchFavoritesToItems(favorites, params.cacheService)
         
         favoriteItems = items
-        Log.d("FavoritesContent", "Matched ${items.size} favorites with cached data")
+        Log.d("FavoritesContent", "Matched ${items.size} favorites with cached data (loaded ${favorites.size} favorites)")
         
         // Set isLoading to false immediately after data is ready
         // The loading indicator will be hidden when items are actually rendered (via onItemsRendered)

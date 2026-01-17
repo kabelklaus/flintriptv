@@ -44,8 +44,9 @@ data class DataLoadingUiState(
     val overallProgress: Float = 0f,
     val error: String? = null,
     val isLoading: Boolean = false,
-    val loadingComplete: Boolean = false,
-    val cachedData: CachedData? = null
+    val loadingComplete: Boolean = false
+    // Note: cachedData removed from StateFlow to prevent OutOfMemoryError
+    // Data is only held temporarily during loading and then saved to persistent cache
 )
 
 @HiltViewModel
@@ -96,9 +97,9 @@ class DataLoadingViewModel @Inject constructor(
                         steps = updatedSteps,
                         overallProgress = 1f,
                         isLoading = false,
-                        loadingComplete = true,
-                        cachedData = cachedData
+                        loadingComplete = true
                     )
+                    // cachedData is not stored in StateFlow to prevent OutOfMemoryError
                     return@launch
                 }
             }
@@ -178,19 +179,12 @@ class DataLoadingViewModel @Inject constructor(
                 seriesCategories = seriesCategories
             )
 
-            val cachedData = CachedData(
-                channels = liveStreams,
-                movies = vodStreams,
-                series = series,
-                liveCategories = liveCategories,
-                vodCategories = vodCategories,
-                seriesCategories = seriesCategories
-            )
+            // cachedData is not stored in StateFlow to prevent OutOfMemoryError
+            // Data is saved to persistent cache and can be loaded on demand
 
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
-                loadingComplete = true,
-                cachedData = cachedData
+                loadingComplete = true
             )
 
             Log.d("DataLoadingViewModel", "All data loaded successfully")
@@ -244,8 +238,7 @@ class DataLoadingViewModel @Inject constructor(
             overallProgress = 0f,
             error = null,
             isLoading = false,
-            loadingComplete = false,
-            cachedData = null
+            loadingComplete = false
         )
         checkCacheAndLoad()
     }
@@ -326,8 +319,10 @@ class DataLoadingViewModel @Inject constructor(
             seriesCategories = cachedData.seriesCategories
         )
 
+        // cachedData is not stored in StateFlow to prevent OutOfMemoryError
+        // Data is saved to persistent cache and can be loaded on demand
+
         _uiState.value = _uiState.value.copy(
-            cachedData = cachedData,
             isLoading = false,
             loadingComplete = true
         )
