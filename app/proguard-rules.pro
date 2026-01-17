@@ -12,10 +12,21 @@
 #   public *;
 #}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Preserve line numbers for better crash reports
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep data model classes used by Retrofit/Moshi
+# All models in com.flintr.tv.data.model package need to be preserved
+-keep class com.flintr.tv.data.model.** { *; }
+
+# Keep custom Moshi adapter and factory (uses reflection)
+-keep class com.flintr.tv.data.model.SeriesInfoResponseAdapter { *; }
+-keep class com.flintr.tv.data.model.SeriesInfoResponseAdapterFactory { *; }
+
+# Keep Retrofit service interfaces (uses reflection for method invocation)
+-keep interface com.flintr.tv.data.api.GitHubApiService { *; }
+-keep interface com.flintr.tv.data.api.XtreamApiService { *; }
+
+# Keep Moshi generated adapters (if any are not detected automatically)
+-keep class com.flintr.tv.data.model.*JsonAdapter { *; }

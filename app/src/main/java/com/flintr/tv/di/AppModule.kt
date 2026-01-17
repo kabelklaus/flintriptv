@@ -26,7 +26,6 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Named
 import javax.inject.Singleton
-import javax.annotation.Nullable
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -58,7 +57,6 @@ object AppModule {
     
     @Provides
     @Singleton
-    @Nullable
     @Named("Xtream")
     fun provideRetrofit(
         okHttpClient: OkHttpClient,
@@ -78,15 +76,14 @@ object AppModule {
     
     @Provides
     @Singleton
-    @Nullable
-    fun provideXtreamApiService(@Nullable @Named("Xtream") retrofit: Retrofit?): XtreamApiService? {
+    fun provideXtreamApiService(@Named("Xtream") retrofit: Retrofit?): XtreamApiService? {
         return retrofit?.create(XtreamApiService::class.java)
     }
     
     @Provides
     @Singleton
     fun provideXtreamRepository(
-        @Nullable apiService: XtreamApiService?,
+        apiService: XtreamApiService?,
         credentialsRepository: CredentialsRepository,
         okHttpClient: OkHttpClient,
         moshi: Moshi,

@@ -9,13 +9,12 @@ import com.squareup.moshi.Moshi
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
-import javax.annotation.Nullable
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class XtreamRepository @Inject constructor(
-    @Nullable private val apiService: XtreamApiService?,
+    private val apiService: XtreamApiService?,
     private val credentialsRepository: CredentialsRepository,
     private val okHttpClient: OkHttpClient,
     private val moshi: Moshi,
