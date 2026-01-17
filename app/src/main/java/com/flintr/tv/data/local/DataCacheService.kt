@@ -219,38 +219,57 @@ class DataCacheService @Inject constructor(
     }
 
     /**
+     * Generic helper to load specific items by their IDs from a cached JSON list.
+     * This is more memory-efficient than loading all items when only a few are needed.
+     *
+     * @param T The type of item to load (e.g., LiveStream, VodStream, Series).
+     * @param cacheKey The SharedPreferences key for the JSON list.
+     * @param ids The list of IDs to load.
+     * @param itemClass The class of the item, for Moshi type creation.
+     * @param idSelector A function to extract the ID from an item.
+     * @return A list of items matching the IDs, or null if the cache is invalid.
+     */
+    private suspend fun <T : Any> loadItemsByIds(
+        cacheKey: String,
+        ids: List<Int>,
+        itemClass: Class<T>,
+        idSelector: (T) -> Int
+    ): List<T>? = withContext(ioDispatcher) {
+        if (ids.isEmpty()) {
+            return@withContext emptyList()
+        }
+
+        try {
+            val json = sharedPreferences.getString(cacheKey, null)
+            if (json.isNullOrBlank()) {
+                return@withContext null
+            }
+
+            val listType = Types.newParameterizedType(List::class.java, itemClass)
+            val adapter = moshi.adapter<List<T>>(listType)
+            val allItems = adapter.fromJson(json) ?: return@withContext null
+
+            // Use a map for efficient O(1) lookup instead of filtering
+            val itemsById = allItems.associateBy(idSelector)
+            val filteredItems = ids.mapNotNull { itemsById[it] }
+
+            android.util.Log.d("DataCacheService", "Loaded ${filteredItems.size} ${itemClass.simpleName}s from ${allItems.size} total (requested ${ids.size} IDs)")
+            return@withContext filteredItems
+        } catch (e: Exception) {
+            android.util.Log.e("DataCacheService", "Failed to load ${itemClass.simpleName}s by IDs for key $cacheKey", e)
+            return@withContext null
+        }
+    }
+
+    /**
      * Loads only specific channels by their stream IDs from cache.
      * This is more memory-efficient than loading all channels when only a few are needed.
      * 
      * @param streamIds List of stream IDs to load
      * @return List of LiveStream objects matching the IDs, or null if cache is invalid
      */
-    suspend fun loadChannelsByIds(streamIds: List<Int>): List<LiveStream>? = withContext(ioDispatcher) {
-        if (streamIds.isEmpty()) {
-            return@withContext emptyList()
-        }
-        
-        try {
-            val channelsJson = sharedPreferences.getString(KEY_CACHE_CHANNELS, null)
-            if (channelsJson.isNullOrBlank()) {
-                return@withContext null
-            }
-
-            val listType = Types.newParameterizedType(List::class.java, LiveStream::class.java)
-            val adapter = moshi.adapter<List<LiveStream>>(listType)
-            val allChannels = adapter.fromJson(channelsJson) ?: return@withContext null
-
-            // Filter to only include channels with matching streamIds
-            val streamIdsSet = streamIds.toSet()
-            val filteredChannels = allChannels.filter { it.streamId in streamIdsSet }
-            
-            android.util.Log.d("DataCacheService", "Loaded ${filteredChannels.size} channels from ${allChannels.size} total (requested ${streamIds.size} IDs)")
-            return@withContext filteredChannels
-        } catch (e: Exception) {
-            android.util.Log.e("DataCacheService", "Failed to load channels by IDs", e)
-            return@withContext null
-        }
-    }
+    suspend fun loadChannelsByIds(streamIds: List<Int>): List<LiveStream>? =
+        loadItemsByIds(KEY_CACHE_CHANNELS, streamIds, LiveStream::class.java) { it.streamId }
 
     /**
      * Loads only specific movies by their stream IDs from cache.
@@ -259,32 +278,8 @@ class DataCacheService @Inject constructor(
      * @param streamIds List of stream IDs to load
      * @return List of VodStream objects matching the IDs, or null if cache is invalid
      */
-    suspend fun loadMoviesByIds(streamIds: List<Int>): List<VodStream>? = withContext(ioDispatcher) {
-        if (streamIds.isEmpty()) {
-            return@withContext emptyList()
-        }
-        
-        try {
-            val moviesJson = sharedPreferences.getString(KEY_CACHE_MOVIES, null)
-            if (moviesJson.isNullOrBlank()) {
-                return@withContext null
-            }
-
-            val vodListType = Types.newParameterizedType(List::class.java, VodStream::class.java)
-            val vodAdapter = moshi.adapter<List<VodStream>>(vodListType)
-            val allMovies = vodAdapter.fromJson(moviesJson) ?: return@withContext null
-
-            // Filter to only include movies with matching streamIds
-            val streamIdsSet = streamIds.toSet()
-            val filteredMovies = allMovies.filter { it.streamId in streamIdsSet }
-            
-            android.util.Log.d("DataCacheService", "Loaded ${filteredMovies.size} movies from ${allMovies.size} total (requested ${streamIds.size} IDs)")
-            return@withContext filteredMovies
-        } catch (e: Exception) {
-            android.util.Log.e("DataCacheService", "Failed to load movies by IDs", e)
-            return@withContext null
-        }
-    }
+    suspend fun loadMoviesByIds(streamIds: List<Int>): List<VodStream>? =
+        loadItemsByIds(KEY_CACHE_MOVIES, streamIds, VodStream::class.java) { it.streamId }
 
     /**
      * Loads only specific series by their series IDs from cache.
@@ -293,31 +288,7 @@ class DataCacheService @Inject constructor(
      * @param seriesIds List of series IDs to load
      * @return List of Series objects matching the IDs, or null if cache is invalid
      */
-    suspend fun loadSeriesByIds(seriesIds: List<Int>): List<Series>? = withContext(ioDispatcher) {
-        if (seriesIds.isEmpty()) {
-            return@withContext emptyList()
-        }
-        
-        try {
-            val seriesJson = sharedPreferences.getString(KEY_CACHE_SERIES, null)
-            if (seriesJson.isNullOrBlank()) {
-                return@withContext null
-            }
-
-            val seriesListType = Types.newParameterizedType(List::class.java, Series::class.java)
-            val seriesAdapter = moshi.adapter<List<Series>>(seriesListType)
-            val allSeries = seriesAdapter.fromJson(seriesJson) ?: return@withContext null
-
-            // Filter to only include series with matching seriesIds
-            val seriesIdsSet = seriesIds.toSet()
-            val filteredSeries = allSeries.filter { it.seriesId in seriesIdsSet }
-            
-            android.util.Log.d("DataCacheService", "Loaded ${filteredSeries.size} series from ${allSeries.size} total (requested ${seriesIds.size} IDs)")
-            return@withContext filteredSeries
-        } catch (e: Exception) {
-            android.util.Log.e("DataCacheService", "Failed to load series by IDs", e)
-            return@withContext null
-        }
-    }
+    suspend fun loadSeriesByIds(seriesIds: List<Int>): List<Series>? =
+        loadItemsByIds(KEY_CACHE_SERIES, seriesIds, Series::class.java) { it.seriesId }
 }
 

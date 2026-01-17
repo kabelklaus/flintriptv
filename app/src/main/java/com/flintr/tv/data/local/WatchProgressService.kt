@@ -270,17 +270,13 @@ class WatchProgressService @Inject constructor(
             cachedProgressMap = updatedMap
 
             // Automatically remove movie from favorites when progress is deleted
+            // Reconstruct the favorite ID directly (same format as addMovieToFavoritesIfNeeded)
             if (contentType == "movie" && streamId != null && progress != null) {
                 try {
-                    // Find favorite by streamId (since we don't have the exact favorite ID)
-                    val favorites = favoritesRepository.getAllFavorites()
-                    val movieFavorite = favorites.find { 
-                        it.type == FavoriteType.MOVIE && it.streamId == streamId 
-                    }
-                    movieFavorite?.let {
-                        favoritesRepository.removeFavorite(it.id)
-                        Log.d(TAG, "Automatically removed movie from favorites: streamId=$streamId, favoriteId=${it.id}")
-                    } ?: Log.d(TAG, "Movie favorite not found for removal: streamId=$streamId")
+                    val encodedName = URLEncoder.encode(progress.title, "UTF-8")
+                    val favoriteId = "$KEY_PREFIX_MOVIE$streamId:$encodedName"
+                    favoritesRepository.removeFavorite(favoriteId)
+                    Log.d(TAG, "Automatically removed movie from favorites: streamId=$streamId, favoriteId=$favoriteId")
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to automatically remove movie from favorites: streamId=$streamId", e)
                     // Don't fail the progress deletion if favorite removal fails

@@ -27,6 +27,10 @@ import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.common.UiConstants
 
+// Constants for in-progress content loading
+private const val API_CALL_DELAY_MS = 100L
+private const val MAX_IN_PROGRESS_SERIES_TO_LOAD = 10
+
 // Sealed class to represent different in-progress content types
 private sealed class InProgressItem {
     data class Movie(val vod: VodStream, val progress: WatchProgress) : InProgressItem()
@@ -221,7 +225,7 @@ private suspend fun loadAndProcessSeries(
 ): List<InProgressItem.EpisodeItem> {
     // Add small delay between API calls to allow GC
     if (index > 0) {
-        delay(100) // 100ms delay between calls
+        delay(API_CALL_DELAY_MS)
     }
     
     val result = xtreamRepository.getSeriesInfo(
@@ -258,10 +262,10 @@ private suspend fun loadInProgressEpisodes(
     val items = mutableListOf<InProgressItem.EpisodeItem>()
     
     // Load full series info for each series with progress (sequentially to avoid OOM)
-    // Limit to first 10 series to avoid memory issues
-    val limitedSeriesIds = episodeSeriesIds.take(10)
-    if (episodeSeriesIds.size > 10) {
-        Log.w("InProgressContent", "Limiting to first 10 series to avoid OOM (${episodeSeriesIds.size} total)")
+    // Limit series count to avoid memory issues
+    val limitedSeriesIds = episodeSeriesIds.take(MAX_IN_PROGRESS_SERIES_TO_LOAD)
+    if (episodeSeriesIds.size > MAX_IN_PROGRESS_SERIES_TO_LOAD) {
+        Log.w("InProgressContent", "Limiting to first $MAX_IN_PROGRESS_SERIES_TO_LOAD series to avoid OOM (${episodeSeriesIds.size} total)")
     }
     
     limitedSeriesIds.forEachIndexed { index, seriesId ->
