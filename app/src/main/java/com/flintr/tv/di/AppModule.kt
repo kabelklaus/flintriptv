@@ -236,5 +236,13 @@ object AppModule {
     ): CategoryVisibilityService {
         return CategoryVisibilityService(context, moshi)
     }
+    
+    @Provides
+    @Singleton
+    fun provideResourcesProvider(
+        androidResourcesProvider: AndroidResourcesProvider
+    ): ResourcesProvider {
+        return androidResourcesProvider
+    }
 }
 

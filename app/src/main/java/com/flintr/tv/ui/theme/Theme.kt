@@ -93,6 +93,137 @@ fun FlintRTVTheme(
 }
 
 /**
+ * Data class containing all theme-specific color properties
+ * Used to reduce parameter count in conversion functions
+ */
+private data class ThemeSpecificColors(
+    val bgSidebar: Color,
+    val bgSidebarCard: Color,
+    val bgList: Color,
+    val bgPreview: Color,
+    val bgSelected: Color,
+    val bgHover: Color,
+    val bgCard: Color,
+    val cardBorder: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val accentColor: Color,
+    val accentColorHoverBg: Color,
+    val accentColorBorderLight: Color,
+    val navActiveBg: Color,
+    val navActiveText: Color,
+    val badgeBg: Color,
+    val badgeText: Color,
+    val dangerBg: Color,
+    val dangerBorder: Color,
+    val dangerText: Color,
+    val successColor: Color,
+    val errorColor: Color,
+    val successGreen: Color,
+    val buttonPrimary: Color,
+    val buttonPrimaryHover: Color,
+    val proBadgeBg: Color,
+    val iconColor: Color,
+    val iconColorHover: Color,
+    val categoryHoverBg: Color,
+    val categoryDefaultText: Color
+)
+
+/**
+ * Extension function to convert LightColors to ThemeSpecificColors
+ */
+private fun LightColors.toThemeSpecificColors(): ThemeSpecificColors {
+    return ThemeSpecificColors(
+        bgSidebar, bgSidebarCard, bgList, bgPreview, bgSelected, bgHover,
+        bgCard, cardBorder, textPrimary, textSecondary, accentColor,
+        accentColorHoverBg, accentColorBorderLight, navActiveBg, navActiveText,
+        badgeBg, badgeText, dangerBg, dangerBorder, dangerText,
+        successColor, errorColor, successGreen, buttonPrimary, buttonPrimaryHover,
+        proBadgeBg, iconColor, iconColorHover, categoryHoverBg, categoryDefaultText
+    )
+}
+
+/**
+ * Extension function to convert DarkColors to ThemeSpecificColors
+ */
+private fun DarkColors.toThemeSpecificColors(): ThemeSpecificColors {
+    return ThemeSpecificColors(
+        bgSidebar, bgSidebarCard, bgList, bgPreview, bgSelected, bgHover,
+        bgCard, cardBorder, textPrimary, textSecondary, accentColor,
+        accentColorHoverBg, accentColorBorderLight, navActiveBg, navActiveText,
+        badgeBg, badgeText, dangerBg, dangerBorder, dangerText,
+        successColor, errorColor, successGreen, buttonPrimary, buttonPrimaryHover,
+        proBadgeBg, iconColor, iconColorHover, categoryHoverBg, categoryDefaultText
+    )
+}
+
+/**
+ * Extension function to convert ThemeSpecificColors to AppColors
+ * Copies all theme-specific properties and adds shared colors from SharedColors
+ * 
+ * Note: The first 30 properties of AppColors are identical to ThemeSpecificColors.
+ * This duplication is structurally necessary because:
+ * 1. AppColors is a data class used throughout the codebase with direct property access
+ * 2. ThemeSpecificColors serves as an intermediate type to reduce parameter count
+ * 3. Both need to be data classes for proper destructuring and equality checks
+ * The explicit property copying ensures type safety and maintains API compatibility.
+ */
+private fun ThemeSpecificColors.toAppColors(): AppColors {
+    return AppColors(
+        bgSidebar = bgSidebar,
+        bgSidebarCard = bgSidebarCard,
+        bgList = bgList,
+        bgPreview = bgPreview,
+        bgSelected = bgSelected,
+        bgHover = bgHover,
+        bgCard = bgCard,
+        cardBorder = cardBorder,
+        textPrimary = textPrimary,
+        textSecondary = textSecondary,
+        accentColor = accentColor,
+        accentColorHoverBg = accentColorHoverBg,
+        accentColorBorderLight = accentColorBorderLight,
+        navActiveBg = navActiveBg,
+        navActiveText = navActiveText,
+        badgeBg = badgeBg,
+        badgeText = badgeText,
+        dangerBg = dangerBg,
+        dangerBorder = dangerBorder,
+        dangerText = dangerText,
+        successColor = successColor,
+        errorColor = errorColor,
+        successGreen = successGreen,
+        buttonPrimary = buttonPrimary,
+        buttonPrimaryHover = buttonPrimaryHover,
+        proBadgeBg = proBadgeBg,
+        iconColor = iconColor,
+        iconColorHover = iconColorHover,
+        categoryHoverBg = categoryHoverBg,
+        categoryDefaultText = categoryDefaultText,
+        // Shared colors
+        colorBlocked = SharedColors.blocked,
+        avatarPlaceholder = SharedColors.avatarPlaceholder,
+        avatarAccentBg = SharedColors.avatarAccentBg,
+        avatarAccentText = SharedColors.avatarAccentText,
+        gradientIndigoStart = SharedColors.indigo,
+        gradientIndigoEnd = SharedColors.indigoEnd,
+        gradientPinkStart = SharedColors.pink,
+        gradientPinkEnd = SharedColors.pinkEnd,
+        gradientTealStart = SharedColors.teal,
+        gradientTealEnd = SharedColors.tealEnd,
+        gradientOrangeStart = SharedColors.orange,
+        gradientRedEnd = SharedColors.red,
+        videoPlayerBg = SharedColors.videoPlayerBg,
+        favoriteLive = SharedColors.indigo,
+        favoriteMovie = SharedColors.pink,
+        favoriteSeries = SharedColors.teal,
+        overlayBlack = SharedColors.overlayBlack,
+        overlayWhite = SharedColors.overlayWhite,
+        categoryChannelCountText = SharedColors.slate400
+    )
+}
+
+/**
  * Helper to get custom colors based on current theme
  * Similar to AppTheme.colorsOf(context) in Flutter
  */
@@ -101,115 +232,22 @@ fun appColors(): AppColors {
     val colorScheme = MaterialTheme.colorScheme
     val isDark = colorScheme.isDark
     return if (isDark) {
-        AppColors(
-            bgSidebar = DarkColors.bgSidebar,
-            bgSidebarCard = DarkColors.bgSidebarCard,
-            bgList = DarkColors.bgList,
-            bgPreview = DarkColors.bgPreview,
-            bgSelected = DarkColors.bgSelected,
-            bgHover = DarkColors.bgHover,
-            bgCard = DarkColors.bgCard,
-            cardBorder = DarkColors.cardBorder,
-            textPrimary = DarkColors.textPrimary,
-            textSecondary = DarkColors.textSecondary,
-            accentColor = DarkColors.accentColor,
-            accentColorHoverBg = DarkColors.accentColorHoverBg,
-            accentColorBorderLight = DarkColors.accentColorBorderLight,
-            navActiveBg = DarkColors.navActiveBg,
-            navActiveText = DarkColors.navActiveText,
-            badgeBg = DarkColors.badgeBg,
-            badgeText = DarkColors.badgeText,
-            dangerBg = DarkColors.dangerBg,
-            dangerBorder = DarkColors.dangerBorder,
-            dangerText = DarkColors.dangerText,
-            successColor = DarkColors.successColor,
-            errorColor = DarkColors.errorColor,
-            successGreen = DarkColors.successGreen,
-            buttonPrimary = DarkColors.buttonPrimary,
-            buttonPrimaryHover = DarkColors.buttonPrimaryHover,
-            proBadgeBg = DarkColors.proBadgeBg,
-            iconColor = DarkColors.iconColor,
-            iconColorHover = DarkColors.iconColorHover,
-            colorBlocked = DarkColors.colorBlocked,
-            avatarPlaceholder = DarkColors.avatarPlaceholder,
-            avatarAccentBg = DarkColors.avatarAccentBg,
-            avatarAccentText = DarkColors.avatarAccentText,
-            gradientIndigoStart = DarkColors.gradientIndigoStart,
-            gradientIndigoEnd = DarkColors.gradientIndigoEnd,
-            gradientPinkStart = DarkColors.gradientPinkStart,
-            gradientPinkEnd = DarkColors.gradientPinkEnd,
-            gradientTealStart = DarkColors.gradientTealStart,
-            gradientTealEnd = DarkColors.gradientTealEnd,
-            gradientOrangeStart = DarkColors.gradientOrangeStart,
-            gradientRedEnd = DarkColors.gradientRedEnd,
-            videoPlayerBg = DarkColors.videoPlayerBg,
-            favoriteLive = DarkColors.favoriteLive,
-            favoriteMovie = DarkColors.favoriteMovie,
-            favoriteSeries = DarkColors.favoriteSeries,
-            overlayBlack = DarkColors.overlayBlack,
-            overlayWhite = DarkColors.overlayWhite,
-            categoryHoverBg = DarkColors.categoryHoverBg,
-            categoryDefaultText = DarkColors.categoryDefaultText,
-            categoryChannelCountText = DarkColors.categoryChannelCountText
-        )
+        DarkColors.toThemeSpecificColors().toAppColors()
     } else {
-        AppColors(
-            bgSidebar = LightColors.bgSidebar,
-            bgSidebarCard = LightColors.bgSidebarCard,
-            bgList = LightColors.bgList,
-            bgPreview = LightColors.bgPreview,
-            bgSelected = LightColors.bgSelected,
-            bgHover = LightColors.bgHover,
-            bgCard = LightColors.bgCard,
-            cardBorder = LightColors.cardBorder,
-            textPrimary = LightColors.textPrimary,
-            textSecondary = LightColors.textSecondary,
-            accentColor = LightColors.accentColor,
-            accentColorHoverBg = LightColors.accentColorHoverBg,
-            accentColorBorderLight = LightColors.accentColorBorderLight,
-            navActiveBg = LightColors.navActiveBg,
-            navActiveText = LightColors.navActiveText,
-            badgeBg = LightColors.badgeBg,
-            badgeText = LightColors.badgeText,
-            dangerBg = LightColors.dangerBg,
-            dangerBorder = LightColors.dangerBorder,
-            dangerText = LightColors.dangerText,
-            successColor = LightColors.successColor,
-            errorColor = LightColors.errorColor,
-            successGreen = LightColors.successGreen,
-            buttonPrimary = LightColors.buttonPrimary,
-            buttonPrimaryHover = LightColors.buttonPrimaryHover,
-            proBadgeBg = LightColors.proBadgeBg,
-            iconColor = LightColors.iconColor,
-            iconColorHover = LightColors.iconColorHover,
-            colorBlocked = LightColors.colorBlocked,
-            avatarPlaceholder = LightColors.avatarPlaceholder,
-            avatarAccentBg = LightColors.avatarAccentBg,
-            avatarAccentText = LightColors.avatarAccentText,
-            gradientIndigoStart = LightColors.gradientIndigoStart,
-            gradientIndigoEnd = LightColors.gradientIndigoEnd,
-            gradientPinkStart = LightColors.gradientPinkStart,
-            gradientPinkEnd = LightColors.gradientPinkEnd,
-            gradientTealStart = LightColors.gradientTealStart,
-            gradientTealEnd = LightColors.gradientTealEnd,
-            gradientOrangeStart = LightColors.gradientOrangeStart,
-            gradientRedEnd = LightColors.gradientRedEnd,
-            videoPlayerBg = LightColors.videoPlayerBg,
-            favoriteLive = LightColors.favoriteLive,
-            favoriteMovie = LightColors.favoriteMovie,
-            favoriteSeries = LightColors.favoriteSeries,
-            overlayBlack = LightColors.overlayBlack,
-            overlayWhite = LightColors.overlayWhite,
-            categoryHoverBg = LightColors.categoryHoverBg,
-            categoryDefaultText = LightColors.categoryDefaultText,
-            categoryChannelCountText = LightColors.categoryChannelCountText
-        )
+        LightColors.toThemeSpecificColors().toAppColors()
     }
 }
 
 /**
  * Data class for app-specific colors
  * Similar to AppColors in Flutter
+ * 
+ * Note: The first 30 properties (bgSidebar through categoryDefaultText) are
+ * structurally identical to ThemeSpecificColors. This duplication is necessary
+ * because AppColors is used throughout the codebase with direct property access
+ * (e.g., colors.bgSidebar), and changing this would require a breaking change.
+ * ThemeSpecificColors serves as an intermediate type to reduce parameter count
+ * in helper functions, while AppColors provides the public API.
  */
 data class AppColors(
     val bgSidebar: Color,

@@ -2,8 +2,10 @@ package com.flintr.tv.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.flintr.tv.R
 import com.flintr.tv.data.model.UpdateInfo
 import com.flintr.tv.data.repository.UpdateRepository
+import com.flintr.tv.di.ResourcesProvider
 import com.flintr.tv.utils.DownloadProgress
 import com.flintr.tv.utils.UpdateDownloadService
 import com.flintr.tv.utils.UpdateInstaller
@@ -16,19 +18,11 @@ import javax.inject.Inject
 
 @HiltViewModel
 class UpdateViewModel @Inject constructor(
-    val updateRepository: UpdateRepository,
-    val downloadService: UpdateDownloadService,
-    val installer: UpdateInstaller
+    private val updateRepository: UpdateRepository,
+    private val downloadService: UpdateDownloadService,
+    private val installer: UpdateInstaller,
+    private val resourcesProvider: ResourcesProvider
 ) : ViewModel() {
-    
-    companion object {
-        // Error messages - defined as constants for maintainability
-        // TODO: Consider using a StringProvider via DI for localization support
-        private const val ERROR_CHECKING_UPDATES = "Fehler beim Prüfen auf Updates: %s"
-        private const val ERROR_DOWNLOAD = "Download-Fehler: %s"
-        private const val ERROR_INSTALLATION_FAILED = "Installation fehlgeschlagen"
-        private const val ERROR_APK_NOT_FOUND = "APK-Datei nicht gefunden"
-    }
     
     private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
     val updateInfo: StateFlow<UpdateInfo?> = _updateInfo.asStateFlow()
@@ -55,7 +49,10 @@ class UpdateViewModel @Inject constructor(
                 val info = updateRepository.checkForUpdates(currentVersion)
                 _updateInfo.value = info
             } catch (e: Exception) {
-                _errorMessage.value = String.format(ERROR_CHECKING_UPDATES, e.message ?: "Unknown error")
+                _errorMessage.value = resourcesProvider.getString(
+                    R.string.error_checking_updates,
+                    e.message ?: resourcesProvider.getString(R.string.unknown_error)
+                )
             } finally {
                 _isCheckingUpdates.value = false
             }
@@ -74,7 +71,10 @@ class UpdateViewModel @Inject constructor(
                     // Install automatically after download
                     installUpdate(version)
                 } else if (progress.error != null) {
-                    _errorMessage.value = String.format(ERROR_DOWNLOAD, progress.error.message ?: "Unknown error")
+                    _errorMessage.value = resourcesProvider.getString(
+                        R.string.download_error,
+                        progress.error.message ?: resourcesProvider.getString(R.string.unknown_error)
+                    )
                 }
             }
         }
@@ -86,10 +86,10 @@ class UpdateViewModel @Inject constructor(
             if (apkFile != null) {
                 val success = installer.installApk(apkFile)
                 if (!success) {
-                    _errorMessage.value = ERROR_INSTALLATION_FAILED
+                    _errorMessage.value = resourcesProvider.getString(R.string.installation_failed)
                 }
             } else {
-                _errorMessage.value = ERROR_APK_NOT_FOUND
+                _errorMessage.value = resourcesProvider.getString(R.string.apk_not_found)
             }
         }
     }
