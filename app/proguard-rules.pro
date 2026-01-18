@@ -19,7 +19,6 @@
 # Keep attributes needed for Retrofit's generic type reflection
 -keepattributes Signature
 -keepattributes Exceptions
--keepattributes *Annotation*
 
 # Retrofit: Keep service interfaces and their generic type information
 -keep interface com.flintr.tv.data.api.GitHubApiService { *; }
@@ -48,7 +47,12 @@
 
 # Moshi: Keep all generated JsonAdapters
 -keep class com.flintr.tv.data.model.*JsonAdapter { *; }
--keep class com.squareup.moshi.** { *; }
+
+# Moshi: Keep reflection classes needed for custom SeriesInfoResponseAdapterFactory
+# The factory uses Types.newParameterizedType() and moshi.adapter() at runtime
+-keep class com.squareup.moshi.Types { *; }
+-keep class com.squareup.moshi.Moshi { *; }
+-keep class com.squareup.moshi.JsonAdapter$Factory { *; }
 -keep @com.squareup.moshi.JsonQualifier interface *
 
 # Moshi: Keep generic signatures for Kotlin data classes
