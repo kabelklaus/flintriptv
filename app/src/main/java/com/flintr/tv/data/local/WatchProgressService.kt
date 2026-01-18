@@ -3,8 +3,11 @@ package com.flintr.tv.data.local
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Favorite
 import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.Season
+import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.WatchProgress
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -15,6 +18,26 @@ import java.net.URLEncoder
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * Represents the last interaction with an episode (either in-progress or completed)
+ */
+data class LastInteraction(
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    val episodeId: Int,
+    val progress: Float,  // 0.0 - 1.0
+    val timestamp: Long   // Unix timestamp in milliseconds
+)
+
+/**
+ * Represents the target episode for smart resume navigation
+ */
+data class SmartResumeTarget(
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    val episodeId: Int
+)
 
 @Singleton
 class WatchProgressService @Inject constructor(
@@ -388,4 +411,255 @@ class WatchProgressService @Inject constructor(
      * Gets all watched VOD IDs, optionally filtered by category (batch loading, delegates to WatchedHistoryService)
      */
     suspend fun getWatchedVodIds(categoryId: String? = null): Set<Int> = watchedHistoryService.getWatchedVodIds(categoryId)
+
+    /**
+     * Creates a map of episodeId -> (Season, Episode) for efficient lookup
+     * Seasons are sorted once to avoid repeated sorting
+     */
+    private fun createEpisodeMap(series: Series): Map<Int, Pair<Season, Episode>> {
+        val sortedSeasons = series.seasons?.sortedBy { it.seasonNumber } ?: return emptyMap()
+        
+        return sortedSeasons.flatMap { season ->
+            season.episodes?.map { episode ->
+                episode.id to (season to episode)
+            } ?: emptyList()
+        }.toMap()
+    }
+
+    /**
+     * Creates a LastInteraction from a WatchProgress entry
+     * Returns null if the episode is not found or timestamp parsing fails
+     */
+    private fun createInteractionFromProgress(
+        episodeId: Int,
+        progress: WatchProgress,
+        episodeMap: Map<Int, Pair<Season, Episode>>
+    ): LastInteraction? {
+        val episodeInfo = episodeMap[episodeId] ?: return null
+        val (season, episode) = episodeInfo
+        
+        if (progress.duration <= 0L) {
+            Log.w(TAG, "Cannot calculate progress for episodeId=${episodeId} due to invalid duration: ${progress.duration}")
+            return null
+        }
+        val progressPercent = progress.position.toFloat() / progress.duration.toFloat()
+        val timestamp = try {
+            Instant.parse(progress.lastWatched).toEpochMilli()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error parsing lastWatched timestamp: ${progress.lastWatched}", e)
+            return null
+        }
+        
+        val episodeNumber = episode.episodeNum ?: episode.id
+        
+        return LastInteraction(
+            seasonNumber = season.seasonNumber,
+            episodeNumber = episodeNumber,
+            episodeId = episodeId,
+            progress = progressPercent,
+            timestamp = timestamp
+        )
+    }
+
+    /**
+     * Creates a LastInteraction from a WatchedHistory entry
+     * Returns null if the episode is not found
+     */
+    private fun createInteractionFromWatched(
+        episodeId: Int,
+        timestamp: Long,
+        episodeMap: Map<Int, Pair<Season, Episode>>
+    ): LastInteraction? {
+        val episodeInfo = episodeMap[episodeId] ?: return null
+        val (season, episode) = episodeInfo
+        
+        val episodeNumber = episode.episodeNum ?: episode.id
+        
+        return LastInteraction(
+            seasonNumber = season.seasonNumber,
+            episodeNumber = episodeNumber,
+            episodeId = episodeId,
+            progress = 1.0f, // Completed episodes are 100%
+            timestamp = timestamp
+        )
+    }
+
+    /**
+     * Finds the latest progress interaction from all in-progress episodes
+     */
+    private fun findLatestProgressInteraction(
+        seriesId: Int,
+        progressMap: Map<String, WatchProgress>,
+        episodeMap: Map<Int, Pair<Season, Episode>>
+    ): LastInteraction? {
+        val prefix = "$KEY_PREFIX_SERIES$seriesId:"
+        val progressEntries = progressMap.filterKeys { it.startsWith(prefix) }
+        
+        var latestProgress: LastInteraction? = null
+        
+        for ((key, progress) in progressEntries) {
+            val episodeId = key.removePrefix(prefix).toIntOrNull() ?: continue
+            val interaction = createInteractionFromProgress(episodeId, progress, episodeMap) ?: continue
+            
+            if (latestProgress == null || interaction.timestamp > latestProgress.timestamp) {
+                latestProgress = interaction
+            }
+        }
+        
+        return latestProgress
+    }
+
+    /**
+     * Gets the last interaction with any episode of the series
+     * Checks both WatchProgress (in-progress) and WatchedHistory (completed) storage systems
+     * Returns the most recent interaction based on timestamp
+     */
+    suspend fun getLastInteraction(seriesId: Int, series: Series): LastInteraction? = withContext(ioDispatcher) {
+        try {
+            if (series.seasons == null) return@withContext null
+            
+            // Sort seasons once and create episode map for efficient lookup
+            val episodeMap = createEpisodeMap(series)
+            
+            // Check WatchProgress for in-progress episodes
+            val progressMap = loadProgressMap()
+            val latestProgress = findLatestProgressInteraction(seriesId, progressMap, episodeMap)
+            
+            // Check WatchedHistory for completed episodes
+            val latestWatched = watchedHistoryService.getLatestWatchedEpisode(seriesId)
+            val latestWatchedInteraction = if (latestWatched != null) {
+                val (episodeId, timestamp) = latestWatched
+                createInteractionFromWatched(episodeId, timestamp, episodeMap)
+            } else {
+                null
+            }
+            
+            // Return the most recent interaction
+            listOfNotNull(latestProgress, latestWatchedInteraction).maxByOrNull { it.timestamp }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting last interaction for seriesId: $seriesId", e)
+            null
+        }
+    }
+
+    /**
+     * Finds the next episode after the given episode
+     * Handles season transitions (e.g., S01E10 -> S02E01)
+     * Returns null if no next episode exists
+     */
+    private fun findNextEpisode(
+        series: Series,
+        currentSeasonNum: Int,
+        currentEpisodeNum: Int
+    ): SmartResumeTarget? {
+        val sortedSeasons = series.seasons?.sortedBy { it.seasonNumber } ?: return null
+        
+        // Find current season
+        val currentSeasonIndex = sortedSeasons.indexOfFirst { it.seasonNumber == currentSeasonNum }
+        if (currentSeasonIndex < 0) return null
+        
+        val currentSeason = sortedSeasons[currentSeasonIndex]
+        val episodes = currentSeason.episodes ?: return null
+        
+        // Try to find next episode in same season
+        val currentEpisodeIndex = episodes.indexOfFirst { 
+            (it.episodeNum ?: it.id) == currentEpisodeNum 
+        }
+        
+        if (currentEpisodeIndex >= 0 && currentEpisodeIndex < episodes.size - 1) {
+            // Next episode in same season
+            val nextEpisode = episodes[currentEpisodeIndex + 1]
+            val nextEpisodeNum = nextEpisode.episodeNum ?: nextEpisode.id
+            return SmartResumeTarget(
+                seasonNumber = currentSeasonNum,
+                episodeNumber = nextEpisodeNum,
+                episodeId = nextEpisode.id
+            )
+        }
+        
+        // Check if there's a next season
+        if (currentSeasonIndex < sortedSeasons.size - 1) {
+            val nextSeason = sortedSeasons[currentSeasonIndex + 1]
+            val nextSeasonEpisodes = nextSeason.episodes ?: return null
+            
+            if (nextSeasonEpisodes.isNotEmpty()) {
+                // First episode of next season
+                val firstEpisode = nextSeasonEpisodes[0]
+                val firstEpisodeNum = firstEpisode.episodeNum ?: firstEpisode.id
+                return SmartResumeTarget(
+                    seasonNumber = nextSeason.seasonNumber,
+                    episodeNumber = firstEpisodeNum,
+                    episodeId = firstEpisode.id
+                )
+            }
+        }
+        
+        // No next episode found
+        return null
+    }
+
+    /**
+     * Gets the smart resume target for a series
+     * Implements the three cases:
+     * - Case A: Last episode is in-progress (< 90%) -> resume this episode
+     * - Case B: Last episode is completed (>= 90%) -> navigate to next episode
+     * - Case C: No history or no next episode -> navigate to S01E01
+     */
+    suspend fun getSmartResumeTarget(seriesId: Int, series: Series): SmartResumeTarget? = withContext(ioDispatcher) {
+        try {
+            val sortedSeasons = series.seasons?.sortedBy { it.seasonNumber } ?: return@withContext null
+            
+            // Edge case: No episodes available
+            val hasEpisodes = sortedSeasons.any { !it.episodes.isNullOrEmpty() }
+            if (!hasEpisodes) {
+                Log.d(TAG, "getSmartResumeTarget: seriesId=$seriesId, no episodes available")
+                return@withContext null
+            }
+            
+            // Get first episode for fallback (Case C)
+            val firstSeason = sortedSeasons.firstOrNull() ?: return@withContext null
+            val firstEpisodes = firstSeason.episodes ?: return@withContext null
+            if (firstEpisodes.isEmpty()) return@withContext null
+            
+            val firstEpisode = firstEpisodes[0]
+            val firstEpisodeNum = firstEpisode.episodeNum ?: firstEpisode.id
+            val fallbackTarget = SmartResumeTarget(
+                seasonNumber = firstSeason.seasonNumber,
+                episodeNumber = firstEpisodeNum,
+                episodeId = firstEpisode.id
+            )
+            
+            // Get last interaction
+            val lastInteraction = getLastInteraction(seriesId, series) ?: return@withContext fallbackTarget
+            
+            // Case A: Episode is in-progress (< 90%)
+            if (lastInteraction.progress < COMPLETION_THRESHOLD) {
+                Log.d(TAG, "getSmartResumeTarget: Case A - Resume episode S${lastInteraction.seasonNumber}E${lastInteraction.episodeNumber}")
+                return@withContext SmartResumeTarget(
+                    seasonNumber = lastInteraction.seasonNumber,
+                    episodeNumber = lastInteraction.episodeNumber,
+                    episodeId = lastInteraction.episodeId
+                )
+            }
+            
+            // Case B: Episode is completed (>= 90%) -> find next episode
+            val nextEpisode = findNextEpisode(
+                series = series,
+                currentSeasonNum = lastInteraction.seasonNumber,
+                currentEpisodeNum = lastInteraction.episodeNumber
+            )
+            
+            if (nextEpisode != null) {
+                Log.d(TAG, "getSmartResumeTarget: Case B - Next episode S${nextEpisode.seasonNumber}E${nextEpisode.episodeNumber}")
+                return@withContext nextEpisode
+            }
+            
+            // Case C: No next episode available -> fallback to first episode
+            Log.d(TAG, "getSmartResumeTarget: Case C - Fallback to S${fallbackTarget.seasonNumber}E${fallbackTarget.episodeNumber}")
+            return@withContext fallbackTarget
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting smart resume target for seriesId: $seriesId", e)
+            null
+        }
+    }
 }
