@@ -11,7 +11,7 @@ interface XtreamApiService {
     suspend fun getServerInfo(
         @Query("username") username: String,
         @Query("password") password: String
-    ): Response<ServerInfo>
+    ): Response<com.flintr.tv.data.model.ServerInfo>
     
     @GET("player_api.php")
     suspend fun getLiveCategories(

@@ -5,7 +5,7 @@ import retrofit2.Response
 import retrofit2.http.GET
 import retrofit2.http.Path
 
-fun interface GitHubApiService {
+interface GitHubApiService {
     
     @GET("repos/{owner}/{repo}/releases/latest")
     suspend fun getLatestRelease(
