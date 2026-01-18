@@ -14,8 +14,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,6 +35,7 @@ import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
+import com.flintr.tv.ui.components.WatchedBadge
 import com.flintr.tv.ui.theme.AppColors
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
@@ -54,14 +53,16 @@ private enum class NavigationDirection {
 private data class EpisodeCardState(
     val progressPercent: Float,
     val isCompleted: Boolean,
-    val remainingMinutes: Int?
+    val remainingMinutes: Int?,
+    val isWatched: Boolean
 )
 
 private data class EpisodeCardConfig(
     val episode: Episode,
     val season: Season,
     val series: Series,
-    val watchProgressService: WatchProgressService
+    val watchProgressService: WatchProgressService,
+    val watchedEpisodeIds: Set<Int>
 )
 
 private data class EpisodeCardCallbacks(
@@ -76,7 +77,8 @@ private data class SeasonNavigationParams(
     val selectedSeasonIndex: Int,
     val selectedSeason: Season?,
     val series: Series,
-    val watchProgressService: WatchProgressService
+    val watchProgressService: WatchProgressService,
+    val watchedEpisodeIds: Set<Int>
 )
 
 @Composable
@@ -102,6 +104,13 @@ fun SeriesEpisodesScreen(
     
     var selectedSeasonIndex by remember { mutableStateOf(0) }
     val selectedSeason = sortedSeasons.getOrNull(selectedSeasonIndex)
+    
+    // Batch-load watched episode IDs for the series
+    var watchedEpisodeIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    
+    LaunchedEffect(series.seriesId) {
+        watchedEpisodeIds = watchProgressService.getWatchedEpisodeIds(series.seriesId)
+    }
     
     // Background image
     val backdropImageUrl = displaySeries.backdropPath?.firstOrNull()
@@ -192,7 +201,8 @@ fun SeriesEpisodesScreen(
                     selectedSeasonIndex = selectedSeasonIndex,
                     selectedSeason = selectedSeason,
                     series = displaySeries,
-                    watchProgressService = watchProgressService
+                    watchProgressService = watchProgressService,
+                    watchedEpisodeIds = watchedEpisodeIds
                 ),
                 onSeasonSelected = { index ->
                     selectedSeasonIndex = index
@@ -388,6 +398,7 @@ private fun SeasonNavigation(
                 season = params.selectedSeason,
                 series = params.series,
                 watchProgressService = params.watchProgressService,
+                watchedEpisodeIds = params.watchedEpisodeIds,
                 onEpisodeClick = onEpisodeClick,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -471,6 +482,7 @@ private fun EpisodesList(
     season: Season,
     series: Series,
     watchProgressService: WatchProgressService,
+    watchedEpisodeIds: Set<Int>,
     onEpisodeClick: (Episode) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -530,7 +542,8 @@ private fun EpisodesList(
                         episode = episode,
                         season = season,
                         series = series,
-                        watchProgressService = watchProgressService
+                        watchProgressService = watchProgressService,
+                        watchedEpisodeIds = watchedEpisodeIds
                     ),
                     callbacks = EpisodeCardCallbacks(
                         onClick = { onEpisodeClick(episode) },
@@ -615,7 +628,8 @@ private fun EpisodeDetailCard(
     val progressState = rememberEpisodeProgress(
         episode = config.episode,
         series = config.series,
-        watchProgressService = config.watchProgressService
+        watchProgressService = config.watchProgressService,
+        watchedEpisodeIds = config.watchedEpisodeIds
     )
     
     // Border color with animation
@@ -752,7 +766,8 @@ private fun EpisodeDetailCard(
 private fun rememberEpisodeProgress(
     episode: Episode,
     series: Series,
-    watchProgressService: WatchProgressService
+    watchProgressService: WatchProgressService,
+    watchedEpisodeIds: Set<Int>
 ): EpisodeCardState {
     var progress by remember { mutableStateOf<Long?>(null) }
     var duration by remember { mutableStateOf<Long?>(null) }
@@ -777,6 +792,9 @@ private fun rememberEpisodeProgress(
         }
     }
     
+    // Check if episode is watched (from batch-loaded set)
+    val isWatched = episode.id in watchedEpisodeIds
+    
     // Calculate progress percentage
     val progressPercent = if (progress != null && duration != null && duration!! > 0) {
         (progress!!.toFloat() / duration!!.toFloat()).coerceIn(0f, 1f)
@@ -794,7 +812,8 @@ private fun rememberEpisodeProgress(
     return EpisodeCardState(
         progressPercent = progressPercent,
         isCompleted = isCompleted,
-        remainingMinutes = remainingMinutes
+        remainingMinutes = remainingMinutes,
+        isWatched = isWatched
     )
 }
 
@@ -832,16 +851,11 @@ private fun EpisodeProgressIndicator(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (progressState.isCompleted) {
-            // Checkmark for completed episodes
-            Icon(
-                imageVector = Icons.Default.CheckCircle,
-                contentDescription = "Abgeschlossen",
-                tint = colors.accentColor,
-                modifier = Modifier.size(24.dp)
-            )
+        if (progressState.isWatched) {
+            // Watched badge for fully watched episodes
+            WatchedBadge()
         } else if (progressState.progressPercent > 0f) {
-            // Progress bar
+            // Progress bar for in-progress episodes
             Column(
                 modifier = Modifier.fillMaxWidth()
             ) {

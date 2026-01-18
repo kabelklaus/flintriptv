@@ -79,4 +79,7 @@
     <string name="progress">Fortschritt</string>
     <string name="retry_all">Alle erneut versuchen</string>
     <string name="retry">Wiederholen</string>
+    
+    <!-- Watched Badge -->
+    <string name="watched_badge_description">Geschaut</string>
 </resources>

@@ -21,6 +21,7 @@ class WatchProgressService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val moshi: Moshi,
     private val favoritesRepository: FavoritesRepository,
+    private val watchedHistoryService: WatchedHistoryService,
     private val ioDispatcher: CoroutineDispatcher
 ) {
     private val sharedPreferences: SharedPreferences = context.getSharedPreferences(
@@ -171,7 +172,9 @@ class WatchProgressService @Inject constructor(
                     return@withContext false
                 }
                 is ProgressValidationResult.Completed -> {
-                    Log.d(TAG, "Progress >= 90%, deleting progress for $logContext")
+                    Log.d(TAG, "Progress >= 90%, marking as watched and deleting progress for $logContext")
+                    // Mark as watched BEFORE deleting progress
+                    watchedHistoryService.markAsWatched(contentType, streamId, seriesId, episodeId)
                     return@withContext deleteProgress(contentType, streamId, seriesId, episodeId)
                 }
                 is ProgressValidationResult.Valid -> {
@@ -365,4 +368,24 @@ class WatchProgressService @Inject constructor(
         val progressMap = loadProgressMap()
         progressMap.count { it.key.startsWith(KEY_PREFIX_SERIES) }
     }
+
+    /**
+     * Checks if an item is watched (delegates to WatchedHistoryService)
+     */
+    suspend fun isWatched(
+        contentType: String,
+        streamId: Int?,
+        seriesId: Int?,
+        episodeId: Int?
+    ): Boolean = watchedHistoryService.isWatched(contentType, streamId, seriesId, episodeId)
+
+    /**
+     * Gets all watched episode IDs for a specific series (batch loading, delegates to WatchedHistoryService)
+     */
+    suspend fun getWatchedEpisodeIds(seriesId: Int): Set<Int> = watchedHistoryService.getWatchedEpisodeIds(seriesId)
+
+    /**
+     * Gets all watched VOD IDs, optionally filtered by category (batch loading, delegates to WatchedHistoryService)
+     */
+    suspend fun getWatchedVodIds(categoryId: String? = null): Set<Int> = watchedHistoryService.getWatchedVodIds(categoryId)
 }

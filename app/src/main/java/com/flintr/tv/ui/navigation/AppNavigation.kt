@@ -861,6 +861,7 @@ private fun VODContentSection(params: MainContentBodyParams) {
                 focusRequester = params.contentListFocusRequester,
                 favoritesRepository = params.dependencies.favoritesRepository,
                 cacheService = params.dependencies.cacheService,
+                watchProgressService = params.dependencies.watchProgressService,
                 onNavigateLeft = params.onNavigateToCategorySidebar,
                 lazyGridState = params.lazyGridState,
                 focusRequesterMap = params.focusRequesterMap,
