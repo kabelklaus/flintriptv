@@ -17,29 +17,25 @@
 -renamesourcefileattribute SourceFile
 
 # Keep attributes needed for Retrofit's generic type reflection
+# Signature is CRITICAL - Retrofit needs this to extract generic type parameters (Response<T>)
 -keepattributes Signature
 -keepattributes Exceptions
+# Runtime annotations are needed for Retrofit's @GET, @POST, @Query annotations
+-keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
 
-# Retrofit: Keep service interfaces and their generic type information
--keep interface com.flintr.tv.data.api.GitHubApiService { *; }
--keep interface com.flintr.tv.data.api.XtreamApiService { *; }
-
-# Retrofit: Keep Response class and its generic type parameters
--keep class retrofit2.Response { *; }
--keep class retrofit2.Response$* { *; }
-
-# Retrofit: Keep Call and its generic type parameters
--keep interface retrofit2.Call { *; }
--keep class retrofit2.Call$* { *; }
-
-# Retrofit: Keep all Retrofit annotations
--keepattributes RuntimeVisibleAnnotations
--keepattributes RuntimeVisibleParameterAnnotations
--keep class retrofit2.http.** { *; }
+# Retrofit: Keep service interfaces with their method signatures
+# The interfaces must retain generic type information for Retrofit's reflection
+# Using -keepclassmembers ensures methods (including suspend functions) are preserved
+-keep interface com.flintr.tv.data.api.** { *; }
+-keepclassmembers interface com.flintr.tv.data.api.** {
+    <methods>;
+}
 
 # Moshi: Keep data model classes used by Retrofit/Moshi
 # All models in com.flintr.tv.data.model package need to be preserved
+# Including interfaces in case any models implement interfaces
 -keep class com.flintr.tv.data.model.** { *; }
+-keep interface com.flintr.tv.data.model.** { *; }
 
 # Moshi: Keep custom adapter and factory (uses reflection)
 -keep class com.flintr.tv.data.model.SeriesInfoResponseAdapter { *; }
@@ -54,6 +50,9 @@
 -keep class com.squareup.moshi.Moshi { *; }
 -keep class com.squareup.moshi.JsonAdapter$Factory { *; }
 -keep @com.squareup.moshi.JsonQualifier interface *
+
+# Retrofit: Suppress warnings (Retrofit handles its own obfuscation)
+-dontwarn retrofit2.**
 
 # Moshi: Keep generic signatures for Kotlin data classes
 -keepclassmembers class kotlin.Metadata {
