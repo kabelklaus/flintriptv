@@ -7,6 +7,7 @@ import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchedHistoryService
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.SeriesInfoResponseAdapterFactory
 import com.flintr.tv.data.repository.UpdateRepository
@@ -226,13 +227,24 @@ object AppModule {
     
     @Provides
     @Singleton
+    fun provideWatchedHistoryService(
+        @ApplicationContext context: Context,
+        moshi: Moshi,
+        @Named("IO") ioDispatcher: CoroutineDispatcher
+    ): WatchedHistoryService {
+        return WatchedHistoryService(context, moshi, ioDispatcher)
+    }
+
+    @Provides
+    @Singleton
     fun provideWatchProgressService(
         @ApplicationContext context: Context,
         moshi: Moshi,
         favoritesRepository: FavoritesRepository,
+        watchedHistoryService: WatchedHistoryService,
         @Named("IO") ioDispatcher: CoroutineDispatcher
     ): WatchProgressService {
-        return WatchProgressService(context, moshi, favoritesRepository, ioDispatcher)
+        return WatchProgressService(context, moshi, favoritesRepository, watchedHistoryService, ioDispatcher)
     }
     
     @Provides

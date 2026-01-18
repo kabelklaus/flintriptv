@@ -7,8 +7,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.sidebars.ContentGridLayout
@@ -27,6 +31,7 @@ data class VODContentParams(
     val focusRequester: FocusRequester,
     val favoritesRepository: FavoritesRepository,
     val cacheService: DataCacheService,
+    val watchProgressService: WatchProgressService,
     val onNavigateLeft: () -> Unit,
     val onVodClick: (VodStream) -> Unit,
     val modifier: Modifier = Modifier,
@@ -50,10 +55,17 @@ fun VODContent(params: VODContentParams) {
         idSelector = { it.streamId }
     )
     
-    // Load regular streams when not in favorites category
+    // Batch-load watched VOD IDs for the current category
+    var watchedVodIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    
     LaunchedEffect(params.selectedCategoryId) {
         if (!isFavoritesCategory && params.selectedCategoryId != null) {
             params.viewModel.loadVodStreams(params.selectedCategoryId)
+            // Load watched IDs for the category
+            watchedVodIds = params.watchProgressService.getWatchedVodIds(params.selectedCategoryId)
+        } else if (isFavoritesCategory) {
+            // For favorites, load all watched VODs (category filtering not needed)
+            watchedVodIds = params.watchProgressService.getWatchedVodIds(null)
         }
     }
     
@@ -87,7 +99,8 @@ fun VODContent(params: VODContentParams) {
                     } else {
                         null
                     },
-                    focusRequester = cardFocusRequester
+                    focusRequester = cardFocusRequester,
+                    isWatched = vod.streamId in watchedVodIds
                 )
             )
         }

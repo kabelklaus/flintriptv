@@ -92,7 +92,8 @@ data class VODCardParams(
     val isSelected: Boolean = false,
     val onFocusChanged: ((Boolean) -> Unit)? = null,
     val onNavigateLeft: (() -> Unit)? = null,
-    val focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+    val focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
+    val isWatched: Boolean = false
 )
 
 private data class CardVisualState(
@@ -168,7 +169,8 @@ fun VODCard(params: VODCardParams) {
             focusRequester = params.focusRequester
         ),
         contentType = contentType,
-        favoritesRepository = params.favoritesRepository
+        favoritesRepository = params.favoritesRepository,
+        isWatched = params.isWatched
     )
 }
 
@@ -235,7 +237,8 @@ private fun ContentCardInternal(
     favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
     config: CardConfig = CardConfig(),
-    contentType: ContentType? = null
+    contentType: ContentType? = null,
+    isWatched: Boolean = false
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
@@ -301,6 +304,7 @@ private fun ContentCardInternal(
             title = contentInfo.title,
             rating = contentInfo.rating,
             isFavorite = isFavorite,
+            isWatched = isWatched,
             colors = colors
         )
     }
@@ -563,6 +567,7 @@ private fun CardContent(
     title: String,
     rating: String?,
     isFavorite: Boolean,
+    isWatched: Boolean,
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
     if (!coverImageUrl.isNullOrEmpty()) {
@@ -594,6 +599,13 @@ private fun CardContent(
                     RatingBadge(
                         rating = rating,
                         modifier = Modifier.align(Alignment.TopEnd)
+                    )
+                }
+                
+                // Watched badge centered (large and prominent)
+                if (isWatched) {
+                    WatchedBadge(
+                        modifier = Modifier.align(Alignment.Center)
                     )
                 }
                 
