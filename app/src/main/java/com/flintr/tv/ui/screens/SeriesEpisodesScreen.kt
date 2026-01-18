@@ -9,7 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -128,12 +128,12 @@ private fun rememberEpisodeFocus(
         
         try {
             focusRequesters.getOrNull(targetIndex)?.requestFocus()
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             // FocusRequester might not be ready yet, retry after delay
             kotlinx.coroutines.delay(100)
             try {
                 focusRequesters.getOrNull(targetIndex)?.requestFocus()
-            } catch (e2: Exception) {
+            } catch (e2: IllegalStateException) {
                 // Ignore if still not ready
             }
         }
@@ -541,11 +541,10 @@ private fun SeasonNavigation(
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
             ) {
-                items(
+                itemsIndexed(
                     items = params.seasons,
-                    key = { it.seasonNumber }
-                ) { season ->
-                    val seasonIndex = params.seasons.indexOf(season)
+                    key = { _, season -> season.seasonNumber }
+                ) { seasonIndex, season ->
                     SeasonButton(
                         season = season,
                         isSelected = seasonIndex == params.selectedSeasonIndex,
@@ -617,7 +616,7 @@ private fun SeasonButton(
             kotlinx.coroutines.delay(50)
             try {
                 focusRequester.requestFocus()
-            } catch (e: Exception) {
+            } catch (e: IllegalStateException) {
                 // FocusRequester might not be ready yet
             }
         }
@@ -690,11 +689,10 @@ private fun EpisodesList(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            items(
+            itemsIndexed(
                 items = params.episodes,
-                key = { it.id }
-            ) { episode ->
-                val episodeIndex = params.episodes.indexOf(episode)
+                key = { _, episode -> episode.id }
+            ) { episodeIndex, episode ->
                 EpisodeDetailCard(
                     config = EpisodeCardConfig(
                         episode = episode,
@@ -820,12 +818,12 @@ private fun EpisodeDetailCard(
         if (isFocused) {
             try {
                 cardFocusRequester.requestFocus()
-            } catch (e: Exception) {
+            } catch (e: IllegalStateException) {
                 // FocusRequester might not be ready yet, retry after short delay
                 kotlinx.coroutines.delay(50)
                 try {
                     cardFocusRequester.requestFocus()
-                } catch (e2: Exception) {
+                } catch (e2: IllegalStateException) {
                     // Ignore if still not ready
                 }
             }

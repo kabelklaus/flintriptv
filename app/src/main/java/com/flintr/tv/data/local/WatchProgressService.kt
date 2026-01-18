@@ -413,21 +413,17 @@ class WatchProgressService @Inject constructor(
     suspend fun getWatchedVodIds(categoryId: String? = null): Set<Int> = watchedHistoryService.getWatchedVodIds(categoryId)
 
     /**
-     * Finds an episode in the series structure by episodeId
-     * Returns a triple of (season, episode, episodeIndex) or null if not found
+     * Creates a map of episodeId -> (Season, Episode) for efficient lookup
+     * Seasons are sorted once to avoid repeated sorting
      */
-    private fun findEpisodeInSeries(series: Series, episodeId: Int): Triple<Season, Episode, Int>? {
-        val sortedSeasons = series.seasons?.sortedBy { it.seasonNumber } ?: return null
+    private fun createEpisodeMap(series: Series): Map<Int, Pair<Season, Episode>> {
+        val sortedSeasons = series.seasons?.sortedBy { it.seasonNumber } ?: return emptyMap()
         
-        for (season in sortedSeasons) {
-            val episodes = season.episodes ?: continue
-            val episodeIndex = episodes.indexOfFirst { it.id == episodeId }
-            if (episodeIndex >= 0) {
-                return Triple(season, episodes[episodeIndex], episodeIndex)
-            }
-        }
-        
-        return null
+        return sortedSeasons.flatMap { season ->
+            season.episodes?.map { episode ->
+                episode.id to (season to episode)
+            } ?: emptyList()
+        }.toMap()
     }
 
     /**
@@ -435,13 +431,17 @@ class WatchProgressService @Inject constructor(
      * Returns null if the episode is not found or timestamp parsing fails
      */
     private fun createInteractionFromProgress(
-        series: Series,
         episodeId: Int,
-        progress: WatchProgress
+        progress: WatchProgress,
+        episodeMap: Map<Int, Pair<Season, Episode>>
     ): LastInteraction? {
-        val episodeInfo = findEpisodeInSeries(series, episodeId) ?: return null
-        val (season, episode, _) = episodeInfo
+        val episodeInfo = episodeMap[episodeId] ?: return null
+        val (season, episode) = episodeInfo
         
+        if (progress.duration <= 0L) {
+            Log.w(TAG, "Cannot calculate progress for episodeId=${episodeId} due to invalid duration: ${progress.duration}")
+            return null
+        }
         val progressPercent = progress.position.toFloat() / progress.duration.toFloat()
         val timestamp = try {
             Instant.parse(progress.lastWatched).toEpochMilli()
@@ -466,12 +466,12 @@ class WatchProgressService @Inject constructor(
      * Returns null if the episode is not found
      */
     private fun createInteractionFromWatched(
-        series: Series,
         episodeId: Int,
-        timestamp: Long
+        timestamp: Long,
+        episodeMap: Map<Int, Pair<Season, Episode>>
     ): LastInteraction? {
-        val episodeInfo = findEpisodeInSeries(series, episodeId) ?: return null
-        val (season, episode, _) = episodeInfo
+        val episodeInfo = episodeMap[episodeId] ?: return null
+        val (season, episode) = episodeInfo
         
         val episodeNumber = episode.episodeNum ?: episode.id
         
@@ -489,8 +489,8 @@ class WatchProgressService @Inject constructor(
      */
     private fun findLatestProgressInteraction(
         seriesId: Int,
-        series: Series,
-        progressMap: Map<String, WatchProgress>
+        progressMap: Map<String, WatchProgress>,
+        episodeMap: Map<Int, Pair<Season, Episode>>
     ): LastInteraction? {
         val prefix = "$KEY_PREFIX_SERIES$seriesId:"
         val progressEntries = progressMap.filterKeys { it.startsWith(prefix) }
@@ -499,7 +499,7 @@ class WatchProgressService @Inject constructor(
         
         for ((key, progress) in progressEntries) {
             val episodeId = key.removePrefix(prefix).toIntOrNull() ?: continue
-            val interaction = createInteractionFromProgress(series, episodeId, progress) ?: continue
+            val interaction = createInteractionFromProgress(episodeId, progress, episodeMap) ?: continue
             
             if (latestProgress == null || interaction.timestamp > latestProgress.timestamp) {
                 latestProgress = interaction
@@ -518,26 +518,24 @@ class WatchProgressService @Inject constructor(
         try {
             if (series.seasons == null) return@withContext null
             
+            // Sort seasons once and create episode map for efficient lookup
+            val episodeMap = createEpisodeMap(series)
+            
             // Check WatchProgress for in-progress episodes
             val progressMap = loadProgressMap()
-            val latestProgress = findLatestProgressInteraction(seriesId, series, progressMap)
+            val latestProgress = findLatestProgressInteraction(seriesId, progressMap, episodeMap)
             
             // Check WatchedHistory for completed episodes
             val latestWatched = watchedHistoryService.getLatestWatchedEpisode(seriesId)
             val latestWatchedInteraction = if (latestWatched != null) {
                 val (episodeId, timestamp) = latestWatched
-                createInteractionFromWatched(series, episodeId, timestamp)
+                createInteractionFromWatched(episodeId, timestamp, episodeMap)
             } else {
                 null
             }
             
             // Return the most recent interaction
-            when {
-                latestProgress == null -> latestWatchedInteraction
-                latestWatchedInteraction == null -> latestProgress
-                latestProgress.timestamp > latestWatchedInteraction.timestamp -> latestProgress
-                else -> latestWatchedInteraction
-            }
+            listOfNotNull(latestProgress, latestWatchedInteraction).maxByOrNull { it.timestamp }
         } catch (e: Exception) {
             Log.e(TAG, "Error getting last interaction for seriesId: $seriesId", e)
             null
