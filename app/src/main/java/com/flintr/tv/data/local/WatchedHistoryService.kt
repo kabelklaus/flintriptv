@@ -11,6 +11,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -42,6 +44,9 @@ class WatchedHistoryService @Inject constructor(
     
     // Cache for watched items map to avoid repeated JSON parsing
     private var cachedWatchedMap: Map<String, WatchedItem>? = null
+    
+    // Mutex for thread-safe access to cachedWatchedMap and SharedPreferences
+    private val mutex = Mutex()
 
     /**
      * Generates a storage key for the given content type and IDs
@@ -71,8 +76,9 @@ class WatchedHistoryService @Inject constructor(
      */
     private fun loadWatchedMap(): Map<String, WatchedItem> {
         // Return cached version if available
-        if (cachedWatchedMap != null) {
-            return cachedWatchedMap!!
+        val cached = cachedWatchedMap
+        if (cached != null) {
+            return cached
         }
         
         // Load from SharedPreferences and cache it
@@ -102,33 +108,35 @@ class WatchedHistoryService @Inject constructor(
         seriesId: Int?,
         episodeId: Int?
     ): Boolean = withContext(ioDispatcher) {
-        try {
-            val key = generateKey(contentType, streamId, seriesId, episodeId)
-            Log.d(TAG, "Marking as watched: key=$key, contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId")
+        mutex.withLock {
+            try {
+                val key = generateKey(contentType, streamId, seriesId, episodeId)
+                Log.d(TAG, "Marking as watched: key=$key, contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId")
 
-            val watchedMap = loadWatchedMap()
-            val watchedItem = WatchedItem(
-                contentType = contentType,
-                streamId = streamId,
-                seriesId = seriesId,
-                episodeId = episodeId,
-                watchedAt = Instant.now().toString()
-            )
-            
-            val updatedMap = watchedMap.toMutableMap()
-            updatedMap[key] = watchedItem
-            
-            val json = mapAdapter.toJson(updatedMap)
-            sharedPreferences.edit {
-                putString(KEY_WATCHED_HISTORY, json)
+                val watchedMap = loadWatchedMap()
+                val watchedItem = WatchedItem(
+                    contentType = contentType,
+                    streamId = streamId,
+                    seriesId = seriesId,
+                    episodeId = episodeId,
+                    watchedAt = Instant.now().toString()
+                )
+                
+                val updatedMap = watchedMap.toMutableMap()
+                updatedMap[key] = watchedItem
+                
+                val json = mapAdapter.toJson(updatedMap)
+                sharedPreferences.edit {
+                    putString(KEY_WATCHED_HISTORY, json)
+                }
+                cachedWatchedMap = updatedMap
+                
+                Log.d(TAG, "Marked as watched successfully: key=$key")
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Error marking as watched for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
+                false
             }
-            cachedWatchedMap = updatedMap
-            
-            Log.d(TAG, "Marked as watched successfully: key=$key")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error marking as watched for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
-            false
         }
     }
 
@@ -141,15 +149,17 @@ class WatchedHistoryService @Inject constructor(
         seriesId: Int?,
         episodeId: Int?
     ): Boolean = withContext(ioDispatcher) {
-        try {
-            val key = generateKey(contentType, streamId, seriesId, episodeId)
-            val watchedMap = loadWatchedMap()
-            val isWatched = watchedMap.containsKey(key)
-            Log.d(TAG, "isWatched check: key=$key, result=$isWatched")
-            return@withContext isWatched
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking if watched for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
-            false
+        mutex.withLock {
+            try {
+                val key = generateKey(contentType, streamId, seriesId, episodeId)
+                val watchedMap = loadWatchedMap()
+                val isWatched = watchedMap.containsKey(key)
+                Log.d(TAG, "isWatched check: key=$key, result=$isWatched")
+                return@withContext isWatched
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking if watched for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
+                false
+            }
         }
     }
 
@@ -157,22 +167,23 @@ class WatchedHistoryService @Inject constructor(
      * Gets all watched episode IDs for a specific series (batch loading)
      */
     suspend fun getWatchedEpisodeIds(seriesId: Int): Set<Int> = withContext(ioDispatcher) {
-        try {
-            val watchedMap = loadWatchedMap()
-            val prefix = "$KEY_PREFIX_SERIES$seriesId:"
-            val episodeIds = watchedMap
-                .filterKeys { it.startsWith(prefix) }
-                .mapNotNull { (key, _) ->
-                    val parts = key.removePrefix(prefix).split(":")
-                    parts.firstOrNull()?.toIntOrNull()
-                }
-                .toSet()
-            
-            Log.d(TAG, "getWatchedEpisodeIds: seriesId=$seriesId, found ${episodeIds.size} watched episodes")
-            return@withContext episodeIds
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting watched episode IDs for seriesId: $seriesId", e)
-            emptySet()
+        mutex.withLock {
+            try {
+                val watchedMap = loadWatchedMap()
+                val prefix = "$KEY_PREFIX_SERIES$seriesId:"
+                val episodeIds = watchedMap
+                    .filterKeys { it.startsWith(prefix) }
+                    .mapNotNull { (key, _) ->
+                        key.removePrefix(prefix).toIntOrNull()
+                    }
+                    .toSet()
+                
+                Log.d(TAG, "getWatchedEpisodeIds: seriesId=$seriesId, found ${episodeIds.size} watched episodes")
+                return@withContext episodeIds
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting watched episode IDs for seriesId: $seriesId", e)
+                emptySet()
+            }
         }
     }
 
@@ -181,22 +192,24 @@ class WatchedHistoryService @Inject constructor(
      * Note: categoryId filtering requires additional data from repository, so this returns all watched VODs
      */
     suspend fun getWatchedVodIds(categoryId: String? = null): Set<Int> = withContext(ioDispatcher) {
-        try {
-            val watchedMap = loadWatchedMap()
-            val vodIds = watchedMap
-                .filterKeys { it.startsWith(KEY_PREFIX_MOVIE) }
-                .mapNotNull { (key, _) ->
-                    key.removePrefix(KEY_PREFIX_MOVIE).toIntOrNull()
-                }
-                .toSet()
-            
-            Log.d(TAG, "getWatchedVodIds: categoryId=$categoryId, found ${vodIds.size} watched VODs")
-            // Note: categoryId filtering would require repository access, so we return all for now
-            // The calling code can filter by category if needed
-            return@withContext vodIds
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting watched VOD IDs", e)
-            emptySet()
+        mutex.withLock {
+            try {
+                val watchedMap = loadWatchedMap()
+                val vodIds = watchedMap
+                    .filterKeys { it.startsWith(KEY_PREFIX_MOVIE) }
+                    .mapNotNull { (key, _) ->
+                        key.removePrefix(KEY_PREFIX_MOVIE).toIntOrNull()
+                    }
+                    .toSet()
+                
+                Log.d(TAG, "getWatchedVodIds: categoryId=$categoryId, found ${vodIds.size} watched VODs")
+                // Note: categoryId filtering would require repository access, so we return all for now
+                // The calling code can filter by category if needed
+                return@withContext vodIds
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting watched VOD IDs", e)
+                emptySet()
+            }
         }
     }
 }

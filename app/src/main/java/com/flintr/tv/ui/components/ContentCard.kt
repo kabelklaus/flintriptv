@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -70,7 +71,7 @@ private val ContentCardTitleBgAlpha = 0.75f
 
 // Content Card Colors (from Flutter AppTheme)
 private val ContentCardTextColor = Color.White
-private val ContentCardBgColor = Color.Black
+private val ContentCardBgColor = SharedColors.contentCardBgColor
 private val ContentCardTextFontWeight = FontWeight.Bold
 
 // Content Card Title Line Height
@@ -174,6 +175,46 @@ fun VODCard(params: VODCardParams) {
     )
 }
 
+private fun Modifier.shadowModifier(
+    isSelected: Boolean,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    shadowElevation: Float
+): Modifier {
+    return if (isSelected) {
+        this.shadow(
+            elevation = shadowElevation.dp,
+            shape = RoundedCornerShape(ContentCardBorderRadius),
+            spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
+            ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
+        )
+    } else {
+        this
+    }
+}
+
+private fun Modifier.focusRequesterModifier(
+    focusRequester: androidx.compose.ui.focus.FocusRequester?
+): Modifier {
+    return if (focusRequester != null) {
+        this.focusRequester(focusRequester)
+    } else {
+        this
+    }
+}
+
+private fun buildDpadHandler(
+    onNavigateLeft: (() -> Unit)?
+): (() -> Boolean)? {
+    return if (onNavigateLeft != null) {
+        {
+            onNavigateLeft()
+            true
+        }
+    } else {
+        null
+    }
+}
+
 @Composable
 private fun buildCardModifier(
     baseModifier: Modifier,
@@ -185,41 +226,17 @@ private fun buildCardModifier(
     return baseModifier
         .width(Dimensions.contentCardMaxCrossAxisExtent)
         .aspectRatio(Dimensions.contentCardAspectRatio)
-        .then(
-            if (config.isSelected) {
-                Modifier.shadow(
-                    elevation = visualState.shadowElevation.dp,
-                    shape = RoundedCornerShape(ContentCardBorderRadius),
-                    spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
-                    ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
-                )
-            } else {
-                Modifier
-            }
-        )
+        .shadowModifier(config.isSelected, colors, visualState.shadowElevation)
         .border(
             width = ContentCardBorderWidth,
             color = visualState.borderColor,
             shape = RoundedCornerShape(ContentCardBorderRadius)
         )
-        .then(
-            if (config.focusRequester != null) {
-                Modifier.focusRequester(config.focusRequester)
-            } else {
-                Modifier
-            }
-        )
+        .focusRequesterModifier(config.focusRequester)
         .onFocusChanged(handlers.onFocusChanged)
         .focusable()
         .onDpadDirection(
-            onLeft = if (config.onNavigateLeft != null) {
-                {
-                    config.onNavigateLeft()
-                    true
-                }
-            } else {
-                null
-            },
+            onLeft = buildDpadHandler(config.onNavigateLeft),
             onRight = null,
             onUp = null,
             onDown = null
@@ -571,54 +588,79 @@ private fun CardContent(
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
     if (!coverImageUrl.isNullOrEmpty()) {
-        // Card with cover image
-        val painter = rememberAsyncImagePainter(model = coverImageUrl)
-        val imageState = painter.state
-        
-        if (imageState is AsyncImagePainter.State.Error) {
-            // Fallback to text if image fails
-            buildTextFallback(title, colors)
-        } else {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Image(
-                    painter = painter,
-                    contentDescription = title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-                
-                // Favorite badge at top left
-                if (isFavorite) {
-                    FavoriteBadge(
-                        modifier = Modifier.align(Alignment.TopStart)
-                    )
-                }
-                
-                // Rating badge at top right
-                if (rating != null) {
-                    RatingBadge(
-                        rating = rating,
-                        modifier = Modifier.align(Alignment.TopEnd)
-                    )
-                }
-                
-                // Watched badge centered (large and prominent)
-                if (isWatched) {
-                    WatchedBadge(
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-                
-                // Title overlay at bottom
-                TitleOverlay(
-                    title = title,
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
-            }
-        }
+        CardImageWithOverlays(
+            coverImageUrl = coverImageUrl,
+            title = title,
+            rating = rating,
+            isFavorite = isFavorite,
+            isWatched = isWatched,
+            colors = colors
+        )
     } else {
-        // Fallback to text-only card
         buildTextFallback(title, colors)
+    }
+}
+
+@Composable
+private fun CardImageWithOverlays(
+    coverImageUrl: String,
+    title: String,
+    rating: String?,
+    isFavorite: Boolean,
+    isWatched: Boolean,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    val painter = rememberAsyncImagePainter(model = coverImageUrl)
+    val imageState = painter.state
+    
+    if (imageState is AsyncImagePainter.State.Error) {
+        buildTextFallback(title, colors)
+    } else {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Image(
+                painter = painter,
+                contentDescription = title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            
+            CardBadges(
+                isFavorite = isFavorite,
+                rating = rating,
+                isWatched = isWatched
+            )
+            
+            TitleOverlay(
+                title = title,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.CardBadges(
+    isFavorite: Boolean,
+    rating: String?,
+    isWatched: Boolean
+) {
+    if (isFavorite) {
+        FavoriteBadge(
+            modifier = Modifier.align(Alignment.TopStart)
+        )
+    }
+    
+    if (rating != null) {
+        RatingBadge(
+            rating = rating,
+            modifier = Modifier.align(Alignment.TopEnd)
+        )
+    }
+    
+    if (isWatched) {
+        WatchedBadge(
+            modifier = Modifier.align(Alignment.Center)
+        )
     }
 }
 

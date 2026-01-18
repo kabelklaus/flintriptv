@@ -48,6 +48,7 @@ object SharedColors {
     
     // Content Card colors
     val contentCardRatingIconColor = Color(0xFFFFC107)
+    val contentCardBgColor = Color(0xFF000000) // Black
 }
 
 /**

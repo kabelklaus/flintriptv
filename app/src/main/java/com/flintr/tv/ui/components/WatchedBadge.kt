@@ -11,12 +11,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
-
-// Content Card Colors (from ContentCard.kt)
-private val ContentCardBgColor = Color.Black
 
 @Composable
 fun WatchedBadge(
@@ -29,7 +27,7 @@ fun WatchedBadge(
         Box(
             modifier = Modifier
                 .background(
-                    color = ContentCardBgColor.copy(alpha = Dimensions.contentCardRatingBgAlpha),
+                    color = SharedColors.contentCardBgColor.copy(alpha = Dimensions.contentCardRatingBgAlpha),
                     shape = RoundedCornerShape(Dimensions.radiusMD)
                 )
                 .padding(
@@ -40,7 +38,7 @@ fun WatchedBadge(
         ) {
             Icon(
                 imageVector = Icons.Default.CheckCircle,
-                contentDescription = "Geschaut",
+                contentDescription = stringResource(R.string.watched_badge_description),
                 modifier = Modifier.size(Dimensions.iconSizeMD),
                 tint = SharedColors.successGreen
             )
