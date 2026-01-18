@@ -212,4 +212,47 @@ class WatchedHistoryService @Inject constructor(
             }
         }
     }
+
+    /**
+     * Gets the latest watched episode for a series with its timestamp
+     * Returns null if no episodes have been watched for this series
+     */
+    suspend fun getLatestWatchedEpisode(seriesId: Int): Pair<Int, Long>? = withContext(ioDispatcher) {
+        mutex.withLock {
+            try {
+                val watchedMap = loadWatchedMap()
+                val prefix = "$KEY_PREFIX_SERIES$seriesId:"
+                
+                val watchedEpisodes = watchedMap
+                    .filterKeys { it.startsWith(prefix) }
+                    .mapNotNull { (key, item) ->
+                        val episodeId = key.removePrefix(prefix).toIntOrNull() ?: return@mapNotNull null
+                        val timestamp = try {
+                            Instant.parse(item.watchedAt).toEpochMilli()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Error parsing watchedAt timestamp for episode $episodeId: ${item.watchedAt}", e)
+                            return@mapNotNull null
+                        }
+                        Triple(episodeId, timestamp, item)
+                    }
+                
+                if (watchedEpisodes.isEmpty()) {
+                    Log.d(TAG, "getLatestWatchedEpisode: seriesId=$seriesId, no watched episodes found")
+                    return@withContext null
+                }
+                
+                // Find the episode with the latest timestamp
+                val latest = watchedEpisodes.maxByOrNull { it.second }
+                if (latest != null) {
+                    Log.d(TAG, "getLatestWatchedEpisode: seriesId=$seriesId, latest episodeId=${latest.first}, timestamp=${latest.second}")
+                    return@withContext Pair(latest.first, latest.second)
+                }
+                
+                null
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting latest watched episode for seriesId: $seriesId", e)
+                null
+            }
+        }
+    }
 }
