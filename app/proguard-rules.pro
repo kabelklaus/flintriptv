@@ -16,17 +16,42 @@
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# Keep data model classes used by Retrofit/Moshi
-# All models in com.flintr.tv.data.model package need to be preserved
--keep class com.flintr.tv.data.model.** { *; }
+# Keep attributes needed for Retrofit's generic type reflection
+-keepattributes Signature
+-keepattributes Exceptions
+-keepattributes *Annotation*
 
-# Keep custom Moshi adapter and factory (uses reflection)
--keep class com.flintr.tv.data.model.SeriesInfoResponseAdapter { *; }
--keep class com.flintr.tv.data.model.SeriesInfoResponseAdapterFactory { *; }
-
-# Keep Retrofit service interfaces (uses reflection for method invocation)
+# Retrofit: Keep service interfaces and their generic type information
 -keep interface com.flintr.tv.data.api.GitHubApiService { *; }
 -keep interface com.flintr.tv.data.api.XtreamApiService { *; }
 
-# Keep Moshi generated adapters (if any are not detected automatically)
+# Retrofit: Keep Response class and its generic type parameters
+-keep class retrofit2.Response { *; }
+-keep class retrofit2.Response$* { *; }
+
+# Retrofit: Keep Call and its generic type parameters
+-keep interface retrofit2.Call { *; }
+-keep class retrofit2.Call$* { *; }
+
+# Retrofit: Keep all Retrofit annotations
+-keepattributes RuntimeVisibleAnnotations
+-keepattributes RuntimeVisibleParameterAnnotations
+-keep class retrofit2.http.** { *; }
+
+# Moshi: Keep data model classes used by Retrofit/Moshi
+# All models in com.flintr.tv.data.model package need to be preserved
+-keep class com.flintr.tv.data.model.** { *; }
+
+# Moshi: Keep custom adapter and factory (uses reflection)
+-keep class com.flintr.tv.data.model.SeriesInfoResponseAdapter { *; }
+-keep class com.flintr.tv.data.model.SeriesInfoResponseAdapterFactory { *; }
+
+# Moshi: Keep all generated JsonAdapters
 -keep class com.flintr.tv.data.model.*JsonAdapter { *; }
+-keep class com.squareup.moshi.** { *; }
+-keep @com.squareup.moshi.JsonQualifier interface *
+
+# Moshi: Keep generic signatures for Kotlin data classes
+-keepclassmembers class kotlin.Metadata {
+    public <methods>;
+}
