@@ -16,6 +16,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.ui.theme.SharedColors
+import kotlinx.coroutines.withTimeout
 
 /**
  * Calculates progress value from x position
