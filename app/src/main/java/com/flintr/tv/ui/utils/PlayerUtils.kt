@@ -1,5 +1,7 @@
 package com.flintr.tv.ui.utils
 
+import java.util.Locale
+
 /**
  * Utility functions for video player
  */
@@ -27,8 +29,8 @@ fun formatTime(millis: Long): String {
     val seconds = totalSeconds % 60
     
     return if (hours > 0) {
-        String.format("%d:%02d:%02d", hours, minutes, seconds)
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
     } else {
-        String.format("%d:%02d", minutes, seconds)
+        String.format(Locale.US, "%d:%02d", minutes, seconds)
     }
 }

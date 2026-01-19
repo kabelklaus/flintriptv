@@ -2,6 +2,7 @@ package com.flintr.tv.utils
 
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
+import java.util.Locale
 
 /**
  * Utility functions for parsing content data
@@ -26,13 +27,13 @@ object ContentParser {
         // Try rating first (usually 0-10 scale)
         rating?.let { r ->
             parseRating(r)?.let { parsed ->
-                return String.format("%.1f", parsed)
+                return String.format(Locale.US, "%.1f", parsed)
             }
         }
         
         // Try rating_5based (0-5 scale, convert to 0-10)
         rating5Based?.let { r5 ->
-            return String.format("%.1f", r5 * 2.0)
+            return String.format(Locale.US, "%.1f", r5 * 2.0)
         }
         
         return null
