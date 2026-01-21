@@ -449,7 +449,7 @@ private fun rememberPlayerSetup(
         ).credentialsRepository()
     }
     val credentials by credentialsRepository.getCredentialsFlow()
-        .collectAsState(initial = null)
+        .collectAsState(initial = credentialsRepository.getCredentials())
     
     val exoPlayer = remember(credentials) {
         createExoPlayer(context, credentials)
@@ -662,7 +662,7 @@ private fun PlayerPositionUpdateEffect(
     isPlaying: Boolean,
     onPositionUpdate: (Long, Long, Long) -> Unit
 ) {
-    LaunchedEffect(isPlaying) {
+    LaunchedEffect(exoPlayer, isPlaying) {
         while (isPlaying) {
             onPositionUpdate(
                 exoPlayer.currentPosition,
