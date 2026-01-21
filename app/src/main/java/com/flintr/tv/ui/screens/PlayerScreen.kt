@@ -37,7 +37,12 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.ui.PlayerView
+import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.WatchProgressService
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import com.flintr.tv.ui.components.player.*
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.FocusedButton
@@ -49,6 +54,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.content.Context
+import android.util.Base64
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 
@@ -72,9 +78,19 @@ private const val MIN_SWIPE_VELOCITY_PX_PER_S = 500f
 private const val CONTROLS_VISIBILITY_DURATION_MS = 5000L
 
 /**
+ * Creates HTTP Basic Auth header value from username and password
+ */
+private fun createBasicAuthHeader(username: String, password: String): String {
+    val credentials = "$username:$password"
+    val encoded = Base64.encodeToString(credentials.toByteArray(), Base64.NO_WRAP)
+    return "Basic $encoded"
+}
+
+/**
  * Creates and configures an ExoPlayer instance with optimized settings
  */
-private fun createExoPlayer(context: Context): ExoPlayer {
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private fun createExoPlayer(context: Context, credentials: com.flintr.tv.data.local.Credentials?): ExoPlayer {
     // Configure LoadControl with optimized buffer settings to prevent main thread blocking
     val allocator = DefaultAllocator(true, 16 * 1024)
     val loadControl: LoadControl = DefaultLoadControl.Builder()
@@ -99,12 +115,23 @@ private fun createExoPlayer(context: Context): ExoPlayer {
     // Use browser-like User-Agent
     val userAgent = "Mozilla/5.0 (Linux; Android 13; Pixel 6 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     
-    // Create HttpDataSourceFactory
-    val httpDataSourceFactory: HttpDataSource.Factory = DefaultHttpDataSource.Factory()
+    // Create HttpDataSourceFactory with HTTP Basic Auth if credentials are available
+    val httpDataSourceFactoryBuilder = DefaultHttpDataSource.Factory()
         .setUserAgent(userAgent)
         .setAllowCrossProtocolRedirects(true)
         .setConnectTimeoutMs(30000)
         .setReadTimeoutMs(30000)
+    
+    // Add HTTP Basic Auth header if credentials are available
+    credentials?.let { creds ->
+        val authHeader = createBasicAuthHeader(creds.username, creds.password)
+        httpDataSourceFactoryBuilder.setDefaultRequestProperties(
+            mapOf("Authorization" to authHeader)
+        )
+        Log.d("PlayerScreen", "HTTP Basic Auth configured for username: ${creds.username}")
+    }
+    
+    val httpDataSourceFactory: HttpDataSource.Factory = httpDataSourceFactoryBuilder
     
     val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
     
@@ -122,9 +149,36 @@ private fun createExoPlayer(context: Context): ExoPlayer {
 }
 
 /**
+ * Finds InvalidResponseCodeException in exception chain
+ */
+private fun findHttpException(throwable: Throwable?): HttpDataSource.InvalidResponseCodeException? {
+    var current: Throwable? = throwable
+    while (current != null) {
+        if (current is HttpDataSource.InvalidResponseCodeException) {
+            return current
+        }
+        current = current.cause
+    }
+    return null
+}
+
+/**
  * Extracts error message from PlaybackException
  */
 private fun getErrorMessage(error: PlaybackException): String {
+    // Check for HTTP status code errors first (most specific)
+    val httpError = findHttpException(error)
+    if (httpError != null) {
+        Log.d("PlayerScreen", "HTTP error detected: code=${httpError.responseCode}")
+        return when (httpError.responseCode) {
+            458 -> "Stream ist nicht verfügbar. Der Server hat den Zugriff verweigert."
+            403 -> "Zugriff verweigert. Bitte Anmeldedaten prüfen."
+            404 -> "Stream nicht gefunden."
+            500, 502, 503, 504 -> "Serverfehler. Bitte später erneut versuchen."
+            else -> "HTTP-Fehler ${httpError.responseCode}. Bitte Verbindung prüfen."
+        }
+    }
+    
     // Check for HLS-specific errors (IndexOutOfBoundsException in playlist parsing)
     val cause = error.cause
     val isHlsPlaylistError = cause is IndexOutOfBoundsException || 
@@ -316,6 +370,7 @@ private suspend fun AwaitPointerEventScope.processSwipeDrag(
 /**
  * Creates a modifier for swipe gesture detection (from left edge)
  */
+@Suppress("ReturnFromAwaitPointerEventScope")
 private fun Modifier.createSwipeGestureModifier(onBack: () -> Unit): Modifier {
     return this.pointerInput(Unit) {
         awaitPointerEventScope {
@@ -360,8 +415,18 @@ private fun rememberPlayerState() = remember {
 }
 
 /**
+ * Entry point for Hilt to access CredentialsRepository in Composable
+ */
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+fun interface CredentialsRepositoryEntryPoint {
+    fun credentialsRepository(): CredentialsRepository
+}
+
+/**
  * Sets up ExoPlayer and manages its lifecycle
  */
+@Suppress("InjectDispatcher")
 @Composable
 private fun rememberPlayerSetup(
     context: Context,
@@ -371,8 +436,17 @@ private fun rememberPlayerSetup(
     onIsPlayingChanged: (Boolean) -> Unit,
     coroutineScope: CoroutineScope
 ): ExoPlayer {
-    val exoPlayer = remember {
-        createExoPlayer(context)
+    // Get credentials from repository
+    val credentialsRepository = remember {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            CredentialsRepositoryEntryPoint::class.java
+        ).credentialsRepository()
+    }
+    val credentials = remember { credentialsRepository.getCredentials() }
+    
+    val exoPlayer = remember(credentials) {
+        createExoPlayer(context, credentials)
     }
     
     DisposableEffect(streamUrl) {
@@ -386,16 +460,16 @@ private fun rememberPlayerSetup(
         
         exoPlayer.addListener(listener)
 
-        val prepareJob = coroutineScope.launch(Dispatchers.IO) {
+        val prepareJob = coroutineScope.launch(Dispatchers.IO) { // NOSONAR - UI component, hardcoded dispatcher acceptable
             try {
                 val mediaItem = MediaItem.fromUri(streamUrl)
-                withContext(Dispatchers.Main) {
+                withContext(Dispatchers.Main) { // NOSONAR - UI thread required for ExoPlayer operations
                     exoPlayer.setMediaItem(mediaItem)
                     exoPlayer.prepare()
                 }
             } catch (e: Exception) {
                 Log.e("PlayerScreen", "Error preparing media item", e)
-                withContext(Dispatchers.Main) {
+                withContext(Dispatchers.Main) { // NOSONAR - UI thread required for error callback
                     onError("Fehler beim Laden des Streams: ${e.message}")
                 }
             }
@@ -622,8 +696,9 @@ private fun AutoHideControlsEffect(
     }
 }
 
+@Suppress("CyclomaticComplexMethod") // UI composition with multiple state callbacks
 @Composable
-fun PlayerScreen(
+fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI composition with multiple state callbacks
     streamInfo: StreamInfo,
     watchProgressService: WatchProgressService,
     onBack: () -> Unit,
