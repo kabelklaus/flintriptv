@@ -82,4 +82,17 @@
     
     <!-- Watched Badge -->
     <string name="watched_badge_description">Geschaut</string>
+    
+    <!-- Player Error Messages -->
+    <string name="http_error_458">Stream ist nicht verfügbar. Der Server hat den Zugriff verweigert.</string>
+    <string name="http_error_403">Zugriff verweigert. Bitte Anmeldedaten prüfen.</string>
+    <string name="http_error_404">Stream nicht gefunden.</string>
+    <string name="http_error_server">Serverfehler. Bitte später erneut versuchen.</string>
+    <string name="http_error_generic">HTTP-Fehler %1$d. Bitte Verbindung prüfen.</string>
+    <string name="hls_playlist_error">HLS-Playlist ist leer oder ungültig. Der Stream ist möglicherweise nicht verfügbar.</string>
+    <string name="network_error">Netzwerkfehler. Bitte Verbindung prüfen.</string>
+    <string name="video_format_unsupported">Videoformat wird nicht unterstützt.</string>
+    <string name="codec_error">Codec-Fehler. Videoformat wird möglicherweise nicht unterstützt.</string>
+    <string name="playback_error_generic">Wiedergabefehler: %1$s</string>
+    <string name="playback_error_unknown">Unbekannter Fehler</string>
 </resources>

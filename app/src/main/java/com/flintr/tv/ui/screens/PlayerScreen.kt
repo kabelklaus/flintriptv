@@ -57,6 +57,7 @@ import android.content.Context
 import android.util.Base64
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import com.flintr.tv.R
 
 /**
  * Data class containing stream information for playback
@@ -128,7 +129,7 @@ private fun createExoPlayer(context: Context, credentials: com.flintr.tv.data.lo
         httpDataSourceFactoryBuilder.setDefaultRequestProperties(
             mapOf("Authorization" to authHeader)
         )
-        Log.d("PlayerScreen", "HTTP Basic Auth configured for username: ${creds.username}")
+        Log.d("PlayerScreen", "HTTP Basic Auth configured.")
     }
     
     val httpDataSourceFactory: HttpDataSource.Factory = httpDataSourceFactoryBuilder
@@ -165,17 +166,17 @@ private fun findHttpException(throwable: Throwable?): HttpDataSource.InvalidResp
 /**
  * Extracts error message from PlaybackException
  */
-private fun getErrorMessage(error: PlaybackException): String {
+private fun getErrorMessage(context: Context, error: PlaybackException): String {
     // Check for HTTP status code errors first (most specific)
     val httpError = findHttpException(error)
     if (httpError != null) {
         Log.d("PlayerScreen", "HTTP error detected: code=${httpError.responseCode}")
         return when (httpError.responseCode) {
-            458 -> "Stream ist nicht verfügbar. Der Server hat den Zugriff verweigert."
-            403 -> "Zugriff verweigert. Bitte Anmeldedaten prüfen."
-            404 -> "Stream nicht gefunden."
-            500, 502, 503, 504 -> "Serverfehler. Bitte später erneut versuchen."
-            else -> "HTTP-Fehler ${httpError.responseCode}. Bitte Verbindung prüfen."
+            458 -> context.getString(R.string.http_error_458)
+            403 -> context.getString(R.string.http_error_403)
+            404 -> context.getString(R.string.http_error_404)
+            500, 502, 503, 504 -> context.getString(R.string.http_error_server)
+            else -> context.getString(R.string.http_error_generic, httpError.responseCode)
         }
     }
     
@@ -187,17 +188,20 @@ private fun getErrorMessage(error: PlaybackException): String {
     
     return when {
         isHlsPlaylistError -> 
-            "HLS-Playlist ist leer oder ungültig. Der Stream ist möglicherweise nicht verfügbar."
+            context.getString(R.string.hls_playlist_error)
         error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
         error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> 
-            "Netzwerkfehler. Bitte Verbindung prüfen."
+            context.getString(R.string.network_error)
         error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
         error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> 
-            "Videoformat wird nicht unterstützt."
+            context.getString(R.string.video_format_unsupported)
         error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
         error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> 
-            "Codec-Fehler. Videoformat wird möglicherweise nicht unterstützt."
-        else -> "Wiedergabefehler: ${error.message ?: "Unbekannter Fehler"}"
+            context.getString(R.string.codec_error)
+        else -> {
+            val errorMessage = error.message ?: context.getString(R.string.playback_error_unknown)
+            context.getString(R.string.playback_error_generic, errorMessage)
+        }
     }
 }
 
@@ -205,6 +209,7 @@ private fun getErrorMessage(error: PlaybackException): String {
  * Creates a Player.Listener with callbacks for state changes
  */
 private fun createPlayerListener(
+    context: Context,
     onError: (String) -> Unit,
     onPlaybackStateChanged: (Int) -> Unit,
     onIsPlayingChanged: (Boolean) -> Unit
@@ -212,7 +217,7 @@ private fun createPlayerListener(
     return object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
             Log.e("PlayerScreen", "Player Error:", error)
-            onError(getErrorMessage(error))
+            onError(getErrorMessage(context, error))
         }
 
         override fun onPlaybackStateChanged(state: Int) {
@@ -443,7 +448,8 @@ private fun rememberPlayerSetup(
             CredentialsRepositoryEntryPoint::class.java
         ).credentialsRepository()
     }
-    val credentials = remember { credentialsRepository.getCredentials() }
+    val credentials by credentialsRepository.getCredentialsFlow()
+        .collectAsState(initial = null)
     
     val exoPlayer = remember(credentials) {
         createExoPlayer(context, credentials)
@@ -451,6 +457,7 @@ private fun rememberPlayerSetup(
     
     DisposableEffect(streamUrl) {
         val listener = createPlayerListener(
+            context = context,
             onError = onError,
             onPlaybackStateChanged = { state ->
                 onPlaybackStateChanged(state)

@@ -5,6 +5,10 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,6 +33,16 @@ class CredentialsRepository @Inject constructor(
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
+
+    private val _credentialsFlow = MutableStateFlow<Credentials?>(null)
+    val credentialsFlow: StateFlow<Credentials?> = _credentialsFlow.asStateFlow()
+
+    init {
+        _credentialsFlow.value = getCredentials()
+        sharedPreferences.registerOnSharedPreferenceChangeListener { _, _ ->
+            _credentialsFlow.value = getCredentials()
+        }
+    }
 
     companion object {
         private const val KEY_SERVER_URL = "server_url"
@@ -63,5 +77,7 @@ class CredentialsRepository @Inject constructor(
     fun clearCredentials() {
         sharedPreferences.edit().clear().apply()
     }
+
+    fun getCredentialsFlow(): Flow<Credentials?> = credentialsFlow
 }
 
