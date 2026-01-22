@@ -6,7 +6,8 @@ plugins {
     alias(libs.plugins.hilt) apply false
     alias(libs.plugins.compose.compiler) apply false
     alias(libs.plugins.sonarqube)
-    id("com.google.gms.google-services") version "4.4.4" apply false
+    alias(libs.plugins.googleGmsServices) apply false
+    alias(libs.plugins.firebase.perf) apply false
 }
 sonar {
     properties {

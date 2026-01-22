@@ -112,6 +112,13 @@ jobs:
           
           echo "✅ Signing key configured"
 
+      - name: Setup Google Services
+        if: steps.should_release.outputs.should_release == 'true'
+        run: |
+          # Erstelle google-services.json aus Secret
+          echo "${{ secrets.GOOGLE_SERVICES_JSON }}" > app/google-services.json
+          echo "✅ Google Services configured"
+
       - name: Grant execute permission for gradlew
         if: steps.should_release.outputs.should_release == 'true'
         run: chmod +x gradlew

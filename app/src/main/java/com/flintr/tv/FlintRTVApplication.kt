@@ -1,7 +1,10 @@
 package com.flintr.tv
 
 import android.app.Application
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.core.os.bundleOf
 import com.google.firebase.analytics.FirebaseAnalytics
 import dagger.hilt.android.HiltAndroidApp
 
@@ -19,14 +22,20 @@ class FlintRTVApplication : Application() {
             Log.d(TAG, "Firebase Analytics initialized successfully")
             
             // Send test event to verify connection
-            val bundle = android.os.Bundle().apply {
-                putString("app_version", try {
-                    packageManager.getPackageInfo(packageName, 0).versionName
-                } catch (e: Exception) {
-                    "unknown"
-                })
+            val appVersion = try {
+                val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getPackageInfo(packageName, 0)
+                }
+                packageInfo.versionName
+            } catch (e: PackageManager.NameNotFoundException) {
+                Log.w(TAG, "Unable to get app version name", e)
+                "unknown"
             }
-            firebaseAnalytics.logEvent("app_initialized", bundle)
+            val bundle = bundleOf(PARAM_APP_VERSION to appVersion)
+            firebaseAnalytics.logEvent(EVENT_APP_INITIALIZED, bundle)
             Log.d(TAG, "Firebase test event 'app_initialized' sent")
         } catch (e: Exception) {
             Log.e(TAG, "Firebase Analytics initialization failed", e)
@@ -35,6 +44,8 @@ class FlintRTVApplication : Application() {
     
     companion object {
         private const val TAG = "FlintRTVApplication"
+        private const val EVENT_APP_INITIALIZED = "app_initialized"
+        private const val PARAM_APP_VERSION = "app_version"
     }
 }
 
