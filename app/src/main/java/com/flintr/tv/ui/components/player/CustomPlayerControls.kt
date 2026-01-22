@@ -44,6 +44,7 @@ data class PlayerCallbacks(
     val onPrevious: () -> Unit,
     val onPlayPause: () -> Unit,
     val onNext: () -> Unit,
+    val onNextEpisode: (() -> Unit)? = null,
     val onSeek: (Float) -> Unit,
     val onDragStart: () -> Unit,
     val onDragEnd: () -> Unit
@@ -55,6 +56,25 @@ data class PlayerCallbacks(
 data class PlayerUtilityCallbacks(
     val onDebug: () -> Unit,
     val onSettings: () -> Unit,
+    val onFocusChange: (FocusedButton?) -> Unit
+)
+
+/**
+ * Data class containing button appearance configuration
+ */
+private data class ButtonAppearance(
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val iconSize: androidx.compose.ui.unit.Dp,
+    val contentDescription: String
+)
+
+/**
+ * Data class containing button focus configuration
+ */
+private data class ButtonFocusConfig(
+    val focusedButton: FocusedButton?,
+    val targetButton: FocusedButton,
+    val focusRequester: FocusRequester,
     val onFocusChange: (FocusedButton?) -> Unit
 )
 
@@ -94,6 +114,7 @@ fun CustomPlayerControls(
             FocusedButton.PREVIOUS to FocusRequester(),
             FocusedButton.PLAY_PAUSE to FocusRequester(),
             FocusedButton.NEXT to FocusRequester(),
+            FocusedButton.NEXT_EPISODE to FocusRequester(),
             FocusedButton.DEBUG to FocusRequester(),
             FocusedButton.SETTINGS to FocusRequester()
         )
@@ -156,7 +177,8 @@ fun CustomPlayerControls(
                     callbacks = callbacks,
                     utilityCallbacks = utilityCallbacks,
                     focusedButton = focusedButton,
-                    focusRequesters = focusRequesters
+                    focusRequesters = focusRequesters,
+                    hasNextEpisode = callbacks.onNextEpisode != null
                 )
                 
                 // Time display
@@ -171,11 +193,69 @@ fun CustomPlayerControls(
                 UtilityButtons(
                     utilityCallbacks = utilityCallbacks,
                     focusedButton = focusedButton,
-                    focusRequesters = focusRequesters
+                    focusRequesters = focusRequesters,
+                    hasNextEpisode = callbacks.onNextEpisode != null
                 )
             }
         }
     }
+}
+
+/**
+ * Creates navigation handlers for a button based on its position and context
+ */
+private fun createNavigationHandler(
+    button: FocusedButton,
+    hasNextEpisode: Boolean,
+    onFocusChange: (FocusedButton?) -> Unit
+): Pair<() -> Unit, () -> Unit> {
+    val onNavigateLeft: () -> Unit = when (button) {
+        FocusedButton.PREVIOUS -> { -> onFocusChange(null) }
+        FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.PREVIOUS) }
+        FocusedButton.NEXT -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
+        FocusedButton.NEXT_EPISODE -> { -> onFocusChange(FocusedButton.NEXT) }
+        FocusedButton.DEBUG -> { -> 
+            onFocusChange(if (hasNextEpisode) FocusedButton.NEXT_EPISODE else FocusedButton.NEXT)
+        }
+        FocusedButton.SETTINGS -> { -> onFocusChange(FocusedButton.DEBUG) }
+    }
+    
+    val onNavigateRight: () -> Unit = when (button) {
+        FocusedButton.PREVIOUS -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
+        FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.NEXT) }
+        FocusedButton.NEXT -> { -> 
+            onFocusChange(if (hasNextEpisode) FocusedButton.NEXT_EPISODE else FocusedButton.DEBUG)
+        }
+        FocusedButton.NEXT_EPISODE -> { -> onFocusChange(FocusedButton.DEBUG) }
+        FocusedButton.DEBUG -> { -> onFocusChange(FocusedButton.SETTINGS) }
+        FocusedButton.SETTINGS -> { -> onFocusChange(null) }
+    }
+    
+    return Pair(onNavigateLeft, onNavigateRight)
+}
+
+/**
+ * Creates a ButtonConfig with standardized structure
+ */
+private fun createButtonConfig(
+    appearance: ButtonAppearance,
+    focusConfig: ButtonFocusConfig,
+    onClick: () -> Unit,
+    navigationHandler: Pair<() -> Unit, () -> Unit>
+): ButtonConfig {
+    return ButtonConfig(
+        icon = appearance.icon,
+        iconSize = appearance.iconSize,
+        contentDescription = appearance.contentDescription,
+        isFocused = focusConfig.focusedButton == focusConfig.targetButton,
+        focusRequester = focusConfig.focusRequester,
+        onFocusChange = { isFocused -> 
+            focusConfig.onFocusChange(if (isFocused) focusConfig.targetButton else null) 
+        },
+        onClick = onClick,
+        onNavigateLeft = navigationHandler.first,
+        onNavigateRight = navigationHandler.second
+    )
 }
 
 /**
@@ -187,7 +267,8 @@ private fun NavigationButtons(
     callbacks: PlayerCallbacks,
     utilityCallbacks: PlayerUtilityCallbacks,
     focusedButton: FocusedButton?,
-    focusRequesters: Map<FocusedButton, FocusRequester>
+    focusRequesters: Map<FocusedButton, FocusRequester>,
+    hasNextEpisode: Boolean
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
@@ -195,48 +276,97 @@ private fun NavigationButtons(
     ) {
         // Previous button (10s back)
         PlayerControlButton(
-            config = ButtonConfig(
-                icon = Icons.Default.Replay10,
-                iconSize = 28.dp,
-                contentDescription = "10 Sekunden zurück",
-                isFocused = focusedButton == FocusedButton.PREVIOUS,
-                focusRequester = focusRequesters[FocusedButton.PREVIOUS]!!,
-                onFocusChange = { utilityCallbacks.onFocusChange(if (it) FocusedButton.PREVIOUS else null) },
+            config = createButtonConfig(
+                appearance = ButtonAppearance(
+                    icon = Icons.Default.Replay10,
+                    iconSize = 28.dp,
+                    contentDescription = "10 Sekunden zurück"
+                ),
+                focusConfig = ButtonFocusConfig(
+                    focusedButton = focusedButton,
+                    targetButton = FocusedButton.PREVIOUS,
+                    focusRequester = focusRequesters[FocusedButton.PREVIOUS]!!,
+                    onFocusChange = utilityCallbacks.onFocusChange
+                ),
                 onClick = callbacks.onPrevious,
-                onNavigateLeft = { utilityCallbacks.onFocusChange(null) },
-                onNavigateRight = { utilityCallbacks.onFocusChange(FocusedButton.PLAY_PAUSE) }
+                navigationHandler = createNavigationHandler(
+                    FocusedButton.PREVIOUS,
+                    hasNextEpisode,
+                    utilityCallbacks.onFocusChange
+                )
             )
         )
         
         // Play/Pause button
         PlayerControlButton(
-            config = ButtonConfig(
-                icon = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                iconSize = 32.dp,
-                contentDescription = if (state.isPlaying) "Pause" else "Play",
-                isFocused = focusedButton == FocusedButton.PLAY_PAUSE,
-                focusRequester = focusRequesters[FocusedButton.PLAY_PAUSE]!!,
-                onFocusChange = { utilityCallbacks.onFocusChange(if (it) FocusedButton.PLAY_PAUSE else null) },
+            config = createButtonConfig(
+                appearance = ButtonAppearance(
+                    icon = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    iconSize = 32.dp,
+                    contentDescription = if (state.isPlaying) "Pause" else "Play"
+                ),
+                focusConfig = ButtonFocusConfig(
+                    focusedButton = focusedButton,
+                    targetButton = FocusedButton.PLAY_PAUSE,
+                    focusRequester = focusRequesters[FocusedButton.PLAY_PAUSE]!!,
+                    onFocusChange = utilityCallbacks.onFocusChange
+                ),
                 onClick = callbacks.onPlayPause,
-                onNavigateLeft = { utilityCallbacks.onFocusChange(FocusedButton.PREVIOUS) },
-                onNavigateRight = { utilityCallbacks.onFocusChange(FocusedButton.NEXT) }
+                navigationHandler = createNavigationHandler(
+                    FocusedButton.PLAY_PAUSE,
+                    hasNextEpisode,
+                    utilityCallbacks.onFocusChange
+                )
             )
         )
         
         // Next button (10s forward)
         PlayerControlButton(
-            config = ButtonConfig(
-                icon = Icons.Default.Forward10,
-                iconSize = 28.dp,
-                contentDescription = "10 Sekunden vor",
-                isFocused = focusedButton == FocusedButton.NEXT,
-                focusRequester = focusRequesters[FocusedButton.NEXT]!!,
-                onFocusChange = { utilityCallbacks.onFocusChange(if (it) FocusedButton.NEXT else null) },
+            config = createButtonConfig(
+                appearance = ButtonAppearance(
+                    icon = Icons.Default.Forward10,
+                    iconSize = 28.dp,
+                    contentDescription = "10 Sekunden vor"
+                ),
+                focusConfig = ButtonFocusConfig(
+                    focusedButton = focusedButton,
+                    targetButton = FocusedButton.NEXT,
+                    focusRequester = focusRequesters[FocusedButton.NEXT]!!,
+                    onFocusChange = utilityCallbacks.onFocusChange
+                ),
                 onClick = callbacks.onNext,
-                onNavigateLeft = { utilityCallbacks.onFocusChange(FocusedButton.PLAY_PAUSE) },
-                onNavigateRight = { utilityCallbacks.onFocusChange(FocusedButton.DEBUG) }
+                navigationHandler = createNavigationHandler(
+                    FocusedButton.NEXT,
+                    hasNextEpisode,
+                    utilityCallbacks.onFocusChange
+                )
             )
         )
+        
+        // Next Episode button (only shown if next episode is available)
+        if (hasNextEpisode && callbacks.onNextEpisode != null) {
+            PlayerControlButton(
+                config = createButtonConfig(
+                    appearance = ButtonAppearance(
+                        icon = Icons.Default.SkipNext,
+                        iconSize = 28.dp,
+                        contentDescription = "Nächste Episode"
+                    ),
+                    focusConfig = ButtonFocusConfig(
+                        focusedButton = focusedButton,
+                        targetButton = FocusedButton.NEXT_EPISODE,
+                        focusRequester = focusRequesters[FocusedButton.NEXT_EPISODE]!!,
+                        onFocusChange = utilityCallbacks.onFocusChange
+                    ),
+                    onClick = { callbacks.onNextEpisode.invoke() },
+                    navigationHandler = createNavigationHandler(
+                        FocusedButton.NEXT_EPISODE,
+                        hasNextEpisode,
+                        utilityCallbacks.onFocusChange
+                    )
+                )
+            )
+        }
     }
 }
 
@@ -247,7 +377,8 @@ private fun NavigationButtons(
 private fun UtilityButtons(
     utilityCallbacks: PlayerUtilityCallbacks,
     focusedButton: FocusedButton?,
-    focusRequesters: Map<FocusedButton, FocusRequester>
+    focusRequesters: Map<FocusedButton, FocusRequester>,
+    hasNextEpisode: Boolean
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
@@ -255,31 +386,47 @@ private fun UtilityButtons(
     ) {
         // Debug button
         PlayerControlButton(
-            config = ButtonConfig(
-                icon = Icons.Default.BugReport,
-                iconSize = 24.dp,
-                contentDescription = "Debug",
-                isFocused = focusedButton == FocusedButton.DEBUG,
-                focusRequester = focusRequesters[FocusedButton.DEBUG]!!,
-                onFocusChange = { utilityCallbacks.onFocusChange(if (it) FocusedButton.DEBUG else null) },
+            config = createButtonConfig(
+                appearance = ButtonAppearance(
+                    icon = Icons.Default.BugReport,
+                    iconSize = 24.dp,
+                    contentDescription = "Debug"
+                ),
+                focusConfig = ButtonFocusConfig(
+                    focusedButton = focusedButton,
+                    targetButton = FocusedButton.DEBUG,
+                    focusRequester = focusRequesters[FocusedButton.DEBUG]!!,
+                    onFocusChange = utilityCallbacks.onFocusChange
+                ),
                 onClick = utilityCallbacks.onDebug,
-                onNavigateLeft = { utilityCallbacks.onFocusChange(FocusedButton.NEXT) },
-                onNavigateRight = { utilityCallbacks.onFocusChange(FocusedButton.SETTINGS) }
+                navigationHandler = createNavigationHandler(
+                    FocusedButton.DEBUG,
+                    hasNextEpisode,
+                    utilityCallbacks.onFocusChange
+                )
             )
         )
         
         // Settings button
         PlayerControlButton(
-            config = ButtonConfig(
-                icon = Icons.Default.Settings,
-                iconSize = 24.dp,
-                contentDescription = "Einstellungen",
-                isFocused = focusedButton == FocusedButton.SETTINGS,
-                focusRequester = focusRequesters[FocusedButton.SETTINGS]!!,
-                onFocusChange = { utilityCallbacks.onFocusChange(if (it) FocusedButton.SETTINGS else null) },
+            config = createButtonConfig(
+                appearance = ButtonAppearance(
+                    icon = Icons.Default.Settings,
+                    iconSize = 24.dp,
+                    contentDescription = "Einstellungen"
+                ),
+                focusConfig = ButtonFocusConfig(
+                    focusedButton = focusedButton,
+                    targetButton = FocusedButton.SETTINGS,
+                    focusRequester = focusRequesters[FocusedButton.SETTINGS]!!,
+                    onFocusChange = utilityCallbacks.onFocusChange
+                ),
                 onClick = utilityCallbacks.onSettings,
-                onNavigateLeft = { utilityCallbacks.onFocusChange(FocusedButton.DEBUG) },
-                onNavigateRight = { utilityCallbacks.onFocusChange(null) }
+                navigationHandler = createNavigationHandler(
+                    FocusedButton.SETTINGS,
+                    hasNextEpisode,
+                    utilityCallbacks.onFocusChange
+                )
             )
         )
     }

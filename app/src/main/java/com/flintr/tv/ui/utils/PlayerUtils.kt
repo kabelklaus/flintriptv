@@ -13,6 +13,7 @@ enum class FocusedButton {
     PREVIOUS,
     PLAY_PAUSE,
     NEXT,
+    NEXT_EPISODE,
     DEBUG,
     SETTINGS
 }
