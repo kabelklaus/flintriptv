@@ -281,6 +281,8 @@ class PlayerViewModel @Inject constructor(
         val currentState = _nextEpisodeState.value
         val nextEpisode = findNextEpisode()
         
+        android.util.Log.d("PlayerViewModel", "tryShowNextEpisodeButton: nextEpisode=${nextEpisode?.displayTitle ?: "null"}")
+        
         if (nextEpisode != null) {
             // If button is already visible, preserve current progress
             val initialProgress = if (currentState is NextEpisodeState.Visible) {
@@ -290,11 +292,14 @@ class PlayerViewModel @Inject constructor(
             }
             
             _nextEpisodeState.value = NextEpisodeState.Visible(nextEpisode, initialProgress)
+            android.util.Log.d("PlayerViewModel", "Button state set to Visible")
             
             // Only start countdown if it's not already running
             if (autoPlayJob == null || !autoPlayJob!!.isActive) {
                 startAutoPlayCountdown()
             }
+        } else {
+            android.util.Log.d("PlayerViewModel", "Button not shown: no next episode found")
         }
     }
     

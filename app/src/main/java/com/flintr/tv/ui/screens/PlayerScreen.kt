@@ -844,19 +844,28 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         if (contentType == "series" && seriesContextLoaded) {
             // Don't show button if watch credits mode is active
             if (watchCreditsMode) {
+                Log.d("PlayerScreen", "Button not shown: watchCreditsMode is active")
                 return@LaunchedEffect
             }
             
             val currentState = viewModel.nextEpisodeState.value
             val isButtonVisible = currentState is NextEpisodeState.Visible
             
+            Log.d("PlayerScreen", "Progress check: progress=$progress (${(progress * 100).toInt()}%), seriesContextLoaded=$seriesContextLoaded, isButtonVisible=$isButtonVisible")
+            
             if (progress >= 0.95f && !isButtonVisible) {
                 // Show button only if not already visible (prevents timer restart)
                 // Only show if series context is loaded
+                Log.d("PlayerScreen", "Calling showNextEpisodeButton() - progress >= 95%")
                 viewModel.showNextEpisodeButton()
             } else if (progress < 0.95f && isButtonVisible) {
                 // User rewound, hide button
+                Log.d("PlayerScreen", "Hiding button - progress < 95%")
                 viewModel.hideNextEpisodeButton()
+            }
+        } else {
+            if (contentType == "series") {
+                Log.d("PlayerScreen", "Button not shown: contentType=series but seriesContextLoaded=$seriesContextLoaded")
             }
         }
     }

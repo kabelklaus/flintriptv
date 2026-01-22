@@ -20,6 +20,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.ui.common.PlayerConstants
 import com.flintr.tv.ui.theme.FontSizes
@@ -64,39 +65,25 @@ fun NextEpisodeButtonGroup(
     
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Watch Credits Button (left)
-        Box(
-            modifier = Modifier
-                .width(160.dp)
-                .height(48.dp)
-                .focusRequester(watchCreditsFocusRequester)
-                .onFocusChanged { focusState ->
-                    watchCreditsFocused = focusState.isFocused
+        PlayerActionButton(
+            width = 160.dp,
+            focusConfig = PlayerActionButtonFocusConfig(
+                isFocused = watchCreditsFocused,
+                focusRequester = watchCreditsFocusRequester,
+                onFocusChange = { watchCreditsFocused = it }
+            ),
+            onClick = onWatchCredits,
+            navigationConfig = PlayerActionButtonNavigationConfig(
+                onNavigateRight = {
+                    nextEpisodeFocusRequester.requestFocus()
+                    true
                 }
-                .focusable()
-                .onClick(onClick = onWatchCredits)
-                .onDpadCenter(onPress = onWatchCredits)
-                .onDpadDirection(
-                    onRight = {
-                        nextEpisodeFocusRequester.requestFocus()
-                        true
-                    }
-                )
-                .clip(buttonShape)
-                .background(
-                    color = Color.Black.copy(alpha = 0.8f),
-                    shape = buttonShape
-                )
-                .then(
-                    if (watchCreditsFocused) {
-                        Modifier.border(2.dp, SharedColors.red, buttonShape)
-                    } else {
-                        Modifier
-                    }
-                )
+            ),
+            buttonShape = buttonShape
         ) {
             // Text
             Text(
@@ -112,35 +99,21 @@ fun NextEpisodeButtonGroup(
         }
         
         // Next Episode Button (right)
-        Box(
-            modifier = Modifier
-                .width(200.dp)
-                .height(48.dp)
-                .focusRequester(nextEpisodeFocusRequester)
-                .onFocusChanged { focusState ->
-                    nextEpisodeFocused = focusState.isFocused
+        PlayerActionButton(
+            width = 200.dp,
+            focusConfig = PlayerActionButtonFocusConfig(
+                isFocused = nextEpisodeFocused,
+                focusRequester = nextEpisodeFocusRequester,
+                onFocusChange = { nextEpisodeFocused = it }
+            ),
+            onClick = onNextEpisode,
+            navigationConfig = PlayerActionButtonNavigationConfig(
+                onNavigateLeft = {
+                    watchCreditsFocusRequester.requestFocus()
+                    true
                 }
-                .focusable()
-                .onClick(onClick = onNextEpisode)
-                .onDpadCenter(onPress = onNextEpisode)
-                .onDpadDirection(
-                    onLeft = {
-                        watchCreditsFocusRequester.requestFocus()
-                        true
-                    }
-                )
-                .clip(buttonShape)
-                .background(
-                    color = Color.Black.copy(alpha = 0.8f),
-                    shape = buttonShape
-                )
-                .then(
-                    if (nextEpisodeFocused) {
-                        Modifier.border(2.dp, SharedColors.red, buttonShape)
-                    } else {
-                        Modifier
-                    }
-                )
+            ),
+            buttonShape = buttonShape
         ) {
             // Filling progress bar as background (from left to right)
             Box(
@@ -183,4 +156,72 @@ fun NextEpisodeButtonGroup(
             }
         }
     }
+}
+
+/**
+ * Configuration for player action button focus handling
+ */
+private data class PlayerActionButtonFocusConfig(
+    val isFocused: Boolean,
+    val focusRequester: FocusRequester,
+    val onFocusChange: (Boolean) -> Unit
+)
+
+/**
+ * Configuration for player action button navigation handling
+ */
+private data class PlayerActionButtonNavigationConfig(
+    val onNavigateLeft: (() -> Boolean)? = null,
+    val onNavigateRight: (() -> Boolean)? = null
+)
+
+/**
+ * Reusable button composable for player action buttons
+ * Encapsulates common button logic: focus handling, click handling, D-Pad navigation
+ * 
+ * @param width Button width
+ * @param focusConfig Configuration for focus handling
+ * @param onClick Callback when button is clicked
+ * @param navigationConfig Configuration for D-Pad navigation
+ * @param buttonShape Shape for the button
+ * @param content Content to display inside the button
+ */
+@Composable
+private fun PlayerActionButton(
+    width: Dp,
+    focusConfig: PlayerActionButtonFocusConfig,
+    onClick: () -> Unit,
+    navigationConfig: PlayerActionButtonNavigationConfig = PlayerActionButtonNavigationConfig(),
+    buttonShape: RoundedCornerShape,
+    content: @Composable BoxScope.() -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(48.dp)
+            .focusRequester(focusConfig.focusRequester)
+            .onFocusChanged { focusState ->
+                focusConfig.onFocusChange(focusState.isFocused)
+            }
+            .focusable()
+            .onClick(onClick = onClick)
+            .onDpadCenter(onPress = onClick)
+            .onDpadDirection(
+                onLeft = navigationConfig.onNavigateLeft,
+                onRight = navigationConfig.onNavigateRight
+            )
+            .clip(buttonShape)
+            .background(
+                color = Color.Black.copy(alpha = 0.8f),
+                shape = buttonShape
+            )
+            .then(
+                if (focusConfig.isFocused) {
+                    Modifier.border(2.dp, SharedColors.red, buttonShape)
+                } else {
+                    Modifier
+                }
+            ),
+        content = content
+    )
 }
