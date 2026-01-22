@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.model.*
+import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +22,7 @@ class MainViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
+    private val userRepository: UserRepository,
     private val cacheService: DataCacheService
 ) : ViewModel() {
 
@@ -60,6 +62,7 @@ class MainViewModel @Inject constructor(
         private const val MIN_QUERY_LENGTH = 2
         private const val MAX_RESULTS_PER_CATEGORY = 50
         private const val KEY_NAVIGATION_STATE = "navigation_state_before_player"
+        private const val KEY_USERNAME_WRITTEN_THIS_SESSION = "username_written_this_session"
     }
 
     init {
@@ -79,6 +82,22 @@ class MainViewModel @Inject constructor(
         if (credentials == null) {
             Log.w("MainViewModel", "No credentials available, skipping initial data load")
             return
+        }
+
+        // Save username to Firestore if not already written this session
+        val usernameWrittenThisSession = savedStateHandle[KEY_USERNAME_WRITTEN_THIS_SESSION] ?: false
+        if (!usernameWrittenThisSession) {
+            viewModelScope.launch {
+                userRepository.saveUsername(credentials.username).fold(
+                    onSuccess = {
+                        savedStateHandle[KEY_USERNAME_WRITTEN_THIS_SESSION] = true
+                        Log.d("MainViewModel", "Username saved to Firestore on app start: ${credentials.username}")
+                    },
+                    onFailure = { exception ->
+                        Log.w("MainViewModel", "Failed to save username to Firestore on app start: ${credentials.username}", exception)
+                    }
+                )
+            }
         }
 
         viewModelScope.launch {

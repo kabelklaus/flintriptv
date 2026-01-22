@@ -11,6 +11,7 @@ import com.flintr.tv.data.local.WatchedHistoryService
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.SeriesInfoResponseAdapterFactory
 import com.flintr.tv.data.repository.UpdateRepository
+import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.utils.UpdateDownloadService
 import com.flintr.tv.utils.UpdateInstaller
@@ -175,6 +176,12 @@ object AppModule {
         gitHubApiService: GitHubApiService
     ): UpdateRepository {
         return UpdateRepository(gitHubApiService)
+    }
+    
+    @Provides
+    @Singleton
+    fun provideUserRepository(): UserRepository {
+        return UserRepository()
     }
     
     @Provides

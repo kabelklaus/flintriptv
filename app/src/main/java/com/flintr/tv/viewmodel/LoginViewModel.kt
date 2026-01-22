@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.di.AppModule
 import com.squareup.moshi.Moshi
@@ -27,6 +28,7 @@ data class LoginUiState(
 class LoginViewModel @Inject constructor(
     private val credentialsRepository: CredentialsRepository,
     private val repository: XtreamRepository,
+    private val userRepository: UserRepository,
     private val okHttpClient: OkHttpClient,
     private val moshi: Moshi
 ) : ViewModel() {
@@ -58,6 +60,17 @@ class LoginViewModel @Inject constructor(
                     credentialsRepository.saveCredentials(
                         Credentials(serverUrl, username, password)
                     )
+                    
+                    // Save username to Firestore (non-blocking, errors are logged but don't affect login)
+                    userRepository.saveUsername(username).fold(
+                        onSuccess = {
+                            Log.d("LoginViewModel", "Username saved to Firestore: $username")
+                        },
+                        onFailure = { exception ->
+                            Log.w("LoginViewModel", "Failed to save username to Firestore: $username", exception)
+                        }
+                    )
+                    
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         loginSuccess = true
