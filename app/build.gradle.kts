@@ -22,8 +22,8 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 57
-        versionName = "1.56"
+        versionCode = 58
+        versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -152,6 +152,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.perf)
+    implementation(libs.firebase.firestore)
     
     // Desugaring
     coreLibraryDesugaring(libs.desugar.jdk.libs)
