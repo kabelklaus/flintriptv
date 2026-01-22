@@ -9,10 +9,12 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitHorizontalDragOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -741,24 +743,16 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     val viewModel: PlayerViewModel = hiltViewModel()
     
     // Load series context if this is a series episode
-    var seriesContextLoaded by remember { mutableStateOf(false) }
     LaunchedEffect(seriesId, episodeId, seriesData) {
         if (contentType == "series" && seriesId != null && episodeId != null) {
             viewModel.loadSeriesContext(seriesId, episodeId, seriesData)
-            // If seriesData is provided, context is loaded immediately
-            // Otherwise, wait a bit for async loading
-            if (seriesData != null) {
-                seriesContextLoaded = true
-            } else {
-                // Wait for async loading (give it some time)
-                delay(500)
-                seriesContextLoaded = true
-            }
         } else {
             viewModel.clearSeriesContext()
-            seriesContextLoaded = false
         }
     }
+    
+    // Observe series context loaded state from ViewModel
+    val seriesContextLoaded by viewModel.seriesContextLoaded.collectAsState()
     
     // Observe next episode state
     val nextEpisodeState by viewModel.nextEpisodeState.collectAsState()
@@ -870,7 +864,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     LaunchedEffect(nextEpisodeState) {
         if (nextEpisodeState is NextEpisodeState.Loading) {
             // Get nextEpisodeInfo from ViewModel (stored before state changed to Loading)
-            val nextEpisodeInfo = viewModel.pendingNextEpisodeInfo
+            val nextEpisodeInfo = viewModel.consumePendingNextEpisodeInfo()
             
             if (nextEpisodeInfo != null && onNextEpisode != null) {
                 // Save current progress before navigating
@@ -1087,13 +1081,13 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 // Show error message for next episode loading
                 Text(
                     text = nextState.message,
-                    color = androidx.compose.ui.graphics.Color.White,
+                    color = Color.White,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(bottom = 100.dp, end = 16.dp)
                         .background(
-                            color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.8f),
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                            color = Color.Black.copy(alpha = 0.8f),
+                            shape = RoundedCornerShape(8.dp)
                         )
                         .padding(16.dp)
                 )

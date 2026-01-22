@@ -9,10 +9,12 @@ import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.ui.common.PlayerConstants
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -52,24 +54,33 @@ class PlayerViewModel @Inject constructor(
     private val _nextEpisodeState = MutableStateFlow<NextEpisodeState>(NextEpisodeState.Hidden)
     val nextEpisodeState: StateFlow<NextEpisodeState> = _nextEpisodeState.asStateFlow()
     
+    private val _seriesContextLoaded = MutableStateFlow<Boolean>(false)
+    val seriesContextLoaded: StateFlow<Boolean> = _seriesContextLoaded.asStateFlow()
+    
     private var currentSeries: Series? = null
     private var currentSeason: Season? = null
     private var currentEpisode: Episode? = null
     private var currentSeriesId: Int? = null
     private var currentEpisodeId: Int? = null
     private var autoPlayJob: kotlinx.coroutines.Job? = null
-    private var _pendingNextEpisodeInfo: NextEpisodeInfo? = null
+    private var _pendingNextEpisodeInfo: Channel<NextEpisodeInfo>? = null
+    
+    private fun getPendingNextEpisodeInfoChannel(): Channel<NextEpisodeInfo> {
+        if (_pendingNextEpisodeInfo == null || _pendingNextEpisodeInfo!!.isClosedForSend) {
+            _pendingNextEpisodeInfo = Channel(Channel.CONFLATED)
+        }
+        return _pendingNextEpisodeInfo!!
+    }
     
     /**
-     * Gets the pending next episode info and clears it
+     * Consumes the pending next episode info from the channel
      * Should be called when navigation is triggered
+     * Returns null if no info is available
      */
-    val pendingNextEpisodeInfo: NextEpisodeInfo?
-        get() {
-            val info = _pendingNextEpisodeInfo
-            _pendingNextEpisodeInfo = null
-            return info
-        }
+    fun consumePendingNextEpisodeInfo(): NextEpisodeInfo? {
+        val channel = _pendingNextEpisodeInfo ?: return null
+        return channel.tryReceive().getOrNull()
+    }
     
     fun setStreamUrl(url: String) {
         _currentStreamUrl.value = url
@@ -101,10 +112,12 @@ class PlayerViewModel @Inject constructor(
             currentSeries = seriesData.series
             currentSeason = seriesData.currentSeason
             currentEpisode = seriesData.currentEpisode
+            _seriesContextLoaded.value = true
             return
         }
         
         // Otherwise, load from repository
+        _seriesContextLoaded.value = false
         viewModelScope.launch {
             val credentials = credentialsRepository.getCredentials() ?: return@launch
             repository.getSeriesInfo(credentials.username, credentials.password, seriesId)
@@ -116,6 +129,7 @@ class PlayerViewModel @Inject constructor(
                             if (episode.id == episodeId) {
                                 currentSeason = season
                                 currentEpisode = episode
+                                _seriesContextLoaded.value = true
                                 return@onSuccess
                             }
                         }
@@ -134,6 +148,11 @@ class PlayerViewModel @Inject constructor(
     
     /**
      * Finds the next episode in the series
+     * 
+     * Note: Uses `episodeNum` for ordering if available, otherwise falls back to `episode.id`.
+     * This fallback may lead to incorrect ordering if `episodeNum` is truly missing, as `id`
+     * is a unique identifier and may not represent sequential order within a season.
+     * In such cases, the episode sequence might not be correctly determined.
      */
     fun findNextEpisode(): NextEpisodeInfo? {
         val series = currentSeries ?: return null
@@ -264,11 +283,11 @@ class PlayerViewModel @Inject constructor(
         }
         
         autoPlayJob = viewModelScope.launch {
-            repeat(100) {
-                delay(100) // 100ms steps = 10 seconds total
+            repeat(PlayerConstants.AUTO_PLAY_COUNTDOWN_STEPS) {
+                delay(PlayerConstants.AUTO_PLAY_UPDATE_INTERVAL_MS)
                 val currentState = _nextEpisodeState.value
                 if (currentState is NextEpisodeState.Visible) {
-                    val progress = (it + 1) / 100f
+                    val progress = (it + 1) / PlayerConstants.AUTO_PLAY_COUNTDOWN_STEPS.toFloat()
                     _nextEpisodeState.value = NextEpisodeState.Visible(currentState.info, progress)
                 } else {
                     return@launch // Button was hidden, cancel countdown
@@ -296,7 +315,7 @@ class PlayerViewModel @Inject constructor(
         val currentState = _nextEpisodeState.value
         if (currentState is NextEpisodeState.Visible) {
             // Store nextEpisodeInfo before changing state to Loading
-            _pendingNextEpisodeInfo = currentState.info
+            getPendingNextEpisodeInfoChannel().trySend(currentState.info)
             _nextEpisodeState.value = NextEpisodeState.Loading
         }
     }
@@ -310,7 +329,9 @@ class PlayerViewModel @Inject constructor(
         currentEpisode = null
         currentSeriesId = null
         currentEpisodeId = null
+        _pendingNextEpisodeInfo?.close()
         _pendingNextEpisodeInfo = null
+        _seriesContextLoaded.value = false
         hideNextEpisodeButton()
     }
 }

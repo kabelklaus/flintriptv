@@ -21,6 +21,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.flintr.tv.ui.common.PlayerConstants
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.onClick
@@ -51,7 +52,7 @@ fun NextEpisodeButton(
     // Animated progress for visual feedback
     val animatedProgress by animateFloatAsState(
         targetValue = autoPlayProgress,
-        animationSpec = tween(durationMillis = 100),
+        animationSpec = tween(durationMillis = PlayerConstants.NEXT_EPISODE_BUTTON_ANIMATION_DURATION_MS),
         label = "autoPlayProgress"
     )
     
@@ -101,7 +102,7 @@ fun NextEpisodeButton(
             horizontalArrangement = Arrangement.Start
         ) {
             // Play icon (triangle) - only visible on filled portion
-            if (animatedProgress > 0.1f) {
+            if (animatedProgress > PlayerConstants.PLAY_ICON_VISIBILITY_THRESHOLD) {
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = null,
@@ -117,7 +118,7 @@ fun NextEpisodeButton(
                 text = "Next Episode",
                 fontSize = FontSizes.fontSizeMD,
                 fontWeight = FontWeight.Medium,
-                color = if (animatedProgress > 0.5f) Color.Black else Color.White
+                color = if (animatedProgress > PlayerConstants.TEXT_COLOR_CHANGE_THRESHOLD) Color.Black else Color.White
             )
         }
     }

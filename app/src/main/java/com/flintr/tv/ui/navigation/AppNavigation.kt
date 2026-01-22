@@ -528,6 +528,7 @@ fun AppNavigation(
             val seriesId = seriesIdStr.toIntOrNull()?.takeIf { it >= 0 }
             val episodeId = episodeIdStr.toIntOrNull()?.takeIf { it >= 0 }
             
+            val credentials = dependencies.credentialsRepository.getCredentials()
             PlayerScreen(
                 streamInfo = StreamInfo(
                     streamUrl = streamUrl,
@@ -542,7 +543,7 @@ fun AppNavigation(
                 onNextEpisode = { nextEpisodeInfo ->
                     navigateToNextEpisode(
                         navController = navController,
-                        credentials = dependencies.credentialsRepository.getCredentials(),
+                        credentials = credentials,
                         seriesId = seriesId,
                         nextEpisodeInfo = nextEpisodeInfo
                     )
