@@ -156,6 +156,21 @@ class PlayerViewModel @Inject constructor(
     }
     
     /**
+     * Gets the current series context for content info display
+     * Returns null if context is not loaded
+     */
+    fun getSeriesContext(): com.flintr.tv.ui.screens.SeriesContext? {
+        val series = currentSeries ?: return null
+        val season = currentSeason ?: return null
+        val episode = currentEpisode ?: return null
+        return com.flintr.tv.ui.screens.SeriesContext(
+            series = series,
+            currentSeason = season,
+            currentEpisode = episode
+        )
+    }
+    
+    /**
      * Checks if a next episode exists in the series
      * @return true if a next episode is available, false otherwise
      */
