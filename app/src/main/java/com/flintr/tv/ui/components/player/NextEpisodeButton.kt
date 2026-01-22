@@ -26,27 +26,31 @@ import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadCenter
+import com.flintr.tv.ui.utils.onDpadDirection
 
 /**
- * Button for navigating to the next episode with auto-play countdown
- * Simplified design showing only "Next Episode" text with filling progress bar
+ * Button group containing "Watch Credits" and "Next Episode" buttons
  * 
  * @param autoPlayProgress Progress of auto-play countdown (0.0 to 1.0)
- * @param onNextEpisode Callback when user clicks or auto-play triggers
- * @param modifier Modifier for the button
+ * @param onWatchCredits Callback when user clicks "Watch Credits"
+ * @param onNextEpisode Callback when user clicks "Next Episode"
+ * @param modifier Modifier for the button group
  */
 @Composable
-fun NextEpisodeButton(
+fun NextEpisodeButtonGroup(
     autoPlayProgress: Float,
+    onWatchCredits: () -> Unit,
     onNextEpisode: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val focusRequester = remember { FocusRequester() }
-    var isFocused by remember { mutableStateOf(false) }
+    val watchCreditsFocusRequester = remember { FocusRequester() }
+    val nextEpisodeFocusRequester = remember { FocusRequester() }
+    var watchCreditsFocused by remember { mutableStateOf(false) }
+    var nextEpisodeFocused by remember { mutableStateOf(false) }
     
-    // Auto-focus when button appears
+    // Auto-focus on "Next Episode" button when group appears
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        nextEpisodeFocusRequester.requestFocus()
     }
     
     // Animated progress for visual feedback
@@ -58,68 +62,125 @@ fun NextEpisodeButton(
     
     val buttonShape = RoundedCornerShape(8.dp)
     
-    Box(
-        modifier = modifier
-            .width(200.dp)
-            .height(48.dp)
-            .focusRequester(focusRequester)
-            .onFocusChanged { focusState ->
-                isFocused = focusState.isFocused
-            }
-            .focusable()
-            .onClick(onClick = onNextEpisode)
-            .onDpadCenter(onPress = onNextEpisode)
-            .clip(buttonShape)
-            .background(
-                color = Color.Black.copy(alpha = 0.8f),
-                shape = buttonShape
-            )
-            .then(
-                if (isFocused) {
-                    Modifier.border(2.dp, SharedColors.red, buttonShape)
-                } else {
-                    Modifier
-                }
-            )
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Filling progress bar as background (from left to right)
+        // Watch Credits Button (left)
         Box(
             modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(animatedProgress)
+                .width(160.dp)
+                .height(48.dp)
+                .focusRequester(watchCreditsFocusRequester)
+                .onFocusChanged { focusState ->
+                    watchCreditsFocused = focusState.isFocused
+                }
+                .focusable()
+                .onClick(onClick = onWatchCredits)
+                .onDpadCenter(onPress = onWatchCredits)
+                .onDpadDirection(
+                    onRight = {
+                        nextEpisodeFocusRequester.requestFocus()
+                        true
+                    }
+                )
+                .clip(buttonShape)
                 .background(
-                    color = Color.White,
+                    color = Color.Black.copy(alpha = 0.8f),
                     shape = buttonShape
                 )
-        )
-        
-        // Text overlay
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Start
-        ) {
-            // Play icon (triangle) - only visible on filled portion
-            if (animatedProgress > PlayerConstants.PLAY_ICON_VISIBILITY_THRESHOLD) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = Color.Black,
-                    modifier = Modifier
-                        .size(20.dp)
-                        .padding(end = 8.dp)
+                .then(
+                    if (watchCreditsFocused) {
+                        Modifier.border(2.dp, SharedColors.red, buttonShape)
+                    } else {
+                        Modifier
+                    }
                 )
-            }
-            
-            // "Next Episode" text
+        ) {
+            // Text
             Text(
-                text = "Next Episode",
+                text = "Watch Credits",
                 fontSize = FontSizes.fontSizeMD,
                 fontWeight = FontWeight.Medium,
-                color = if (animatedProgress > PlayerConstants.TEXT_COLOR_CHANGE_THRESHOLD) Color.Black else Color.White
+                color = Color.White,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+                    .wrapContentSize(Alignment.Center)
             )
+        }
+        
+        // Next Episode Button (right)
+        Box(
+            modifier = Modifier
+                .width(200.dp)
+                .height(48.dp)
+                .focusRequester(nextEpisodeFocusRequester)
+                .onFocusChanged { focusState ->
+                    nextEpisodeFocused = focusState.isFocused
+                }
+                .focusable()
+                .onClick(onClick = onNextEpisode)
+                .onDpadCenter(onPress = onNextEpisode)
+                .onDpadDirection(
+                    onLeft = {
+                        watchCreditsFocusRequester.requestFocus()
+                        true
+                    }
+                )
+                .clip(buttonShape)
+                .background(
+                    color = Color.Black.copy(alpha = 0.8f),
+                    shape = buttonShape
+                )
+                .then(
+                    if (nextEpisodeFocused) {
+                        Modifier.border(2.dp, SharedColors.red, buttonShape)
+                    } else {
+                        Modifier
+                    }
+                )
+        ) {
+            // Filling progress bar as background (from left to right)
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(animatedProgress)
+                    .background(
+                        color = Color.White,
+                        shape = buttonShape
+                    )
+            )
+            
+            // Text overlay
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Start
+            ) {
+                // Play icon (triangle) - only visible on filled portion
+                if (animatedProgress > PlayerConstants.PLAY_ICON_VISIBILITY_THRESHOLD) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color.Black,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .padding(end = 8.dp)
+                    )
+                }
+                
+                // "Next Episode" text
+                Text(
+                    text = "Next Episode",
+                    fontSize = FontSizes.fontSizeMD,
+                    fontWeight = FontWeight.Medium,
+                    color = if (animatedProgress > PlayerConstants.TEXT_COLOR_CHANGE_THRESHOLD) Color.Black else Color.White
+                )
+            }
         }
     }
 }
