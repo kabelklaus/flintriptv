@@ -25,6 +25,8 @@ leanback = "1.0.0"
 securityCrypto = "1.1.0-alpha06"
 desugarJdkLibs = "2.0.4"
 sonarqube = "5.1.0.4882"
+firebaseBom = "34.8.0"
+googleGmsServices = "4.4.4"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -80,6 +82,11 @@ security-crypto = { group = "androidx.security", name = "security-crypto", versi
 # Desugaring
 desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 
+# Firebase
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
+firebase-perf = { group = "com.google.firebase", name = "firebase-perf" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
@@ -87,4 +94,5 @@ kotlin-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
+googleGmsServices = { id = "com.google.gms.google-services", version.ref = "googleGmsServices" }
 
