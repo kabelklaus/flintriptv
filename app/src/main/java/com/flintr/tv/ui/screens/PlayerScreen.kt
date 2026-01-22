@@ -46,7 +46,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import com.flintr.tv.ui.components.player.*
-import com.flintr.tv.ui.components.player.NextEpisodeButton
+import com.flintr.tv.ui.components.player.NextEpisodeButtonGroup
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.FocusedButton
 import com.flintr.tv.ui.utils.onBackButton
@@ -760,6 +760,9 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     // Observe if next episode is available (for always-visible button)
     val hasNextEpisodeAvailable by viewModel.hasNextEpisodeAvailable.collectAsState()
     
+    // Observe watch credits mode
+    val watchCreditsMode by viewModel.watchCreditsMode.collectAsState()
+    
     // Setup player with callbacks
     val exoPlayer = rememberPlayerSetup(
         context = context,
@@ -837,28 +840,49 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     }
     
     // Show/hide next episode button based on progress (95% threshold)
-    LaunchedEffect(progress, contentType, seriesContextLoaded) {
+    LaunchedEffect(progress, contentType, seriesContextLoaded, watchCreditsMode) {
         if (contentType == "series" && seriesContextLoaded) {
+            // Don't show button if watch credits mode is active
+            if (watchCreditsMode) {
+                Log.d("PlayerScreen", "Button not shown: watchCreditsMode is active")
+                return@LaunchedEffect
+            }
+            
             val currentState = viewModel.nextEpisodeState.value
             val isButtonVisible = currentState is NextEpisodeState.Visible
+            
+            Log.d("PlayerScreen", "Progress check: progress=$progress (${(progress * 100).toInt()}%), seriesContextLoaded=$seriesContextLoaded, isButtonVisible=$isButtonVisible")
             
             if (progress >= 0.95f && !isButtonVisible) {
                 // Show button only if not already visible (prevents timer restart)
                 // Only show if series context is loaded
+                Log.d("PlayerScreen", "Calling showNextEpisodeButton() - progress >= 95%")
                 viewModel.showNextEpisodeButton()
             } else if (progress < 0.95f && isButtonVisible) {
                 // User rewound, hide button
+                Log.d("PlayerScreen", "Hiding button - progress < 95%")
                 viewModel.hideNextEpisodeButton()
+            }
+        } else {
+            if (contentType == "series") {
+                Log.d("PlayerScreen", "Button not shown: contentType=series but seriesContextLoaded=$seriesContextLoaded")
             }
         }
     }
     
-    // Handle STATE_ENDED - trigger auto-play if button was visible
+    // Handle STATE_ENDED - trigger auto-play if button was visible or watch credits mode is active
     LaunchedEffect(state.playbackState, contentType) {
         if (state.playbackState == Player.STATE_ENDED && contentType == "series") {
-            val currentState = viewModel.nextEpisodeState.value
-            if (currentState is NextEpisodeState.Visible) {
+            val watchCredits = viewModel.watchCreditsMode.value
+            if (watchCredits) {
+                // Episode was watched to 100% - now start next episode
                 viewModel.triggerAutoPlayNext()
+            } else {
+                // Standard auto-play at 95%
+                val currentState = viewModel.nextEpisodeState.value
+                if (currentState is NextEpisodeState.Visible) {
+                    viewModel.triggerAutoPlayNext()
+                }
             }
         }
     }
@@ -1067,7 +1091,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             modifier = Modifier.align(Alignment.Center)
         )
         
-        // Next episode button (shown when progress >= 95% or auto-play is active)
+        // Next episode button group (shown when progress >= 95% or auto-play is active)
         // Positioned directly above the timeline (progress bar), right-aligned
         // CustomPlayerControls are at BottomCenter with padding
         // Progress bar is the first element, so button should be just above it
@@ -1075,8 +1099,11 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         // Position button directly above the progress bar
         when (val nextState = nextEpisodeState) {
             is NextEpisodeState.Visible -> {
-                NextEpisodeButton(
+                NextEpisodeButtonGroup(
                     autoPlayProgress = nextState.autoPlayProgress,
+                    onWatchCredits = {
+                        viewModel.enableWatchCreditsMode()
+                    },
                     onNextEpisode = {
                         viewModel.triggerAutoPlayNext()
                     },

@@ -60,6 +60,9 @@ class PlayerViewModel @Inject constructor(
     private val _hasNextEpisodeAvailable = MutableStateFlow<Boolean>(false)
     val hasNextEpisodeAvailable: StateFlow<Boolean> = _hasNextEpisodeAvailable.asStateFlow()
     
+    private val _watchCreditsMode = MutableStateFlow<Boolean>(false)
+    val watchCreditsMode: StateFlow<Boolean> = _watchCreditsMode.asStateFlow()
+    
     private var currentSeries: Series? = null
     private var currentSeason: Season? = null
     private var currentEpisode: Episode? = null
@@ -232,6 +235,11 @@ class PlayerViewModel @Inject constructor(
             return
         }
         
+        // Don't show button if watch credits mode is active
+        if (_watchCreditsMode.value) {
+            return
+        }
+        
         // Check if series context is loaded
         if (!isSeriesContextLoaded()) {
             // Try to load series context if we have the IDs
@@ -270,10 +278,28 @@ class PlayerViewModel @Inject constructor(
      * Internal method to show next episode button (assumes context is loaded)
      */
     private fun tryShowNextEpisodeButton() {
+        val currentState = _nextEpisodeState.value
         val nextEpisode = findNextEpisode()
+        
+        android.util.Log.d("PlayerViewModel", "tryShowNextEpisodeButton: nextEpisode=${nextEpisode?.displayTitle ?: "null"}")
+        
         if (nextEpisode != null) {
-            _nextEpisodeState.value = NextEpisodeState.Visible(nextEpisode, 0f)
-            startAutoPlayCountdown()
+            // If button is already visible, preserve current progress
+            val initialProgress = if (currentState is NextEpisodeState.Visible) {
+                currentState.autoPlayProgress
+            } else {
+                0f
+            }
+            
+            _nextEpisodeState.value = NextEpisodeState.Visible(nextEpisode, initialProgress)
+            android.util.Log.d("PlayerViewModel", "Button state set to Visible")
+            
+            // Only start countdown if it's not already running
+            if (autoPlayJob == null || !autoPlayJob!!.isActive) {
+                startAutoPlayCountdown()
+            }
+        } else {
+            android.util.Log.d("PlayerViewModel", "Button not shown: no next episode found")
         }
     }
     
@@ -283,6 +309,18 @@ class PlayerViewModel @Inject constructor(
     fun hideNextEpisodeButton() {
         autoPlayJob?.cancel()
         autoPlayJob = null
+        _nextEpisodeState.value = NextEpisodeState.Hidden
+        _watchCreditsMode.value = false
+    }
+    
+    /**
+     * Enables watch credits mode - cancels auto-play countdown and hides button
+     * Episode will play until 100% before next episode starts
+     */
+    fun enableWatchCreditsMode() {
+        autoPlayJob?.cancel()
+        autoPlayJob = null
+        _watchCreditsMode.value = true
         _nextEpisodeState.value = NextEpisodeState.Hidden
     }
     
@@ -355,6 +393,7 @@ class PlayerViewModel @Inject constructor(
         _pendingNextEpisodeInfo = null
         _seriesContextLoaded.value = false
         _hasNextEpisodeAvailable.value = false
+        _watchCreditsMode.value = false
         hideNextEpisodeButton()
     }
 }
