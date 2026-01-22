@@ -47,6 +47,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import com.flintr.tv.ui.components.player.*
 import com.flintr.tv.ui.components.player.NextEpisodeButtonGroup
+import com.flintr.tv.ui.components.player.ContentInfoOverlay
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.FocusedButton
 import com.flintr.tv.ui.utils.onBackButton
@@ -763,6 +764,11 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     // Observe watch credits mode
     val watchCreditsMode by viewModel.watchCreditsMode.collectAsState()
     
+    // Get series context for content info (use seriesData if available, otherwise from ViewModel)
+    val contentInfoSeriesData = remember(seriesData, seriesContextLoaded) {
+        seriesData ?: if (seriesContextLoaded) viewModel.getSeriesContext() else null
+    }
+    
     // Setup player with callbacks
     val exoPlayer = rememberPlayerSetup(
         context = context,
@@ -1002,6 +1008,18 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             isBuffering = state.playbackState == Player.STATE_BUFFERING,
             modifier = Modifier.fillMaxSize()
         )
+        
+        // Content info overlay (top center)
+        if (state.showControls) {
+            ContentInfoOverlay(
+                contentType = contentType,
+                title = title,
+                seriesData = contentInfoSeriesData,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 16.dp)
+            )
+        }
         
         // Custom player controls
         if (state.showControls) {

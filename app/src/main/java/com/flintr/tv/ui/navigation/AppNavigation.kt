@@ -98,8 +98,10 @@ sealed class Screen(val route: String) {
             return "player/$encodedUrl/series/-1/$seriesId/$episodeId/$encodedTitle"
         }
         
-        fun createRouteForLive(streamUrl: String): String {
-            return createRoute(streamUrl)
+        fun createRouteForLive(streamUrl: String, channelName: String = ""): String {
+            val encodedUrl = Uri.encode(streamUrl, null)
+            val encodedTitle = if (channelName.isNotEmpty()) Uri.encode(channelName, null) else EMPTY_TITLE_PLACEHOLDER
+            return "player/$encodedUrl/live/-1/-1/-1/$encodedTitle"
         }
     }
     
@@ -698,7 +700,7 @@ private fun createLiveStreamClickHandler(
                 creds.username,
                 creds.password
             )
-            val route = Screen.Player.createRouteForLive(streamUrl)
+            val route = Screen.Player.createRouteForLive(streamUrl, stream.name)
             params.navController.logAndNavigate(route, "AppNavigation") {
                 "📺 LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
             }
@@ -955,7 +957,7 @@ private fun EPGContentSection(params: MainContentBodyParams) {
                 creds.username,
                 creds.password
             )
-            val route = Screen.Player.createRouteForLive(streamUrl)
+            val route = Screen.Player.createRouteForLive(streamUrl, stream.name)
             params.navController.logAndNavigate(route, "AppNavigation") {
                 "📅 EPG onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
             }
@@ -1386,7 +1388,7 @@ private fun createSearchClickHandlers(
                 creds.username,
                 creds.password
             )
-            val route = Screen.Player.createRouteForLive(streamUrl)
+            val route = Screen.Player.createRouteForLive(streamUrl, stream.name)
             mainViewModel.clearSearch()
             onDismiss()
             navController.logAndNavigate(route, "AppNavigation") {
