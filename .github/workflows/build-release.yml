@@ -115,8 +115,37 @@ jobs:
       - name: Setup Google Services
         if: steps.should_release.outputs.should_release == 'true'
         run: |
-          # Erstelle google-services.json aus Secret
-          echo "${{ secrets.GOOGLE_SERVICES_JSON }}" > app/google-services.json
+          # Prüfe ob Secret gesetzt ist
+          if [ -z "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo "❌ GOOGLE_SERVICES_JSON secret is not set"
+            exit 1
+          fi
+          
+          # Versuche Base64-Dekodierung (falls Secret Base64-kodiert ist)
+          JSON_CONTENT="${{ secrets.GOOGLE_SERVICES_JSON }}"
+          
+          # Prüfe ob es Base64-kodiert ist (beginnt nicht mit {)
+          if ! echo "$JSON_CONTENT" | grep -q '^{'; then
+            echo "🔍 Attempting Base64 decode..."
+            JSON_CONTENT=$(echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d 2>/dev/null || echo "${{ secrets.GOOGLE_SERVICES_JSON }}")
+          fi
+          
+          # Validiere JSON
+          if ! echo "$JSON_CONTENT" | jq . > /dev/null 2>&1; then
+            echo "❌ Invalid JSON in GOOGLE_SERVICES_JSON secret"
+            echo "First 100 chars: $(echo "$JSON_CONTENT" | head -c 100)"
+            exit 1
+          fi
+          
+          # Schreibe Datei
+          echo "$JSON_CONTENT" > app/google-services.json
+          
+          # Validiere Datei nochmal
+          if ! jq . app/google-services.json > /dev/null 2>&1; then
+            echo "❌ Failed to write valid google-services.json"
+            exit 1
+          fi
+          
           echo "✅ Google Services configured"
 
       - name: Grant execute permission for gradlew
