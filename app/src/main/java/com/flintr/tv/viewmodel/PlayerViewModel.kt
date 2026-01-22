@@ -57,6 +57,9 @@ class PlayerViewModel @Inject constructor(
     private val _seriesContextLoaded = MutableStateFlow<Boolean>(false)
     val seriesContextLoaded: StateFlow<Boolean> = _seriesContextLoaded.asStateFlow()
     
+    private val _hasNextEpisodeAvailable = MutableStateFlow<Boolean>(false)
+    val hasNextEpisodeAvailable: StateFlow<Boolean> = _hasNextEpisodeAvailable.asStateFlow()
+    
     private var currentSeries: Series? = null
     private var currentSeason: Season? = null
     private var currentEpisode: Episode? = null
@@ -113,11 +116,13 @@ class PlayerViewModel @Inject constructor(
             currentSeason = seriesData.currentSeason
             currentEpisode = seriesData.currentEpisode
             _seriesContextLoaded.value = true
+            _hasNextEpisodeAvailable.value = findNextEpisode() != null
             return
         }
         
         // Otherwise, load from repository
         _seriesContextLoaded.value = false
+        _hasNextEpisodeAvailable.value = false
         viewModelScope.launch {
             val credentials = credentialsRepository.getCredentials() ?: return@launch
             repository.getSeriesInfo(credentials.username, credentials.password, seriesId)
@@ -130,6 +135,7 @@ class PlayerViewModel @Inject constructor(
                                 currentSeason = season
                                 currentEpisode = episode
                                 _seriesContextLoaded.value = true
+                                _hasNextEpisodeAvailable.value = findNextEpisode() != null
                                 return@onSuccess
                             }
                         }
@@ -144,6 +150,14 @@ class PlayerViewModel @Inject constructor(
      */
     private fun isSeriesContextLoaded(): Boolean {
         return currentSeries != null && currentSeason != null && currentEpisode != null
+    }
+    
+    /**
+     * Checks if a next episode exists in the series
+     * @return true if a next episode is available, false otherwise
+     */
+    fun hasNextEpisode(): Boolean {
+        return findNextEpisode() != null
     }
     
     /**
@@ -313,9 +327,17 @@ class PlayerViewModel @Inject constructor(
      */
     fun triggerAutoPlayNext() {
         val currentState = _nextEpisodeState.value
-        if (currentState is NextEpisodeState.Visible) {
+        val nextEpisodeInfo = if (currentState is NextEpisodeState.Visible) {
+            // Use info from visible state
+            currentState.info
+        } else {
+            // State might be Hidden, but button is still visible - find next episode directly
+            findNextEpisode()
+        }
+        
+        if (nextEpisodeInfo != null) {
             // Store nextEpisodeInfo before changing state to Loading
-            getPendingNextEpisodeInfoChannel().trySend(currentState.info)
+            getPendingNextEpisodeInfoChannel().trySend(nextEpisodeInfo)
             _nextEpisodeState.value = NextEpisodeState.Loading
         }
     }
@@ -332,6 +354,7 @@ class PlayerViewModel @Inject constructor(
         _pendingNextEpisodeInfo?.close()
         _pendingNextEpisodeInfo = null
         _seriesContextLoaded.value = false
+        _hasNextEpisodeAvailable.value = false
         hideNextEpisodeButton()
     }
 }

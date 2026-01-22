@@ -757,6 +757,9 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     // Observe next episode state
     val nextEpisodeState by viewModel.nextEpisodeState.collectAsState()
     
+    // Observe if next episode is available (for always-visible button)
+    val hasNextEpisodeAvailable by viewModel.hasNextEpisodeAvailable.collectAsState()
+    
     // Setup player with callbacks
     val exoPlayer = rememberPlayerSetup(
         context = context,
@@ -990,6 +993,11 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                     onPrevious = onPrevious,
                     onPlayPause = onPlayPause,
                     onNext = onNext,
+                    onNextEpisode = if (contentType == "series" && hasNextEpisodeAvailable) {
+                        { viewModel.triggerAutoPlayNext() }
+                    } else {
+                        null
+                    },
                     onSeek = onSeek,
                     onDragStart = {
                         state.isDraggingProgress = true
