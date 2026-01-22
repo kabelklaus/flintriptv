@@ -44,10 +44,14 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import com.flintr.tv.ui.components.player.*
+import com.flintr.tv.ui.components.player.NextEpisodeButton
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.FocusedButton
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onDpadCenter
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.flintr.tv.viewmodel.PlayerViewModel
+import com.flintr.tv.viewmodel.NextEpisodeState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -60,6 +64,15 @@ import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import com.flintr.tv.R
 
 /**
+ * Data class containing series context for episode navigation
+ */
+data class SeriesContext(
+    val series: com.flintr.tv.data.model.Series,
+    val currentSeason: com.flintr.tv.data.model.Season,
+    val currentEpisode: com.flintr.tv.data.model.Episode
+)
+
+/**
  * Data class containing stream information for playback
  */
 data class StreamInfo(
@@ -68,7 +81,8 @@ data class StreamInfo(
     val streamId: Int? = null,
     val seriesId: Int? = null,
     val episodeId: Int? = null,
-    val title: String? = null
+    val title: String? = null,
+    val seriesData: SeriesContext? = null
 )
 
 // Swipe gesture constants
@@ -709,6 +723,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     streamInfo: StreamInfo,
     watchProgressService: WatchProgressService,
     onBack: () -> Unit,
+    onNextEpisode: ((com.flintr.tv.viewmodel.NextEpisodeInfo) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val streamUrl = streamInfo.streamUrl
@@ -717,11 +732,36 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     val seriesId = streamInfo.seriesId
     val episodeId = streamInfo.episodeId
     val title = streamInfo.title
+    val seriesData = streamInfo.seriesData
     
     val context = LocalContext.current
     val view = LocalView.current
     val coroutineScope = rememberCoroutineScope()
     val state = rememberPlayerState()
+    val viewModel: PlayerViewModel = hiltViewModel()
+    
+    // Load series context if this is a series episode
+    var seriesContextLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(seriesId, episodeId, seriesData) {
+        if (contentType == "series" && seriesId != null && episodeId != null) {
+            viewModel.loadSeriesContext(seriesId, episodeId, seriesData)
+            // If seriesData is provided, context is loaded immediately
+            // Otherwise, wait a bit for async loading
+            if (seriesData != null) {
+                seriesContextLoaded = true
+            } else {
+                // Wait for async loading (give it some time)
+                delay(500)
+                seriesContextLoaded = true
+            }
+        } else {
+            viewModel.clearSeriesContext()
+            seriesContextLoaded = false
+        }
+    }
+    
+    // Observe next episode state
+    val nextEpisodeState by viewModel.nextEpisodeState.collectAsState()
     
     // Setup player with callbacks
     val exoPlayer = rememberPlayerSetup(
@@ -799,6 +839,58 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         0f
     }
     
+    // Show/hide next episode button based on progress (95% threshold)
+    LaunchedEffect(progress, contentType, seriesContextLoaded) {
+        if (contentType == "series" && seriesContextLoaded) {
+            val currentState = viewModel.nextEpisodeState.value
+            val isButtonVisible = currentState is NextEpisodeState.Visible
+            
+            if (progress >= 0.95f && !isButtonVisible) {
+                // Show button only if not already visible (prevents timer restart)
+                // Only show if series context is loaded
+                viewModel.showNextEpisodeButton()
+            } else if (progress < 0.95f && isButtonVisible) {
+                // User rewound, hide button
+                viewModel.hideNextEpisodeButton()
+            }
+        }
+    }
+    
+    // Handle STATE_ENDED - trigger auto-play if button was visible
+    LaunchedEffect(state.playbackState, contentType) {
+        if (state.playbackState == Player.STATE_ENDED && contentType == "series") {
+            val currentState = viewModel.nextEpisodeState.value
+            if (currentState is NextEpisodeState.Visible) {
+                viewModel.triggerAutoPlayNext()
+            }
+        }
+    }
+    
+    // Handle next episode navigation
+    LaunchedEffect(nextEpisodeState) {
+        if (nextEpisodeState is NextEpisodeState.Loading) {
+            // Get nextEpisodeInfo from ViewModel (stored before state changed to Loading)
+            val nextEpisodeInfo = viewModel.pendingNextEpisodeInfo
+            
+            if (nextEpisodeInfo != null && onNextEpisode != null) {
+                // Save current progress before navigating
+                coroutineScope.launch {
+                    saveWatchProgress(
+                        exoPlayer = exoPlayer,
+                        contentType = contentType,
+                        streamId = streamId,
+                        seriesId = seriesId,
+                        episodeId = episodeId,
+                        title = title,
+                        watchProgressService = watchProgressService
+                    )
+                }
+                // Navigate to next episode
+                onNextEpisode(nextEpisodeInfo)
+            }
+        }
+    }
+    
     // Reset controls timer function
     val resetControlsTimer = {
         state.showControls = true
@@ -846,8 +938,20 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             .focusRequester(playerFocusRequester)
             .focusable() // Make Box focusable to receive key events
             .createTapGestureModifier(onTap = onVideoTap)
-            .createSwipeGestureModifier(onBack = onBack)
-            .onBackButton(onBack = onBack)
+            .createSwipeGestureModifier(onBack = {
+                // Cancel next episode auto-play if visible
+                if (nextEpisodeState is NextEpisodeState.Visible) {
+                    viewModel.hideNextEpisodeButton()
+                }
+                onBack()
+            })
+            .onBackButton(onBack = {
+                // Cancel next episode auto-play if visible
+                if (nextEpisodeState is NextEpisodeState.Visible) {
+                    viewModel.hideNextEpisodeButton()
+                }
+                onBack()
+            })
             .onDpadCenter {
                 if (!state.showControls) {
                     resetControlsTimer()
@@ -960,5 +1064,52 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             },
             modifier = Modifier.align(Alignment.Center)
         )
+        
+        // Next episode button (shown when progress >= 95% or auto-play is active)
+        // Positioned directly above the timeline (progress bar), right-aligned
+        // CustomPlayerControls are at BottomCenter with padding
+        // Progress bar is the first element, so button should be just above it
+        // Height calculation: ProgressBar (~4dp) + Spacer (12dp) + Controls (~48dp) + Padding vertical (12dp) = ~76dp
+        // Position button directly above the progress bar
+        when (val nextState = nextEpisodeState) {
+            is NextEpisodeState.Visible -> {
+                NextEpisodeButton(
+                    autoPlayProgress = nextState.autoPlayProgress,
+                    onNextEpisode = {
+                        viewModel.triggerAutoPlayNext()
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = 100.dp, end = 16.dp) // Position above timeline with more spacing
+                )
+            }
+            is NextEpisodeState.Error -> {
+                // Show error message for next episode loading
+                Text(
+                    text = nextState.message,
+                    color = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = 100.dp, end = 16.dp)
+                        .background(
+                            color = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.8f),
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+                        )
+                        .padding(16.dp)
+                )
+            }
+            is NextEpisodeState.Loading -> {
+                // Show loading indicator
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = 100.dp, end = 16.dp)
+                        .size(48.dp)
+                )
+            }
+            is NextEpisodeState.Hidden -> {
+                // Nothing to show
+            }
+        }
     }
 }

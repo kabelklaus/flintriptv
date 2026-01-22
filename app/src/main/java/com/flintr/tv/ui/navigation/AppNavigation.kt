@@ -55,6 +55,7 @@ import com.flintr.tv.ui.tabs.InProgressContentParams
 import com.flintr.tv.ui.screens.SeriesEpisodesScreen
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
+import com.flintr.tv.viewmodel.NextEpisodeInfo
 import com.flintr.tv.data.model.UpdateInfo
 import com.flintr.tv.utils.DownloadProgress
 import com.flintr.tv.ui.utils.safeRequestFocus
@@ -114,6 +115,40 @@ private fun NavHostController.logAndNavigate(route: String, tag: String, message
         android.util.Log.d(tag, message())
     }
     navigate(route)
+}
+
+/**
+ * Navigates to the next episode in a series
+ */
+private fun navigateToNextEpisode(
+    navController: NavHostController,
+    credentials: Credentials?,
+    seriesId: Int?,
+    nextEpisodeInfo: NextEpisodeInfo
+) {
+    if (credentials == null || seriesId == null) return
+    
+    val streamUrl = nextEpisodeInfo.episode.getStreamUrl(
+        credentials.serverUrl,
+        credentials.username,
+        credentials.password,
+        seriesId
+    )
+    
+    // Create SeriesContext for the next episode
+    // We need to find the Series object - try to get it from MainViewModel or load it
+    // For now, we'll pass null and let PlayerViewModel load it
+    val route = Screen.Player.createRouteForSeries(
+        streamUrl,
+        seriesId,
+        nextEpisodeInfo.episode.id,
+        nextEpisodeInfo.episode.title
+    )
+    
+    navController.navigate(route) {
+        // Replace current player screen with next episode
+        popUpTo(Screen.Player.route) { inclusive = true }
+    }
 }
 
 /**
@@ -503,7 +538,15 @@ fun AppNavigation(
                     title = title.takeIf { it.isNotEmpty() }
                 ),
                 watchProgressService = dependencies.watchProgressService,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNextEpisode = { nextEpisodeInfo ->
+                    navigateToNextEpisode(
+                        navController = navController,
+                        credentials = dependencies.credentialsRepository.getCredentials(),
+                        seriesId = seriesId,
+                        nextEpisodeInfo = nextEpisodeInfo
+                    )
+                }
             )
         }
         
