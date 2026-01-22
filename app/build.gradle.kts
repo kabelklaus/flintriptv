@@ -8,8 +8,8 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.compose.compiler)
     id("kotlin-parcelize")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.firebase-perf")
+    alias(libs.plugins.googleGmsServices)
+    alias(libs.plugins.firebase.perf)
 }
 
 android {

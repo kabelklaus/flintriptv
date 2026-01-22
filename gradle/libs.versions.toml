@@ -27,6 +27,7 @@ desugarJdkLibs = "2.0.4"
 sonarqube = "5.1.0.4882"
 firebaseBom = "34.8.0"
 googleGmsServices = "4.4.4"
+firebasePerfPlugin = "2.0.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -95,4 +96,5 @@ hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
 googleGmsServices = { id = "com.google.gms.google-services", version.ref = "googleGmsServices" }
+firebase-perf = { id = "com.google.firebase.firebase-perf", version.ref = "firebasePerfPlugin" }
 
