@@ -78,7 +78,7 @@ class CategoryVisibilityService @Inject constructor(
         loadMutex.withLock {
             val username = credentialsRepository.getCredentials()?.username
             if (username.isNullOrBlank()) {
-                Log.d(TAG, "No username available, skipping Firestore load")
+                Log.d(TAG, "No username available, skipping Firestore load due to missing credentials")
                 _hiddenCategories.value = emptyMap()
                 return
             }
@@ -101,6 +101,7 @@ class CategoryVisibilityService @Inject constructor(
                     Log.e(TAG, "Failed to load hidden categories from Firestore", exception)
                     // Keep current state or use empty map
                     if (_hiddenCategories.value.isEmpty()) {
+                        Log.e(TAG, "State is empty after failed Firestore load - user data may be unavailable")
                         _hiddenCategories.value = emptyMap()
                     }
                 }
@@ -239,7 +240,12 @@ class CategoryVisibilityService @Inject constructor(
      */
     suspend fun hideCategory(categoryId: String, categoryType: CategoryType): Boolean {
         // 1. First synchronize to get latest data from Firestore (ignore cooldown for critical operations)
-        loadFromFirestore()
+        try {
+            loadFromFirestore()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load from Firestore before hiding category", e)
+            return false // Critical operation should not proceed with stale data
+        }
         
         // 2. Apply change to synchronized data
         val currentState = _hiddenCategories.value.toMutableMap()
@@ -261,7 +267,12 @@ class CategoryVisibilityService @Inject constructor(
      */
     suspend fun showCategory(categoryId: String, categoryType: CategoryType): Boolean {
         // 1. First synchronize to get latest data from Firestore (ignore cooldown for critical operations)
-        loadFromFirestore()
+        try {
+            loadFromFirestore()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load from Firestore before showing category", e)
+            return false // Critical operation should not proceed with stale data
+        }
         
         // 2. Apply change to synchronized data
         val currentState = _hiddenCategories.value.toMutableMap()
