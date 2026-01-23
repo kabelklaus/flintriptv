@@ -152,7 +152,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.perf)
-    implementation("com.google.firebase:firebase-firestore")
+    implementation(libs.firebase.firestore)
     
     // Desugaring
     coreLibraryDesugaring(libs.desugar.jdk.libs)
