@@ -292,7 +292,7 @@ class XtreamRepository @Inject constructor(
                     return result
                 }
                 result == null -> {
-                    lastError = Exception("Failed to get series info: 500")
+                    lastError = Exception("Failed to get series info: temporary error")
                     continue // Retry
                 }
                 else -> return result // Non-retryable error
@@ -321,19 +321,29 @@ class XtreamRepository @Inject constructor(
             val seriesInfoResponse = response.body()!!
             val series = seriesInfoResponse.toSeries(seriesId)
             
-            if (isSeriesEmpty(series, seriesInfoResponse)) {
+            if (isSeriesEmpty(seriesInfoResponse)) {
                 return handleEmptySeriesResponse(seriesId, attempt, maxAttempts)
             }
 
             return Result.success(series)
         } catch (e: Exception) {
-            Result.failure(e) // Network errors: don't retry
+            // Network errors are retryable, other exceptions are not
+            when (e) {
+                is java.net.SocketTimeoutException,
+                is java.net.ConnectException,
+                is java.net.UnknownHostException,
+                is java.io.IOException -> {
+                    null // Signal for retry
+                }
+                else -> {
+                    Result.failure(e) // Non-retryable error
+                }
+            }
         }
     }
 
-    private fun isSeriesEmpty(series: Series, seriesInfoResponse: SeriesInfoResponse): Boolean {
-        return series.seasons.isNullOrEmpty() && 
-               seriesInfoResponse.episodes.isNullOrEmpty() &&
+    private fun isSeriesEmpty(seriesInfoResponse: SeriesInfoResponse): Boolean {
+        return seriesInfoResponse.episodes.isNullOrEmpty() &&
                seriesInfoResponse.seasons.isNullOrEmpty()
     }
 
