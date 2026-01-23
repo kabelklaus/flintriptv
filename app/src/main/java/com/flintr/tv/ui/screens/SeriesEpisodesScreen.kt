@@ -42,6 +42,7 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onBackButton
+import com.flintr.tv.ui.utils.InteractionUtils.tvFocusable
 import com.flintr.tv.utils.ContentParser
 
 // Navigation direction enum
@@ -649,10 +650,7 @@ private fun SeasonButton(
                 }
             )
             .focusRequester(focusRequester)
-            .onFocusChanged { focusState ->
-                isFocused = focusState.isFocused
-            }
-            .focusable()
+            .tvFocusable { isFocused = it }
             .onClick(onClick = onSelect)
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
