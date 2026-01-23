@@ -246,8 +246,7 @@ private fun SeriesBackground(backdropImageUrl: String?) {
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
-                    .alpha(0.4f)
-                    .background(Color.Black.copy(alpha = 0.5f)),
+                    .alpha(0.4f),
                 contentScale = ContentScale.Crop
             )
         }
