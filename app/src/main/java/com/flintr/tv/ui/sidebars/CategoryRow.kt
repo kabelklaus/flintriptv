@@ -94,7 +94,10 @@ fun CategoryRow(
                 }
             }
         } else {
-            items(params.categories) { category ->
+            items(
+                items = params.categories,
+                key = { it.categoryId }
+            ) { category ->
                 CategoryChip(
                     params = CategoryChipParams(
                         category = category,
@@ -273,8 +276,8 @@ fun CategoryChip(
         }
     }
     
-    // Category menu dialog
-    if (params.onCategoryHidden != null) {
+    // Category menu dialog - only render when menu should be shown
+    if (params.onCategoryHidden != null && showMenu) {
         Log.d("CategoryChip", "[MenuRender] Rendering PopupMenu für Kategorie '$name': showMenu = $showMenu")
         PopupMenu(
             isOpen = showMenu,
@@ -292,8 +295,6 @@ fun CategoryChip(
             },
             menuType = MenuType.CATEGORY
         )
-    } else {
-        Log.d("CategoryChip", "[MenuRender] onCategoryHidden ist null - Menü wird nicht gerendert für Kategorie '$name'")
     }
 }
 

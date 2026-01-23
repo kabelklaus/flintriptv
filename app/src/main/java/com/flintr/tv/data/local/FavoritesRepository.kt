@@ -237,55 +237,61 @@ class FavoritesRepository @Inject constructor(
 
     /**
      * Add a favorite.
-     * Synchronizes with Firestore before applying the change to ensure data consistency.
+     * Uses optimistic updates: updates local state immediately and syncs atomically with Firestore.
+     * Works offline thanks to Firestore offline persistence.
      * @return true if favorite was added, false if it already exists
      */
     suspend fun addFavorite(favorite: Favorite): Boolean {
-        // 1. First synchronize to get latest data from Firestore (ignore cooldown for critical operations)
-        try {
-            loadFromFirestore()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load from Firestore before adding favorite", e)
-            return false // Critical operation should not proceed with stale data
-        }
-        
-        // 2. Apply change to synchronized data
+        // Optimistic update: Update local state immediately
         val currentFavorites = _favorites.value.toMutableList()
         
-        // Check if favorite already exists
+        // Check if favorite already exists locally
         if (currentFavorites.any { it.id == favorite.id }) {
-            Log.d(TAG, "Favorite with id ${favorite.id} already exists")
+            Log.d(TAG, "Favorite with id ${favorite.id} already exists locally")
             return false
         }
         
+        // Update local state optimistically
         currentFavorites.add(favorite)
         _favorites.value = currentFavorites
-        saveToFirestore(currentFavorites)
+        
+        // Try to sync atomically with Firestore (works offline with Firestore persistence)
+        val username = credentialsRepository.getCredentials()?.username
+        if (!username.isNullOrBlank()) {
+            val result = userRepository.addFavoriteAtomically(username, favorite)
+            if (result.isFailure) {
+                Log.w(TAG, "Failed to sync favorite to Firestore, will retry on next sync: ${result.exceptionOrNull()}")
+                // Don't revert local change - Firestore offline persistence will handle it
+            }
+        }
+        
         Log.d(TAG, "Favorite added: id=${favorite.id}, type=${favorite.type}")
         return true
     }
 
     /**
      * Remove a favorite.
-     * Synchronizes with Firestore before applying the change to ensure data consistency.
+     * Uses optimistic updates: updates local state immediately and syncs atomically with Firestore.
+     * Works offline thanks to Firestore offline persistence.
      * @return true if favorite was removed, false if it was not found
      */
     suspend fun removeFavorite(favoriteId: String): Boolean {
-        // 1. First synchronize to get latest data from Firestore (ignore cooldown for critical operations)
-        try {
-            loadFromFirestore()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load from Firestore before removing favorite", e)
-            return false // Critical operation should not proceed with stale data
-        }
-        
-        // 2. Apply change to synchronized data
+        // Optimistic update
         val currentFavorites = _favorites.value.toMutableList()
         val removed = currentFavorites.removeAll { it.id == favoriteId }
         
         if (removed) {
             _favorites.value = currentFavorites
-            saveToFirestore(currentFavorites)
+            
+            // Try to sync atomically
+            val username = credentialsRepository.getCredentials()?.username
+            if (!username.isNullOrBlank()) {
+                val result = userRepository.removeFavoriteAtomically(username, favoriteId)
+                if (result.isFailure) {
+                    Log.w(TAG, "Failed to sync favorite removal to Firestore, will retry on next sync")
+                }
+            }
+            
             Log.d(TAG, "Favorite removed: id=$favoriteId")
         }
         return removed

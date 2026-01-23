@@ -7,9 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import android.util.Log
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.FavoriteType
@@ -83,15 +80,12 @@ private suspend fun checkFavoritesChanges(
     favoriteType: FavoriteType,
     getCurrentIdsKey: () -> List<String>,
     isFavoritesCategory: Boolean,
-    onIdsChanged: (List<String>) -> Unit,
-    ioDispatcher: CoroutineDispatcher
+    onIdsChanged: (List<String>) -> Unit
 ) {
     while (isFavoritesCategory) {
         kotlinx.coroutines.delay(500) // Check every 500ms
         
-        val currentFavorites = withContext(ioDispatcher) {
-            favoritesRepository.getFavoritesByType(favoriteType)
-        }
+        val currentFavorites = favoritesRepository.getFavoritesByType(favoriteType)
         val currentIds = currentFavorites.map { it.id }
         val currentIdsKey = getCurrentIdsKey()
         
@@ -124,8 +118,7 @@ fun <T : Any> useFavorites(
     favoritesRepository: FavoritesRepository,
     cacheService: DataCacheService,
     favoriteType: FavoriteType,
-    idSelector: (T) -> Int,
-    ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    idSelector: (T) -> Int
 ): FavoritesState<T> {
     var favoriteItems by remember { mutableStateOf<List<T>>(emptyList()) }
     var isLoadingFavorites by remember { mutableStateOf(false) }
@@ -178,8 +171,7 @@ fun <T : Any> useFavorites(
             favoriteType = favoriteType,
             getCurrentIdsKey = { favoritesIdsKey },
             isFavoritesCategory = isFavoritesCategory,
-            onIdsChanged = { favoritesIdsKey = it },
-            ioDispatcher = ioDispatcher
+            onIdsChanged = { favoritesIdsKey = it }
         )
     }
     
