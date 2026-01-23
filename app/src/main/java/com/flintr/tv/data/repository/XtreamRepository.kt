@@ -1,11 +1,13 @@
 package com.flintr.tv.data.repository
 
+import android.util.Log
 import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.model.*
 import com.squareup.moshi.Moshi
+import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -264,19 +266,100 @@ class XtreamRepository @Inject constructor(
     }
 
     suspend fun getSeriesInfo(username: String, password: String, seriesId: Int): Result<Series> {
+        return getSeriesInfoWithRetry(username, password, seriesId)
+    }
+
+    private suspend fun getSeriesInfoWithRetry(
+        username: String,
+        password: String,
+        seriesId: Int
+    ): Result<Series> {
+        val delays = listOf(0L, 500L, 1000L)
+        var lastError: Exception? = null
+
+        for ((attempt, delayMs) in delays.withIndex()) {
+            if (delayMs > 0) {
+                delay(delayMs)
+                Log.d("XtreamRepository", "Retrying getSeriesInfo for seriesId=$seriesId (attempt ${attempt + 1})")
+            }
+
+            val result = executeSeriesInfoCall(username, password, seriesId, attempt, delays.size)
+            when {
+                result?.isSuccess == true -> {
+                    if (attempt > 0) {
+                        Log.d("XtreamRepository", "Successfully loaded series info for seriesId=$seriesId after ${attempt + 1} attempts")
+                    }
+                    return result
+                }
+                result == null -> {
+                    lastError = Exception("Failed to get series info: 500")
+                    continue // Retry
+                }
+                else -> return result // Non-retryable error
+            }
+        }
+
+        return Result.failure(lastError ?: Exception("Failed to get series info after retries"))
+    }
+
+    private suspend fun executeSeriesInfoCall(
+        username: String,
+        password: String,
+        seriesId: Int,
+        attempt: Int,
+        maxAttempts: Int
+    ): Result<Series>? {
         return try {
             val service = requireApiService()
             val response = service.getSeriesInfo(username, password, "get_series_info", seriesId)
-            if (response.isSuccessful && response.body() != null) {
-                val seriesInfoResponse = response.body()!!
-                val series = seriesInfoResponse.toSeries(seriesId)
-                Result.success(series)
-            } else {
-                Result.failure(Exception("Failed to get series info: ${response.code()}"))
+
+            if (!response.isSuccessful || response.body() == null) {
+                val errorCode = response.code()
+                return handleServerError(errorCode, seriesId, attempt, maxAttempts)
             }
+
+            val seriesInfoResponse = response.body()!!
+            val series = seriesInfoResponse.toSeries(seriesId)
+            
+            if (isSeriesEmpty(series, seriesInfoResponse)) {
+                return handleEmptySeriesResponse(seriesId, attempt, maxAttempts)
+            }
+
+            return Result.success(series)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(e) // Network errors: don't retry
         }
+    }
+
+    private fun isSeriesEmpty(series: Series, seriesInfoResponse: SeriesInfoResponse): Boolean {
+        return series.seasons.isNullOrEmpty() && 
+               seriesInfoResponse.episodes.isNullOrEmpty() &&
+               seriesInfoResponse.seasons.isNullOrEmpty()
+    }
+
+    private fun handleEmptySeriesResponse(
+        seriesId: Int,
+        attempt: Int,
+        maxAttempts: Int
+    ): Result<Series>? {
+        if (attempt < maxAttempts - 1) {
+            Log.w("XtreamRepository", "Empty series info response for seriesId=$seriesId, will retry (attempt ${attempt + 1}/$maxAttempts)")
+            return null // Signal for retry
+        }
+        return Result.failure(Exception("Failed to get series info: empty response after $maxAttempts attempts"))
+    }
+
+    private fun handleServerError(
+        errorCode: Int,
+        seriesId: Int,
+        attempt: Int,
+        maxAttempts: Int
+    ): Result<Series>? {
+        if (errorCode in 500..599 && attempt < maxAttempts - 1) {
+            Log.w("XtreamRepository", "Server error $errorCode for seriesId=$seriesId, will retry (attempt ${attempt + 1}/$maxAttempts)")
+            return null // Signal for retry
+        }
+        return Result.failure(Exception("Failed to get series info: $errorCode"))
     }
 
     suspend fun getEpg(username: String, password: String, streamId: Int): Result<List<EpgProgram>> {
