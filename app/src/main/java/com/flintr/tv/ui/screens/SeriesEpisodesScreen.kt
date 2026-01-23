@@ -949,7 +949,7 @@ private fun rememberEpisodeProgress(
         }
     }
     
-    // Check if episode is watched (from batch-loaded set)
+    // Check if episode is watched (only from batch-loaded set of fully watched episodes)
     val isWatched = episode.id in watchedEpisodeIds
     
     // Calculate progress percentage
@@ -1021,7 +1021,7 @@ private fun EpisodeProgressIndicator(
     colors: AppColors
 ) {
     // Only show progress bar for in-progress episodes (badge is now on thumbnail)
-    if (progressState.progressPercent > 0f && !progressState.isWatched) {
+    if (progressState.progressPercent > 0f && !progressState.isCompleted) {
         Column(
             modifier = Modifier.fillMaxWidth()
         ) {

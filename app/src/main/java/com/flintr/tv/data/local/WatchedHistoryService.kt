@@ -56,6 +56,9 @@ class WatchedHistoryService @Inject constructor(
 
     // Mutex to prevent concurrent loadFromFirestore() calls
     private val loadMutex = Mutex()
+    
+    // Mutex to prevent concurrent StateFlow updates
+    private val updateMutex = Mutex()
 
     private val mapType = Types.newParameterizedType(
         Map::class.java,
@@ -63,9 +66,6 @@ class WatchedHistoryService @Inject constructor(
         WatchedItem::class.java
     )
     private val mapAdapter = moshi.adapter<Map<String, WatchedItem>>(mapType)
-    
-    // Cache for watched items map to avoid repeated JSON parsing (used for migration)
-    private var cachedWatchedMap: Map<String, WatchedItem>? = null
 
     init {
         // Initial load
@@ -283,16 +283,16 @@ class WatchedHistoryService @Inject constructor(
                 watchedAt = Instant.now().toString()
             )
             
-            // Optimistic update: Update StateFlow immediately
-            val updatedMap = _watchedHistory.value.toMutableMap()
-            updatedMap[key] = watchedItem
-            _watchedHistory.value = updatedMap
+            // Optimistic update: Update StateFlow atomically
+            val updatedMap = updateMutex.withLock {
+                val currentMap = _watchedHistory.value
+                val updated = currentMap + (key to watchedItem)
+                _watchedHistory.value = updated
+                updated
+            }
             
             // Save to Firestore asynchronously
             saveToFirestore(updatedMap)
-            
-            // Also update local cache for migration fallback
-            cachedWatchedMap = updatedMap
             
             Log.d(TAG, "Marked as watched successfully: key=$key")
             true

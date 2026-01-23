@@ -86,6 +86,9 @@ class WatchProgressService @Inject constructor(
 
     // Mutex to prevent concurrent loadFromFirestore() calls
     private val loadMutex = Mutex()
+    
+    // Mutex to prevent concurrent StateFlow updates
+    private val updateMutex = Mutex()
 
     private val mapType = Types.newParameterizedType(
         Map::class.java,
@@ -94,9 +97,6 @@ class WatchProgressService @Inject constructor(
     )
     private val mapAdapter = moshi.adapter<Map<String, WatchProgress>>(mapType)
     private val progressAdapter = moshi.adapter(WatchProgress::class.java)
-    
-    // Cache for progress map to avoid repeated JSON parsing (used for migration)
-    private var cachedProgressMap: Map<String, WatchProgress>? = null
 
     init {
         // Initial load
@@ -418,7 +418,7 @@ class WatchProgressService @Inject constructor(
     /**
      * Persists progress to StateFlow and Firestore (optimistic update).
      */
-    private fun persistProgress(key: String, position: Long, duration: Long, title: String) {
+    private suspend fun persistProgress(key: String, position: Long, duration: Long, title: String) {
         val progress = WatchProgress(
             position = position,
             duration = duration,
@@ -426,16 +426,16 @@ class WatchProgressService @Inject constructor(
             title = title
         )
         
-        // Optimistic update: Update StateFlow immediately
-        val updatedMap = _watchProgress.value.toMutableMap()
-        updatedMap[key] = progress
-        _watchProgress.value = updatedMap
+        // Optimistic update: Update StateFlow atomically
+        val updatedMap = updateMutex.withLock {
+            val currentMap = _watchProgress.value
+            val updated = currentMap + (key to progress)
+            _watchProgress.value = updated
+            updated
+        }
         
         // Save to Firestore asynchronously
         saveToFirestore(updatedMap)
-        
-        // Also update local cache for migration fallback
-        cachedProgressMap = updatedMap
     }
 
     /**
@@ -486,19 +486,18 @@ class WatchProgressService @Inject constructor(
             val key = generateKey(contentType, streamId, seriesId, episodeId)
             Log.d(TAG, "Deleting progress: key=$key")
 
-            val progressMap = _watchProgress.value
-            val progress = progressMap[key]
+            val progress = _watchProgress.value[key]
             
-            // Optimistic update: Update StateFlow immediately
-            val updatedMap = progressMap.toMutableMap()
-            updatedMap.remove(key)
-            _watchProgress.value = updatedMap
+            // Optimistic update: Update StateFlow atomically
+            val updatedMap = updateMutex.withLock {
+                val currentMap = _watchProgress.value
+                val updated = currentMap - key
+                _watchProgress.value = updated
+                updated
+            }
             
             // Save to Firestore asynchronously
             saveToFirestore(updatedMap)
-            
-            // Update cache
-            cachedProgressMap = updatedMap
 
             // Automatically remove movie from favorites when progress is deleted
             // Reconstruct the favorite ID directly (same format as addMovieToFavoritesIfNeeded)

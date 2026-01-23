@@ -233,22 +233,43 @@ object AppModule {
         return UpdateInstaller(context)
     }
     
+    /**
+     * Dependencies container for WatchedHistoryService to reduce parameter count.
+     */
+    data class WatchedHistoryServiceDependencies(
+        val userRepository: UserRepository,
+        val credentialsRepository: CredentialsRepository,
+        val syncManager: FirestoreSyncManager
+    )
+
+    @Provides
+    @Singleton
+    fun provideWatchedHistoryServiceDependencies(
+        userRepository: UserRepository,
+        credentialsRepository: CredentialsRepository,
+        @Named("WatchedHistory") syncManager: FirestoreSyncManager
+    ): WatchedHistoryServiceDependencies {
+        return WatchedHistoryServiceDependencies(
+            userRepository,
+            credentialsRepository,
+            syncManager
+        )
+    }
+
     @Provides
     @Singleton
     fun provideWatchedHistoryService(
         @ApplicationContext context: Context,
         moshi: Moshi,
-        userRepository: UserRepository,
-        credentialsRepository: CredentialsRepository,
-        @Named("WatchedHistory") syncManager: FirestoreSyncManager,
-        @Named("IO") ioDispatcher: CoroutineDispatcher
+        @Named("IO") ioDispatcher: CoroutineDispatcher,
+        dependencies: WatchedHistoryServiceDependencies
     ): WatchedHistoryService {
         return WatchedHistoryService(
             context,
             moshi,
-            userRepository,
-            credentialsRepository,
-            syncManager,
+            dependencies.userRepository,
+            dependencies.credentialsRepository,
+            dependencies.syncManager,
             ioDispatcher
         )
     }
