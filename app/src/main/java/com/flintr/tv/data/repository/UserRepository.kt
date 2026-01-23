@@ -2,11 +2,14 @@ package com.flintr.tv.data.repository
 
 import android.util.Log
 import com.flintr.tv.data.model.CategoryType
+import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.FavoriteType
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.flintr.tv.data.model.toFirestoreMap
 import kotlinx.coroutines.suspendCancellableCoroutine
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -234,6 +237,287 @@ class UserRepository @Inject constructor() {
             saveResult
         } catch (e: Exception) {
             Log.e(TAG, "Failed to migrate hidden categories from local to Firestore for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Saves favorites for a user to Firestore.
+     * 
+     * WARNING: This method overwrites the entire favorites array and is susceptible to race conditions.
+     * Use addFavoriteAtomically() or removeFavoriteAtomically() for individual operations instead.
+     * This method is kept for backward compatibility and migration purposes only.
+     * 
+     * @param username The username to save favorites for
+     * @param favorites List of Favorite objects
+     * @return Result<Unit> - Success if saved, Failure with exception otherwise
+     */
+    suspend fun saveFavorites(
+        username: String,
+        favorites: List<Favorite>
+    ): Result<Unit> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        return try {
+            // Convert List<Favorite> to Firestore-compatible format (List of Maps)
+            val firestoreData = hashMapOf(
+                "favorites" to favorites.map { favorite ->
+                    hashMapOf(
+                        "id" to favorite.id,
+                        "type" to favorite.type.name,
+                        "streamId" to favorite.streamId,
+                        "name" to favorite.name,
+                        "metadata" to (favorite.metadata ?: emptyMap()),
+                        "addedAt" to favorite.addedAt
+                    )
+                }
+            )
+            
+            // Use set with merge to create document if it doesn't exist
+            firestore.collection(collectionName)
+                .document(username)
+                .set(firestoreData, SetOptions.merge())
+                .await()
+            
+            Log.d(TAG, "Favorites saved successfully for user: $username (${favorites.size} favorites)")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save favorites for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Loads favorites for a user from Firestore.
+     * 
+     * @param username The username to load favorites for
+     * @return Result<List<Favorite>> - Success with favorites list, Failure with exception otherwise
+     */
+    suspend fun loadFavorites(
+        username: String
+    ): Result<List<Favorite>> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        return try {
+            val documentSnapshot: DocumentSnapshot = firestore.collection(collectionName)
+                .document(username)
+                .get()
+                .await()
+            
+            if (!documentSnapshot.exists()) {
+                Log.d(TAG, "User document does not exist: $username, returning empty list")
+                return Result.success(emptyList())
+            }
+            
+            @Suppress("UNCHECKED_CAST")
+            val favoritesData = documentSnapshot["favorites"] as? List<Map<String, Any?>>
+            
+            if (favoritesData == null) {
+                Log.d(TAG, "No favorites field found for user: $username")
+                return Result.success(emptyList())
+            }
+            
+            // Convert Firestore data back to List<Favorite>
+            val result = favoritesData.mapNotNull { favoriteMap ->
+                try {
+                    val id = favoriteMap["id"] as? String ?: return@mapNotNull null
+                    val typeStr = favoriteMap["type"] as? String ?: return@mapNotNull null
+                    val type = FavoriteType.valueOf(typeStr)
+                    val streamId = (favoriteMap["streamId"] as? Number)?.toInt() ?: return@mapNotNull null
+                    val name = favoriteMap["name"] as? String ?: return@mapNotNull null
+                    @Suppress("UNCHECKED_CAST")
+                    val metadata = favoriteMap["metadata"] as? Map<String, String?>
+                    val addedAt = favoriteMap["addedAt"] as? String ?: return@mapNotNull null
+                    
+                    Favorite(
+                        id = id,
+                        type = type,
+                        streamId = streamId,
+                        name = name,
+                        metadata = metadata,
+                        addedAt = addedAt
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error parsing favorite from Firestore", e)
+                    null
+                }
+            }
+            
+            Log.d(TAG, "Favorites loaded successfully for user: $username, count: ${result.size}")
+            Result.success(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load favorites for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Adds a favorite atomically using Firestore transaction to prevent race conditions.
+     * 
+     * @param username The username to add favorite for
+     * @param favorite The favorite to add
+     * @return Result<Unit> - Success if added, Failure with exception otherwise
+     */
+    suspend fun addFavoriteAtomically(
+        username: String,
+        favorite: Favorite
+    ): Result<Unit> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        val userDocRef = firestore.collection(collectionName).document(username)
+        
+        return try {
+            firestore.runTransaction { transaction ->
+                val snapshot = transaction.get(userDocRef)
+                
+                @Suppress("UNCHECKED_CAST")
+                val favoritesData = snapshot["favorites"] as? List<Map<String, Any?>> ?: emptyList()
+                
+                // Check if favorite already exists
+                if (favoritesData.any { (it["id"] as? String) == favorite.id }) {
+                    // Favorite already exists, transaction succeeds without changes
+                    return@runTransaction
+                }
+                
+                // Add new favorite
+                val newFavoritesList = favoritesData + favorite.toFirestoreMap()
+                transaction.update(userDocRef, "favorites", newFavoritesList)
+            }.await()
+            
+            Log.d(TAG, "Favorite added atomically for user: $username, id=${favorite.id}")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to add favorite atomically for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Removes a favorite atomically using Firestore transaction to prevent race conditions.
+     * 
+     * @param username The username to remove favorite for
+     * @param favoriteId The ID of the favorite to remove
+     * @return Result<Unit> - Success if removed, Failure with exception otherwise
+     */
+    suspend fun removeFavoriteAtomically(
+        username: String,
+        favoriteId: String
+    ): Result<Unit> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        val userDocRef = firestore.collection(collectionName).document(username)
+        
+        return try {
+            firestore.runTransaction { transaction ->
+                val snapshot = transaction.get(userDocRef)
+                
+                if (!snapshot.exists()) {
+                    // Document doesn't exist, nothing to remove
+                    return@runTransaction
+                }
+                
+                @Suppress("UNCHECKED_CAST")
+                val favoritesData = snapshot["favorites"] as? List<Map<String, Any?>> ?: emptyList()
+                
+                // Remove favorite by id
+                val updatedFavoritesList = favoritesData.filterNot { (it["id"] as? String) == favoriteId }
+                
+                // Only update if something was actually removed
+                if (updatedFavoritesList.size < favoritesData.size) {
+                    transaction.update(userDocRef, "favorites", updatedFavoritesList)
+                }
+            }.await()
+            
+            Log.d(TAG, "Favorite removed atomically for user: $username, id=$favoriteId")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to remove favorite atomically for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Migrates favorites from local storage to Firestore.
+     * Merges local data with existing Firestore data (if any), preventing duplicates based on favorite.id.
+     * 
+     * @param username The username to migrate favorites for
+     * @param localFavorites List of Favorite objects from local storage
+     * @return Result<Unit> - Success if migrated, Failure with exception otherwise
+     */
+    suspend fun migrateFavoritesFromLocal(
+        username: String,
+        localFavorites: List<Favorite>
+    ): Result<Unit> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        if (localFavorites.isEmpty()) {
+            Log.d(TAG, "No local favorites to migrate for user: $username")
+            return Result.success(Unit)
+        }
+        
+        val userDocRef = firestore.collection(collectionName).document(username)
+        
+        return try {
+            firestore.runTransaction { transaction ->
+                val snapshot = transaction.get(userDocRef)
+                
+                @Suppress("UNCHECKED_CAST")
+                val existingFavoritesData = snapshot["favorites"] as? List<Map<String, Any?>> ?: emptyList()
+                
+                // Parse existing favorites
+                val existingFavorites = existingFavoritesData.mapNotNull { favoriteMap ->
+                    try {
+                        val id = favoriteMap["id"] as? String ?: return@mapNotNull null
+                        val typeStr = favoriteMap["type"] as? String ?: return@mapNotNull null
+                        val type = FavoriteType.valueOf(typeStr)
+                        val streamId = (favoriteMap["streamId"] as? Number)?.toInt() ?: return@mapNotNull null
+                        val name = favoriteMap["name"] as? String ?: return@mapNotNull null
+                        @Suppress("UNCHECKED_CAST")
+                        val metadata = favoriteMap["metadata"] as? Map<String, String?>
+                        val addedAt = favoriteMap["addedAt"] as? String ?: return@mapNotNull null
+                        
+                        Favorite(
+                            id = id,
+                            type = type,
+                            streamId = streamId,
+                            name = name,
+                            metadata = metadata,
+                            addedAt = addedAt
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error parsing favorite from Firestore during migration", e)
+                        null
+                    }
+                }
+                
+                // Merge logic
+                val existingIds = existingFavorites.map { it.id }.toSet()
+                val newFavorites = localFavorites.filter { it.id !in existingIds }
+                
+                if (newFavorites.isEmpty()) {
+                    return@runTransaction // No changes needed
+                }
+                
+                val mergedFavorites = existingFavorites + newFavorites
+                val mergedFavoritesData = mergedFavorites.map { it.toFirestoreMap() }
+                
+                transaction.set(userDocRef, mapOf("favorites" to mergedFavoritesData), SetOptions.merge())
+            }.await()
+            
+            Log.d(TAG, "Successfully migrated favorites from local to Firestore for user: $username")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to migrate favorites from local to Firestore for user: $username", e)
             Result.failure(e)
         }
     }

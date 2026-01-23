@@ -47,3 +47,17 @@ data class Favorite(
         }
     }
 }
+
+/**
+ * Converts a Favorite to a Firestore-compatible Map format.
+ */
+fun Favorite.toFirestoreMap(): Map<String, Any> {
+    return hashMapOf(
+        "id" to id,
+        "type" to type.name,
+        "streamId" to streamId,
+        "name" to name,
+        "metadata" to (metadata ?: emptyMap()),
+        "addedAt" to addedAt
+    )
+}

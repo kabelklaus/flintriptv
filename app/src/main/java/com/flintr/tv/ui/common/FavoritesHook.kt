@@ -7,8 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.FavoriteType
@@ -87,9 +85,7 @@ private suspend fun checkFavoritesChanges(
     while (isFavoritesCategory) {
         kotlinx.coroutines.delay(500) // Check every 500ms
         
-        val currentFavorites = withContext(Dispatchers.IO) {
-            favoritesRepository.getFavoritesByType(favoriteType)
-        }
+        val currentFavorites = favoritesRepository.getFavoritesByType(favoriteType)
         val currentIds = currentFavorites.map { it.id }
         val currentIdsKey = getCurrentIdsKey()
         
@@ -138,10 +134,11 @@ fun <T : Any> useFavorites(
             return@LaunchedEffect
         }
         
+        // Sync with Firestore when favorites category is selected (respects 30s cooldown)
+        favoritesRepository.syncIfNeeded()
+        
         // Load favorites IDs to use as key
-        val favorites = withContext(Dispatchers.IO) {
-            favoritesRepository.getFavoritesByType(favoriteType)
-        }
+        val favorites = favoritesRepository.getFavoritesByType(favoriteType)
         favoritesIdsKey = favorites.map { it.id }
     }
     
@@ -153,14 +150,12 @@ fun <T : Any> useFavorites(
         }
         
         isLoadingFavorites = true
-        val items = withContext(Dispatchers.IO) {
-            loadFavoriteItems(
-                favoritesRepository = favoritesRepository,
-                cacheService = cacheService,
-                favoriteType = favoriteType,
-                idSelector = idSelector
-            )
-        }
+        val items = loadFavoriteItems(
+            favoritesRepository = favoritesRepository,
+            cacheService = cacheService,
+            favoriteType = favoriteType,
+            idSelector = idSelector
+        )
         favoriteItems = items
         isLoadingFavorites = false
     }
