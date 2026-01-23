@@ -590,23 +590,32 @@ private fun SeasonButton(
     onSelect: () -> Unit
 ) {
     val colors = appColors()
+    var isFocused by remember { mutableStateOf(false) }
     
-    // Border color with animation
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected) colors.accentColor else Color.Transparent,
-        animationSpec = tween(durationMillis = 200),
-        label = "borderColor"
-    )
-    
-    // Background color with animation
+    // Background color with animation (like CategoryRow)
+    // Selected: completely filled with accentColor
+    // Focused (but not selected): hover background
+    val isHoveredOrFocused = isFocused && !isSelected
     val backgroundColor by animateColorAsState(
         targetValue = when {
-            isSelected -> colors.accentColorHoverBg
-            else -> Color.White.copy(alpha = 0.2f)
+            isSelected -> colors.accentColor
+            isHoveredOrFocused -> colors.categoryHoverBg
+            else -> Color.Transparent
         },
         animationSpec = tween(durationMillis = 200),
         label = "backgroundColor"
     )
+    
+    // Border color with animation
+    // Selected OR focused: show border
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected || isFocused) colors.accentColor else Color.Transparent,
+        animationSpec = tween(durationMillis = 200),
+        label = "borderColor"
+    )
+    
+    // Text color: always white on dark background
+    val textColor = Color.White
     
     val focusRequester = remember { FocusRequester() }
     
@@ -640,6 +649,9 @@ private fun SeasonButton(
                 }
             )
             .focusRequester(focusRequester)
+            .onFocusChanged { focusState ->
+                isFocused = focusState.isFocused
+            }
             .focusable()
             .onClick(onClick = onSelect)
             .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -648,7 +660,7 @@ private fun SeasonButton(
             text = "Staffel ${season.seasonNumber}",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            color = Color.White
+            color = textColor
         )
     }
 }
