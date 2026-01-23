@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import android.util.Log
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.DataCacheService
@@ -82,12 +83,13 @@ private suspend fun checkFavoritesChanges(
     favoriteType: FavoriteType,
     getCurrentIdsKey: () -> List<String>,
     isFavoritesCategory: Boolean,
-    onIdsChanged: (List<String>) -> Unit
+    onIdsChanged: (List<String>) -> Unit,
+    ioDispatcher: CoroutineDispatcher
 ) {
     while (isFavoritesCategory) {
         kotlinx.coroutines.delay(500) // Check every 500ms
         
-        val currentFavorites = withContext(Dispatchers.IO) {
+        val currentFavorites = withContext(ioDispatcher) {
             favoritesRepository.getFavoritesByType(favoriteType)
         }
         val currentIds = currentFavorites.map { it.id }
@@ -122,7 +124,8 @@ fun <T : Any> useFavorites(
     favoritesRepository: FavoritesRepository,
     cacheService: DataCacheService,
     favoriteType: FavoriteType,
-    idSelector: (T) -> Int
+    idSelector: (T) -> Int,
+    ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ): FavoritesState<T> {
     var favoriteItems by remember { mutableStateOf<List<T>>(emptyList()) }
     var isLoadingFavorites by remember { mutableStateOf(false) }
@@ -138,10 +141,11 @@ fun <T : Any> useFavorites(
             return@LaunchedEffect
         }
         
+        // Sync with Firestore when favorites category is selected (respects 30s cooldown)
+        favoritesRepository.syncIfNeeded()
+        
         // Load favorites IDs to use as key
-        val favorites = withContext(Dispatchers.IO) {
-            favoritesRepository.getFavoritesByType(favoriteType)
-        }
+        val favorites = favoritesRepository.getFavoritesByType(favoriteType)
         favoritesIdsKey = favorites.map { it.id }
     }
     
@@ -153,14 +157,12 @@ fun <T : Any> useFavorites(
         }
         
         isLoadingFavorites = true
-        val items = withContext(Dispatchers.IO) {
-            loadFavoriteItems(
-                favoritesRepository = favoritesRepository,
-                cacheService = cacheService,
-                favoriteType = favoriteType,
-                idSelector = idSelector
-            )
-        }
+        val items = loadFavoriteItems(
+            favoritesRepository = favoritesRepository,
+            cacheService = cacheService,
+            favoriteType = favoriteType,
+            idSelector = idSelector
+        )
         favoriteItems = items
         isLoadingFavorites = false
     }
@@ -176,7 +178,8 @@ fun <T : Any> useFavorites(
             favoriteType = favoriteType,
             getCurrentIdsKey = { favoritesIdsKey },
             isFavoritesCategory = isFavoritesCategory,
-            onIdsChanged = { favoritesIdsKey = it }
+            onIdsChanged = { favoritesIdsKey = it },
+            ioDispatcher = ioDispatcher
         )
     }
     

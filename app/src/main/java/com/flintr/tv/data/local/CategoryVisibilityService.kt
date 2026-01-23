@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 
 @Singleton
@@ -24,7 +25,7 @@ class CategoryVisibilityService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val userRepository: UserRepository,
     private val credentialsRepository: CredentialsRepository,
-    private val syncManager: FirestoreSyncManager
+    @Named("CategoryVisibility") private val syncManager: FirestoreSyncManager
 ) {
     // SharedPreferences only for migration flag and reading old data
     private val migrationPrefs: SharedPreferences = context.getSharedPreferences(

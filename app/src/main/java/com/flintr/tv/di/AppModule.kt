@@ -257,8 +257,16 @@ object AppModule {
     
     @Provides
     @Singleton
-    fun provideFirestoreSyncManager(): FirestoreSyncManager {
-        return FirestoreSyncManager()
+    @Named("CategoryVisibility")
+    fun provideCategoryVisibilitySyncManager(): FirestoreSyncManager {
+        return FirestoreSyncManager(tag = "FirestoreSyncManager-CategoryVisibility")
+    }
+    
+    @Provides
+    @Singleton
+    @Named("Favorites")
+    fun provideFavoritesSyncManager(): FirestoreSyncManager {
+        return FirestoreSyncManager(tag = "FirestoreSyncManager-Favorites")
     }
     
     @Provides
@@ -267,7 +275,7 @@ object AppModule {
         @ApplicationContext context: Context,
         userRepository: UserRepository,
         credentialsRepository: CredentialsRepository,
-        syncManager: FirestoreSyncManager
+        @Named("CategoryVisibility") syncManager: FirestoreSyncManager
     ): CategoryVisibilityService {
         return CategoryVisibilityService(context, userRepository, credentialsRepository, syncManager)
     }

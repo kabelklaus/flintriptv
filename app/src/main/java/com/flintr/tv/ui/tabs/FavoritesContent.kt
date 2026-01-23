@@ -245,6 +245,8 @@ fun FavoritesContent(
     
     // Load favorites
     LaunchedEffect(Unit) {
+        // Sync with Firestore before loading (respects cooldown)
+        params.favoritesRepository.syncIfNeeded()
         favorites = params.favoritesRepository.getAllFavorites()
         // isLoading bleibt true, bis Matching abgeschlossen ist
         Log.d("FavoritesContent", "Loaded ${favorites.size} favorites")

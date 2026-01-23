@@ -65,4 +65,18 @@ class FirestoreSyncManager constructor(
     fun resetCooldown() {
         lastSyncTimestamp = 0
     }
+
+    /**
+     * Forces synchronization, ignoring cooldown.
+     * Use this for explicit user actions (e.g., navigating to favorites category).
+     * 
+     * @param syncFunction The suspend function to execute for synchronization
+     */
+    suspend fun forceSync(syncFunction: suspend () -> Unit) {
+        syncMutex.withLock {
+            syncFunction()
+            lastSyncTimestamp = System.currentTimeMillis()
+            Log.d(tag, "Force sync performed successfully")
+        }
+    }
 }
