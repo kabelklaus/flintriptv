@@ -4,6 +4,8 @@ import android.util.Log
 import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.Favorite
 import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchProgress
+import com.flintr.tv.data.model.WatchedItem
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -518,6 +520,372 @@ class UserRepository @Inject constructor() {
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to migrate favorites from local to Firestore for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Saves watch progress for a user to Firestore.
+     * 
+     * @param username The username to save progress for
+     * @param progress Map of progress keys (e.g., "movie:123" or "series:456:789") to WatchProgress objects
+     * @return Result<Unit> - Success if saved, Failure with exception otherwise
+     */
+    suspend fun saveWatchProgress(
+        username: String,
+        progress: Map<String, WatchProgress>
+    ): Result<Unit> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        return try {
+            // Convert Map<String, WatchProgress> to Firestore-compatible format
+            val firestoreData = hashMapOf(
+                "watchProgress" to progress.mapValues { (_, watchProgress) ->
+                    hashMapOf(
+                        "position" to watchProgress.position,
+                        "duration" to watchProgress.duration,
+                        "lastWatched" to watchProgress.lastWatched,
+                        "title" to watchProgress.title
+                    )
+                }
+            )
+            
+            // Use set with merge to create document if it doesn't exist
+            firestore.collection(collectionName)
+                .document(username)
+                .set(firestoreData, SetOptions.merge())
+                .await()
+            
+            Log.d(TAG, "Watch progress saved successfully for user: $username (${progress.size} entries)")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save watch progress for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Loads watch progress for a user from Firestore.
+     * 
+     * @param username The username to load progress for
+     * @return Result<Map<String, WatchProgress>> - Success with progress map, Failure with exception otherwise
+     */
+    suspend fun loadWatchProgress(
+        username: String
+    ): Result<Map<String, WatchProgress>> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        return try {
+            val documentSnapshot: DocumentSnapshot = firestore.collection(collectionName)
+                .document(username)
+                .get()
+                .await()
+            
+            if (!documentSnapshot.exists()) {
+                Log.d(TAG, "User document does not exist: $username, returning empty map")
+                return Result.success(emptyMap())
+            }
+            
+            @Suppress("UNCHECKED_CAST")
+            val watchProgressData = documentSnapshot["watchProgress"] as? Map<String, Map<String, Any?>>
+            
+            if (watchProgressData == null) {
+                Log.d(TAG, "No watchProgress field found for user: $username")
+                return Result.success(emptyMap())
+            }
+            
+            // Convert Firestore data back to Map<String, WatchProgress>
+            val result = watchProgressData.mapNotNull { (key, progressMap) ->
+                try {
+                    val position = (progressMap["position"] as? Number)?.toLong() ?: return@mapNotNull null
+                    val duration = (progressMap["duration"] as? Number)?.toLong() ?: return@mapNotNull null
+                    val lastWatched = progressMap["lastWatched"] as? String ?: return@mapNotNull null
+                    val title = progressMap["title"] as? String ?: return@mapNotNull null
+                    
+                    key to WatchProgress(
+                        position = position,
+                        duration = duration,
+                        lastWatched = lastWatched,
+                        title = title
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error parsing watch progress from Firestore for key: $key", e)
+                    null
+                }
+            }.toMap()
+            
+            Log.d(TAG, "Watch progress loaded successfully for user: $username, count: ${result.size}")
+            Result.success(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load watch progress for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Migrates watch progress from local storage to Firestore.
+     * Merges local data with existing Firestore data (if any), preventing duplicates based on progress keys.
+     * Local data takes precedence over Firestore data for duplicate keys.
+     * 
+     * @param username The username to migrate progress for
+     * @param localProgress Map of progress keys to WatchProgress objects from local storage
+     * @return Result<Unit> - Success if migrated, Failure with exception otherwise
+     */
+    suspend fun migrateWatchProgressFromLocal(
+        username: String,
+        localProgress: Map<String, WatchProgress>
+    ): Result<Unit> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        if (localProgress.isEmpty()) {
+            Log.d(TAG, "No local watch progress to migrate for user: $username")
+            return Result.success(Unit)
+        }
+        
+        val userDocRef = firestore.collection(collectionName).document(username)
+        
+        return try {
+            firestore.runTransaction { transaction ->
+                val snapshot = transaction.get(userDocRef)
+                
+                @Suppress("UNCHECKED_CAST")
+                val existingProgressData = snapshot["watchProgress"] as? Map<String, Map<String, Any?>> ?: emptyMap()
+                
+                // Parse existing progress from Firestore
+                val existingProgress = existingProgressData.mapNotNull { (key, progressMap) ->
+                    try {
+                        val position = (progressMap["position"] as? Number)?.toLong() ?: return@mapNotNull null
+                        val duration = (progressMap["duration"] as? Number)?.toLong() ?: return@mapNotNull null
+                        val lastWatched = progressMap["lastWatched"] as? String ?: return@mapNotNull null
+                        val title = progressMap["title"] as? String ?: return@mapNotNull null
+                        
+                        key to WatchProgress(
+                            position = position,
+                            duration = duration,
+                            lastWatched = lastWatched,
+                            title = title
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error parsing watch progress from Firestore during migration for key: $key", e)
+                        null
+                    }
+                }.toMap()
+                
+                // Merge logic: local data takes precedence for duplicate keys
+                val mergedProgress = existingProgress.toMutableMap()
+                localProgress.forEach { (key, progress) ->
+                    mergedProgress[key] = progress
+                }
+                
+                // Convert merged progress to Firestore format
+                val mergedProgressData = mergedProgress.mapValues { (_, watchProgress) ->
+                    hashMapOf(
+                        "position" to watchProgress.position,
+                        "duration" to watchProgress.duration,
+                        "lastWatched" to watchProgress.lastWatched,
+                        "title" to watchProgress.title
+                    )
+                }
+                
+                transaction.set(userDocRef, mapOf("watchProgress" to mergedProgressData), SetOptions.merge())
+            }.await()
+            
+            Log.d(TAG, "Successfully migrated watch progress from local to Firestore for user: $username")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to migrate watch progress from local to Firestore for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Saves watched history for a user to Firestore.
+     * 
+     * @param username The username to save history for
+     * @param watchedHistory Map of history keys (e.g., "movie:123" or "series:456:789") to WatchedItem objects
+     * @return Result<Unit> - Success if saved, Failure with exception otherwise
+     */
+    suspend fun saveWatchedHistory(
+        username: String,
+        watchedHistory: Map<String, WatchedItem>
+    ): Result<Unit> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        return try {
+            // Convert Map<String, WatchedItem> to Firestore-compatible format
+            val firestoreData = hashMapOf(
+                "watchedHistory" to watchedHistory.mapValues { (_, watchedItem) ->
+                    hashMapOf(
+                        "contentType" to watchedItem.contentType,
+                        "streamId" to watchedItem.streamId,
+                        "seriesId" to watchedItem.seriesId,
+                        "episodeId" to watchedItem.episodeId,
+                        "watchedAt" to watchedItem.watchedAt
+                    )
+                }
+            )
+            
+            // Use set with merge to create document if it doesn't exist
+            firestore.collection(collectionName)
+                .document(username)
+                .set(firestoreData, SetOptions.merge())
+                .await()
+            
+            Log.d(TAG, "Watched history saved successfully for user: $username (${watchedHistory.size} entries)")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save watched history for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Loads watched history for a user from Firestore.
+     * 
+     * @param username The username to load history for
+     * @return Result<Map<String, WatchedItem>> - Success with history map, Failure with exception otherwise
+     */
+    suspend fun loadWatchedHistory(
+        username: String
+    ): Result<Map<String, WatchedItem>> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        return try {
+            val documentSnapshot: DocumentSnapshot = firestore.collection(collectionName)
+                .document(username)
+                .get()
+                .await()
+            
+            if (!documentSnapshot.exists()) {
+                Log.d(TAG, "User document does not exist: $username, returning empty map")
+                return Result.success(emptyMap())
+            }
+            
+            @Suppress("UNCHECKED_CAST")
+            val watchedHistoryData = documentSnapshot["watchedHistory"] as? Map<String, Map<String, Any?>>
+            
+            if (watchedHistoryData == null) {
+                Log.d(TAG, "No watchedHistory field found for user: $username")
+                return Result.success(emptyMap())
+            }
+            
+            // Convert Firestore data back to Map<String, WatchedItem>
+            val result = watchedHistoryData.mapNotNull { (key, itemMap) ->
+                try {
+                    val contentType = itemMap["contentType"] as? String ?: return@mapNotNull null
+                    val streamId = (itemMap["streamId"] as? Number)?.toInt()
+                    val seriesId = (itemMap["seriesId"] as? Number)?.toInt()
+                    val episodeId = (itemMap["episodeId"] as? Number)?.toInt()
+                    val watchedAt = itemMap["watchedAt"] as? String ?: return@mapNotNull null
+                    
+                    key to WatchedItem(
+                        contentType = contentType,
+                        streamId = streamId,
+                        seriesId = seriesId,
+                        episodeId = episodeId,
+                        watchedAt = watchedAt
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error parsing watched history from Firestore for key: $key", e)
+                    null
+                }
+            }.toMap()
+            
+            Log.d(TAG, "Watched history loaded successfully for user: $username, count: ${result.size}")
+            Result.success(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load watched history for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Migrates watched history from local storage to Firestore.
+     * Merges local data with existing Firestore data (if any), preventing duplicates based on history keys.
+     * Local data takes precedence over Firestore data for duplicate keys.
+     * 
+     * @param username The username to migrate history for
+     * @param localHistory Map of history keys to WatchedItem objects from local storage
+     * @return Result<Unit> - Success if migrated, Failure with exception otherwise
+     */
+    suspend fun migrateWatchedHistoryFromLocal(
+        username: String,
+        localHistory: Map<String, WatchedItem>
+    ): Result<Unit> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        if (localHistory.isEmpty()) {
+            Log.d(TAG, "No local watched history to migrate for user: $username")
+            return Result.success(Unit)
+        }
+        
+        val userDocRef = firestore.collection(collectionName).document(username)
+        
+        return try {
+            firestore.runTransaction { transaction ->
+                val snapshot = transaction.get(userDocRef)
+                
+                @Suppress("UNCHECKED_CAST")
+                val existingHistoryData = snapshot["watchedHistory"] as? Map<String, Map<String, Any?>> ?: emptyMap()
+                
+                // Parse existing history from Firestore
+                val existingHistory = existingHistoryData.mapNotNull { (key, itemMap) ->
+                    try {
+                        val contentType = itemMap["contentType"] as? String ?: return@mapNotNull null
+                        val streamId = (itemMap["streamId"] as? Number)?.toInt()
+                        val seriesId = (itemMap["seriesId"] as? Number)?.toInt()
+                        val episodeId = (itemMap["episodeId"] as? Number)?.toInt()
+                        val watchedAt = itemMap["watchedAt"] as? String ?: return@mapNotNull null
+                        
+                        key to WatchedItem(
+                            contentType = contentType,
+                            streamId = streamId,
+                            seriesId = seriesId,
+                            episodeId = episodeId,
+                            watchedAt = watchedAt
+                        )
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error parsing watched history from Firestore during migration for key: $key", e)
+                        null
+                    }
+                }.toMap()
+                
+                // Merge logic: local data takes precedence for duplicate keys
+                val mergedHistory = existingHistory.toMutableMap()
+                localHistory.forEach { (key, item) ->
+                    mergedHistory[key] = item
+                }
+                
+                // Convert merged history to Firestore format
+                val mergedHistoryData = mergedHistory.mapValues { (_, watchedItem) ->
+                    hashMapOf(
+                        "contentType" to watchedItem.contentType,
+                        "streamId" to watchedItem.streamId,
+                        "seriesId" to watchedItem.seriesId,
+                        "episodeId" to watchedItem.episodeId,
+                        "watchedAt" to watchedItem.watchedAt
+                    )
+                }
+                
+                transaction.set(userDocRef, mapOf("watchedHistory" to mergedHistoryData), SetOptions.merge())
+            }.await()
+            
+            Log.d(TAG, "Successfully migrated watched history from local to Firestore for user: $username")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to migrate watched history from local to Firestore for user: $username", e)
             Result.failure(e)
         }
     }

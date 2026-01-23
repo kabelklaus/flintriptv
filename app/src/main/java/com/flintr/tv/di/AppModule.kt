@@ -238,9 +238,48 @@ object AppModule {
     fun provideWatchedHistoryService(
         @ApplicationContext context: Context,
         moshi: Moshi,
+        userRepository: UserRepository,
+        credentialsRepository: CredentialsRepository,
+        @Named("WatchedHistory") syncManager: FirestoreSyncManager,
         @Named("IO") ioDispatcher: CoroutineDispatcher
     ): WatchedHistoryService {
-        return WatchedHistoryService(context, moshi, ioDispatcher)
+        return WatchedHistoryService(
+            context,
+            moshi,
+            userRepository,
+            credentialsRepository,
+            syncManager,
+            ioDispatcher
+        )
+    }
+
+    /**
+     * Dependencies container for WatchProgressService to reduce parameter count.
+     */
+    data class WatchProgressServiceDependencies(
+        val favoritesRepository: FavoritesRepository,
+        val watchedHistoryService: WatchedHistoryService,
+        val userRepository: UserRepository,
+        val credentialsRepository: CredentialsRepository,
+        val syncManager: FirestoreSyncManager
+    )
+
+    @Provides
+    @Singleton
+    fun provideWatchProgressServiceDependencies(
+        favoritesRepository: FavoritesRepository,
+        watchedHistoryService: WatchedHistoryService,
+        userRepository: UserRepository,
+        credentialsRepository: CredentialsRepository,
+        @Named("WatchProgress") syncManager: FirestoreSyncManager
+    ): WatchProgressServiceDependencies {
+        return WatchProgressServiceDependencies(
+            favoritesRepository,
+            watchedHistoryService,
+            userRepository,
+            credentialsRepository,
+            syncManager
+        )
     }
 
     @Provides
@@ -248,11 +287,19 @@ object AppModule {
     fun provideWatchProgressService(
         @ApplicationContext context: Context,
         moshi: Moshi,
-        favoritesRepository: FavoritesRepository,
-        watchedHistoryService: WatchedHistoryService,
-        @Named("IO") ioDispatcher: CoroutineDispatcher
+        @Named("IO") ioDispatcher: CoroutineDispatcher,
+        dependencies: WatchProgressServiceDependencies
     ): WatchProgressService {
-        return WatchProgressService(context, moshi, favoritesRepository, watchedHistoryService, ioDispatcher)
+        return WatchProgressService(
+            context,
+            moshi,
+            dependencies.favoritesRepository,
+            dependencies.watchedHistoryService,
+            dependencies.userRepository,
+            dependencies.credentialsRepository,
+            dependencies.syncManager,
+            ioDispatcher
+        )
     }
     
     @Provides
@@ -267,6 +314,20 @@ object AppModule {
     @Named("Favorites")
     fun provideFavoritesSyncManager(): FirestoreSyncManager {
         return FirestoreSyncManager(tag = "FirestoreSyncManager-Favorites")
+    }
+    
+    @Provides
+    @Singleton
+    @Named("WatchProgress")
+    fun provideWatchProgressSyncManager(): FirestoreSyncManager {
+        return FirestoreSyncManager(tag = "FirestoreSyncManager-WatchProgress")
+    }
+    
+    @Provides
+    @Singleton
+    @Named("WatchedHistory")
+    fun provideWatchedHistorySyncManager(): FirestoreSyncManager {
+        return FirestoreSyncManager(tag = "FirestoreSyncManager-WatchedHistory")
     }
     
     @Provides
