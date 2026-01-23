@@ -2,6 +2,7 @@ package com.flintr.tv.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import com.flintr.tv.data.model.*
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -135,18 +136,18 @@ class DataCacheService @Inject constructor(
             val vodCategoriesJson = categoryAdapter.toJson(vodCategories)
             val seriesCategoriesJson = categoryAdapter.toJson(seriesCategories)
 
-            sharedPreferences.edit()
-                .putString(KEY_CACHE_TIMESTAMP, timestamp)
-                .putString(KEY_CACHE_CHANNELS, channelsJson)
-                .putString(KEY_CACHE_MOVIES, moviesJson)
-                .putString(KEY_CACHE_SERIES, seriesJson)
-                .putString(KEY_CACHE_LIVE_CATEGORIES, liveCategoriesJson)
-                .putString(KEY_CACHE_VOD_CATEGORIES, vodCategoriesJson)
-                .putString(KEY_CACHE_SERIES_CATEGORIES, seriesCategoriesJson)
-                .putInt(KEY_CACHE_CHANNELS_COUNT, channels.size)
-                .putInt(KEY_CACHE_MOVIES_COUNT, movies.size)
-                .putInt(KEY_CACHE_SERIES_COUNT, series.size)
-                .apply()
+            sharedPreferences.edit {
+                putString(KEY_CACHE_TIMESTAMP, timestamp)
+                putString(KEY_CACHE_CHANNELS, channelsJson)
+                putString(KEY_CACHE_MOVIES, moviesJson)
+                putString(KEY_CACHE_SERIES, seriesJson)
+                putString(KEY_CACHE_LIVE_CATEGORIES, liveCategoriesJson)
+                putString(KEY_CACHE_VOD_CATEGORIES, vodCategoriesJson)
+                putString(KEY_CACHE_SERIES_CATEGORIES, seriesCategoriesJson)
+                putInt(KEY_CACHE_CHANNELS_COUNT, channels.size)
+                putInt(KEY_CACHE_MOVIES_COUNT, movies.size)
+                putInt(KEY_CACHE_SERIES_COUNT, series.size)
+            }
         } catch (e: Exception) {
             // Log error but don't crash
             android.util.Log.e("DataCacheService", "Failed to save cache", e)
@@ -215,7 +216,7 @@ class DataCacheService @Inject constructor(
     }
 
     fun clearCache() {
-        sharedPreferences.edit().clear().apply()
+        sharedPreferences.edit { clear() }
     }
 
     /**

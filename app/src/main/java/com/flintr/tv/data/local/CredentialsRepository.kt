@@ -2,6 +2,7 @@ package com.flintr.tv.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -51,11 +52,11 @@ class CredentialsRepository @Inject constructor(
     }
 
     fun saveCredentials(credentials: Credentials) {
-        sharedPreferences.edit()
-            .putString(KEY_SERVER_URL, credentials.serverUrl)
-            .putString(KEY_USERNAME, credentials.username)
-            .putString(KEY_PASSWORD, credentials.password)
-            .apply()
+        sharedPreferences.edit {
+            putString(KEY_SERVER_URL, credentials.serverUrl)
+            putString(KEY_USERNAME, credentials.username)
+            putString(KEY_PASSWORD, credentials.password)
+        }
     }
 
     fun getCredentials(): Credentials? {
@@ -75,7 +76,7 @@ class CredentialsRepository @Inject constructor(
     }
 
     fun clearCredentials() {
-        sharedPreferences.edit().clear().apply()
+        sharedPreferences.edit { clear() }
     }
 
     fun getCredentialsFlow(): Flow<Credentials?> = credentialsFlow
