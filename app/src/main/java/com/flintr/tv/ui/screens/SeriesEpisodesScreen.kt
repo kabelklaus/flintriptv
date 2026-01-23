@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -245,7 +246,7 @@ private fun SeriesBackground(backdropImageUrl: String?) {
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f)),
+                    .alpha(0.4f),
                 contentScale = ContentScale.Crop
             )
         }
@@ -969,7 +970,8 @@ private fun rememberEpisodeProgress(
         0f
     }
     
-    val isCompleted = progressPercent >= 0.9f
+    // If episode is watched, treat it as completed regardless of progress
+    val isCompleted = isWatched || progressPercent >= 0.9f
     val remainingMinutes = if (progress != null && duration != null && !isCompleted) {
         ((duration!! - progress!!) / 60000).toInt()
     } else {
