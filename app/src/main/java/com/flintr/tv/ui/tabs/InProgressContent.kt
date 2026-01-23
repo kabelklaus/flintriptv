@@ -292,6 +292,25 @@ private suspend fun loadInProgressEpisodes(
 }
 
 /**
+ * Deduplicates series items, keeping only the most recent episode per series.
+ */
+private fun deduplicateSeriesItems(items: List<InProgressItem>): List<InProgressItem> {
+    val movies = items.filterIsInstance<InProgressItem.Movie>()
+    val episodes = items.filterIsInstance<InProgressItem.EpisodeItem>()
+    
+    // Group episodes by seriesId and keep only the most recent one per series
+    val deduplicatedEpisodes = episodes
+        .groupBy { it.series.seriesId }
+        .mapValues { (_, items) ->
+            items.maxByOrNull { it.progress.lastWatched }
+        }
+        .values
+        .filterNotNull()
+    
+    return movies + deduplicatedEpisodes
+}
+
+/**
  * Renders an in-progress content item as a card.
  */
 @Composable
@@ -373,8 +392,11 @@ private suspend fun loadInProgressItems(
         }
     }
     
+    // Deduplicate series items (keep only most recent episode per series)
+    val deduplicatedItems = deduplicateSeriesItems(itemsList)
+    
     // Sort by lastWatched (most recent first)
-    return itemsList.sortedByDescending { item ->
+    return deduplicatedItems.sortedByDescending { item ->
         when (item) {
             is InProgressItem.Movie -> item.progress.lastWatched
             is InProgressItem.EpisodeItem -> item.progress.lastWatched
