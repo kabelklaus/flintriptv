@@ -6,7 +6,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.layout.Box
@@ -1352,7 +1355,7 @@ private data class CategoryHiddenContext(
 /**
  * Handler function for category hiding logic
  */
-private fun handleCategoryHidden(
+private suspend fun handleCategoryHidden(
     category: Category,
     context: CategoryHiddenContext
 ) {
@@ -1420,6 +1423,63 @@ private fun createSearchClickHandlers(
     )
 }
 
+/**
+ * Handles destination changes and related side effects.
+ */
+private fun handleDestinationChangeInternal(
+    destination: HomeDestination,
+    navController: NavHostController,
+    mainViewModel: MainViewModel,
+    coroutineScope: CoroutineScope,
+    categoryVisibilityService: CategoryVisibilityService,
+    onCategoryIdChanged: (String?) -> Unit,
+    onDestinationChanged: (HomeDestination) -> Unit
+) {
+    if (destination is HomeDestination.Settings) {
+        navController.navigate(Screen.Settings.route)
+    } else {
+        onCategoryIdChanged(null)
+        onDestinationChanged(destination).let {
+            clearStreamsForDestination(destination, mainViewModel)
+        }
+        // Smart sync: Only sync if enough time has passed since last sync
+        // Only sync for content tabs (LiveTV, VOD, Series, EPG), not for Search/Settings
+        if (destination in listOf(
+                HomeDestination.LiveTV,
+                HomeDestination.VOD,
+                HomeDestination.Series,
+                HomeDestination.EPG
+            )
+        ) {
+            coroutineScope.launch {
+                categoryVisibilityService.syncIfNeeded()
+            }
+        }
+    }
+}
+
+@Composable
+private fun calculateItemCounts(
+    selectedDestination: HomeDestination,
+    watchProgressService: WatchProgressService
+): Map<String, Int> {
+    var inProgressCount by remember { mutableStateOf(0) }
+    LaunchedEffect(selectedDestination) {
+        inProgressCount = when (selectedDestination) {
+            is HomeDestination.VOD -> watchProgressService.getInProgressMoviesCount()
+            is HomeDestination.Series -> watchProgressService.getInProgressEpisodesCount()
+            else -> 0
+        }
+    }
+    return remember(inProgressCount) {
+        if (inProgressCount > 0) {
+            mapOf(IN_PROGRESS_CATEGORY_ID to inProgressCount)
+        } else {
+            emptyMap()
+        }
+    }
+}
+
 @Composable
 fun MainContentScreen(
     navController: NavHostController,
@@ -1438,6 +1498,7 @@ fun MainContentScreen(
     var showUpdateDialog by remember { mutableStateOf(false) }
     var showSearchOverlay by remember { mutableStateOf(false) }
     val focusState = rememberMainContentFocusState()
+    val coroutineScope = rememberCoroutineScope()
     
     // ViewModel state collection
     val searchState by mainViewModel.searchState.collectAsState()
@@ -1568,16 +1629,20 @@ fun MainContentScreen(
         }
     }
     
-    // Handler functions
-    fun handleDestinationChange(destination: HomeDestination) {
-        if (destination is HomeDestination.Settings) {
-            navController.navigate(Screen.Settings.route)
-        } else {
-            selectedCategoryId = null
-            clearStreamsForDestination(selectedDestination, mainViewModel)
-            clearStreamsForDestination(destination, mainViewModel)
-            selectedDestination = destination
-        }
+    // Handler function wrapper
+    val onDestinationChangeHandler: (HomeDestination) -> Unit = { destination ->
+        handleDestinationChangeInternal(
+            destination = destination,
+            navController = navController,
+            mainViewModel = mainViewModel,
+            coroutineScope = coroutineScope,
+            categoryVisibilityService = dependencies.categoryVisibilityService,
+            onCategoryIdChanged = { selectedCategoryId = it },
+            onDestinationChanged = { newDestination ->
+                clearStreamsForDestination(selectedDestination, mainViewModel)
+                selectedDestination = newDestination
+            }
+        )
     }
     
     // Search click handlers
@@ -1607,28 +1672,17 @@ fun MainContentScreen(
     val categoryHiddenMessage = stringResource(R.string.category_hidden)
     
     // Calculate item counts for special categories
-    var inProgressCount by remember { mutableStateOf(0) }
-    LaunchedEffect(selectedDestination) {
-        inProgressCount = when (selectedDestination) {
-            is HomeDestination.VOD -> dependencies.watchProgressService.getInProgressMoviesCount()
-            is HomeDestination.Series -> dependencies.watchProgressService.getInProgressEpisodesCount()
-            else -> 0
-        }
-    }
-    val itemCounts = remember(inProgressCount) {
-        if (inProgressCount > 0) {
-            mapOf(IN_PROGRESS_CATEGORY_ID to inProgressCount)
-        } else {
-            emptyMap<String, Int>()
-        }
-    }
+    val itemCounts = calculateItemCounts(
+        selectedDestination = selectedDestination,
+        watchProgressService = dependencies.watchProgressService
+    )
     
     // Main UI
     Box(modifier = Modifier.fillMaxSize()) {
         MainLayout(
             params = MainLayoutParams(
                 selectedDestination = selectedDestination,
-                onDestinationChange = ::handleDestinationChange,
+                onDestinationChange = onDestinationChangeHandler,
                 showCategories = categoryManagement.showCategories,
                 categories = categoryManagement.sortedCategories,
                 selectedCategoryId = selectedCategoryId,
@@ -1641,18 +1695,20 @@ fun MainContentScreen(
                 onNavigateToContentList = { focusManager.moveFocusToContentList() },
                 onCategoryHidden = { category ->
                     Log.d("AppNavigation", "[CategoryHidden] Callback called for category: ${category.categoryName} (${category.categoryId})")
-                    handleCategoryHidden(
-                        category = category,
-                        context = CategoryHiddenContext(
-                            categoryType = categoryManagement.categoryType,
-                            selectedCategoryId = selectedCategoryId,
-                            sortedCategories = categoryManagement.sortedCategories,
-                            categoryVisibilityService = dependencies.categoryVisibilityService,
-                            onCategoryIdChanged = { selectedCategoryId = it },
-                            onSnackbarMessage = { snackbarMessage = it },
-                            categoryHiddenMessage = categoryHiddenMessage
+                    coroutineScope.launch {
+                        handleCategoryHidden(
+                            category = category,
+                            context = CategoryHiddenContext(
+                                categoryType = categoryManagement.categoryType,
+                                selectedCategoryId = selectedCategoryId,
+                                sortedCategories = categoryManagement.sortedCategories,
+                                categoryVisibilityService = dependencies.categoryVisibilityService,
+                                onCategoryIdChanged = { selectedCategoryId = it },
+                                onSnackbarMessage = { snackbarMessage = it },
+                                categoryHiddenMessage = categoryHiddenMessage
+                            )
                         )
-                    )
+                    }
                 },
                 onSearchClick = { showSearchOverlay = true },
                 onNavbarReady = { focusState.navbarReady = true },

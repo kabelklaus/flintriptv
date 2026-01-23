@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -118,6 +120,7 @@ fun SubSettingsHiddenCategories(
     modifier: Modifier = Modifier
 ) {
     val colors = appColors()
+    val coroutineScope = rememberCoroutineScope()
     
     // Collect hidden categories from StateFlow
     val hiddenCategories by categoryVisibilityService.hiddenCategories.collectAsState()
@@ -231,9 +234,11 @@ fun SubSettingsHiddenCategories(
             ConfirmUnhideCategoryDialog(
                 categoryName = item.categoryName,
                 onConfirm = {
-                    categoryVisibilityService.showCategory(item.categoryId, item.categoryType)
-                    onShowSnackbar("Kategorie wurde wieder eingeblendet")
-                    showDialog = null
+                    coroutineScope.launch {
+                        categoryVisibilityService.showCategory(item.categoryId, item.categoryType)
+                        onShowSnackbar("Kategorie wurde wieder eingeblendet")
+                        showDialog = null
+                    }
                 },
                 onDismiss = { showDialog = null }
             )
