@@ -394,6 +394,8 @@ fun InProgressContent(
     LaunchedEffect(params.destination) {
         isLoading = true
         
+        // Sync with Firestore before loading (respects cooldown)
+        params.watchProgressService.syncIfNeeded()
         val allProgress = params.watchProgressService.getAllInProgress()
         val items = loadInProgressItems(params, allProgress)
         

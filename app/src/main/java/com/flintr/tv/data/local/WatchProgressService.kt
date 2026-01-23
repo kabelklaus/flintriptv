@@ -3,20 +3,32 @@ package com.flintr.tv.data.local
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import androidx.core.content.edit
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Favorite
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.WatchProgress
+import com.flintr.tv.data.repository.UserRepository
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.net.URLEncoder
 import java.time.Instant
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 
 /**
@@ -45,21 +57,38 @@ class WatchProgressService @Inject constructor(
     private val moshi: Moshi,
     private val favoritesRepository: FavoritesRepository,
     private val watchedHistoryService: WatchedHistoryService,
+    private val userRepository: UserRepository,
+    private val credentialsRepository: CredentialsRepository,
+    @Named("WatchProgress") private val syncManager: FirestoreSyncManager,
     private val ioDispatcher: CoroutineDispatcher
 ) {
-    private val sharedPreferences: SharedPreferences = context.getSharedPreferences(
+    // SharedPreferences only for migration flag and reading old data
+    private val migrationPrefs: SharedPreferences = context.getSharedPreferences(
         "watch_progress_prefs",
         Context.MODE_PRIVATE
     )
 
     companion object {
         private const val KEY_WATCH_PROGRESS = "iptv_watch_progress_data"
+        private const val KEY_MIGRATION_COMPLETE = "watch_progress_migrated"
         private const val TAG = "WatchProgressService"
         private const val MIN_POSITION_MS = 30_000L // 30 Sekunden
         private const val COMPLETION_THRESHOLD = 0.9 // 90%
         private const val KEY_PREFIX_MOVIE = "movie:"
         private const val KEY_PREFIX_SERIES = "series:"
     }
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // StateFlow for reactive state management
+    private val _watchProgress = MutableStateFlow<Map<String, WatchProgress>>(emptyMap())
+    val watchProgress: StateFlow<Map<String, WatchProgress>> = _watchProgress.asStateFlow()
+
+    // Mutex to prevent concurrent loadFromFirestore() calls
+    private val loadMutex = Mutex()
+    
+    // Mutex to prevent concurrent StateFlow updates
+    private val updateMutex = Mutex()
 
     private val mapType = Types.newParameterizedType(
         Map::class.java,
@@ -68,9 +97,178 @@ class WatchProgressService @Inject constructor(
     )
     private val mapAdapter = moshi.adapter<Map<String, WatchProgress>>(mapType)
     private val progressAdapter = moshi.adapter(WatchProgress::class.java)
-    
-    // Cache for progress map to avoid repeated JSON parsing
-    private var cachedProgressMap: Map<String, WatchProgress>? = null
+
+    init {
+        // Initial load
+        serviceScope.launch {
+            loadFromFirestore()
+        }
+
+        // React to credential changes (e.g., user login/logout or user switch)
+        serviceScope.launch {
+            credentialsRepository.credentialsFlow.collect { credentials ->
+                val username = credentials?.username
+                if (!username.isNullOrBlank()) {
+                    loadFromFirestore()
+                } else {
+                    // Clear state when logged out
+                    _watchProgress.value = emptyMap()
+                    Log.d(TAG, "Credentials cleared, resetting watch progress")
+                }
+            }
+        }
+    }
+
+    /**
+     * Loads watch progress from Firestore and performs migration if needed.
+     * Uses mutex to prevent concurrent loads.
+     */
+    private suspend fun loadFromFirestore() {
+        loadMutex.withLock {
+            val username = credentialsRepository.getCredentials()?.username
+            if (username.isNullOrBlank()) {
+                Log.d(TAG, "No username available, skipping Firestore load due to missing credentials")
+                _watchProgress.value = emptyMap()
+                return
+            }
+
+            // Check if migration is needed
+            val migrationComplete = migrationPrefs.getBoolean(KEY_MIGRATION_COMPLETE, false)
+            if (!migrationComplete) {
+                performMigration(username)
+            }
+
+            // Load from Firestore
+            val result = userRepository.loadWatchProgress(username)
+            result.fold(
+                onSuccess = { progress ->
+                    _watchProgress.value = progress
+                    syncManager.updateLastSyncTimestamp()
+                    Log.d(TAG, "Loaded watch progress from Firestore: ${progress.size} total")
+                },
+                onFailure = { exception ->
+                    Log.e(TAG, "Failed to load watch progress from Firestore", exception)
+                    // Keep current state or use empty map
+                    if (_watchProgress.value.isEmpty()) {
+                        Log.e(TAG, "State is empty after failed Firestore load - user data may be unavailable")
+                        _watchProgress.value = emptyMap()
+                    }
+                }
+            )
+        }
+    }
+
+    /**
+     * Synchronizes watch progress from Firestore if enough time has passed since last sync.
+     * This prevents excessive Firestore reads when users switch tabs quickly.
+     * 
+     * @return true if sync was performed, false if skipped due to cooldown
+     */
+    suspend fun syncIfNeeded(): Boolean {
+        return syncManager.syncIfNeeded {
+            loadFromFirestore()
+        }
+    }
+
+    /**
+     * Performs migration from local SharedPreferences to Firestore.
+     */
+    private suspend fun performMigration(username: String) {
+        Log.d(TAG, "Starting migration from local storage to Firestore for user: $username")
+        
+        try {
+            // Load old data from SharedPreferences
+            val localData = loadLocalData()
+            
+            if (localData.isNotEmpty()) {
+                // Migrate to Firestore
+                val migrationResult = userRepository.migrateWatchProgressFromLocal(username, localData)
+                
+                migrationResult.fold(
+                    onSuccess = {
+                        // Mark migration as complete
+                        migrationPrefs.edit {
+                            putBoolean(KEY_MIGRATION_COMPLETE, true)
+                        }
+                        
+                        // Clear old local data
+                        clearLocalData()
+                        
+                        Log.d(TAG, "Migration completed successfully")
+                    },
+                    onFailure = { exception ->
+                        Log.e(TAG, "Migration failed, will retry on next app start", exception)
+                        // Don't mark as complete, so it will retry
+                    }
+                )
+            } else {
+                // No local data to migrate, mark as complete
+                migrationPrefs.edit {
+                    putBoolean(KEY_MIGRATION_COMPLETE, true)
+                }
+                Log.d(TAG, "No local data to migrate")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during migration", e)
+            // Don't mark as complete, so it will retry
+        }
+    }
+
+    /**
+     * Loads old data from SharedPreferences for migration.
+     */
+    private fun loadLocalData(): Map<String, WatchProgress> {
+        return try {
+            val json = migrationPrefs.getString(KEY_WATCH_PROGRESS, null)
+            if (json.isNullOrBlank()) {
+                emptyMap()
+            } else {
+                mapAdapter.fromJson(json) ?: emptyMap()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading local data for migration", e)
+            emptyMap()
+        }
+    }
+
+    /**
+     * Clears old local data after successful migration.
+     */
+    private fun clearLocalData() {
+        try {
+            migrationPrefs.edit {
+                remove(KEY_WATCH_PROGRESS)
+            }
+            Log.d(TAG, "Cleared old local data after migration")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing local data", e)
+        }
+    }
+
+    /**
+     * Saves watch progress to Firestore asynchronously.
+     */
+    private fun saveToFirestore(progress: Map<String, WatchProgress>) {
+        val username = credentialsRepository.getCredentials()?.username
+        if (username.isNullOrBlank()) {
+            Log.w(TAG, "Cannot save to Firestore: no username available")
+            return
+        }
+
+        serviceScope.launch {
+            val result = userRepository.saveWatchProgress(username, progress)
+            result.fold(
+                onSuccess = {
+                    Log.d(TAG, "Successfully saved watch progress to Firestore")
+                },
+                onFailure = { exception ->
+                    Log.e(TAG, "Failed to save watch progress to Firestore", exception)
+                    // StateFlow already updated, so UI will reflect the change
+                    // Firestore will sync when connection is restored
+                }
+            )
+        }
+    }
 
     /**
      * Generates a storage key for the given content type and IDs
@@ -218,22 +416,26 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Persists progress to SharedPreferences and updates cache.
+     * Persists progress to StateFlow and Firestore (optimistic update).
      */
-    private fun persistProgress(key: String, position: Long, duration: Long, title: String) {
-        val progressMap = loadProgressMap()
+    private suspend fun persistProgress(key: String, position: Long, duration: Long, title: String) {
         val progress = WatchProgress(
             position = position,
             duration = duration,
             lastWatched = Instant.now().toString(),
             title = title
         )
-        val updatedMap = progressMap.toMutableMap()
-        updatedMap[key] = progress
         
-        val json = mapAdapter.toJson(updatedMap)
-        sharedPreferences.edit().putString(KEY_WATCH_PROGRESS, json).apply()
-        cachedProgressMap = updatedMap
+        // Optimistic update: Update StateFlow atomically
+        val updatedMap = updateMutex.withLock {
+            val currentMap = _watchProgress.value
+            val updated = currentMap + (key to progress)
+            _watchProgress.value = updated
+            updated
+        }
+        
+        // Save to Firestore asynchronously
+        saveToFirestore(updatedMap)
     }
 
     /**
@@ -255,7 +457,7 @@ class WatchProgressService @Inject constructor(
             val key = generateKey(contentType, streamId, seriesId, episodeId)
             Log.d(TAG, "Getting progress: key=$key, contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId")
 
-            val progressMap = loadProgressMap()
+            val progressMap = _watchProgress.value
             val progress = progressMap[key]
 
             if (progress == null) {
@@ -272,7 +474,7 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Deletes watch progress for a movie or series episode
+     * Deletes watch progress for a movie or series episode (optimistic update).
      */
     private suspend fun deleteProgress(
         contentType: String,
@@ -284,16 +486,18 @@ class WatchProgressService @Inject constructor(
             val key = generateKey(contentType, streamId, seriesId, episodeId)
             Log.d(TAG, "Deleting progress: key=$key")
 
-            val progressMap = loadProgressMap()
-            val progress = progressMap[key]
-            val updatedMap = progressMap.toMutableMap()
-            updatedMap.remove(key)
-
-            val json = mapAdapter.toJson(updatedMap)
-            sharedPreferences.edit().putString(KEY_WATCH_PROGRESS, json).apply()
+            val progress = _watchProgress.value[key]
             
-            // Update cache
-            cachedProgressMap = updatedMap
+            // Optimistic update: Update StateFlow atomically
+            val updatedMap = updateMutex.withLock {
+                val currentMap = _watchProgress.value
+                val updated = currentMap - key
+                _watchProgress.value = updated
+                updated
+            }
+            
+            // Save to Firestore asynchronously
+            saveToFirestore(updatedMap)
 
             // Automatically remove movie from favorites when progress is deleted
             // Reconstruct the favorite ID directly (same format as addMovieToFavoritesIfNeeded)
@@ -318,59 +522,31 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Loads the progress map from SharedPreferences or cache.
-     * Uses cached version if available to avoid repeated JSON parsing.
-     */
-    private fun loadProgressMap(): Map<String, WatchProgress> {
-        // Return cached version if available
-        if (cachedProgressMap != null) {
-            return cachedProgressMap!!
-        }
-        
-        // Load from SharedPreferences and cache it
-        return try {
-            val json = sharedPreferences.getString(KEY_WATCH_PROGRESS, null)
-            val map = if (json.isNullOrBlank()) {
-                emptyMap()
-            } else {
-                mapAdapter.fromJson(json) ?: emptyMap()
-            }
-            cachedProgressMap = map
-            map
-        } catch (e: Exception) {
-            Log.e(TAG, "Error parsing progress JSON, returning empty map", e)
-            val emptyMap = emptyMap<String, WatchProgress>()
-            cachedProgressMap = emptyMap
-            emptyMap
-        }
-    }
-
-    /**
      * Gets all in-progress items (movies and episodes with progress > 0% and < 90%)
      */
     suspend fun getAllInProgress(): Map<String, WatchProgress> = withContext(ioDispatcher) {
-        loadProgressMap()
+        _watchProgress.value
     }
 
     /**
      * Gets all in-progress movies (keys starting with "movie:")
      */
     suspend fun getInProgressMovies(): Map<String, WatchProgress> = withContext(ioDispatcher) {
-        loadProgressMap().filterKeys { it.startsWith(KEY_PREFIX_MOVIE) }
+        _watchProgress.value.filterKeys { it.startsWith(KEY_PREFIX_MOVIE) }
     }
 
     /**
      * Gets all in-progress episodes (keys starting with "series:")
      */
     suspend fun getInProgressEpisodes(): Map<String, WatchProgress> = withContext(ioDispatcher) {
-        loadProgressMap().filterKeys { it.startsWith(KEY_PREFIX_SERIES) }
+        _watchProgress.value.filterKeys { it.startsWith(KEY_PREFIX_SERIES) }
     }
 
     /**
      * Gets the total count of in-progress items (movies + episodes)
      */
     suspend fun getInProgressCount(): Int = withContext(ioDispatcher) {
-        val progressMap = loadProgressMap()
+        val progressMap = _watchProgress.value
         val movies = progressMap.count { it.key.startsWith(KEY_PREFIX_MOVIE) }
         val episodes = progressMap.count { it.key.startsWith(KEY_PREFIX_SERIES) }
         movies + episodes
@@ -380,7 +556,7 @@ class WatchProgressService @Inject constructor(
      * Gets the count of in-progress movies only
      */
     suspend fun getInProgressMoviesCount(): Int = withContext(ioDispatcher) {
-        val progressMap = loadProgressMap()
+        val progressMap = _watchProgress.value
         progressMap.count { it.key.startsWith(KEY_PREFIX_MOVIE) }
     }
 
@@ -388,7 +564,7 @@ class WatchProgressService @Inject constructor(
      * Gets the count of in-progress episodes only
      */
     suspend fun getInProgressEpisodesCount(): Int = withContext(ioDispatcher) {
-        val progressMap = loadProgressMap()
+        val progressMap = _watchProgress.value
         progressMap.count { it.key.startsWith(KEY_PREFIX_SERIES) }
     }
 
@@ -522,7 +698,7 @@ class WatchProgressService @Inject constructor(
             val episodeMap = createEpisodeMap(series)
             
             // Check WatchProgress for in-progress episodes
-            val progressMap = loadProgressMap()
+            val progressMap = _watchProgress.value
             val latestProgress = findLatestProgressInteraction(seriesId, progressMap, episodeMap)
             
             // Check WatchedHistory for completed episodes
