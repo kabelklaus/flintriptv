@@ -83,30 +83,34 @@ sealed class Screen(val route: String) {
     object DataLoading : Screen("data_loading")
     object Main : Screen("main")
     object Settings : Screen("settings")
-    object Player : Screen("player/{streamUrl}/{contentType}/{streamId}/{seriesId}/{episodeId}/{title}") {
+    object Player : Screen("player/{streamUrl}/{contentType}/{streamId}/{seriesId}/{episodeId}/{title}/{categoryId}/{categoryName}") {
         const val EMPTY_TITLE_PLACEHOLDER = "__EMPTY_TITLE__"
+        const val EMPTY_CATEGORY_PLACEHOLDER = "__EMPTY_CATEGORY__"
         
         fun createRoute(streamUrl: String): String {
             val encoded = Uri.encode(streamUrl, null)
-            return "player/$encoded/live/-1/-1/-1/$EMPTY_TITLE_PLACEHOLDER"
+            return "player/$encoded/live/-1/-1/-1/$EMPTY_TITLE_PLACEHOLDER/$EMPTY_CATEGORY_PLACEHOLDER/$EMPTY_CATEGORY_PLACEHOLDER"
         }
         
         fun createRouteForMovie(streamUrl: String, streamId: Int, title: String): String {
             val encodedUrl = Uri.encode(streamUrl, null)
             val encodedTitle = if (title.isNotEmpty()) Uri.encode(title, null) else EMPTY_TITLE_PLACEHOLDER
-            return "player/$encodedUrl/movie/$streamId/-1/-1/$encodedTitle"
+            return "player/$encodedUrl/movie/$streamId/-1/-1/$encodedTitle/$EMPTY_CATEGORY_PLACEHOLDER/$EMPTY_CATEGORY_PLACEHOLDER"
         }
         
         fun createRouteForSeries(streamUrl: String, seriesId: Int, episodeId: Int, title: String): String {
             val encodedUrl = Uri.encode(streamUrl, null)
             val encodedTitle = if (title.isNotEmpty()) Uri.encode(title, null) else EMPTY_TITLE_PLACEHOLDER
-            return "player/$encodedUrl/series/-1/$seriesId/$episodeId/$encodedTitle"
+            return "player/$encodedUrl/series/-1/$seriesId/$episodeId/$encodedTitle/$EMPTY_CATEGORY_PLACEHOLDER/$EMPTY_CATEGORY_PLACEHOLDER"
         }
         
-        fun createRouteForLive(streamUrl: String, channelName: String = ""): String {
+        fun createRouteForLive(streamUrl: String, channelName: String = "", categoryId: String? = null, categoryName: String? = null, streamId: Int? = null): String {
             val encodedUrl = Uri.encode(streamUrl, null)
             val encodedTitle = if (channelName.isNotEmpty()) Uri.encode(channelName, null) else EMPTY_TITLE_PLACEHOLDER
-            return "player/$encodedUrl/live/-1/-1/-1/$encodedTitle"
+            val encodedCategoryId = if (categoryId != null) Uri.encode(categoryId, null) else EMPTY_CATEGORY_PLACEHOLDER
+            val encodedCategoryName = if (categoryName != null) Uri.encode(categoryName, null) else EMPTY_CATEGORY_PLACEHOLDER
+            val streamIdStr = streamId?.toString() ?: "-1"
+            return "player/$encodedUrl/live/$streamIdStr/-1/-1/$encodedTitle/$encodedCategoryId/$encodedCategoryName"
         }
     }
     
@@ -520,6 +524,14 @@ fun AppNavigation(
                 navArgument("title") {
                     type = NavType.StringType
                     defaultValue = ""
+                },
+                navArgument("categoryId") {
+                    type = NavType.StringType
+                    defaultValue = Screen.Player.EMPTY_CATEGORY_PLACEHOLDER
+                },
+                navArgument("categoryName") {
+                    type = NavType.StringType
+                    defaultValue = Screen.Player.EMPTY_CATEGORY_PLACEHOLDER
                 }
             )
         ) { backStackEntry ->
@@ -531,6 +543,10 @@ fun AppNavigation(
             val episodeIdStr = backStackEntry.arguments?.getString("episodeId") ?: "-1"
             val titleRaw = backStackEntry.arguments?.getString("title") ?: ""
             val title = if (titleRaw == Screen.Player.EMPTY_TITLE_PLACEHOLDER) "" else Uri.decode(titleRaw)
+            val categoryIdRaw = backStackEntry.arguments?.getString("categoryId") ?: Screen.Player.EMPTY_CATEGORY_PLACEHOLDER
+            val categoryNameRaw = backStackEntry.arguments?.getString("categoryName") ?: Screen.Player.EMPTY_CATEGORY_PLACEHOLDER
+            val categoryId = if (categoryIdRaw != Screen.Player.EMPTY_CATEGORY_PLACEHOLDER) Uri.decode(categoryIdRaw) else null
+            val categoryName = if (categoryNameRaw != Screen.Player.EMPTY_CATEGORY_PLACEHOLDER) Uri.decode(categoryNameRaw) else null
             
             val streamId = streamIdStr.toIntOrNull()?.takeIf { it >= 0 }
             val seriesId = seriesIdStr.toIntOrNull()?.takeIf { it >= 0 }
@@ -544,7 +560,9 @@ fun AppNavigation(
                     streamId = streamId,
                     seriesId = seriesId,
                     episodeId = episodeId,
-                    title = title.takeIf { it.isNotEmpty() }
+                    title = title.takeIf { it.isNotEmpty() },
+                    categoryId = categoryId,
+                    categoryName = categoryName
                 ),
                 watchProgressService = dependencies.watchProgressService,
                 onBack = { navController.popBackStack() },
@@ -706,7 +724,13 @@ private fun createLiveStreamClickHandler(
                 creds.username,
                 creds.password
             )
-            val route = Screen.Player.createRouteForLive(streamUrl, stream.name)
+            val route = Screen.Player.createRouteForLive(
+                streamUrl, 
+                stream.name,
+                stream.categoryId,
+                stream.categoryName,
+                stream.streamId
+            )
             params.navController.logAndNavigate(route, "AppNavigation") {
                 "📺 LiveTV onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
             }
@@ -969,7 +993,13 @@ private fun EPGContentSection(params: MainContentBodyParams) {
                 creds.username,
                 creds.password
             )
-            val route = Screen.Player.createRouteForLive(streamUrl, stream.name)
+            val route = Screen.Player.createRouteForLive(
+                streamUrl, 
+                stream.name,
+                stream.categoryId,
+                stream.categoryName,
+                stream.streamId
+            )
             params.navController.logAndNavigate(route, "AppNavigation") {
                 "📅 EPG onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
             }
@@ -1406,7 +1436,13 @@ private fun createSearchClickHandlers(
                 creds.username,
                 creds.password
             )
-            val route = Screen.Player.createRouteForLive(streamUrl, stream.name)
+            val route = Screen.Player.createRouteForLive(
+                streamUrl, 
+                stream.name,
+                stream.categoryId,
+                stream.categoryName,
+                stream.streamId
+            )
             mainViewModel.clearSearch()
             onDismiss()
             navController.logAndNavigate(route, "AppNavigation") {
