@@ -463,6 +463,87 @@ fun interface CredentialsRepositoryEntryPoint {
 }
 
 /**
+ * Suspends until the player reaches STATE_IDLE state.
+ * Uses a temporary listener to wait for the state change.
+ */
+private suspend fun waitForPlayerIdle(player: ExoPlayer) {
+    // If already idle, return immediately
+    if (player.playbackState == Player.STATE_IDLE) {
+        return
+    }
+    
+    suspendCancellableCoroutine<Unit> { continuation ->
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_IDLE) {
+                    player.removeListener(this)
+                    continuation.resume(Unit)
+                }
+            }
+        }
+        
+        player.addListener(listener)
+        
+        // Cleanup if coroutine is cancelled
+        continuation.invokeOnCancellation {
+            player.removeListener(listener)
+        }
+    }
+}
+
+/**
+ * Gets credentials from repository
+ */
+@Composable
+private fun rememberCredentials(context: Context): com.flintr.tv.data.local.Credentials? {
+    val credentialsRepository = remember {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            CredentialsRepositoryEntryPoint::class.java
+        ).credentialsRepository()
+    }
+    return credentialsRepository.getCredentialsFlow()
+        .collectAsState(initial = credentialsRepository.getCredentials()).value
+}
+
+/**
+ * Prepares a new media item for playback
+ */
+@Suppress("InjectDispatcher")
+private suspend fun prepareMediaItem(
+    exoPlayer: ExoPlayer,
+    streamUrl: String,
+    onError: (String) -> Unit
+) {
+    try {
+        val mediaItem = MediaItem.fromUri(streamUrl)
+        withContext(Dispatchers.Main) { // NOSONAR - UI thread required for ExoPlayer operations
+            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Setting new media item: $streamUrl")
+            // Stop current playback
+            exoPlayer.stop()
+            // Clear old media items
+            exoPlayer.clearMediaItems()
+            // Wait for player to reach STATE_IDLE before setting new media item
+            waitForPlayerIdle(exoPlayer)
+            // Set new media item
+            exoPlayer.setMediaItem(mediaItem)
+            // Prepare the new stream
+            exoPlayer.prepare()
+            // Seek to start to ensure we're at the beginning of the new stream
+            exoPlayer.seekTo(0)
+            // Ensure playback starts
+            exoPlayer.playWhenReady = true
+            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "New media item prepared and playback started")
+        }
+    } catch (e: Exception) {
+        Log.e("PlayerScreen", "Error preparing media item", e)
+        withContext(Dispatchers.Main) { // NOSONAR - UI thread required for error callback
+            onError("Fehler beim Laden des Streams: ${e.message}")
+        }
+    }
+}
+
+/**
  * Sets up ExoPlayer and manages its lifecycle
  */
 @Suppress("InjectDispatcher")
@@ -475,15 +556,7 @@ private fun rememberPlayerSetup(
     onIsPlayingChanged: (Boolean) -> Unit,
     coroutineScope: CoroutineScope
 ): ExoPlayer {
-    // Get credentials from repository
-    val credentialsRepository = remember {
-        EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            CredentialsRepositoryEntryPoint::class.java
-        ).credentialsRepository()
-    }
-    val credentials by credentialsRepository.getCredentialsFlow()
-        .collectAsState(initial = credentialsRepository.getCredentials())
+    val credentials = rememberCredentials(context)
     
     val exoPlayer = remember(credentials) {
         createExoPlayer(context, credentials)
@@ -507,65 +580,11 @@ private fun rememberPlayerSetup(
         }
     }
     
-    /**
-     * Suspends until the player reaches STATE_IDLE state.
-     * Uses a temporary listener to wait for the state change.
-     */
-    suspend fun waitForPlayerIdle(player: ExoPlayer) {
-        // If already idle, return immediately
-        if (player.playbackState == Player.STATE_IDLE) {
-            return
-        }
-        
-        suspendCancellableCoroutine<Unit> { continuation ->
-            val listener = object : Player.Listener {
-                override fun onPlaybackStateChanged(state: Int) {
-                    if (state == Player.STATE_IDLE) {
-                        player.removeListener(this)
-                        continuation.resume(Unit)
-                    }
-                }
-            }
-            
-            player.addListener(listener)
-            
-            // Cleanup if coroutine is cancelled
-            continuation.invokeOnCancellation {
-                player.removeListener(listener)
-            }
-        }
-    }
-    
     // Handle stream URL changes (for channel switching)
     DisposableEffect(streamUrl) {
         if (BuildConfig.DEBUG) Log.d("PlayerScreen", "DisposableEffect triggered for streamUrl: $streamUrl")
         val prepareJob = coroutineScope.launch(Dispatchers.IO) { // NOSONAR - UI component, hardcoded dispatcher acceptable
-            try {
-                val mediaItem = MediaItem.fromUri(streamUrl)
-                withContext(Dispatchers.Main) { // NOSONAR - UI thread required for ExoPlayer operations
-                    if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Setting new media item: $streamUrl")
-                    // Stop current playback
-                    exoPlayer.stop()
-                    // Clear old media items
-                    exoPlayer.clearMediaItems()
-                    // Wait for player to reach STATE_IDLE before setting new media item
-                    waitForPlayerIdle(exoPlayer)
-                    // Set new media item
-                    exoPlayer.setMediaItem(mediaItem)
-                    // Prepare the new stream
-                    exoPlayer.prepare()
-                    // Seek to start to ensure we're at the beginning of the new stream
-                    exoPlayer.seekTo(0)
-                    // Ensure playback starts
-                    exoPlayer.playWhenReady = true
-                    if (BuildConfig.DEBUG) Log.d("PlayerScreen", "New media item prepared and playback started")
-                }
-            } catch (e: Exception) {
-                Log.e("PlayerScreen", "Error preparing media item", e)
-                withContext(Dispatchers.Main) { // NOSONAR - UI thread required for error callback
-                    onError("Fehler beim Laden des Streams: ${e.message}")
-                }
-            }
+            prepareMediaItem(exoPlayer, streamUrl, onError)
         }
 
         onDispose {
@@ -716,8 +735,8 @@ private fun PlayerProgressRestoreEffect(
                     watchProgressService = params.watchProgressService
                 )
                 params.onRestored()
-                if (!restored) {
-                    if (BuildConfig.DEBUG) Log.d("PlayerScreen", "No saved progress found for contentType: ${params.contentType}, streamId: ${params.streamId}, seriesId: ${params.seriesId}, episodeId: ${params.episodeId}")
+                if (!restored && BuildConfig.DEBUG) {
+                    Log.d("PlayerScreen", "No saved progress found for contentType: ${params.contentType}, streamId: ${params.streamId}, seriesId: ${params.seriesId}, episodeId: ${params.episodeId}")
                 }
             }
         }
