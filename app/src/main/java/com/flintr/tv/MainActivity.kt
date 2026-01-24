@@ -3,7 +3,6 @@ package com.flintr.tv
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -55,21 +54,19 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        val navController = rememberNavController()
-                        AppNavigation(
-                            navController = navController,
-                            dependencies = AppNavigationDependencies(
-                                credentialsRepository = credentialsRepository,
-                                cacheService = cacheService,
-                                favoritesRepository = favoritesRepository,
-                                watchProgressService = watchProgressService,
-                                categoryVisibilityService = categoryVisibilityService,
-                                xtreamRepository = xtreamRepository,
-                                ioDispatcher = ioDispatcher
-                            )
+                    val navController = rememberNavController()
+                    AppNavigation(
+                        navController = navController,
+                        dependencies = AppNavigationDependencies(
+                            credentialsRepository = credentialsRepository,
+                            cacheService = cacheService,
+                            favoritesRepository = favoritesRepository,
+                            watchProgressService = watchProgressService,
+                            categoryVisibilityService = categoryVisibilityService,
+                            xtreamRepository = xtreamRepository,
+                            ioDispatcher = ioDispatcher
                         )
-                    }
+                    )
                 }
             }
         }
