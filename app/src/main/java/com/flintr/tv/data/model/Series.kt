@@ -28,6 +28,8 @@ data class Series(
     val rating: String?,
     @Json(name = "rating_5based")
     val rating5Based: Double?,
+    @Json(name = "last_modified")
+    val lastModified: String?,
     @Json(name = "category_id")
     val categoryId: String?,
     @Json(name = "category_name")

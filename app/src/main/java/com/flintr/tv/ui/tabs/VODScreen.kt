@@ -10,6 +10,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
@@ -21,9 +23,51 @@ import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.useFavorites
+import com.flintr.tv.ui.common.ContentFilterUtils
 
 private const val TAG = "VODContent"
+
+/**
+ * Loads new category streams (all movies from last 7 days) and watched IDs.
+ */
+private suspend fun loadNewCategoryStreams(
+    cacheService: DataCacheService,
+    watchProgressService: WatchProgressService,
+    ioDispatcher: CoroutineDispatcher,
+    onLoadingChanged: (Boolean) -> Unit,
+    onStreamsLoaded: (List<VodStream>) -> Unit,
+    onWatchedIdsLoaded: (Set<Int>) -> Unit
+) {
+    onLoadingChanged(true)
+    withContext(ioDispatcher) {
+        try {
+            val cachedData = cacheService.loadCachedDataAsync()
+            if (cachedData != null) {
+                val recentMovies = ContentFilterUtils.filterRecentMovies(cachedData.movies)
+                onStreamsLoaded(recentMovies)
+                // Load watched IDs for new category (all movies)
+                onWatchedIdsLoaded(watchProgressService.getWatchedVodIds(null))
+            }
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Error loading new category streams", e)
+        } finally {
+            onLoadingChanged(false)
+        }
+    }
+}
+
+/**
+ * Loads watched VOD IDs for a specific category.
+ */
+private suspend fun loadWatchedVodIds(
+    watchProgressService: WatchProgressService,
+    categoryId: String?,
+    onWatchedIdsLoaded: (Set<Int>) -> Unit
+) {
+    onWatchedIdsLoaded(watchProgressService.getWatchedVodIds(categoryId))
+}
 
 data class VODContentParams(
     val viewModel: MainViewModel,
@@ -32,6 +76,7 @@ data class VODContentParams(
     val favoritesRepository: FavoritesRepository,
     val cacheService: DataCacheService,
     val watchProgressService: WatchProgressService,
+    val ioDispatcher: CoroutineDispatcher,
     val onNavigateLeft: () -> Unit,
     val onVodClick: (VodStream) -> Unit,
     val modifier: Modifier = Modifier,
@@ -45,6 +90,11 @@ fun VODContent(params: VODContentParams) {
     val uiState by params.viewModel.uiState.collectAsState()
     
     val isFavoritesCategory = params.selectedCategoryId == FAVORITES_CATEGORY_ID
+    val isNewCategory = params.selectedCategoryId == NEW_CATEGORY_ID
+    
+    // State for new category filtered streams
+    var newCategoryStreams by remember { mutableStateOf<List<VodStream>>(emptyList()) }
+    var isLoadingNewCategory by remember { mutableStateOf(false) }
     
     // Load favorites using the hook
     val favoritesState = useFavorites<VodStream>(
@@ -58,14 +108,36 @@ fun VODContent(params: VODContentParams) {
     // Batch-load watched VOD IDs for the current category
     var watchedVodIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     
+    // Load new category streams (all movies from last 7 days)
     LaunchedEffect(params.selectedCategoryId) {
-        if (!isFavoritesCategory && params.selectedCategoryId != null) {
-            params.viewModel.loadVodStreams(params.selectedCategoryId)
-            // Load watched IDs for the category
-            watchedVodIds = params.watchProgressService.getWatchedVodIds(params.selectedCategoryId)
-        } else if (isFavoritesCategory) {
-            // For favorites, load all watched VODs (category filtering not needed)
-            watchedVodIds = params.watchProgressService.getWatchedVodIds(null)
+        when {
+            isNewCategory -> {
+                loadNewCategoryStreams(
+                    cacheService = params.cacheService,
+                    watchProgressService = params.watchProgressService,
+                    ioDispatcher = params.ioDispatcher,
+                    onLoadingChanged = { isLoadingNewCategory = it },
+                    onStreamsLoaded = { newCategoryStreams = it },
+                    onWatchedIdsLoaded = { watchedVodIds = it }
+                )
+            }
+            isFavoritesCategory -> {
+                // For favorites, load all watched VODs (category filtering not needed)
+                loadWatchedVodIds(
+                    watchProgressService = params.watchProgressService,
+                    categoryId = null,
+                    onWatchedIdsLoaded = { watchedVodIds = it }
+                )
+            }
+            params.selectedCategoryId != null -> {
+                params.viewModel.loadVodStreams(params.selectedCategoryId)
+                // Load watched IDs for the category
+                loadWatchedVodIds(
+                    watchProgressService = params.watchProgressService,
+                    categoryId = params.selectedCategoryId,
+                    onWatchedIdsLoaded = { watchedVodIds = it }
+                )
+            }
         }
     }
     
@@ -73,8 +145,16 @@ fun VODContent(params: VODContentParams) {
     // Focus will be set manually when navigating from CategorySidebar
     // This keeps the focus on the Navbar when the app starts
     
-    val displayStreams = if (isFavoritesCategory) favoritesState.items else streams
-    val isLoading = if (isFavoritesCategory) favoritesState.isLoading else uiState.isLoading
+    val displayStreams = when {
+        isFavoritesCategory -> favoritesState.items
+        isNewCategory -> newCategoryStreams
+        else -> streams
+    }
+    val isLoading = when {
+        isFavoritesCategory -> favoritesState.isLoading
+        isNewCategory -> isLoadingNewCategory
+        else -> uiState.isLoading
+    }
     
     ContentGridLayout(
         params = ContentGridLayoutParams(

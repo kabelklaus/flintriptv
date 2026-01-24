@@ -60,6 +60,7 @@
     <!-- Category Management -->
     <string name="category_hidden">Kategorie wurde ausgeblendet</string>
     <string name="favorites">Favoriten</string>
+    <string name="new_category">Neu</string>
     <string name="in_progress_category">Angefangene Inhalte</string>
     
     <!-- Settings General Screen -->

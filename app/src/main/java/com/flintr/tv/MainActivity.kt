@@ -18,7 +18,9 @@ import com.flintr.tv.ui.navigation.AppNavigation
 import com.flintr.tv.ui.navigation.AppNavigationDependencies
 import com.flintr.tv.ui.theme.FlintRTVTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineDispatcher
 import javax.inject.Inject
+import javax.inject.Named
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -40,6 +42,10 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var xtreamRepository: XtreamRepository
 
+    @Inject
+    @Named("IO")
+    lateinit var ioDispatcher: CoroutineDispatcher
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -57,7 +63,8 @@ class MainActivity : ComponentActivity() {
                             favoritesRepository = favoritesRepository,
                             watchProgressService = watchProgressService,
                             categoryVisibilityService = categoryVisibilityService,
-                            xtreamRepository = xtreamRepository
+                            xtreamRepository = xtreamRepository,
+                            ioDispatcher = ioDispatcher
                         )
                     )
                 }

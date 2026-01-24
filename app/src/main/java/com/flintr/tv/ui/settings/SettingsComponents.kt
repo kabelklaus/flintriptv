@@ -351,6 +351,7 @@ data class SecondaryActionButtonConfig(
     val icon: ImageVector,
     val onClick: () -> Unit,
     val focusRequester: FocusRequester? = null,
+    val enabled: Boolean = true,
     val colors: com.flintr.tv.ui.theme.AppColors
 )
 
@@ -366,6 +367,7 @@ fun SecondaryActionButton(
     
     OutlinedButton(
         onClick = config.onClick,
+        enabled = config.enabled,
         modifier = modifier
             .fillMaxWidth()
             .then(

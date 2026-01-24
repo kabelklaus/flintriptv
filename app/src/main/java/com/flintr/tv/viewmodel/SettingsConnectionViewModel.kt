@@ -4,14 +4,18 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.model.ServerInfo
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.di.AppModule
 import com.flintr.tv.data.api.XtreamApiService
+import com.flintr.tv.domain.usecase.DataRefreshUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import com.squareup.moshi.Moshi
@@ -20,13 +24,18 @@ import javax.inject.Inject
 data class ConnectionTestState(
     val isLoading: Boolean = false,
     val serverInfo: ServerInfo? = null,
-    val error: String? = null
+    val error: String? = null,
+    val isRefillingCache: Boolean = false,
+    val cacheRefillMessage: String? = null,
+    val cacheRefillSuccess: Boolean = false
 )
 
 @HiltViewModel
 class SettingsConnectionViewModel @Inject constructor(
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
+    private val cacheService: DataCacheService,
+    private val dataRefreshUseCase: DataRefreshUseCase,
     private val okHttpClient: OkHttpClient,
     private val moshi: Moshi
 ) : ViewModel() {
@@ -66,8 +75,8 @@ class SettingsConnectionViewModel @Inject constructor(
     }
 
     /**
-     * Reloads server info based on currently saved credentials.
-     * Public method that can be called from UI to refresh server information.
+     * Reloads server info and cache data based on currently saved credentials.
+     * Public method that can be called from UI to refresh server information and refill cache.
      */
     fun reloadServerInfo() {
         val credentials = credentialsRepository.getCredentials() ?: run {
@@ -81,6 +90,7 @@ class SettingsConnectionViewModel @Inject constructor(
             _connectionTestState.value = ConnectionTestState(isLoading = true, error = null)
             
             try {
+                // Reload server info
                 repository.getServerInfo(credentials.username, credentials.password)
                     .onSuccess { serverInfo ->
                         _connectionTestState.value = ConnectionTestState(
@@ -96,6 +106,10 @@ class SettingsConnectionViewModel @Inject constructor(
                         )
                         Log.w("SettingsConnectionViewModel", "Failed to reload server info", error)
                     }
+                
+                // Reload and refill cache in background
+                Log.d("SettingsConnectionViewModel", "Starting cache refill...")
+                refillCache(credentials.username, credentials.password)
             } catch (e: Exception) {
                 _connectionTestState.value = ConnectionTestState(
                     isLoading = false,
@@ -104,6 +118,22 @@ class SettingsConnectionViewModel @Inject constructor(
                 Log.e("SettingsConnectionViewModel", "Error reloading server info", e)
             }
         }
+    }
+    
+    /**
+     * Refills the cache by loading all data from API and saving it.
+     * Uses DataRefreshUseCase to centralize the data loading logic.
+     */
+    private fun refillCache(username: String, password: String) {
+        dataRefreshUseCase.refreshData(username, password)
+            .onEach { progress ->
+                _connectionTestState.value = _connectionTestState.value.copy(
+                    isRefillingCache = !progress.isComplete && progress.error == null,
+                    cacheRefillMessage = progress.message,
+                    cacheRefillSuccess = progress.isComplete && progress.error == null
+                )
+            }
+            .launchIn(viewModelScope)
     }
 
     /**
@@ -158,5 +188,12 @@ class SettingsConnectionViewModel @Inject constructor(
 
     fun clearServerInfo() {
         _connectionTestState.value = _connectionTestState.value.copy(serverInfo = null)
+    }
+    
+    fun clearCacheRefillStatus() {
+        _connectionTestState.value = _connectionTestState.value.copy(
+            cacheRefillMessage = null,
+            cacheRefillSuccess = false
+        )
     }
 }

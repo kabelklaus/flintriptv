@@ -21,10 +21,14 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.theme.SharedColors
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import com.flintr.tv.viewmodel.SettingsConnectionViewModel
 import com.flintr.tv.utils.formatExpirationDate
 import com.flintr.tv.utils.getExpirationDateColor
 import com.flintr.tv.data.local.CredentialsRepository
+
+private const val SUCCESS_MESSAGE_DISPLAY_TIME_MS = 5000L
 
 @Composable
 fun SettingsConnection(
@@ -73,6 +77,14 @@ fun SettingsConnection(
     // Set initial focus
     LaunchedEffect(Unit) {
         serverUrlFocusRequester.requestFocus()
+    }
+    
+    // Auto-clear cache refill success message after 5 seconds
+    LaunchedEffect(connectionTestState.cacheRefillSuccess) {
+        if (connectionTestState.cacheRefillSuccess) {
+            delay(SUCCESS_MESSAGE_DISPLAY_TIME_MS)
+            viewModel.clearCacheRefillStatus()
+        }
     }
     
     // Handle Back button using BackHandler (works even when IME is visible)
@@ -320,11 +332,31 @@ private fun ConnectionSection(
                 )
             }
             
+            // Cache refill status
+            if (config.connectionTestState.isRefillingCache) {
+                StatusCard(
+                    message = config.connectionTestState.cacheRefillMessage ?: "Cache wird aktualisiert...",
+                    icon = Icons.Default.Refresh,
+                    iconTint = config.colors.textPrimary,
+                    backgroundColor = config.colors.bgHover,
+                    textColor = config.colors.textPrimary
+                )
+            } else if (config.connectionTestState.cacheRefillSuccess && config.connectionTestState.cacheRefillMessage != null) {
+                StatusCard(
+                    message = config.connectionTestState.cacheRefillMessage,
+                    icon = Icons.Default.CheckCircle,
+                    iconTint = SharedColors.successGreen,
+                    backgroundColor = SharedColors.successGreen.copy(alpha = 0.1f),
+                    textColor = SharedColors.successGreen
+                )
+            }
+            
             SecondaryActionButton(
                 config = SecondaryActionButtonConfig(
                     text = stringResource(R.string.reload_data),
                     icon = Icons.Default.Refresh,
                     onClick = config.onReloadData,
+                    enabled = !config.connectionTestState.isRefillingCache,
                     focusRequester = config.reloadButtonFocusRequester,
                     colors = config.colors
                 )

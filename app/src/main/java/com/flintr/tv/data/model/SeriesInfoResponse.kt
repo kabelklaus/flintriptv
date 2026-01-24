@@ -71,6 +71,7 @@ data class SeriesInfoResponse(
             releaseDate = seriesInfo?.releaseDate ?: seriesInfo?.releaseDateAlt,
             rating = seriesInfo?.rating,
             rating5Based = seriesInfo?.rating5Based,
+            lastModified = null,
             categoryId = seriesInfo?.categoryId,
             categoryName = null,
             youtubeTrailer = seriesInfo?.youtubeTrailer,

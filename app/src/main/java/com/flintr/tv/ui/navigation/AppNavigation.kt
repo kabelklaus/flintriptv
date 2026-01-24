@@ -65,6 +65,7 @@ import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
 import com.flintr.tv.ui.components.SearchOverlay
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
@@ -74,6 +75,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.res.stringResource
 import com.flintr.tv.R
 import com.flintr.tv.utils.loadPackageInfo
+import kotlinx.coroutines.CoroutineDispatcher
 
 sealed class Screen(val route: String) {
     object InitialRouting : Screen("initial_routing")
@@ -430,7 +432,8 @@ data class AppNavigationDependencies(
     val favoritesRepository: FavoritesRepository,
     val watchProgressService: WatchProgressService,
     val categoryVisibilityService: CategoryVisibilityService,
-    val xtreamRepository: XtreamRepository
+    val xtreamRepository: XtreamRepository,
+    val ioDispatcher: CoroutineDispatcher
 )
 
 @Composable
@@ -862,6 +865,7 @@ private fun LiveTVContentSection(params: MainContentBodyParams) {
             focusRequester = params.contentListFocusRequester,
             favoritesRepository = params.dependencies.favoritesRepository,
             cacheService = params.dependencies.cacheService,
+            ioDispatcher = params.dependencies.ioDispatcher,
             onNavigateLeft = params.onNavigateToCategorySidebar,
             lazyGridState = params.lazyGridState,
             focusRequesterMap = params.focusRequesterMap,
@@ -911,6 +915,7 @@ private fun VODContentSection(params: MainContentBodyParams) {
                 favoritesRepository = params.dependencies.favoritesRepository,
                 cacheService = params.dependencies.cacheService,
                 watchProgressService = params.dependencies.watchProgressService,
+                ioDispatcher = params.dependencies.ioDispatcher,
                 onNavigateLeft = params.onNavigateToCategorySidebar,
                 lazyGridState = params.lazyGridState,
                 focusRequesterMap = params.focusRequesterMap,
@@ -935,6 +940,7 @@ private fun SeriesContentSection(params: MainContentBodyParams) {
                 focusRequester = params.contentListFocusRequester,
                 favoritesRepository = params.dependencies.favoritesRepository,
                 cacheService = params.dependencies.cacheService,
+                ioDispatcher = params.dependencies.ioDispatcher,
                 onNavigateLeft = params.onNavigateToCategorySidebar,
                 lazyGridState = params.lazyGridState,
                 focusRequesterMap = params.focusRequesterMap,
@@ -1078,16 +1084,22 @@ private fun useCategoryManagement(
     // Sort categories the same way as in CategoryRow for consistency
     val sortedCategories = filteredCategories.sortedBy { it.categoryName }
     
-    // Create favorites and in-progress categories and prepend to sorted categories
+    // Create favorites, new, and in-progress categories and prepend to sorted categories
     val favoritesCategoryName = stringResource(R.string.favorites)
+    val newCategoryName = stringResource(R.string.new_category)
     val inProgressCategoryName = stringResource(R.string.in_progress_category)
-    val categoriesWithSpecial = remember(sortedCategories, selectedDestination, favoritesCategoryName, inProgressCategoryName) {
+    val categoriesWithSpecial = remember(sortedCategories, selectedDestination, favoritesCategoryName, newCategoryName, inProgressCategoryName) {
         if (selectedDestination is HomeDestination.LiveTV ||
             selectedDestination is HomeDestination.VOD ||
             selectedDestination is HomeDestination.Series) {
             val favoritesCategory = Category(
                 categoryId = FAVORITES_CATEGORY_ID,
                 categoryName = favoritesCategoryName,
+                parentId = 0
+            )
+            val newCategory = Category(
+                categoryId = NEW_CATEGORY_ID,
+                categoryName = newCategoryName,
                 parentId = 0
             )
             // In-progress category only for VOD and Series (contains movies and episodes, no live streams)
@@ -1098,9 +1110,9 @@ private fun useCategoryManagement(
                     categoryName = inProgressCategoryName,
                     parentId = 0
                 )
-                listOf(favoritesCategory, inProgressCategory) + sortedCategories
+                listOf(favoritesCategory, inProgressCategory, newCategory) + sortedCategories
             } else {
-                listOf(favoritesCategory) + sortedCategories
+                listOf(favoritesCategory, newCategory) + sortedCategories
             }
             categories
         } else {

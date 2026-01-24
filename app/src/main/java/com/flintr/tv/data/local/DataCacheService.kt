@@ -148,6 +148,7 @@ class DataCacheService @Inject constructor(
                 putInt(KEY_CACHE_MOVIES_COUNT, movies.size)
                 putInt(KEY_CACHE_SERIES_COUNT, series.size)
             }
+            android.util.Log.d("DataCacheService", "Cache saved successfully: $timestamp | Channels: ${channels.size}, Movies: ${movies.size}, Series: ${series.size}")
         } catch (e: Exception) {
             // Log error but don't crash
             android.util.Log.e("DataCacheService", "Failed to save cache", e)

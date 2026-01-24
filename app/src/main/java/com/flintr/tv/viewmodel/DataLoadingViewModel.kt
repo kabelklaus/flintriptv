@@ -13,10 +13,14 @@ import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.model.*
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.domain.usecase.DataRefreshUseCase
+import com.flintr.tv.domain.usecase.RefreshStep
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -53,7 +57,8 @@ data class DataLoadingUiState(
 class DataLoadingViewModel @Inject constructor(
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
-    private val cacheService: DataCacheService
+    private val cacheService: DataCacheService,
+    private val dataRefreshUseCase: DataRefreshUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DataLoadingUiState())
@@ -110,7 +115,7 @@ class DataLoadingViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadData() {
+    private fun loadData() {
         val credentials = credentialsRepository.getCredentials()
         if (credentials == null) {
             _uiState.value = _uiState.value.copy(
@@ -126,75 +131,53 @@ class DataLoadingViewModel @Inject constructor(
             overallProgress = 0f
         )
 
-        try {
-            // Step 1: Load Live Streams
-            updateStepStatus(0, LoadingStatus.Loading)
-            val liveStreamsResult = repository.loadLiveStreamsFromApi(credentials.username, credentials.password)
-            val liveCategoriesResult = repository.getLiveCategories(credentials.username, credentials.password)
-
-            val liveStreams = liveStreamsResult.getOrElse {
-                handleStepError(0, it)
-                return
+        dataRefreshUseCase.refreshData(credentials.username, credentials.password)
+            .onEach { progress ->
+                when {
+                    progress.error != null -> {
+                        // Map error to appropriate step
+                        val stepIndex = when (progress.step) {
+                            RefreshStep.CHANNELS -> 0
+                            RefreshStep.MOVIES -> 1
+                            RefreshStep.SERIES -> 2
+                            RefreshStep.SAVING -> 2 // Error during saving is shown on last step
+                        }
+                        handleStepError(stepIndex, Exception(progress.error))
+                    }
+                    progress.isComplete -> {
+                        // All data loaded and saved successfully
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            loadingComplete = true,
+                            overallProgress = 1f
+                        )
+                        Log.d("DataLoadingViewModel", "All data loaded successfully")
+                    }
+                    else -> {
+                        // Update step status based on current step
+                        when (progress.step) {
+                            RefreshStep.CHANNELS -> {
+                                updateStepStatus(0, LoadingStatus.Loading)
+                            }
+                            RefreshStep.MOVIES -> {
+                                updateStepStatus(0, LoadingStatus.Success, progress.itemCounts?.channels)
+                                updateStepStatus(1, LoadingStatus.Loading)
+                                updateProgress(1, 3)
+                            }
+                            RefreshStep.SERIES -> {
+                                updateStepStatus(1, LoadingStatus.Success, progress.itemCounts?.movies)
+                                updateStepStatus(2, LoadingStatus.Loading)
+                                updateProgress(2, 3)
+                            }
+                            RefreshStep.SAVING -> {
+                                updateStepStatus(2, LoadingStatus.Success, progress.itemCounts?.series)
+                                updateProgress(3, 3)
+                            }
+                        }
+                    }
+                }
             }
-
-            val liveCategories = liveCategoriesResult.getOrNull() ?: emptyList()
-            updateStepStatus(0, LoadingStatus.Success, liveStreams.size)
-            updateProgress(1, 3)
-
-            // Step 2: Load VOD Streams
-            updateStepStatus(1, LoadingStatus.Loading)
-            val vodStreamsResult = repository.loadVodStreamsFromApi(credentials.username, credentials.password)
-            val vodCategoriesResult = repository.getVodCategories(credentials.username, credentials.password)
-
-            val vodStreams = vodStreamsResult.getOrElse {
-                handleStepError(1, it)
-                return
-            }
-
-            val vodCategories = vodCategoriesResult.getOrNull() ?: emptyList()
-            updateStepStatus(1, LoadingStatus.Success, vodStreams.size)
-            updateProgress(2, 3)
-
-            // Step 3: Load Series
-            updateStepStatus(2, LoadingStatus.Loading)
-            val seriesResult = repository.loadSeriesFromApi(credentials.username, credentials.password)
-            val seriesCategoriesResult = repository.getSeriesCategories(credentials.username, credentials.password)
-
-            val series = seriesResult.getOrElse {
-                handleStepError(2, it)
-                return
-            }
-
-            val seriesCategories = seriesCategoriesResult.getOrNull() ?: emptyList()
-            updateStepStatus(2, LoadingStatus.Success, series.size)
-            updateProgress(3, 3)
-
-            // Save to cache
-            cacheService.saveCachedData(
-                channels = liveStreams,
-                movies = vodStreams,
-                series = series,
-                liveCategories = liveCategories,
-                vodCategories = vodCategories,
-                seriesCategories = seriesCategories
-            )
-
-            // cachedData is not stored in StateFlow to prevent OutOfMemoryError
-            // Data is saved to persistent cache and can be loaded on demand
-
-            _uiState.value = _uiState.value.copy(
-                isLoading = false,
-                loadingComplete = true
-            )
-
-            Log.d("DataLoadingViewModel", "All data loaded successfully")
-        } catch (e: Exception) {
-            Log.e("DataLoadingViewModel", "Error loading data", e)
-            _uiState.value = _uiState.value.copy(
-                isLoading = false,
-                error = "Fehler beim Laden der Daten: ${e.message}"
-            )
-        }
+            .launchIn(viewModelScope)
     }
 
     private fun updateStepStatus(stepIndex: Int, status: LoadingStatus, itemCount: Int? = null, errorMessage: String? = null) {
@@ -310,6 +293,7 @@ class DataLoadingViewModel @Inject constructor(
             seriesCategories = seriesCategories
         )
 
+        Log.d("DataLoadingViewModel", "Saving all data to cache: Channels=${cachedData.channels.size}, Movies=${cachedData.movies.size}, Series=${cachedData.series.size}")
         cacheService.saveCachedData(
             channels = cachedData.channels,
             movies = cachedData.movies,
@@ -318,6 +302,7 @@ class DataLoadingViewModel @Inject constructor(
             vodCategories = cachedData.vodCategories,
             seriesCategories = cachedData.seriesCategories
         )
+        Log.d("DataLoadingViewModel", "Cache saved successfully after retry")
 
         // cachedData is not stored in StateFlow to prevent OutOfMemoryError
         // Data is saved to persistent cache and can be loaded on demand
