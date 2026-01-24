@@ -7,6 +7,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -16,7 +21,10 @@ import androidx.compose.ui.unit.dp
 import android.app.ActivityManager
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import android.view.WindowManager
+import com.flintr.tv.BuildConfig
+import kotlinx.coroutines.delay
 import java.io.BufferedReader
 import java.io.FileReader
 import java.util.Locale
@@ -56,41 +64,93 @@ fun DebugOverlay(
     duration: Long,
     bufferedPosition: Long,
     isPlaying: Boolean,
+    measuredBitrate: Long = 0L,
+    videoDecoderName: String = "N/A",
+    audioDecoderName: String = "N/A",
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val videoResolution = getVideoResolution(exoPlayer)
-    val codecs = getVideoAudioCodecs(exoPlayer)
-    val bitrate = getVideoAudioBitrate(exoPlayer)
-    val decoderName = getVideoDecoderName(exoPlayer)
-    val hardwareAccelerated = isHardwareAccelerated(exoPlayer)
-    val transferFunction = getTransferFunction(exoPlayer)
-    val colorSpace = getColorSpace(exoPlayer)
-    val droppedRenderedFrames = getDroppedRenderedFrames(exoPlayer)
+    
+    // 🔥 STATE für dynamische Player-Werte (werden live geupdatet)
+    var videoResolution by remember { mutableStateOf("") }
+    var codecs by remember { mutableStateOf("") }
+    var bitrate by remember { mutableStateOf("N/A") }
+    var decoderName by remember { mutableStateOf("N/A") }
+    var hardwareAccelerated by remember { mutableStateOf("N/A") }
+    var transferFunction by remember { mutableStateOf("N/A") }
+    var colorSpace by remember { mutableStateOf("N/A") }
+    var droppedRenderedFrames by remember { mutableStateOf("") }
+    
+    // 🔥 STATE für dynamische System-Werte
+    var cpuUsage by remember { mutableStateOf("") }
+    var allocatedHeapMemory by remember { mutableStateOf("") }
+    var totalUsedRAM by remember { mutableStateOf("") }
+    var ramUsedPercent by remember { mutableStateOf("") }
+    
+    // Statische Werte (nur 1x berechnet)
+    val displayDPI = remember { getDisplayDPI(context) }
+    val uiResolution = remember { getUIResolution(context) }
+    val bootResolution = remember { getBootResolution(context) }
+    val displayModeID = remember { getDisplayModeID(context) }
+    val displayModesLength = remember { getDisplayModesLength(context) }
+    val exoPlayerVersion = remember { getExoPlayerVersion() }
+    val exoPlayerEngine = remember { getExoPlayerEngine() }
+    val cronetVersion = remember { getCronetVersion() }
+    val hlsVersion = remember { getHLSVersion() }
+    val okHttpVersion = remember { getOkHttpVersion() }
+    val flintrIPTVVersion = remember { getFlintrIPTVVersion(context) }
+    val deviceName = remember { getDeviceName() }
+    val androidSDK = remember { getAndroidSDK() }
+    val diskCacheSize = remember { getDiskCacheSize(exoPlayer) }
+    val maxHeapMemory = remember { getMaxHeapMemory() }
+    val pipSupported = remember { getPiPSupported(context) }
+    val cpuCores = remember { getCPUCores() }
+    
+    // 🔥 LIVE-UPDATE für Player-Werte (alle 500ms)
+    LaunchedEffect(exoPlayer, measuredBitrate, videoDecoderName, audioDecoderName) {
+        if (exoPlayer == null) return@LaunchedEffect
+        
+        while (true) {
+            // Debug-Logging (nur in DEBUG-Builds)
+            if (BuildConfig.DEBUG) {
+                Log.d("DebugOverlay", "videoFormat: ${exoPlayer.videoFormat}")
+                Log.d("DebugOverlay", "audioFormat: ${exoPlayer.audioFormat}")
+            }
+            
+            // Player-Werte aktualisieren
+            videoResolution = getVideoResolution(exoPlayer)
+            codecs = getVideoAudioCodecs(exoPlayer)
+            droppedRenderedFrames = getDroppedRenderedFrames(exoPlayer)
+            // Use measured bitrate from AnalyticsListener instead of reflection
+            bitrate = formatMeasuredBitrate(measuredBitrate)
+            decoderName = if (videoDecoderName != "unknown" && videoDecoderName != "Initializing...") {
+                videoDecoderName
+            } else {
+                "Initializing..."
+            }
+            hardwareAccelerated = isHardwareAccelerated(videoDecoderName)
+            transferFunction = getTransferFunction(exoPlayer)
+            colorSpace = getColorSpace(exoPlayer)
+            
+            delay(500)
+        }
+    }
+    
+    // 🔥 LIVE-UPDATE für System-Werte (alle 2 Sekunden)
+    LaunchedEffect(Unit) {
+        while (true) {
+            cpuUsage = getCPUUsage()
+            allocatedHeapMemory = getAllocatedHeapMemory()
+            totalUsedRAM = getTotalUsedRAM(context)
+            ramUsedPercent = getRAMUsedPercent(context)
+            delay(2000)
+        }
+    }
+    
+    // Berechnete Werte aus Parametern
     val bufferSizeSeconds = getBufferSizeSeconds(bufferedPosition)
     val playerPaused = isPlayerPaused(isPlaying)
     val playbackState = getPlaybackState(playerState)
-    val displayDPI = getDisplayDPI(context)
-    val uiResolution = getUIResolution(context)
-    val bootResolution = getBootResolution(context)
-    val displayModeID = getDisplayModeID(context)
-    val displayModesLength = getDisplayModesLength(context)
-    val exoPlayerVersion = getExoPlayerVersion()
-    val exoPlayerEngine = getExoPlayerEngine()
-    val cronetVersion = getCronetVersion()
-    val hlsVersion = getHLSVersion()
-    val okHttpVersion = getOkHttpVersion()
-    val flintrIPTVVersion = getFlintrIPTVVersion(context)
-    val deviceName = getDeviceName()
-    val androidSDK = getAndroidSDK()
-    val diskCacheSize = getDiskCacheSize(exoPlayer)
-    val maxHeapMemory = getMaxHeapMemory()
-    val allocatedHeapMemory = getAllocatedHeapMemory()
-    val pipSupported = getPiPSupported(context)
-    val totalUsedRAM = getTotalUsedRAM(context)
-    val ramUsedPercent = getRAMUsedPercent(context)
-    val cpuCores = getCPUCores()
-    val cpuUsage = getCPUUsage()
     
     val debugInfo = listOf(
         // Player Status (Live-Informationen)
@@ -108,6 +168,11 @@ fun DebugOverlay(
         DebugInfo("Video/Audio codecs", codecs),
         DebugInfo("Video/Audio bitrate", bitrate),
         DebugInfo("Video decoder name", decoderName),
+        DebugInfo("Audio decoder name", if (audioDecoderName != "unknown" && audioDecoderName != "Initializing...") {
+            audioDecoderName
+        } else {
+            "Initializing..."
+        }),
         DebugInfo("Hardware accelerated", hardwareAccelerated),
         DebugInfo("Transfer function", transferFunction),
         DebugInfo("Color space", colorSpace),
@@ -298,6 +363,47 @@ private fun getVideoAudioBitrate(exoPlayer: ExoPlayer?): String {
 }
 
 /**
+ * Get current bandwidth estimate from ExoPlayer (actual observed bitrate)
+ * This provides the real measured bitrate, not just the format bitrate
+ */
+@UnstableApi
+private fun getCurrentBandwidth(exoPlayer: ExoPlayer?): String {
+    if (exoPlayer == null) return "N/A"
+    
+    return try {
+        // Try to access BandwidthMeter through reflection
+        val bandwidthMeterField = ExoPlayer::class.java.getDeclaredField("bandwidthMeter")
+        bandwidthMeterField.isAccessible = true
+        val bandwidthMeter = bandwidthMeterField.get(exoPlayer)
+        
+        val bitrateEstimateMethod = bandwidthMeter.javaClass.getMethod("getBitrateEstimate")
+        val bitrateEstimate = bitrateEstimateMethod.invoke(bandwidthMeter) as Long
+        
+        if (bitrateEstimate > 0) {
+            String.format(Locale.US, "%.2f Mbps", bitrateEstimate / 1_000_000.0)
+        } else {
+            "Measuring..."
+        }
+    } catch (e: Exception) {
+        if (BuildConfig.DEBUG) {
+            Log.e("DebugOverlay", "Error getting bandwidth", e)
+        }
+        "N/A"
+    }
+}
+
+/**
+ * Format measured bitrate from bandwidth estimate
+ */
+private fun formatMeasuredBitrate(bitrateEstimate: Long): String {
+    return if (bitrateEstimate > 0) {
+        String.format(Locale.US, "%.2f Mbps", bitrateEstimate / 1_000_000.0)
+    } else {
+        "Measuring..."
+    }
+}
+
+/**
  * Extract video decoder name from ExoPlayer
  * Uses reflection to access the decoder name from the VideoRenderer
  */
@@ -401,31 +507,35 @@ private fun extractDecoderNameFromCodecInfo(renderer: Any, rendererClass: Class<
 /**
  * Check if hardware acceleration is enabled based on decoder name
  */
-@UnstableApi
-private fun isHardwareAccelerated(exoPlayer: ExoPlayer?): String {
-    if (exoPlayer == null) return "N/A"
-    
-    val decoderName = getVideoDecoderName(exoPlayer)
-    
-    if (decoderName == "N/A" || decoderName.isEmpty()) {
-        return "N/A"
+private fun isHardwareAccelerated(decoderName: String): String {
+    if (decoderName == "N/A" || decoderName.isEmpty() || decoderName == "Initializing...") {
+        return "Initializing..."
     }
     
-    // Hardware decoders typically start with "OMX." (OpenMAX)
-    // or contain "c2." (Codec2 hardware decoder)
-    // Software decoders often have patterns like "c2.android." or "ffmpeg"
     return when {
-        decoderName.startsWith("OMX.") -> "true"
-        decoderName.contains("c2.") && !decoderName.contains("c2.android.") -> "true"
-        decoderName.contains("c2.android.") -> "false"
-        decoderName.contains("ffmpeg") -> "false"
-        decoderName.contains("software") -> "false"
-        else -> "false" // Default to false if pattern is unclear
+        // Hardware-Decoder (echte Geräte)
+        decoderName.startsWith("OMX.") -> "true (HW)"
+        decoderName.startsWith("c2.exynos") -> "true (HW Samsung)"  // Samsung Exynos
+        decoderName.startsWith("c2.qti") -> "true (HW Qualcomm)"     // Qualcomm
+        decoderName.startsWith("c2.mtk") -> "true (HW MediaTek)"     // MediaTek
+        decoderName.startsWith("c2.google") -> "true (HW Google)"  // Google Tensor
+        
+        // Software-Decoder
+        decoderName.contains("c2.android.") -> "false (SW)" // Software
+        
+        // Emulator
+        decoderName.contains("goldfish") -> "Emulator (SW)"
+        
+        // Weitere Software-Decoder
+        decoderName.contains("ffmpeg") -> "false (SW)"
+        decoderName.contains("software") -> "false (SW)"
+        else -> "unknown"
     }
 }
 
 /**
  * Extract transfer function from video format
+ * Parses from ColorInfo.toString() since reflection fails with Media3 structure changes
  */
 @UnstableApi
 private fun getTransferFunction(exoPlayer: ExoPlayer?): String {
@@ -434,43 +544,33 @@ private fun getTransferFunction(exoPlayer: ExoPlayer?): String {
     val videoFormat = exoPlayer.videoFormat ?: return "N/A"
     val colorInfo = videoFormat.colorInfo ?: return "N/A"
     
-    // Access transfer using reflection or direct property access
-    val transfer = try {
-        val transferField = colorInfo.javaClass.getDeclaredField("transfer")
-        transferField.isAccessible = true
-        transferField.getInt(colorInfo)
-    } catch (e: Exception) {
-        try {
-            val transferMethod = colorInfo.javaClass.getMethod("getTransfer")
-            transferMethod.invoke(colorInfo) as? Int ?: Format.NO_VALUE
-        } catch (e2: Exception) {
-            Format.NO_VALUE
-        }
+    // Parse directly from toString() - format: "BT709, Limited range, SDR SMPTE 170M"
+    val colorInfoStr = colorInfo.toString()
+    
+    if (BuildConfig.DEBUG) {
+        Log.d("DebugOverlay", "ColorInfo parsed: $colorInfoStr")
     }
     
-    if (transfer == Format.NO_VALUE) {
-        return "N/A"
-    }
-    
-    return try {
-        // Try to use constants if available
-        when (transfer) {
-            C.COLOR_TRANSFER_SDR -> "Gamma"
-            C.COLOR_TRANSFER_ST2084 -> "SMPTE_ST2084"
-            C.COLOR_TRANSFER_HLG -> "HLG"
-            C.COLOR_TRANSFER_LINEAR -> "Linear"
-            C.COLOR_TRANSFER_GAMMA_2_2 -> "Gamma_2.2"
-            else -> "Unknown($transfer)"
-        }
-    } catch (e: Exception) {
-        // Fallback to numeric values if constants don't exist
-        when (transfer) {
-            1 -> "Gamma"
-            6 -> "SMPTE_ST2084"
-            7 -> "HLG"
-            3 -> "Linear"
-            2 -> "Gamma_2.2"
-            else -> "Unknown($transfer)"
+    return when {
+        colorInfoStr.contains("SDR") -> "SDR"
+        colorInfoStr.contains("ST2084") || colorInfoStr.contains("PQ") -> "HDR10 (PQ)"
+        colorInfoStr.contains("HLG") -> "HLG (HDR)"
+        colorInfoStr.contains("Linear") -> "Linear"
+        else -> {
+            // Fallback: try reflection if toString parsing fails
+            try {
+                val transferField = colorInfo.javaClass.getDeclaredField("transfer")
+                transferField.isAccessible = true
+                val transfer = transferField.getInt(colorInfo)
+                when (transfer) {
+                    C.COLOR_TRANSFER_SDR -> "SDR"
+                    C.COLOR_TRANSFER_ST2084 -> "HDR10 (PQ)"
+                    C.COLOR_TRANSFER_HLG -> "HLG (HDR)"
+                    else -> "Unknown"
+                }
+            } catch (e: Exception) {
+                "Unknown"
+            }
         }
     }
 }
@@ -614,6 +714,7 @@ private fun getUIResolution(context: android.content.Context): String {
         } else {
             @Suppress("DEPRECATION")
             val windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? WindowManager
+            @Suppress("DEPRECATION")
             val display = windowManager?.defaultDisplay
             display?.mode?.refreshRate ?: 0f
         }
@@ -663,6 +764,7 @@ private fun getDisplayModeID(context: android.content.Context): String {
         } else {
             @Suppress("DEPRECATION")
             val windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? WindowManager
+            @Suppress("DEPRECATION")
             windowManager?.defaultDisplay?.mode
         }
         
@@ -683,6 +785,7 @@ private fun getDisplayModesLength(context: android.content.Context): String {
         } else {
             @Suppress("DEPRECATION")
             val windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? WindowManager
+            @Suppress("DEPRECATION")
             windowManager?.defaultDisplay
         }
         

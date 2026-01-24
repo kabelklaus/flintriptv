@@ -39,6 +39,10 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.ui.PlayerView
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.common.Format
+import androidx.media3.exoplayer.DecoderReuseEvaluation
+import com.flintr.tv.BuildConfig
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.WatchProgressService
 import dagger.hilt.EntryPoint
@@ -774,6 +778,11 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         seriesData ?: if (seriesContextLoaded) viewModel.getSeriesContext() else null
     }
     
+    // State für gemessene Bitrate und Decoder-Info
+    var measuredBitrate by remember { mutableStateOf(0L) }
+    var videoDecoderName by remember { mutableStateOf("Initializing...") }
+    var audioDecoderName by remember { mutableStateOf("Initializing...") }
+    
     // Setup player with callbacks
     val exoPlayer = rememberPlayerSetup(
         context = context,
@@ -788,6 +797,90 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         onIsPlayingChanged = { playing -> state.isPlaying = playing },
         coroutineScope = coroutineScope
     )
+    
+    // AnalyticsListener für Debug-Informationen
+    DisposableEffect(exoPlayer) {
+        if (!BuildConfig.DEBUG) {
+            onDispose { }
+        } else {
+            val analyticsListener = object : AnalyticsListener {
+                override fun onBandwidthEstimate(
+                    eventTime: AnalyticsListener.EventTime,
+                    totalLoadTimeMs: Int,
+                    totalBytesLoaded: Long,
+                    bitrateEstimate: Long
+                ) {
+                    measuredBitrate = bitrateEstimate
+                    Log.d("PlayerAnalytics", "Bitrate: ${bitrateEstimate / 1_000_000.0} Mbps " +
+                        "(${totalBytesLoaded / 1024}KB in ${totalLoadTimeMs}ms)")
+                }
+                
+                override fun onVideoInputFormatChanged(
+                    eventTime: AnalyticsListener.EventTime,
+                    format: Format,
+                    decoderReuseEvaluation: DecoderReuseEvaluation?
+                ) {
+                    // 🔥 NUR updaten, wenn nicht schon von onVideoDecoderInitialized gesetzt
+                    if (videoDecoderName == "Initializing...") {
+                        videoDecoderName = decoderReuseEvaluation?.decoderName ?: "unknown"
+                    }
+                    
+                    if (BuildConfig.DEBUG) {
+                        Log.d("PlayerAnalytics", "Video: ${format.codecs}, ${format.width}x${format.height}, " +
+                            "Decoder: ${decoderReuseEvaluation?.decoderName ?: "unknown"}")
+                    }
+                }
+                
+                override fun onAudioInputFormatChanged(
+                    eventTime: AnalyticsListener.EventTime,
+                    format: Format,
+                    decoderReuseEvaluation: DecoderReuseEvaluation?
+                ) {
+                    // 🔥 NUR updaten, wenn nicht schon von onAudioDecoderInitialized gesetzt
+                    if (audioDecoderName == "Initializing...") {
+                        audioDecoderName = decoderReuseEvaluation?.decoderName ?: "unknown"
+                    }
+                    
+                    if (BuildConfig.DEBUG) {
+                        Log.d("PlayerAnalytics", "Audio: ${format.codecs}, ${format.sampleRate}Hz, " +
+                            "Channels: ${format.channelCount}, Decoder: ${decoderReuseEvaluation?.decoderName ?: "unknown"}")
+                    }
+                }
+                
+                override fun onVideoDecoderInitialized(
+                    eventTime: AnalyticsListener.EventTime,
+                    decoderName: String,
+                    initializedTimestampMs: Long,
+                    initializationDurationMs: Long
+                ) {
+                    videoDecoderName = decoderName
+                    if (BuildConfig.DEBUG) {
+                        Log.d("PlayerAnalytics", "Video Decoder initialized: $decoderName " +
+                            "(took ${initializationDurationMs}ms)")
+                    }
+                }
+                
+                override fun onAudioDecoderInitialized(
+                    eventTime: AnalyticsListener.EventTime,
+                    decoderName: String,
+                    initializedTimestampMs: Long,
+                    initializationDurationMs: Long
+                ) {
+                    audioDecoderName = decoderName
+                    if (BuildConfig.DEBUG) {
+                        Log.d("PlayerAnalytics", "Audio Decoder initialized: $decoderName " +
+                            "(took ${initializationDurationMs}ms)")
+                    }
+                }
+            }
+            
+            exoPlayer.addAnalyticsListener(analyticsListener)
+            
+            onDispose {
+                exoPlayer.removeAnalyticsListener(analyticsListener)
+            }
+        }
+    }
     
     // Hide system UI
     HideSystemUIEffect(view)
@@ -1098,6 +1191,9 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 duration = state.duration,
                 bufferedPosition = state.bufferedPosition,
                 isPlaying = state.isPlaying,
+                measuredBitrate = measuredBitrate,
+                videoDecoderName = videoDecoderName,
+                audioDecoderName = audioDecoderName,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(8.dp)
