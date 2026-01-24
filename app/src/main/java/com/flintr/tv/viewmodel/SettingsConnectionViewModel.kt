@@ -9,10 +9,13 @@ import com.flintr.tv.data.model.ServerInfo
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.di.AppModule
 import com.flintr.tv.data.api.XtreamApiService
+import com.flintr.tv.domain.usecase.DataRefreshUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import com.squareup.moshi.Moshi
@@ -32,6 +35,7 @@ class SettingsConnectionViewModel @Inject constructor(
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
     private val cacheService: DataCacheService,
+    private val dataRefreshUseCase: DataRefreshUseCase,
     private val okHttpClient: OkHttpClient,
     private val moshi: Moshi
 ) : ViewModel() {
@@ -118,100 +122,18 @@ class SettingsConnectionViewModel @Inject constructor(
     
     /**
      * Refills the cache by loading all data from API and saving it.
+     * Uses DataRefreshUseCase to centralize the data loading logic.
      */
-    private suspend fun refillCache(username: String, password: String) {
-        try {
-            _connectionTestState.value = _connectionTestState.value.copy(
-                isRefillingCache = true,
-                cacheRefillMessage = "Lade Kanäle...",
-                cacheRefillSuccess = false
-            )
-            
-            Log.d("SettingsConnectionViewModel", "Loading channels from API...")
-            val liveStreamsResult = repository.loadLiveStreamsFromApi(username, password)
-            val liveCategoriesResult = repository.getLiveCategories(username, password)
-            
-            val liveStreams = liveStreamsResult.getOrElse {
-                Log.e("SettingsConnectionViewModel", "Failed to load channels", it)
+    private fun refillCache(username: String, password: String) {
+        dataRefreshUseCase.refreshData(username, password)
+            .onEach { progress ->
                 _connectionTestState.value = _connectionTestState.value.copy(
-                    isRefillingCache = false,
-                    cacheRefillMessage = "Fehler beim Laden der Kanäle: ${it.message}",
-                    cacheRefillSuccess = false
+                    isRefillingCache = !progress.isComplete && progress.error == null,
+                    cacheRefillMessage = progress.message,
+                    cacheRefillSuccess = progress.isComplete && progress.error == null
                 )
-                return
             }
-            val liveCategories = liveCategoriesResult.getOrNull() ?: emptyList()
-            Log.d("SettingsConnectionViewModel", "Loaded ${liveStreams.size} channels, ${liveCategories.size} categories")
-            
-            _connectionTestState.value = _connectionTestState.value.copy(
-                cacheRefillMessage = "Lade Filme... (${liveStreams.size} Kanäle geladen)"
-            )
-            
-            Log.d("SettingsConnectionViewModel", "Loading movies from API...")
-            val vodStreamsResult = repository.loadVodStreamsFromApi(username, password)
-            val vodCategoriesResult = repository.getVodCategories(username, password)
-            
-            val vodStreams = vodStreamsResult.getOrElse {
-                Log.e("SettingsConnectionViewModel", "Failed to load movies", it)
-                _connectionTestState.value = _connectionTestState.value.copy(
-                    isRefillingCache = false,
-                    cacheRefillMessage = "Fehler beim Laden der Filme: ${it.message}",
-                    cacheRefillSuccess = false
-                )
-                return
-            }
-            val vodCategories = vodCategoriesResult.getOrNull() ?: emptyList()
-            Log.d("SettingsConnectionViewModel", "Loaded ${vodStreams.size} movies, ${vodCategories.size} categories")
-            
-            _connectionTestState.value = _connectionTestState.value.copy(
-                cacheRefillMessage = "Lade Serien... (${liveStreams.size} Kanäle, ${vodStreams.size} Filme geladen)"
-            )
-            
-            Log.d("SettingsConnectionViewModel", "Loading series from API...")
-            val seriesResult = repository.loadSeriesFromApi(username, password)
-            val seriesCategoriesResult = repository.getSeriesCategories(username, password)
-            
-            val series = seriesResult.getOrElse {
-                Log.e("SettingsConnectionViewModel", "Failed to load series", it)
-                _connectionTestState.value = _connectionTestState.value.copy(
-                    isRefillingCache = false,
-                    cacheRefillMessage = "Fehler beim Laden der Serien: ${it.message}",
-                    cacheRefillSuccess = false
-                )
-                return
-            }
-            val seriesCategories = seriesCategoriesResult.getOrNull() ?: emptyList()
-            Log.d("SettingsConnectionViewModel", "Loaded ${series.size} series, ${seriesCategories.size} categories")
-            
-            _connectionTestState.value = _connectionTestState.value.copy(
-                cacheRefillMessage = "Speichere Cache... (${liveStreams.size} Kanäle, ${vodStreams.size} Filme, ${series.size} Serien)"
-            )
-            
-            // Save to cache
-            Log.d("SettingsConnectionViewModel", "Saving data to cache: Channels=${liveStreams.size}, Movies=${vodStreams.size}, Series=${series.size}")
-            cacheService.saveCachedData(
-                channels = liveStreams,
-                movies = vodStreams,
-                series = series,
-                liveCategories = liveCategories,
-                vodCategories = vodCategories,
-                seriesCategories = seriesCategories
-            )
-            Log.d("SettingsConnectionViewModel", "Cache refilled successfully")
-            
-            _connectionTestState.value = _connectionTestState.value.copy(
-                isRefillingCache = false,
-                cacheRefillMessage = "Cache erfolgreich aktualisiert: ${liveStreams.size} Kanäle, ${vodStreams.size} Filme, ${series.size} Serien",
-                cacheRefillSuccess = true
-            )
-        } catch (e: Exception) {
-            Log.e("SettingsConnectionViewModel", "Error refilling cache", e)
-            _connectionTestState.value = _connectionTestState.value.copy(
-                isRefillingCache = false,
-                cacheRefillMessage = "Fehler beim Cache-Update: ${e.message}",
-                cacheRefillSuccess = false
-            )
-        }
+            .launchIn(viewModelScope)
     }
 
     /**

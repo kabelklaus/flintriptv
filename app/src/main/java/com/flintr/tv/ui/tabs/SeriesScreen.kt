@@ -25,16 +25,9 @@ import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.useFavorites
+import com.flintr.tv.ui.common.ContentFilterUtils
 
 private const val TAG = "SeriesContent"
-
-/**
- * Calculates the timestamp for 7 days ago in seconds.
- */
-private fun calculateSevenDaysAgo(): Long {
-    val currentTimestamp = System.currentTimeMillis() / 1000
-    return currentTimestamp - (7 * 24 * 60 * 60) // 7 days in seconds
-}
 
 /**
  * Logs debug information about series with and without lastModified field.
@@ -66,21 +59,6 @@ private fun logSeriesDebugInfo(
 }
 
 /**
- * Filters series by lastModified timestamp (series modified in last 7 days).
- */
-private fun filterRecentSeries(series: List<Series>, sevenDaysAgo: Long): List<Series> {
-    return series.filter { seriesItem ->
-        seriesItem.lastModified?.toLongOrNull()?.let { lastModifiedTimestamp ->
-            val isRecent = lastModifiedTimestamp >= sevenDaysAgo
-            if (isRecent) {
-                android.util.Log.d(TAG, "Found recent series: ${seriesItem.name}, lastModified=$lastModifiedTimestamp")
-            }
-            isRecent
-        } ?: false
-    }
-}
-
-/**
  * Validates cache data and logs warnings if needed.
  */
 private fun validateCacheData(
@@ -108,7 +86,7 @@ private suspend fun loadNewCategorySeries(
         try {
             val cachedData = cacheService.loadCachedDataAsync()
             if (cachedData != null) {
-                val sevenDaysAgo = calculateSevenDaysAgo()
+                val sevenDaysAgo = ContentFilterUtils.sevenDaysAgoInSeconds()
                 
                 val seriesWithLastModified = cachedData.series.filter { it.lastModified != null }
                 val seriesWithoutLastModified = cachedData.series.filter { it.lastModified == null }
@@ -120,7 +98,7 @@ private suspend fun loadNewCategorySeries(
                     totalCount = cachedData.series.size
                 )
                 
-                val recentSeries = filterRecentSeries(cachedData.series, sevenDaysAgo)
+                val recentSeries = ContentFilterUtils.filterRecentSeries(cachedData.series)
                 validateCacheData(seriesWithLastModified, cachedData.series)
                 
                 android.util.Log.d(TAG, "Filtered new category series: ${recentSeries.size}")

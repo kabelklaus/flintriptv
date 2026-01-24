@@ -25,27 +25,9 @@ import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.useFavorites
+import com.flintr.tv.ui.common.ContentFilterUtils
 
 private const val TAG = "VODContent"
-
-/**
- * Calculates the timestamp for 7 days ago in seconds.
- */
-private fun calculateSevenDaysAgo(): Long {
-    val currentTimestamp = System.currentTimeMillis() / 1000
-    return currentTimestamp - (7 * 24 * 60 * 60) // 7 days in seconds
-}
-
-/**
- * Filters movies that were added in the last 7 days.
- */
-private fun filterRecentMovies(movies: List<VodStream>, sevenDaysAgo: Long): List<VodStream> {
-    return movies.filter { movie ->
-        movie.added?.toLongOrNull()?.let { addedTimestamp ->
-            addedTimestamp >= sevenDaysAgo
-        } ?: false
-    }
-}
 
 /**
  * Loads new category streams (all movies from last 7 days) and watched IDs.
@@ -63,8 +45,7 @@ private suspend fun loadNewCategoryStreams(
         try {
             val cachedData = cacheService.loadCachedDataAsync()
             if (cachedData != null) {
-                val sevenDaysAgo = calculateSevenDaysAgo()
-                val recentMovies = filterRecentMovies(cachedData.movies, sevenDaysAgo)
+                val recentMovies = ContentFilterUtils.filterRecentMovies(cachedData.movies)
                 onStreamsLoaded(recentMovies)
                 // Load watched IDs for new category (all movies)
                 onWatchedIdsLoaded(watchProgressService.getWatchedVodIds(null))

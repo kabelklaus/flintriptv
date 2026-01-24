@@ -28,6 +28,8 @@ import com.flintr.tv.utils.formatExpirationDate
 import com.flintr.tv.utils.getExpirationDateColor
 import com.flintr.tv.data.local.CredentialsRepository
 
+private const val SUCCESS_MESSAGE_DISPLAY_TIME_MS = 5000L
+
 @Composable
 fun SettingsConnection(
     onBack: () -> Unit,
@@ -80,7 +82,7 @@ fun SettingsConnection(
     // Auto-clear cache refill success message after 5 seconds
     LaunchedEffect(connectionTestState.cacheRefillSuccess) {
         if (connectionTestState.cacheRefillSuccess) {
-            delay(5000) // 5 seconds
+            delay(SUCCESS_MESSAGE_DISPLAY_TIME_MS)
             viewModel.clearCacheRefillStatus()
         }
     }

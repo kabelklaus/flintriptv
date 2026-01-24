@@ -25,27 +25,9 @@ import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
 import com.flintr.tv.ui.common.useFavorites
+import com.flintr.tv.ui.common.ContentFilterUtils
 
 private const val TAG = "LiveTVContent"
-
-/**
- * Calculates the timestamp for 7 days ago in seconds.
- */
-private fun calculateSevenDaysAgo(): Long {
-    val currentTimestamp = System.currentTimeMillis() / 1000
-    return currentTimestamp - (7 * 24 * 60 * 60) // 7 days in seconds
-}
-
-/**
- * Filters streams that were added in the last 7 days.
- */
-private fun filterRecentStreams(streams: List<LiveStream>, sevenDaysAgo: Long): List<LiveStream> {
-    return streams.filter { stream ->
-        stream.added?.toLongOrNull()?.let { addedTimestamp ->
-            addedTimestamp >= sevenDaysAgo
-        } ?: false
-    }
-}
 
 /**
  * Loads new category streams (all channels from last 7 days).
@@ -61,8 +43,7 @@ private suspend fun loadNewCategoryStreams(
         try {
             val cachedData = cacheService.loadCachedDataAsync()
             if (cachedData != null) {
-                val sevenDaysAgo = calculateSevenDaysAgo()
-                val recentStreams = filterRecentStreams(cachedData.channels, sevenDaysAgo)
+                val recentStreams = ContentFilterUtils.filterRecentStreams(cachedData.channels)
                 onStreamsLoaded(recentStreams)
             }
         } catch (e: Exception) {
