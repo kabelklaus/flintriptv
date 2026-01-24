@@ -582,18 +582,8 @@ private fun SeasonNavigation(
 ) {
     val coroutineScope = rememberCoroutineScope()
     // Store FocusRequesters for season buttons to enable navigation from header
-    val seasonButtonFocusRequesters = remember { 
-        params.seasons.map { FocusRequester() }.toMutableList() 
-    }
-    
-    // Update list if seasons change
-    LaunchedEffect(params.seasons.size) {
-        while (seasonButtonFocusRequesters.size < params.seasons.size) {
-            seasonButtonFocusRequesters.add(FocusRequester())
-        }
-        while (seasonButtonFocusRequesters.size > params.seasons.size) {
-            seasonButtonFocusRequesters.removeAt(seasonButtonFocusRequesters.lastIndex)
-        }
+    val seasonButtonFocusRequesters = remember(params.seasons.size) {
+        List(params.seasons.size) { FocusRequester() }
     }
     
     // Provide callback to navigate to selected season button
