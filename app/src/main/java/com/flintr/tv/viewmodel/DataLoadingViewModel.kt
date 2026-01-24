@@ -170,6 +170,7 @@ class DataLoadingViewModel @Inject constructor(
             updateProgress(3, 3)
 
             // Save to cache
+            Log.d("DataLoadingViewModel", "Saving data to cache: Channels=${liveStreams.size}, Movies=${vodStreams.size}, Series=${series.size}")
             cacheService.saveCachedData(
                 channels = liveStreams,
                 movies = vodStreams,
@@ -178,6 +179,7 @@ class DataLoadingViewModel @Inject constructor(
                 vodCategories = vodCategories,
                 seriesCategories = seriesCategories
             )
+            Log.d("DataLoadingViewModel", "Cache saved successfully")
 
             // cachedData is not stored in StateFlow to prevent OutOfMemoryError
             // Data is saved to persistent cache and can be loaded on demand
@@ -310,6 +312,7 @@ class DataLoadingViewModel @Inject constructor(
             seriesCategories = seriesCategories
         )
 
+        Log.d("DataLoadingViewModel", "Saving all data to cache: Channels=${cachedData.channels.size}, Movies=${cachedData.movies.size}, Series=${cachedData.series.size}")
         cacheService.saveCachedData(
             channels = cachedData.channels,
             movies = cachedData.movies,
@@ -318,6 +321,7 @@ class DataLoadingViewModel @Inject constructor(
             vodCategories = cachedData.vodCategories,
             seriesCategories = cachedData.seriesCategories
         )
+        Log.d("DataLoadingViewModel", "Cache saved successfully after retry")
 
         // cachedData is not stored in StateFlow to prevent OutOfMemoryError
         // Data is saved to persistent cache and can be loaded on demand

@@ -127,6 +127,7 @@ private fun createMinimalSeries(series: Series): Series {
         releaseDate = series.releaseDate,
         rating = series.rating,
         rating5Based = series.rating5Based,
+        lastModified = series.lastModified,
         categoryId = series.categoryId,
         categoryName = series.categoryName,
         youtubeTrailer = series.youtubeTrailer,
