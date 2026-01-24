@@ -66,6 +66,37 @@ data class DebugOverlayParams(
 )
 
 /**
+ * Data class for video/media debug parameters
+ */
+data class VideoMediaDebugParams(
+    val videoResolution: String,
+    val codecs: String,
+    val bitrate: String,
+    val decoderName: String,
+    val audioDecoderName: String,
+    val hardwareAccelerated: String,
+    val transferFunction: String,
+    val colorSpace: String,
+    val droppedRenderedFrames: String,
+    val bufferSizeSeconds: String
+)
+
+/**
+ * Data class for system/hardware debug parameters
+ */
+data class SystemHardwareDebugParams(
+    val deviceName: String,
+    val androidSDK: String,
+    val displayDPI: String,
+    val uiResolution: String,
+    val displayModeID: String,
+    val displayModesLength: String,
+    val cpuCores: String,
+    val cpuUsage: String,
+    val pipSupported: String
+)
+
+/**
  * Formats decoder name, returning DECODER_INITIALIZING if decoder is unknown or initializing
  */
 private fun formatDecoderName(decoderName: String): String {
@@ -105,28 +136,19 @@ private fun createPlayerStatusDebugInfo(
  * Creates video/media debug information
  */
 private fun createVideoMediaDebugInfo(
-    videoResolution: String,
-    codecs: String,
-    bitrate: String,
-    decoderName: String,
-    audioDecoderName: String,
-    hardwareAccelerated: String,
-    transferFunction: String,
-    colorSpace: String,
-    droppedRenderedFrames: String,
-    bufferSizeSeconds: String
+    params: VideoMediaDebugParams
 ): List<DebugInfo> {
     return listOf(
-        DebugInfo("Video Resolution", videoResolution),
-        DebugInfo("Video/Audio codecs", codecs),
-        DebugInfo("Video/Audio bitrate", bitrate),
-        DebugInfo("Video decoder name", decoderName),
-        DebugInfo("Audio decoder name", formatDecoderName(audioDecoderName)),
-        DebugInfo("Hardware accelerated", hardwareAccelerated),
-        DebugInfo("Transfer function", transferFunction),
-        DebugInfo("Color space", colorSpace),
-        DebugInfo("Dropped/Rendered frames", droppedRenderedFrames),
-        DebugInfo("Buffer size (seconds)", bufferSizeSeconds)
+        DebugInfo("Video Resolution", params.videoResolution),
+        DebugInfo("Video/Audio codecs", params.codecs),
+        DebugInfo("Video/Audio bitrate", params.bitrate),
+        DebugInfo("Video decoder name", params.decoderName),
+        DebugInfo("Audio decoder name", formatDecoderName(params.audioDecoderName)),
+        DebugInfo("Hardware accelerated", params.hardwareAccelerated),
+        DebugInfo("Transfer function", params.transferFunction),
+        DebugInfo("Color space", params.colorSpace),
+        DebugInfo("Dropped/Rendered frames", params.droppedRenderedFrames),
+        DebugInfo("Buffer size (seconds)", params.bufferSizeSeconds)
     )
 }
 
@@ -134,26 +156,18 @@ private fun createVideoMediaDebugInfo(
  * Creates system/hardware debug information
  */
 private fun createSystemHardwareDebugInfo(
-    deviceName: String,
-    androidSDK: String,
-    displayDPI: String,
-    uiResolution: String,
-    displayModeID: String,
-    displayModesLength: String,
-    cpuCores: String,
-    cpuUsage: String,
-    pipSupported: String
+    params: SystemHardwareDebugParams
 ): List<DebugInfo> {
     return listOf(
-        DebugInfo("Device name", deviceName),
-        DebugInfo("Android SDK", androidSDK),
-        DebugInfo("Display DPI", displayDPI),
-        DebugInfo("UI resolution", uiResolution),
-        DebugInfo("Display mode ID", displayModeID),
-        DebugInfo("Display modes length", displayModesLength),
-        DebugInfo("CPU Cores", cpuCores),
-        DebugInfo("CPU use", cpuUsage),
-        DebugInfo("PiP supported", pipSupported)
+        DebugInfo("Device name", params.deviceName),
+        DebugInfo("Android SDK", params.androidSDK),
+        DebugInfo("Display DPI", params.displayDPI),
+        DebugInfo("UI resolution", params.uiResolution),
+        DebugInfo("Display mode ID", params.displayModeID),
+        DebugInfo("Display modes length", params.displayModesLength),
+        DebugInfo("CPU Cores", params.cpuCores),
+        DebugInfo("CPU use", params.cpuUsage),
+        DebugInfo("PiP supported", params.pipSupported)
     )
 }
 
@@ -255,7 +269,6 @@ fun DebugOverlay(
     // Use rememberUpdatedState to access latest values without restarting LaunchedEffect
     val currentMeasuredBitrate by rememberUpdatedState(measuredBitrate)
     val currentVideoDecoderName by rememberUpdatedState(videoDecoderName)
-    val currentAudioDecoderName by rememberUpdatedState(audioDecoderName)
     
     // LIVE-UPDATE for player values (every 500ms)
     LaunchedEffect(exoPlayer) {
@@ -304,26 +317,30 @@ fun DebugOverlay(
         bufferedPosition = bufferedPosition,
         isPlaying = isPlaying
     ) + createVideoMediaDebugInfo(
-        videoResolution = videoResolution,
-        codecs = codecs,
-        bitrate = bitrate,
-        decoderName = decoderName,
-        audioDecoderName = audioDecoderName,
-        hardwareAccelerated = hardwareAccelerated,
-        transferFunction = transferFunction,
-        colorSpace = colorSpace,
-        droppedRenderedFrames = droppedRenderedFrames,
-        bufferSizeSeconds = bufferSizeSeconds
+        VideoMediaDebugParams(
+            videoResolution = videoResolution,
+            codecs = codecs,
+            bitrate = bitrate,
+            decoderName = decoderName,
+            audioDecoderName = audioDecoderName,
+            hardwareAccelerated = hardwareAccelerated,
+            transferFunction = transferFunction,
+            colorSpace = colorSpace,
+            droppedRenderedFrames = droppedRenderedFrames,
+            bufferSizeSeconds = bufferSizeSeconds
+        )
     ) + createSystemHardwareDebugInfo(
-        deviceName = deviceName,
-        androidSDK = androidSDK,
-        displayDPI = displayDPI,
-        uiResolution = uiResolution,
-        displayModeID = displayModeID,
-        displayModesLength = displayModesLength,
-        cpuCores = cpuCores,
-        cpuUsage = cpuUsage,
-        pipSupported = pipSupported
+        SystemHardwareDebugParams(
+            deviceName = deviceName,
+            androidSDK = androidSDK,
+            displayDPI = displayDPI,
+            uiResolution = uiResolution,
+            displayModeID = displayModeID,
+            displayModesLength = displayModesLength,
+            cpuCores = cpuCores,
+            cpuUsage = cpuUsage,
+            pipSupported = pipSupported
+        )
     ) + createMemoryDebugInfo(
         maxHeapMemory = maxHeapMemory,
         allocatedHeapMemory = allocatedHeapMemory,
