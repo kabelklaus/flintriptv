@@ -555,7 +555,7 @@ private fun createPreviousCallback(
     return {
         val newPosition = (exoPlayer.currentPosition - 10000).coerceAtLeast(0L)
         exoPlayer.seekTo(newPosition)
-        onPositionUpdate(exoPlayer.currentPosition)
+        onPositionUpdate(newPosition)
         onShowControls()
     }
 }
@@ -572,7 +572,7 @@ private fun createNextCallback(
     return {
         val newPosition = (exoPlayer.currentPosition + 10000).coerceAtMost(duration)
         exoPlayer.seekTo(newPosition)
-        onPositionUpdate(exoPlayer.currentPosition)
+        onPositionUpdate(newPosition)
         onShowControls()
     }
 }

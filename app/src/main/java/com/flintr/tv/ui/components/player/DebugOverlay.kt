@@ -87,7 +87,7 @@ fun DebugOverlay(
     val diskCacheSize = getDiskCacheSize(exoPlayer)
     val maxHeapMemory = getMaxHeapMemory()
     val allocatedHeapMemory = getAllocatedHeapMemory()
-    val potSupported = getPotSupported(context)
+    val pipSupported = getPiPSupported(context)
     val totalUsedRAM = getTotalUsedRAM(context)
     val ramUsedPercent = getRAMUsedPercent(context)
     val cpuCores = getCPUCores()
@@ -97,7 +97,7 @@ fun DebugOverlay(
         // Player Status (Live-Informationen)
         DebugInfo("State", getPlayerStateString(playerState)),
         DebugInfo("Player paused", playerPaused),
-        DebugInfo("Payback state", playbackState),
+        DebugInfo("Playback state", playbackState),
         DebugInfo("Position", formatTime(currentPosition)),
         DebugInfo("Duration", formatTime(duration)),
         DebugInfo("Buffered", formatTime(bufferedPosition)),
@@ -117,7 +117,7 @@ fun DebugOverlay(
         
         // System/Hardware
         DebugInfo("Device name", deviceName),
-        DebugInfo("Adroid SDK", androidSDK),
+        DebugInfo("Android SDK", androidSDK),
         DebugInfo("Display DPI", displayDPI),
         DebugInfo("UI resolution", uiResolution),
         DebugInfo("Boot resolution", bootResolution),
@@ -125,7 +125,7 @@ fun DebugOverlay(
         DebugInfo("Display modes length", displayModesLength),
         DebugInfo("CPU Cores", cpuCores),
         DebugInfo("CPU use", cpuUsage),
-        DebugInfo("Pot supported", potSupported),
+        DebugInfo("PiP supported", pipSupported),
         
         // Memory
         DebugInfo("Max heap memory (MB)", maxHeapMemory),
@@ -605,17 +605,19 @@ private fun getDisplayDPI(context: android.content.Context): String {
  */
 private fun getUIResolution(context: android.content.Context): String {
     return try {
-        val windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? WindowManager
-            ?: return "N/A"
-        
         val displayMetrics = context.resources.displayMetrics
         val width = displayMetrics.widthPixels
         val height = displayMetrics.heightPixels
         
-        // Get refresh rate
-        @Suppress("DEPRECATION")
-        val display = windowManager.defaultDisplay ?: return "N/A"
-        val refreshRate = display.mode.refreshRate
+        // Get refresh rate - use context.display for API 30+, fallback to deprecated API
+        val refreshRate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.display?.mode?.refreshRate ?: 0f
+        } else {
+            @Suppress("DEPRECATION")
+            val windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? WindowManager
+            val display = windowManager?.defaultDisplay
+            display?.mode?.refreshRate ?: 0f
+        }
         
         if (width > 0 && height > 0) {
             if (refreshRate > 0f) {
@@ -657,12 +659,15 @@ private fun getBootResolution(context: android.content.Context): String {
  */
 private fun getDisplayModeID(context: android.content.Context): String {
     return try {
-        val windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? WindowManager
-            ?: return "N/A"
-        @Suppress("DEPRECATION")
-        val display = windowManager.defaultDisplay ?: return "N/A"
-        val mode = display.mode
-        val modeId = mode.modeId
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.display?.mode
+        } else {
+            @Suppress("DEPRECATION")
+            val windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? WindowManager
+            windowManager?.defaultDisplay?.mode
+        }
+        
+        val modeId = mode?.modeId ?: return "N/A"
         modeId.toString()
     } catch (e: Exception) {
         "N/A"
@@ -674,11 +679,15 @@ private fun getDisplayModeID(context: android.content.Context): String {
  */
 private fun getDisplayModesLength(context: android.content.Context): String {
     return try {
-        val windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? WindowManager
-            ?: return "N/A"
-        @Suppress("DEPRECATION")
-        val display = windowManager.defaultDisplay ?: return "N/A"
-        val supportedModes = display.supportedModes
+        val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.display
+        } else {
+            @Suppress("DEPRECATION")
+            val windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? WindowManager
+            windowManager?.defaultDisplay
+        }
+        
+        val supportedModes = display?.supportedModes ?: return "N/A"
         supportedModes.size.toString()
     } catch (e: Exception) {
         "N/A"
@@ -914,29 +923,26 @@ private fun getCPUCores(): String {
 }
 
 /**
- * Get CPU usage percentage
+ * Get CPU load average (1-minute load average as percentage)
+ * Uses /proc/loadavg which provides load averages over 1, 5, and 15 minutes
  */
 private fun getCPUUsage(): String {
     return try {
-        val reader = BufferedReader(FileReader("/proc/stat"))
-        val firstLine = reader.readLine() ?: return "N/A"
-        reader.close()
-        
-        // Parse CPU line: cpu  user nice system idle iowait irq softirq
-        val parts = firstLine.split("\\s+".toRegex())
-        if (parts.size < 5) return "N/A"
-        
-        val user = parts[1].toLongOrNull() ?: return "N/A"
-        val nice = parts[2].toLongOrNull() ?: return "N/A"
-        val system = parts[3].toLongOrNull() ?: return "N/A"
-        val idle = parts[4].toLongOrNull() ?: return "N/A"
-        val iowait = if (parts.size > 5) parts[5].toLongOrNull() ?: 0L else 0L
-        
-        val total = user + nice + system + idle + iowait
-        if (total == 0L) return "N/A"
-        
-        val usage = ((total - idle) * 100.0 / total).toInt()
-        "${usage}%"
+        BufferedReader(FileReader("/proc/loadavg")).use { reader ->
+            val line = reader.readLine() ?: return "N/A"
+            
+            // Parse loadavg line: "1min 5min 15min running/total last_pid"
+            val parts = line.split("\\s+".toRegex())
+            if (parts.isEmpty()) return "N/A"
+            
+            val load1min = parts[0].toDoubleOrNull() ?: return "N/A"
+            val cpuCores = Runtime.getRuntime().availableProcessors()
+            
+            // Convert load average to percentage (load / cores * 100)
+            // Clamp to 0-100% range
+            val usagePercent = ((load1min / cpuCores) * 100.0).coerceIn(0.0, 100.0).toInt()
+            "${usagePercent}%"
+        }
     } catch (e: Exception) {
         "N/A"
     }
@@ -945,7 +951,7 @@ private fun getCPUUsage(): String {
 /**
  * Get Picture-in-Picture (PiP) support status
  */
-private fun getPotSupported(context: android.content.Context): String {
+private fun getPiPSupported(context: android.content.Context): String {
     return try {
         val packageManager = context.packageManager
         val pipSupported = packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
