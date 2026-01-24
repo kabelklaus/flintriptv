@@ -25,7 +25,6 @@ import androidx.media3.common.Format
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import kotlin.OptIn
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.utils.formatTime
@@ -369,7 +368,7 @@ private fun extractDecoderNameFromDecoderNameField(renderer: Any, rendererClass:
     return try {
         val decoderNameField = rendererClass.getDeclaredField("decoderName")
         decoderNameField.isAccessible = true
-        val decoderName = decoderNameField.get(renderer) as? String
+        val decoderName = decoderNameField[renderer] as? String
         if (!decoderName.isNullOrEmpty()) decoderName else null
     } catch (e: NoSuchFieldException) {
         null
@@ -385,7 +384,7 @@ private fun extractDecoderNameFromCodecInfo(renderer: Any, rendererClass: Class<
     return try {
         val codecInfoField = rendererClass.getDeclaredField("codecInfo")
         codecInfoField.isAccessible = true
-        val codecInfo = codecInfoField.get(renderer) ?: return null
+        val codecInfo = codecInfoField[renderer] ?: return null
         
         val codecInfoClass = codecInfo.javaClass
         val nameField = codecInfoClass.getDeclaredField("name")
@@ -703,7 +702,7 @@ private fun getExoPlayerVersion(): String {
         val libraryInfoClass = Class.forName("androidx.media3.common.util.LibraryInfo")
         val versionField = libraryInfoClass.getDeclaredField("VERSION")
         versionField.isAccessible = true
-        versionField.get(null) as? String ?: "N/A"
+        versionField[null] as? String ?: "N/A"
     } catch (e: ClassNotFoundException) {
         // Fallback: use Media3 version from gradle
         "1.3.1"
