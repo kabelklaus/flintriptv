@@ -10,6 +10,7 @@ plugins {
     id("kotlin-parcelize")
     alias(libs.plugins.googleGmsServices)
     alias(libs.plugins.firebase.perf)
+    alias(libs.plugins.firebase.crashlytics)
 }
 
 android {
@@ -22,8 +23,8 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 70
-        versionName = "2.12"
+        versionCode = 71
+        versionName = "2.13"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -153,6 +154,7 @@ dependencies {
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.perf)
     implementation(libs.firebase.firestore)
+    implementation(libs.firebase.crashlytics)
     
     // Desugaring
     coreLibraryDesugaring(libs.desugar.jdk.libs)
