@@ -48,6 +48,7 @@ import dagger.hilt.components.SingletonComponent
 import com.flintr.tv.ui.components.player.*
 import com.flintr.tv.ui.components.player.NextEpisodeButtonGroup
 import com.flintr.tv.ui.components.player.ContentInfoOverlay
+import com.flintr.tv.ui.common.PlayerConstants
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.FocusedButton
 import com.flintr.tv.ui.utils.onBackButton
@@ -548,11 +549,13 @@ private fun createSeekCallback(
  */
 private fun createPreviousCallback(
     exoPlayer: ExoPlayer,
-    onShowControls: () -> Unit
+    onShowControls: () -> Unit,
+    onPositionUpdate: (Long) -> Unit
 ): () -> Unit {
     return {
         val newPosition = (exoPlayer.currentPosition - 10000).coerceAtLeast(0L)
         exoPlayer.seekTo(newPosition)
+        onPositionUpdate(exoPlayer.currentPosition)
         onShowControls()
     }
 }
@@ -563,11 +566,13 @@ private fun createPreviousCallback(
 private fun createNextCallback(
     exoPlayer: ExoPlayer,
     duration: Long,
-    onShowControls: () -> Unit
+    onShowControls: () -> Unit,
+    onPositionUpdate: (Long) -> Unit
 ): () -> Unit {
     return {
         val newPosition = (exoPlayer.currentPosition + 10000).coerceAtMost(duration)
         exoPlayer.seekTo(newPosition)
+        onPositionUpdate(exoPlayer.currentPosition)
         onShowControls()
     }
 }
@@ -845,7 +850,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         0f
     }
     
-    // Show/hide next episode button based on progress (95% threshold)
+    // Show/hide next episode button based on progress (98.5% threshold)
     LaunchedEffect(progress, contentType, seriesContextLoaded, watchCreditsMode) {
         if (contentType == "series" && seriesContextLoaded) {
             // Don't show button if watch credits mode is active
@@ -859,14 +864,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             
             Log.d("PlayerScreen", "Progress check: progress=$progress (${(progress * 100).toInt()}%), seriesContextLoaded=$seriesContextLoaded, isButtonVisible=$isButtonVisible")
             
-            if (progress >= 0.95f && !isButtonVisible) {
+            if (progress >= PlayerConstants.NEXT_EPISODE_BUTTON_THRESHOLD && !isButtonVisible) {
                 // Show button only if not already visible (prevents timer restart)
                 // Only show if series context is loaded
-                Log.d("PlayerScreen", "Calling showNextEpisodeButton() - progress >= 95%")
+                Log.d("PlayerScreen", "Calling showNextEpisodeButton() - progress >= 98.5%")
                 viewModel.showNextEpisodeButton()
-            } else if (progress < 0.95f && isButtonVisible) {
+            } else if (progress < PlayerConstants.NEXT_EPISODE_BUTTON_THRESHOLD && isButtonVisible) {
                 // User rewound, hide button
-                Log.d("PlayerScreen", "Hiding button - progress < 95%")
+                Log.d("PlayerScreen", "Hiding button - progress < 98.5%")
                 viewModel.hideNextEpisodeButton()
             }
         } else {
@@ -884,7 +889,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 // Episode was watched to 100% - now start next episode
                 viewModel.triggerAutoPlayNext()
             } else {
-                // Standard auto-play at 95%
+                // Standard auto-play at 98.5%
                 val currentState = viewModel.nextEpisodeState.value
                 if (currentState is NextEpisodeState.Visible) {
                     viewModel.triggerAutoPlayNext()
@@ -933,10 +938,19 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         }
     }
     val onPrevious = remember(exoPlayer) {
-        createPreviousCallback(exoPlayer, resetControlsTimer)
+        createPreviousCallback(
+            exoPlayer,
+            resetControlsTimer,
+            { newPosition -> state.currentPosition = newPosition }
+        )
     }
     val onNext = remember(exoPlayer, state.duration) {
-        createNextCallback(exoPlayer, state.duration, resetControlsTimer)
+        createNextCallback(
+            exoPlayer,
+            state.duration,
+            resetControlsTimer,
+            { newPosition -> state.currentPosition = newPosition }
+        )
     }
     val onPlayPause = remember(exoPlayer) {
         createPlayPauseCallback(exoPlayer, resetControlsTimer)
@@ -1078,10 +1092,12 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         // Debug overlay
         if (state.showDebugOverlay) {
             DebugOverlay(
+                exoPlayer = exoPlayer,
                 playerState = state.playbackState,
                 currentPosition = state.currentPosition,
                 duration = state.duration,
                 bufferedPosition = state.bufferedPosition,
+                isPlaying = state.isPlaying,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(8.dp)
@@ -1109,7 +1125,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             modifier = Modifier.align(Alignment.Center)
         )
         
-        // Next episode button group (shown when progress >= 95% or auto-play is active)
+        // Next episode button group (shown when progress >= 98.5% or auto-play is active)
         // Positioned directly above the timeline (progress bar), right-aligned
         // CustomPlayerControls are at BottomCenter with padding
         // Progress bar is the first element, so button should be just above it

@@ -15,4 +15,7 @@ object PlayerConstants {
     // Next episode button visual thresholds
     const val PLAY_ICON_VISIBILITY_THRESHOLD = 0.1f
     const val TEXT_COLOR_CHANGE_THRESHOLD = 0.5f
+    
+    // Next episode button display threshold (as percentage of episode duration)
+    const val NEXT_EPISODE_BUTTON_THRESHOLD = 0.985f
 }
