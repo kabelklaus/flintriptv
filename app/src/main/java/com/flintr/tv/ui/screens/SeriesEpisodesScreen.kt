@@ -44,7 +44,9 @@ import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.InteractionUtils.tvFocusable
+import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.utils.ContentParser
+import kotlinx.coroutines.launch
 
 // Navigation direction enum
 private enum class NavigationDirection {
@@ -339,6 +341,11 @@ fun SeriesEpisodesScreen(
         }
     }
     
+    // FocusRequester for header to enable navigation from season buttons
+    val headerFocusRequester = remember { FocusRequester() }
+    // Callback to navigate to selected season button
+    var navigateToSeasonButton by remember { mutableStateOf<(() -> Unit)?>(null) }
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -356,6 +363,11 @@ fun SeriesEpisodesScreen(
             // Series Header
             SeriesHeader(
                 series = displaySeries,
+                headerFocusRequester = headerFocusRequester,
+                onNavigateDown = {
+                    // Navigate to selected season button
+                    navigateToSeasonButton?.invoke()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .onGloballyPositioned { coordinates ->
@@ -377,6 +389,10 @@ fun SeriesEpisodesScreen(
                     initialEpisodeIndex = initialEpisodeIndex,
                     smartResumeSeasonIndex = smartResumeSeasonIndex
                 ),
+                headerFocusRequester = headerFocusRequester,
+                onNavigateToSeasonButton = { callback ->
+                    navigateToSeasonButton = callback
+                },
                 onSeasonSelected = { index ->
                     selectedSeasonIndex = index
                     // Reset initialEpisodeIndex when season changes manually (not via smart resume)
@@ -401,18 +417,48 @@ fun SeriesEpisodesScreen(
 @Composable
 private fun SeriesHeader(
     series: Series,
+    headerFocusRequester: FocusRequester,
+    onNavigateDown: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val rating = ContentParser.getRating(series)
     val year = series.releaseDate?.take(4) // Extract year from date
     val seasonCount = series.seasons?.size ?: 0
     val seasonText = if (seasonCount == 1) "1 Staffel" else "$seasonCount Staffeln"
+    val colors = appColors()
+    var isFocused by remember { mutableStateOf(false) }
+    
+    // Border color with animation for focus feedback
+    val borderColor by animateColorAsState(
+        targetValue = if (isFocused) colors.accentColor else Color.Transparent,
+        animationSpec = tween(durationMillis = 200),
+        label = "borderColor"
+    )
     
     Column(
         modifier = modifier
             .background(
                 color = Color.Black.copy(alpha = 0.6f),
                 shape = RoundedCornerShape(8.dp)
+            )
+            .then(
+                if (borderColor != Color.Transparent) {
+                    Modifier.border(
+                        width = 2.dp,
+                        color = borderColor,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .focusRequester(headerFocusRequester)
+            .tvFocusable { isFocused = it }
+            .onDpadDirection(
+                onDown = {
+                    onNavigateDown()
+                    true
+                }
             )
             .padding(16.dp)
     ) {
@@ -528,10 +574,35 @@ private fun OptionalMetadataText(
 @Composable
 private fun SeasonNavigation(
     params: SeasonNavigationParams,
+    headerFocusRequester: FocusRequester,
+    onNavigateToSeasonButton: ((() -> Unit)) -> Unit,
     onSeasonSelected: (Int) -> Unit,
     onEpisodeClick: (Episode) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    // Store FocusRequesters for season buttons to enable navigation from header
+    val seasonButtonFocusRequesters = remember(params.seasons.size) {
+        List(params.seasons.size) { FocusRequester() }
+    }
+    
+    // Provide callback to navigate to selected season button
+    LaunchedEffect(params.selectedSeasonIndex, seasonButtonFocusRequesters.size, params.seasons.size) {
+        if (params.seasons.size > 1 && params.selectedSeasonIndex in 0 until seasonButtonFocusRequesters.size) {
+            onNavigateToSeasonButton {
+                coroutineScope.launch {
+                    seasonButtonFocusRequesters[params.selectedSeasonIndex].safeRequestFocus(
+                        "SeriesEpisodesScreen",
+                        "SEASON_BUTTON_${params.selectedSeasonIndex}"
+                    )
+                }
+            }
+        } else {
+            // If there's only one season or no season buttons, clear the callback
+            onNavigateToSeasonButton { }
+        }
+    }
+    
     Column(
         modifier = modifier
     ) {
@@ -542,6 +613,15 @@ private fun SeasonNavigation(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
+                    .onDpadDirection(
+                        onUp = {
+                            // Navigate to header when pressing up from season buttons
+                            coroutineScope.launch {
+                                headerFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "HEADER")
+                            }
+                            true
+                        }
+                    )
             ) {
                 itemsIndexed(
                     items = params.seasons,
@@ -550,6 +630,7 @@ private fun SeasonNavigation(
                     SeasonButton(
                         season = season,
                         isSelected = seasonIndex == params.selectedSeasonIndex,
+                        focusRequester = seasonButtonFocusRequesters.getOrNull(seasonIndex),
                         onSelect = { onSeasonSelected(seasonIndex) }
                     )
                 }
@@ -589,6 +670,7 @@ private fun SeasonNavigation(
 private fun SeasonButton(
     season: Season,
     isSelected: Boolean,
+    focusRequester: FocusRequester? = null,
     onSelect: () -> Unit
 ) {
     val colors = appColors()
@@ -619,14 +701,15 @@ private fun SeasonButton(
     // Text color: always white on dark background
     val textColor = Color.White
     
-    val focusRequester = remember { FocusRequester() }
+    val internalFocusRequester = remember { FocusRequester() }
+    val actualFocusRequester = focusRequester ?: internalFocusRequester
     
     // Request focus when selected
     LaunchedEffect(isSelected) {
         if (isSelected) {
             kotlinx.coroutines.delay(50)
             try {
-                focusRequester.requestFocus()
+                actualFocusRequester.requestFocus()
             } catch (e: IllegalStateException) {
                 // FocusRequester might not be ready yet
             }
@@ -650,7 +733,7 @@ private fun SeasonButton(
                     Modifier
                 }
             )
-            .focusRequester(focusRequester)
+            .focusRequester(actualFocusRequester)
             .tvFocusable { isFocused = it }
             .onClick(onClick = onSelect)
             .padding(horizontal = 16.dp, vertical = 8.dp)
