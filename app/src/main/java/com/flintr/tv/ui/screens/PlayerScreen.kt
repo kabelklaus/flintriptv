@@ -68,6 +68,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import android.content.Context
 import android.util.Base64
 import androidx.compose.ui.input.pointer.PointerInputChange
@@ -159,7 +161,7 @@ private fun createExoPlayer(context: Context, credentials: com.flintr.tv.data.lo
         httpDataSourceFactoryBuilder.setDefaultRequestProperties(
             mapOf("Authorization" to authHeader)
         )
-        Log.d("PlayerScreen", "HTTP Basic Auth configured.")
+        if (BuildConfig.DEBUG) Log.d("PlayerScreen", "HTTP Basic Auth configured.")
     }
     
     val httpDataSourceFactory: HttpDataSource.Factory = httpDataSourceFactoryBuilder
@@ -200,7 +202,7 @@ private fun getErrorMessage(context: Context, error: PlaybackException): String 
     // Check for HTTP status code errors first (most specific)
     val httpError = findHttpException(error)
     if (httpError != null) {
-        Log.d("PlayerScreen", "HTTP error detected: code=${httpError.responseCode}")
+        if (BuildConfig.DEBUG) Log.d("PlayerScreen", "HTTP error detected: code=${httpError.responseCode}")
         return when (httpError.responseCode) {
             458 -> context.getString(R.string.http_error_458)
             403 -> context.getString(R.string.http_error_403)
@@ -252,14 +254,16 @@ private fun createPlayerListener(
 
         override fun onPlaybackStateChanged(state: Int) {
             onPlaybackStateChanged(state)
-            val stateString = when (state) {
-                Player.STATE_IDLE -> "STATE_IDLE"
-                Player.STATE_BUFFERING -> "STATE_BUFFERING"
-                Player.STATE_READY -> "STATE_READY"
-                Player.STATE_ENDED -> "STATE_ENDED"
-                else -> "UNKNOWN_STATE"
+            if (BuildConfig.DEBUG) {
+                val stateString = when (state) {
+                    Player.STATE_IDLE -> "STATE_IDLE"
+                    Player.STATE_BUFFERING -> "STATE_BUFFERING"
+                    Player.STATE_READY -> "STATE_READY"
+                    Player.STATE_ENDED -> "STATE_ENDED"
+                    else -> "UNKNOWN_STATE"
+                }
+                Log.d("PlayerScreen", "Playback state changed to $stateString")
             }
-            Log.d("PlayerScreen", "Playback state changed to $stateString")
         }
         
         override fun onIsPlayingChanged(playing: Boolean) {
@@ -292,14 +296,14 @@ private suspend fun restoreWatchProgress(
     
     val duration = exoPlayer.duration
     if (duration <= 0 || savedPosition >= duration) {
-        Log.d("PlayerScreen", "Skipping progress restore: savedPosition ($savedPosition) >= duration ($duration) or duration invalid")
+        if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Skipping progress restore: savedPosition ($savedPosition) >= duration ($duration) or duration invalid")
         return false
     }
     
-    Log.d("PlayerScreen", "Restoring watch progress: position=${savedPosition}ms (${savedPosition / 1000}s), duration=${duration}ms (${duration / 1000}s)")
+    if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Restoring watch progress: position=${savedPosition}ms (${savedPosition / 1000}s), duration=${duration}ms (${duration / 1000}s)")
     delay(500) // Wait a bit for player to be fully ready
     exoPlayer.seekTo(savedPosition)
-    Log.d("PlayerScreen", "Watch progress restored successfully")
+    if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Watch progress restored successfully")
     return true
 }
 
@@ -503,20 +507,49 @@ private fun rememberPlayerSetup(
         }
     }
     
+    /**
+     * Suspends until the player reaches STATE_IDLE state.
+     * Uses a temporary listener to wait for the state change.
+     */
+    suspend fun waitForPlayerIdle(player: ExoPlayer) {
+        // If already idle, return immediately
+        if (player.playbackState == Player.STATE_IDLE) {
+            return
+        }
+        
+        suspendCancellableCoroutine<Unit> { continuation ->
+            val listener = object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    if (state == Player.STATE_IDLE) {
+                        player.removeListener(this)
+                        continuation.resume(Unit)
+                    }
+                }
+            }
+            
+            player.addListener(listener)
+            
+            // Cleanup if coroutine is cancelled
+            continuation.invokeOnCancellation {
+                player.removeListener(listener)
+            }
+        }
+    }
+    
     // Handle stream URL changes (for channel switching)
     DisposableEffect(streamUrl) {
-        Log.d("PlayerScreen", "DisposableEffect triggered for streamUrl: $streamUrl")
+        if (BuildConfig.DEBUG) Log.d("PlayerScreen", "DisposableEffect triggered for streamUrl: $streamUrl")
         val prepareJob = coroutineScope.launch(Dispatchers.IO) { // NOSONAR - UI component, hardcoded dispatcher acceptable
             try {
                 val mediaItem = MediaItem.fromUri(streamUrl)
                 withContext(Dispatchers.Main) { // NOSONAR - UI thread required for ExoPlayer operations
-                    Log.d("PlayerScreen", "Setting new media item: $streamUrl")
+                    if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Setting new media item: $streamUrl")
                     // Stop current playback
                     exoPlayer.stop()
                     // Clear old media items
                     exoPlayer.clearMediaItems()
-                    // Small delay to ensure cleanup is complete
-                    delay(50)
+                    // Wait for player to reach STATE_IDLE before setting new media item
+                    waitForPlayerIdle(exoPlayer)
                     // Set new media item
                     exoPlayer.setMediaItem(mediaItem)
                     // Prepare the new stream
@@ -525,7 +558,7 @@ private fun rememberPlayerSetup(
                     exoPlayer.seekTo(0)
                     // Ensure playback starts
                     exoPlayer.playWhenReady = true
-                    Log.d("PlayerScreen", "New media item prepared and playback started")
+                    if (BuildConfig.DEBUG) Log.d("PlayerScreen", "New media item prepared and playback started")
                 }
             } catch (e: Exception) {
                 Log.e("PlayerScreen", "Error preparing media item", e)
@@ -543,7 +576,7 @@ private fun rememberPlayerSetup(
     // Release ExoPlayer only when composable is disposed
     DisposableEffect(Unit) {
         onDispose {
-            Log.d("PlayerScreen", "Releasing ExoPlayer")
+            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Releasing ExoPlayer")
             exoPlayer.release()
         }
     }
@@ -684,7 +717,7 @@ private fun PlayerProgressRestoreEffect(
                 )
                 params.onRestored()
                 if (!restored) {
-                    Log.d("PlayerScreen", "No saved progress found for contentType: ${params.contentType}, streamId: ${params.streamId}, seriesId: ${params.seriesId}, episodeId: ${params.episodeId}")
+                    if (BuildConfig.DEBUG) Log.d("PlayerScreen", "No saved progress found for contentType: ${params.contentType}, streamId: ${params.streamId}, seriesId: ${params.seriesId}, episodeId: ${params.episodeId}")
                 }
             }
         }
@@ -798,7 +831,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     // Load category channels if this is a live TV stream
     LaunchedEffect(categoryId, contentType) {
         if (contentType == "live" && categoryId != null) {
-            Log.d("PlayerScreen", "Loading channels for category: $categoryId")
+            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Loading channels for category: $categoryId")
             viewModel.loadChannelsForCategory(categoryId)
         } else {
             viewModel.clearChannelNavigation()
@@ -808,18 +841,20 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     // Find current channel index when channels are loaded or streamId changes
     LaunchedEffect(streamId, contentType, categoryChannels) {
         if (contentType == "live" && streamId != null && categoryChannels.isNotEmpty()) {
-            Log.d("PlayerScreen", "Finding channel index for streamId: $streamId in ${categoryChannels.size} channels")
+            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Finding channel index for streamId: $streamId in ${categoryChannels.size} channels")
             // Log first few channel IDs for debugging
-            if (categoryChannels.isNotEmpty()) {
+            if (BuildConfig.DEBUG && categoryChannels.isNotEmpty()) {
                 val firstFewIds = categoryChannels.take(5).map { it.streamId }.joinToString(", ")
                 Log.d("PlayerScreen", "First few channel IDs: $firstFewIds")
             }
             viewModel.findCurrentChannelIndex(streamId)
             // Log result
-            val foundIndex = viewModel.currentChannelIndex.value
-            Log.d("PlayerScreen", "Channel index search result: $foundIndex (streamId: $streamId)")
+            if (BuildConfig.DEBUG) {
+                val foundIndex = viewModel.currentChannelIndex.value
+                Log.d("PlayerScreen", "Channel index search result: $foundIndex (streamId: $streamId)")
+            }
         } else {
-            if (contentType == "live") {
+            if (contentType == "live" && BuildConfig.DEBUG) {
                 Log.d("PlayerScreen", "Cannot find channel index - streamId=$streamId, channels=${categoryChannels.size}")
             }
         }
@@ -868,10 +903,10 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 creds.username,
                 creds.password
             )
-            Log.d("PlayerScreen", "Switching to channel: ${newStream.name} (streamId: ${newStream.streamId}) - oldUrl=$currentStreamUrl, newUrl=$newStreamUrl")
+            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Switching to channel: ${newStream.name} (streamId: ${newStream.streamId}) - oldUrl=$currentStreamUrl, newUrl=$newStreamUrl")
             currentStreamUrl = newStreamUrl
             currentTitle = newStream.name
-            Log.d("PlayerScreen", "Channel switched - currentStreamUrl updated to: $currentStreamUrl")
+            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Channel switched - currentStreamUrl updated to: $currentStreamUrl")
         } ?: run {
             Log.w("PlayerScreen", "Cannot switch channel: credentials not available")
         }
@@ -884,47 +919,47 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     // - categoryChannels is not empty
     // - currentChannelIndex is valid (>= 0)
     val handleChannelUp = {
-        Log.d("PlayerScreen", "handleChannelUp called - contentType=$contentType, categoryId=$categoryId, channels=${categoryChannels.size}, index=$currentChannelIndex")
+        if (BuildConfig.DEBUG) Log.d("PlayerScreen", "handleChannelUp called - contentType=$contentType, categoryId=$categoryId, channels=${categoryChannels.size}, index=$currentChannelIndex")
         if (contentType == "live" && 
             categoryId != null && 
             categoryChannels.isNotEmpty() && 
             currentChannelIndex >= 0) {
             val previousChannel = viewModel.getPreviousChannel()
             if (previousChannel != null) {
-                Log.d("PlayerScreen", "Switching to previous channel: ${previousChannel.name}")
+                if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Switching to previous channel: ${previousChannel.name}")
                 switchToChannel(previousChannel)
                 resetControlsTimer()
                 true
             } else {
                 // Already at first channel, no wrap-around
-                Log.d("PlayerScreen", "Already at first channel, no previous channel available")
+                if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Already at first channel, no previous channel available")
                 false
             }
         } else {
-            Log.d("PlayerScreen", "Channel navigation not allowed - conditions not met")
+            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Channel navigation not allowed - conditions not met")
             false
         }
     }
     
     val handleChannelDown = {
-        Log.d("PlayerScreen", "handleChannelDown called - contentType=$contentType, categoryId=$categoryId, channels=${categoryChannels.size}, index=$currentChannelIndex")
+        if (BuildConfig.DEBUG) Log.d("PlayerScreen", "handleChannelDown called - contentType=$contentType, categoryId=$categoryId, channels=${categoryChannels.size}, index=$currentChannelIndex")
         if (contentType == "live" && 
             categoryId != null && 
             categoryChannels.isNotEmpty() && 
             currentChannelIndex >= 0) {
             val nextChannel = viewModel.getNextChannel()
             if (nextChannel != null) {
-                Log.d("PlayerScreen", "Switching to next channel: ${nextChannel.name}")
+                if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Switching to next channel: ${nextChannel.name}")
                 switchToChannel(nextChannel)
                 resetControlsTimer()
                 true
             } else {
                 // Already at last channel, no wrap-around
-                Log.d("PlayerScreen", "Already at last channel, no next channel available")
+                if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Already at last channel, no next channel available")
                 false
             }
         } else {
-            Log.d("PlayerScreen", "Channel navigation not allowed - conditions not met")
+            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Channel navigation not allowed - conditions not met")
             false
         }
     }
@@ -979,8 +1014,10 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 bitrateEstimate: Long
             ) {
                 measuredBitrate = bitrateEstimate
-                Log.d("PlayerAnalytics", "Bitrate: ${bitrateEstimate / 1_000_000.0} Mbps " +
-                    "(${totalBytesLoaded / 1024}KB in ${totalLoadTimeMs}ms)")
+                if (BuildConfig.DEBUG) {
+                    Log.d("PlayerAnalytics", "Bitrate: ${bitrateEstimate / 1_000_000.0} Mbps " +
+                        "(${totalBytesLoaded / 1024}KB in ${totalLoadTimeMs}ms)")
+                }
             }
             
             override fun onVideoInputFormatChanged(
@@ -1116,27 +1153,27 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         if (contentType == "series" && seriesContextLoaded) {
             // Don't show button if watch credits mode is active
             if (watchCreditsMode) {
-                Log.d("PlayerScreen", "Button not shown: watchCreditsMode is active")
+                if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Button not shown: watchCreditsMode is active")
                 return@LaunchedEffect
             }
             
             val currentState = viewModel.nextEpisodeState.value
             val isButtonVisible = currentState is NextEpisodeState.Visible
             
-            Log.d("PlayerScreen", "Progress check: progress=$progress (${(progress * 100).toInt()}%), seriesContextLoaded=$seriesContextLoaded, isButtonVisible=$isButtonVisible")
+            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Progress check: progress=$progress (${(progress * 100).toInt()}%), seriesContextLoaded=$seriesContextLoaded, isButtonVisible=$isButtonVisible")
             
             if (progress >= PlayerConstants.NEXT_EPISODE_BUTTON_THRESHOLD && !isButtonVisible) {
                 // Show button only if not already visible (prevents timer restart)
                 // Only show if series context is loaded
-                Log.d("PlayerScreen", "Calling showNextEpisodeButton() - progress >= 98.5%")
+                if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Calling showNextEpisodeButton() - progress >= 98.5%")
                 viewModel.showNextEpisodeButton()
             } else if (progress < PlayerConstants.NEXT_EPISODE_BUTTON_THRESHOLD && isButtonVisible) {
                 // User rewound, hide button
-                Log.d("PlayerScreen", "Hiding button - progress < 98.5%")
+                if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Hiding button - progress < 98.5%")
                 viewModel.hideNextEpisodeButton()
             }
         } else {
-            if (contentType == "series") {
+            if (contentType == "series" && BuildConfig.DEBUG) {
                 Log.d("PlayerScreen", "Button not shown: contentType=series but seriesContextLoaded=$seriesContextLoaded")
             }
         }

@@ -10,6 +10,7 @@ import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.BuildConfig
 import com.flintr.tv.ui.common.PlayerConstants
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -303,7 +304,7 @@ class PlayerViewModel @Inject constructor(
         val currentState = _nextEpisodeState.value
         val nextEpisode = findNextEpisode()
         
-        android.util.Log.d("PlayerViewModel", "tryShowNextEpisodeButton: nextEpisode=${nextEpisode?.displayTitle ?: "null"}")
+        if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "tryShowNextEpisodeButton: nextEpisode=${nextEpisode?.displayTitle ?: "null"}")
         
         if (nextEpisode != null) {
             // If button is already visible, preserve current progress
@@ -314,14 +315,14 @@ class PlayerViewModel @Inject constructor(
             }
             
             _nextEpisodeState.value = NextEpisodeState.Visible(nextEpisode, initialProgress)
-            android.util.Log.d("PlayerViewModel", "Button state set to Visible")
+            if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "Button state set to Visible")
             
             // Only start countdown if it's not already running
             if (autoPlayJob == null || !autoPlayJob!!.isActive) {
                 startAutoPlayCountdown()
             }
         } else {
-            android.util.Log.d("PlayerViewModel", "Button not shown: no next episode found")
+            if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "Button not shown: no next episode found")
         }
     }
     
@@ -434,7 +435,7 @@ class PlayerViewModel @Inject constructor(
             repository.getLiveStreams(credentials.username, credentials.password, categoryId)
                 .onSuccess { channels ->
                     _currentCategoryChannels.value = channels
-                    android.util.Log.d("PlayerViewModel", "Loaded ${channels.size} channels for category $categoryId")
+                    if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "Loaded ${channels.size} channels for category $categoryId")
                     // Note: findCurrentChannelIndex should be called from PlayerScreen after channels are loaded
                 }
                 .onFailure { error ->
@@ -453,7 +454,7 @@ class PlayerViewModel @Inject constructor(
         val index = channels.indexOfFirst { it.streamId == streamId }
         if (index >= 0) {
             _currentChannelIndex.value = index
-            android.util.Log.d("PlayerViewModel", "Found channel index $index for streamId $streamId")
+            if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "Found channel index $index for streamId $streamId")
         } else {
             _currentChannelIndex.value = -1
             android.util.Log.w("PlayerViewModel", "Channel with streamId $streamId not found in category channels")
@@ -468,22 +469,22 @@ class PlayerViewModel @Inject constructor(
         val channels = _currentCategoryChannels.value
         val currentIndex = _currentChannelIndex.value
         
-        android.util.Log.d("PlayerViewModel", "getNextChannel: channels=${channels.size}, currentIndex=$currentIndex")
+        if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "getNextChannel: channels=${channels.size}, currentIndex=$currentIndex")
         
         if (channels.isEmpty() || currentIndex < 0) {
-            android.util.Log.d("PlayerViewModel", "getNextChannel: No channels or invalid index")
+            if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "getNextChannel: No channels or invalid index")
             return null
         }
         
         if (currentIndex >= channels.size - 1) {
             // Already at last channel, no wrap-around
-            android.util.Log.d("PlayerViewModel", "getNextChannel: Already at last channel (index $currentIndex of ${channels.size - 1})")
+            if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "getNextChannel: Already at last channel (index $currentIndex of ${channels.size - 1})")
             return null
         }
         
         val nextChannel = channels[currentIndex + 1]
         _currentChannelIndex.value = currentIndex + 1
-        android.util.Log.d("PlayerViewModel", "getNextChannel: Next channel: ${nextChannel.name} (streamId: ${nextChannel.streamId}, index ${currentIndex + 1})")
+        if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "getNextChannel: Next channel: ${nextChannel.name} (streamId: ${nextChannel.streamId}, index ${currentIndex + 1})")
         return nextChannel
     }
     
@@ -495,22 +496,22 @@ class PlayerViewModel @Inject constructor(
         val channels = _currentCategoryChannels.value
         val currentIndex = _currentChannelIndex.value
         
-        android.util.Log.d("PlayerViewModel", "getPreviousChannel: channels=${channels.size}, currentIndex=$currentIndex")
+        if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "getPreviousChannel: channels=${channels.size}, currentIndex=$currentIndex")
         
         if (channels.isEmpty() || currentIndex < 0) {
-            android.util.Log.d("PlayerViewModel", "getPreviousChannel: No channels or invalid index")
+            if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "getPreviousChannel: No channels or invalid index")
             return null
         }
         
         if (currentIndex <= 0) {
             // Already at first channel, no wrap-around
-            android.util.Log.d("PlayerViewModel", "getPreviousChannel: Already at first channel (index $currentIndex)")
+            if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "getPreviousChannel: Already at first channel (index $currentIndex)")
             return null
         }
         
         val previousChannel = channels[currentIndex - 1]
         _currentChannelIndex.value = currentIndex - 1
-        android.util.Log.d("PlayerViewModel", "getPreviousChannel: Previous channel: ${previousChannel.name} (streamId: ${previousChannel.streamId}, index ${currentIndex - 1})")
+        if (BuildConfig.DEBUG) android.util.Log.d("PlayerViewModel", "getPreviousChannel: Previous channel: ${previousChannel.name} (streamId: ${previousChannel.streamId}, index ${currentIndex - 1})")
         return previousChannel
     }
     

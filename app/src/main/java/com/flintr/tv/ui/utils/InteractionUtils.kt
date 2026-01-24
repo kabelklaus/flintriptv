@@ -727,7 +727,7 @@ private suspend fun AwaitPointerEventScope.processVerticalSwipeDrag(
     while (true) {
         val currentX = lastDrag.position.x
         val currentY = lastDrag.position.y
-        val currentTime = System.currentTimeMillis()
+        val currentTime = lastDrag.uptimeMillis
         
         if (isVerticalSwipe(startX, startY, currentX, currentY, density) &&
             checkSwipeVelocityAndDirection(startY, currentY, startTime, currentTime, onSwipeUp, onSwipeDown)) {
@@ -767,7 +767,7 @@ fun Modifier.createVerticalSwipeGestureModifier(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val swipeStartX = down.position.x
                     val swipeStartY = down.position.y
-                    val swipeStartTime = System.currentTimeMillis()
+                    val swipeStartTime = down.uptimeMillis
                     
                     val drag = awaitDragOrCancellation(down.id)
                     if (drag != null) {
