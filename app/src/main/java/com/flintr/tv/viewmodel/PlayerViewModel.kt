@@ -6,6 +6,7 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.Episode
+import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.repository.XtreamRepository
@@ -62,6 +63,12 @@ class PlayerViewModel @Inject constructor(
     
     private val _watchCreditsMode = MutableStateFlow<Boolean>(false)
     val watchCreditsMode: StateFlow<Boolean> = _watchCreditsMode.asStateFlow()
+    
+    private val _currentCategoryChannels = MutableStateFlow<List<LiveStream>>(emptyList())
+    val currentCategoryChannels: StateFlow<List<LiveStream>> = _currentCategoryChannels.asStateFlow()
+    
+    private val _currentChannelIndex = MutableStateFlow<Int>(-1)
+    val currentChannelIndex: StateFlow<Int> = _currentChannelIndex.asStateFlow()
     
     private var currentSeries: Series? = null
     private var currentSeason: Season? = null
@@ -410,6 +417,109 @@ class PlayerViewModel @Inject constructor(
         _hasNextEpisodeAvailable.value = false
         _watchCreditsMode.value = false
         hideNextEpisodeButton()
+    }
+    
+    /**
+     * Loads all channels for a given category
+     */
+    fun loadChannelsForCategory(categoryId: String) {
+        if (categoryId.isEmpty()) {
+            _currentCategoryChannels.value = emptyList()
+            _currentChannelIndex.value = -1
+            return
+        }
+        
+        viewModelScope.launch {
+            val credentials = credentialsRepository.getCredentials() ?: return@launch
+            repository.getLiveStreams(credentials.username, credentials.password, categoryId)
+                .onSuccess { channels ->
+                    _currentCategoryChannels.value = channels
+                    android.util.Log.d("PlayerViewModel", "Loaded ${channels.size} channels for category $categoryId")
+                    // Note: findCurrentChannelIndex should be called from PlayerScreen after channels are loaded
+                }
+                .onFailure { error ->
+                    android.util.Log.e("PlayerViewModel", "Failed to load channels for category $categoryId", error)
+                    _currentCategoryChannels.value = emptyList()
+                    _currentChannelIndex.value = -1
+                }
+        }
+    }
+    
+    /**
+     * Finds the current channel index in the category channels list
+     */
+    fun findCurrentChannelIndex(streamId: Int) {
+        val channels = _currentCategoryChannels.value
+        val index = channels.indexOfFirst { it.streamId == streamId }
+        if (index >= 0) {
+            _currentChannelIndex.value = index
+            android.util.Log.d("PlayerViewModel", "Found channel index $index for streamId $streamId")
+        } else {
+            _currentChannelIndex.value = -1
+            android.util.Log.w("PlayerViewModel", "Channel with streamId $streamId not found in category channels")
+        }
+    }
+    
+    /**
+     * Gets the next channel in the category (no wrap-around)
+     * Returns null if already at the last channel
+     */
+    fun getNextChannel(): LiveStream? {
+        val channels = _currentCategoryChannels.value
+        val currentIndex = _currentChannelIndex.value
+        
+        android.util.Log.d("PlayerViewModel", "getNextChannel: channels=${channels.size}, currentIndex=$currentIndex")
+        
+        if (channels.isEmpty() || currentIndex < 0) {
+            android.util.Log.d("PlayerViewModel", "getNextChannel: No channels or invalid index")
+            return null
+        }
+        
+        if (currentIndex >= channels.size - 1) {
+            // Already at last channel, no wrap-around
+            android.util.Log.d("PlayerViewModel", "getNextChannel: Already at last channel (index $currentIndex of ${channels.size - 1})")
+            return null
+        }
+        
+        val nextChannel = channels[currentIndex + 1]
+        _currentChannelIndex.value = currentIndex + 1
+        android.util.Log.d("PlayerViewModel", "getNextChannel: Next channel: ${nextChannel.name} (streamId: ${nextChannel.streamId}, index ${currentIndex + 1})")
+        return nextChannel
+    }
+    
+    /**
+     * Gets the previous channel in the category (no wrap-around)
+     * Returns null if already at the first channel
+     */
+    fun getPreviousChannel(): LiveStream? {
+        val channels = _currentCategoryChannels.value
+        val currentIndex = _currentChannelIndex.value
+        
+        android.util.Log.d("PlayerViewModel", "getPreviousChannel: channels=${channels.size}, currentIndex=$currentIndex")
+        
+        if (channels.isEmpty() || currentIndex < 0) {
+            android.util.Log.d("PlayerViewModel", "getPreviousChannel: No channels or invalid index")
+            return null
+        }
+        
+        if (currentIndex <= 0) {
+            // Already at first channel, no wrap-around
+            android.util.Log.d("PlayerViewModel", "getPreviousChannel: Already at first channel (index $currentIndex)")
+            return null
+        }
+        
+        val previousChannel = channels[currentIndex - 1]
+        _currentChannelIndex.value = currentIndex - 1
+        android.util.Log.d("PlayerViewModel", "getPreviousChannel: Previous channel: ${previousChannel.name} (streamId: ${previousChannel.streamId}, index ${currentIndex - 1})")
+        return previousChannel
+    }
+    
+    /**
+     * Clears channel navigation state when leaving player
+     */
+    fun clearChannelNavigation() {
+        _currentCategoryChannels.value = emptyList()
+        _currentChannelIndex.value = -1
     }
 }
 

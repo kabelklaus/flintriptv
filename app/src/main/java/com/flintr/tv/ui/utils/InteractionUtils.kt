@@ -5,6 +5,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -12,6 +13,10 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitDragOrCancellation
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.focus.FocusRequester
 import android.util.Log
 import kotlinx.coroutines.Job
@@ -617,6 +622,166 @@ private fun handleTouchUp(
                 true
             } else {
                 false
+            }
+        }
+    }
+}
+
+// Vertical swipe gesture constants
+private const val MIN_VERTICAL_SWIPE_DISTANCE_DP = 50f
+private const val MAX_HORIZONTAL_DRIFT_DP = 20f
+private const val MIN_VERTICAL_SWIPE_VELOCITY_PX_PER_S = 500f
+
+/**
+ * Converts dp to pixels (approximate, using density)
+ */
+private fun Float.dpToPx(density: Float): Float {
+    return this * density
+}
+
+/**
+ * Calculates vertical swipe velocity in pixels per second
+ * @return Velocity in px/s, or null if calculation is invalid
+ */
+private fun calculateVerticalSwipeVelocity(
+    startY: Float,
+    startTime: Long,
+    currentY: Float,
+    currentTime: Long
+): Float? {
+    val deltaY = kotlin.math.abs(currentY - startY)
+    val deltaTime = currentTime - startTime
+    
+    return if (deltaY > 0 && deltaTime > 0) {
+        deltaY / deltaTime * 1000 // px/s
+    } else {
+        null
+    }
+}
+
+/**
+ * Checks if swipe is primarily vertical (min vertical distance, max horizontal drift)
+ */
+private fun isVerticalSwipe(
+    startX: Float,
+    startY: Float,
+    currentX: Float,
+    currentY: Float,
+    density: Float
+): Boolean {
+    val verticalDistance = kotlin.math.abs(currentY - startY)
+    val horizontalDistance = kotlin.math.abs(currentX - startX)
+    
+    val minVerticalPx = MIN_VERTICAL_SWIPE_DISTANCE_DP.dpToPx(density)
+    val maxHorizontalPx = MAX_HORIZONTAL_DRIFT_DP.dpToPx(density)
+    
+    return verticalDistance >= minVerticalPx && horizontalDistance <= maxHorizontalPx
+}
+
+/**
+ * Checks if swipe velocity threshold is reached and determines direction
+ * @return true if swipe threshold is met and callback should be called, false otherwise
+ */
+private fun checkSwipeVelocityAndDirection(
+    startY: Float,
+    currentY: Float,
+    startTime: Long,
+    currentTime: Long,
+    onSwipeUp: (() -> Unit)?,
+    onSwipeDown: (() -> Unit)?
+): Boolean {
+    val velocity = calculateVerticalSwipeVelocity(startY, startTime, currentY, currentTime)
+    if (velocity == null || velocity <= MIN_VERTICAL_SWIPE_VELOCITY_PX_PER_S) {
+        return false
+    }
+    
+    val isSwipeUp = currentY < startY
+    return when {
+        isSwipeUp && onSwipeUp != null -> {
+            onSwipeUp()
+            true
+        }
+        !isSwipeUp && onSwipeDown != null -> {
+            onSwipeDown()
+            true
+        }
+        else -> false
+    }
+}
+
+/**
+ * Processes vertical swipe drag events and detects if swipe velocity threshold is reached
+ * @return true if swipe was detected and callback was called, false otherwise
+ */
+private suspend fun AwaitPointerEventScope.processVerticalSwipeDrag(
+    initialDrag: PointerInputChange,
+    startX: Float,
+    startY: Float,
+    startTime: Long,
+    density: Float,
+    onSwipeUp: (() -> Unit)?,
+    onSwipeDown: (() -> Unit)?
+): Boolean {
+    var lastDrag: PointerInputChange = initialDrag
+    
+    while (true) {
+        val currentX = lastDrag.position.x
+        val currentY = lastDrag.position.y
+        val currentTime = System.currentTimeMillis()
+        
+        if (isVerticalSwipe(startX, startY, currentX, currentY, density) &&
+            checkSwipeVelocityAndDirection(startY, currentY, startTime, currentTime, onSwipeUp, onSwipeDown)) {
+            return true
+        }
+        
+        val dragEvent = awaitDragOrCancellation(lastDrag.id)
+        if (dragEvent == null) {
+            return false
+        }
+        lastDrag = dragEvent
+    }
+}
+
+/**
+ * Creates a modifier for vertical swipe gesture detection
+ * Detects vertical swipes (min 50dp vertical, max 20dp horizontal drift)
+ * 
+ * @param onSwipeUp Called when user swipes up (min velocity threshold must be met)
+ * @param onSwipeDown Called when user swipes down (min velocity threshold must be met)
+ */
+@Suppress("ReturnFromAwaitPointerEventScope")
+fun Modifier.createVerticalSwipeGestureModifier(
+    onSwipeUp: (() -> Unit)? = null,
+    onSwipeDown: (() -> Unit)? = null
+): Modifier {
+    if (onSwipeUp == null && onSwipeDown == null) {
+        return this
+    }
+    
+    return this.composed {
+        val density = androidx.compose.ui.platform.LocalDensity.current.density
+        
+        this.pointerInput(onSwipeUp, onSwipeDown, density) {
+            awaitPointerEventScope {
+                while (true) {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val swipeStartX = down.position.x
+                    val swipeStartY = down.position.y
+                    val swipeStartTime = System.currentTimeMillis()
+                    
+                    val drag = awaitDragOrCancellation(down.id)
+                    if (drag != null) {
+                        processVerticalSwipeDrag(
+                            drag,
+                            swipeStartX,
+                            swipeStartY,
+                            swipeStartTime,
+                            density,
+                            onSwipeUp,
+                            onSwipeDown
+                        )
+                    }
+                }
             }
         }
     }
