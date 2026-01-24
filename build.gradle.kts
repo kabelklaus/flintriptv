@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.sonarqube)
     alias(libs.plugins.googleGmsServices) apply false
     alias(libs.plugins.firebase.perf) apply false
+    alias(libs.plugins.firebase.crashlytics) apply false
 }
 sonar {
     properties {
