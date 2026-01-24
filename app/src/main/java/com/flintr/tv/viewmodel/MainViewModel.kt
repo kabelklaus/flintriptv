@@ -346,25 +346,25 @@ class MainViewModel @Inject constructor(
         val hiddenSeriesCategories = categoryVisibilityService.getHiddenCategories(CategoryType.SERIES)
         
         val liveTVResults = ContentFilterUtils.filterLiveStreamsByHiddenCategories(
-            cachedData.channels
-                .filter { it.name.lowercase().contains(queryLower) }
-                .take(MAX_RESULTS_PER_CATEGORY),
+            cachedData.channels,
             hiddenLiveCategories
         )
+            .filter { it.name.lowercase().contains(queryLower) }
+            .take(MAX_RESULTS_PER_CATEGORY)
         
         val vodResults = ContentFilterUtils.filterVodStreamsByHiddenCategories(
-            cachedData.movies
-                .filter { it.name.lowercase().contains(queryLower) }
-                .take(MAX_RESULTS_PER_CATEGORY),
+            cachedData.movies,
             hiddenVodCategories
         )
+            .filter { it.name.lowercase().contains(queryLower) }
+            .take(MAX_RESULTS_PER_CATEGORY)
         
         val seriesResults = ContentFilterUtils.filterSeriesByHiddenCategories(
-            cachedData.series
-                .filter { it.name.lowercase().contains(queryLower) }
-                .take(MAX_RESULTS_PER_CATEGORY),
+            cachedData.series,
             hiddenSeriesCategories
         )
+            .filter { it.name.lowercase().contains(queryLower) }
+            .take(MAX_RESULTS_PER_CATEGORY)
         
         val results = SearchResults(
             liveTV = liveTVResults,

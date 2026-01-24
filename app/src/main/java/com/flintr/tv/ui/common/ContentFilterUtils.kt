@@ -62,6 +62,29 @@ object ContentFilterUtils {
     }
 
     /**
+     * Generic function to filter items by excluding those from hidden categories.
+     * Items without categoryId are not filtered (remain visible).
+     * 
+     * @param items The list of items to filter
+     * @param hiddenCategoryIds Set of category IDs that should be hidden
+     * @param categoryIdSelector Function to extract the categoryId from an item
+     * @return Filtered list excluding items from hidden categories
+     */
+    private fun <T> filterByHiddenCategories(
+        items: List<T>,
+        hiddenCategoryIds: Set<String>,
+        categoryIdSelector: (T) -> String?
+    ): List<T> {
+        if (hiddenCategoryIds.isEmpty()) {
+            return items
+        }
+        return items.filter { item ->
+            val categoryId = categoryIdSelector(item)
+            categoryId == null || !hiddenCategoryIds.contains(categoryId)
+        }
+    }
+
+    /**
      * Filters LiveStream items by excluding those from hidden categories.
      * Streams without categoryId are not filtered (remain visible).
      * 
@@ -73,12 +96,7 @@ object ContentFilterUtils {
         streams: List<LiveStream>,
         hiddenCategoryIds: Set<String>
     ): List<LiveStream> {
-        if (hiddenCategoryIds.isEmpty()) {
-            return streams
-        }
-        return streams.filter { stream ->
-            stream.categoryId == null || !hiddenCategoryIds.contains(stream.categoryId)
-        }
+        return filterByHiddenCategories(streams, hiddenCategoryIds) { it.categoryId }
     }
 
     /**
@@ -93,12 +111,7 @@ object ContentFilterUtils {
         movies: List<VodStream>,
         hiddenCategoryIds: Set<String>
     ): List<VodStream> {
-        if (hiddenCategoryIds.isEmpty()) {
-            return movies
-        }
-        return movies.filter { movie ->
-            movie.categoryId == null || !hiddenCategoryIds.contains(movie.categoryId)
-        }
+        return filterByHiddenCategories(movies, hiddenCategoryIds) { it.categoryId }
     }
 
     /**
@@ -113,11 +126,6 @@ object ContentFilterUtils {
         series: List<Series>,
         hiddenCategoryIds: Set<String>
     ): List<Series> {
-        if (hiddenCategoryIds.isEmpty()) {
-            return series
-        }
-        return series.filter { s ->
-            s.categoryId == null || !hiddenCategoryIds.contains(s.categoryId)
-        }
+        return filterByHiddenCategories(series, hiddenCategoryIds) { it.categoryId }
     }
 }
