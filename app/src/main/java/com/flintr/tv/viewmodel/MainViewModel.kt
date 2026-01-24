@@ -4,11 +4,13 @@ import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.model.*
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.ui.common.ContentFilterUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,7 +25,8 @@ class MainViewModel @Inject constructor(
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
     private val userRepository: UserRepository,
-    private val cacheService: DataCacheService
+    private val cacheService: DataCacheService,
+    private val categoryVisibilityService: CategoryVisibilityService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -337,17 +340,31 @@ class MainViewModel @Inject constructor(
         // Perform search (case-insensitive substring match)
         val queryLower = trimmedQuery.lowercase()
         
-        val liveTVResults = cachedData.channels
-            .filter { it.name.lowercase().contains(queryLower) }
-            .take(MAX_RESULTS_PER_CATEGORY)
+        // Get hidden categories for filtering
+        val hiddenLiveCategories = categoryVisibilityService.getHiddenCategories(CategoryType.LIVE_TV)
+        val hiddenVodCategories = categoryVisibilityService.getHiddenCategories(CategoryType.VOD)
+        val hiddenSeriesCategories = categoryVisibilityService.getHiddenCategories(CategoryType.SERIES)
         
-        val vodResults = cachedData.movies
-            .filter { it.name.lowercase().contains(queryLower) }
-            .take(MAX_RESULTS_PER_CATEGORY)
+        val liveTVResults = ContentFilterUtils.filterLiveStreamsByHiddenCategories(
+            cachedData.channels
+                .filter { it.name.lowercase().contains(queryLower) }
+                .take(MAX_RESULTS_PER_CATEGORY),
+            hiddenLiveCategories
+        )
         
-        val seriesResults = cachedData.series
-            .filter { it.name.lowercase().contains(queryLower) }
-            .take(MAX_RESULTS_PER_CATEGORY)
+        val vodResults = ContentFilterUtils.filterVodStreamsByHiddenCategories(
+            cachedData.movies
+                .filter { it.name.lowercase().contains(queryLower) }
+                .take(MAX_RESULTS_PER_CATEGORY),
+            hiddenVodCategories
+        )
+        
+        val seriesResults = ContentFilterUtils.filterSeriesByHiddenCategories(
+            cachedData.series
+                .filter { it.name.lowercase().contains(queryLower) }
+                .take(MAX_RESULTS_PER_CATEGORY),
+            hiddenSeriesCategories
+        )
         
         val results = SearchResults(
             liveTV = liveTVResults,
