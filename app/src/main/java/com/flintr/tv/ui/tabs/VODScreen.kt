@@ -12,9 +12,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
+import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.sidebars.ContentGridLayout
@@ -34,6 +36,7 @@ private const val TAG = "VODContent"
  */
 private suspend fun loadNewCategoryStreams(
     cacheService: DataCacheService,
+    categoryVisibilityService: CategoryVisibilityService,
     watchProgressService: WatchProgressService,
     ioDispatcher: CoroutineDispatcher,
     onLoadingChanged: (Boolean) -> Unit,
@@ -46,7 +49,10 @@ private suspend fun loadNewCategoryStreams(
             val cachedData = cacheService.loadCachedDataAsync()
             if (cachedData != null) {
                 val recentMovies = ContentFilterUtils.filterRecentMovies(cachedData.movies)
-                onStreamsLoaded(recentMovies)
+                // Filter out movies from hidden categories
+                val hiddenCategoryIds = categoryVisibilityService.getHiddenCategories(CategoryType.VOD)
+                val filteredMovies = ContentFilterUtils.filterVodStreamsByHiddenCategories(recentMovies, hiddenCategoryIds)
+                onStreamsLoaded(filteredMovies)
                 // Load watched IDs for new category (all movies)
                 onWatchedIdsLoaded(watchProgressService.getWatchedVodIds(null))
             }
@@ -75,6 +81,7 @@ data class VODContentParams(
     val focusRequester: FocusRequester,
     val favoritesRepository: FavoritesRepository,
     val cacheService: DataCacheService,
+    val categoryVisibilityService: CategoryVisibilityService,
     val watchProgressService: WatchProgressService,
     val ioDispatcher: CoroutineDispatcher,
     val onNavigateLeft: () -> Unit,
@@ -114,6 +121,7 @@ fun VODContent(params: VODContentParams) {
             isNewCategory -> {
                 loadNewCategoryStreams(
                     cacheService = params.cacheService,
+                    categoryVisibilityService = params.categoryVisibilityService,
                     watchProgressService = params.watchProgressService,
                     ioDispatcher = params.ioDispatcher,
                     onLoadingChanged = { isLoadingNewCategory = it },

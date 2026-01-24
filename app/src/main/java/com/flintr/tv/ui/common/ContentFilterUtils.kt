@@ -60,4 +60,72 @@ object ContentFilterUtils {
     fun filterRecentSeries(series: List<Series>): List<Series> {
         return filterRecentContent(series) { it.lastModified }
     }
+
+    /**
+     * Generic function to filter items by excluding those from hidden categories.
+     * Items without categoryId are not filtered (remain visible).
+     * 
+     * @param items The list of items to filter
+     * @param hiddenCategoryIds Set of category IDs that should be hidden
+     * @param categoryIdSelector Function to extract the categoryId from an item
+     * @return Filtered list excluding items from hidden categories
+     */
+    private fun <T> filterByHiddenCategories(
+        items: List<T>,
+        hiddenCategoryIds: Set<String>,
+        categoryIdSelector: (T) -> String?
+    ): List<T> {
+        if (hiddenCategoryIds.isEmpty()) {
+            return items
+        }
+        return items.filter { item ->
+            val categoryId = categoryIdSelector(item)
+            categoryId == null || !hiddenCategoryIds.contains(categoryId)
+        }
+    }
+
+    /**
+     * Filters LiveStream items by excluding those from hidden categories.
+     * Streams without categoryId are not filtered (remain visible).
+     * 
+     * @param streams The list of streams to filter
+     * @param hiddenCategoryIds Set of category IDs that should be hidden
+     * @return Filtered list excluding streams from hidden categories
+     */
+    fun filterLiveStreamsByHiddenCategories(
+        streams: List<LiveStream>,
+        hiddenCategoryIds: Set<String>
+    ): List<LiveStream> {
+        return filterByHiddenCategories(streams, hiddenCategoryIds) { it.categoryId }
+    }
+
+    /**
+     * Filters VodStream items by excluding those from hidden categories.
+     * Streams without categoryId are not filtered (remain visible).
+     * 
+     * @param movies The list of movies to filter
+     * @param hiddenCategoryIds Set of category IDs that should be hidden
+     * @return Filtered list excluding movies from hidden categories
+     */
+    fun filterVodStreamsByHiddenCategories(
+        movies: List<VodStream>,
+        hiddenCategoryIds: Set<String>
+    ): List<VodStream> {
+        return filterByHiddenCategories(movies, hiddenCategoryIds) { it.categoryId }
+    }
+
+    /**
+     * Filters Series items by excluding those from hidden categories.
+     * Series without categoryId are not filtered (remain visible).
+     * 
+     * @param series The list of series to filter
+     * @param hiddenCategoryIds Set of category IDs that should be hidden
+     * @return Filtered list excluding series from hidden categories
+     */
+    fun filterSeriesByHiddenCategories(
+        series: List<Series>,
+        hiddenCategoryIds: Set<String>
+    ): List<Series> {
+        return filterByHiddenCategories(series, hiddenCategoryIds) { it.categoryId }
+    }
 }

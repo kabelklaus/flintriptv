@@ -13,8 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.ui.components.VODCard
@@ -77,6 +79,7 @@ private fun validateCacheData(
  */
 private suspend fun loadNewCategorySeries(
     cacheService: DataCacheService,
+    categoryVisibilityService: CategoryVisibilityService,
     ioDispatcher: CoroutineDispatcher,
     onLoadingChanged: (Boolean) -> Unit,
     onSeriesLoaded: (List<Series>) -> Unit
@@ -101,8 +104,12 @@ private suspend fun loadNewCategorySeries(
                 val recentSeries = ContentFilterUtils.filterRecentSeries(cachedData.series)
                 validateCacheData(seriesWithLastModified, cachedData.series)
                 
-                android.util.Log.d(TAG, "Filtered new category series: ${recentSeries.size}")
-                onSeriesLoaded(recentSeries)
+                // Filter out series from hidden categories
+                val hiddenCategoryIds = categoryVisibilityService.getHiddenCategories(CategoryType.SERIES)
+                val filteredSeries = ContentFilterUtils.filterSeriesByHiddenCategories(recentSeries, hiddenCategoryIds)
+                
+                android.util.Log.d(TAG, "Filtered new category series: ${filteredSeries.size}")
+                onSeriesLoaded(filteredSeries)
             } else {
                 android.util.Log.w(TAG, "Cached data is null")
             }
@@ -124,6 +131,7 @@ data class SeriesContentParams(
     val focusRequester: FocusRequester,
     val favoritesRepository: FavoritesRepository,
     val cacheService: DataCacheService,
+    val categoryVisibilityService: CategoryVisibilityService,
     val ioDispatcher: CoroutineDispatcher,
     val onNavigateLeft: () -> Unit,
     val onSeriesClick: (Series) -> Unit,
@@ -161,6 +169,7 @@ fun SeriesContent(
             isNewCategory -> {
                 loadNewCategorySeries(
                     cacheService = params.cacheService,
+                    categoryVisibilityService = params.categoryVisibilityService,
                     ioDispatcher = params.ioDispatcher,
                     onLoadingChanged = { isLoadingNewCategory = it },
                     onSeriesLoaded = { newCategorySeries = it }

@@ -12,8 +12,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.ui.components.CardConfig
@@ -34,6 +36,7 @@ private const val TAG = "LiveTVContent"
  */
 private suspend fun loadNewCategoryStreams(
     cacheService: DataCacheService,
+    categoryVisibilityService: CategoryVisibilityService,
     ioDispatcher: CoroutineDispatcher,
     onLoadingChanged: (Boolean) -> Unit,
     onStreamsLoaded: (List<LiveStream>) -> Unit
@@ -44,7 +47,10 @@ private suspend fun loadNewCategoryStreams(
             val cachedData = cacheService.loadCachedDataAsync()
             if (cachedData != null) {
                 val recentStreams = ContentFilterUtils.filterRecentStreams(cachedData.channels)
-                onStreamsLoaded(recentStreams)
+                // Filter out streams from hidden categories
+                val hiddenCategoryIds = categoryVisibilityService.getHiddenCategories(CategoryType.LIVE_TV)
+                val filteredStreams = ContentFilterUtils.filterLiveStreamsByHiddenCategories(recentStreams, hiddenCategoryIds)
+                onStreamsLoaded(filteredStreams)
             }
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Error loading new category streams", e)
@@ -60,6 +66,7 @@ data class LiveTVContentParams(
     val focusRequester: FocusRequester,
     val favoritesRepository: FavoritesRepository,
     val cacheService: DataCacheService,
+    val categoryVisibilityService: CategoryVisibilityService,
     val ioDispatcher: CoroutineDispatcher,
     val onNavigateLeft: () -> Unit,
     val onChannelClick: (LiveStream) -> Unit,
@@ -96,6 +103,7 @@ fun LiveTVContent(params: LiveTVContentParams) {
             isNewCategory -> {
                 loadNewCategoryStreams(
                     cacheService = params.cacheService,
+                    categoryVisibilityService = params.categoryVisibilityService,
                     ioDispatcher = params.ioDispatcher,
                     onLoadingChanged = { isLoadingNewCategory = it },
                     onStreamsLoaded = { newCategoryStreams = it }
