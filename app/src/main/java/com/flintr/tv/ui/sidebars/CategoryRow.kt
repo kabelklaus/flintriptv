@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -42,7 +43,8 @@ data class CategoryRowParams(
     val focusRequester: FocusRequester,
     val onNavigateLeft: () -> Unit,
     val onNavigateRight: () -> Unit,
-    val onCategoryHidden: (Category) -> Unit
+    val onCategoryHidden: (Category) -> Unit,
+    val listState: LazyListState? = null
 )
 
 data class CategoryChipParams(
@@ -242,6 +244,7 @@ fun CategoryRow(
     val isDark = colorScheme.isDark
 
     LazyColumn(
+        state = params.listState ?: androidx.compose.foundation.lazy.rememberLazyListState(),
         modifier = modifier
             .fillMaxHeight()
             .width(Dimensions.categorySidebarWidth)
