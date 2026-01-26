@@ -565,7 +565,7 @@ class WatchProgressService @Inject constructor(
                 if (streamId != null) {
                     ParsedProgressKey.Movie(streamId)
                 } else {
-                    Log.w(TAG, "cleanupCompletedProgress() - failed to parse streamId from key: $key")
+                    Log.w(TAG, "Failed to parse streamId from key: $key")
                     ParsedProgressKey.Unknown
                 }
             }
@@ -577,16 +577,16 @@ class WatchProgressService @Inject constructor(
                     if (seriesId != null && episodeId != null) {
                         ParsedProgressKey.Series(seriesId, episodeId)
                     } else {
-                        Log.w(TAG, "cleanupCompletedProgress() - failed to parse seriesId/episodeId from key: $key")
+                        Log.w(TAG, "Failed to parse seriesId/episodeId from key: $key")
                         ParsedProgressKey.Unknown
                     }
                 } else {
-                    Log.w(TAG, "cleanupCompletedProgress() - invalid series key format: $key")
+                    Log.w(TAG, "Invalid series key format: $key")
                     ParsedProgressKey.Unknown
                 }
             }
             else -> {
-                Log.w(TAG, "cleanupCompletedProgress() - unknown key prefix: $key")
+                Log.w(TAG, "Unknown key prefix: $key")
                 ParsedProgressKey.Unknown
             }
         }
@@ -633,9 +633,6 @@ class WatchProgressService @Inject constructor(
         
         progressMap.forEach { (key, progress) ->
             if (!isCompletedProgress(progress)) {
-                if (progress.duration <= 0) {
-                    Log.d(TAG, "cleanupCompletedProgress() - skipping key=$key (invalid duration: ${progress.duration})")
-                }
                 return@forEach
             }
             
