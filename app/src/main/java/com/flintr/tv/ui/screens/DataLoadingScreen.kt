@@ -226,6 +226,66 @@ private fun GlobalRetryButton(
 }
 
 @Composable
+private fun DataLoadingCardContent(
+    uiState: com.flintr.tv.viewmodel.DataLoadingUiState,
+    isLandscape: Boolean,
+    colors: com.flintr.tv.ui.theme.AppColors,
+    onRetryStep: (Int) -> Unit,
+    onRetryAll: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = colors.cardBorder,
+                shape = RoundedCornerShape(Dimensions.radiusXL)
+            )
+            .padding(
+                if (isLandscape) Dimensions.spacingLG else Dimensions.spacingXL
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(
+            if (isLandscape) Dimensions.spacingMD else Dimensions.spacingXL
+        )
+    ) {
+        LoadingScreenHeader(isLandscape, colors)
+
+        Spacer(modifier = Modifier.height(Dimensions.spacingXS / 2))
+
+        val completedSteps = calculateCompletedSteps(uiState.steps)
+        val totalSteps = uiState.steps.size
+        LoadingProgressSection(
+            completedSteps = completedSteps,
+            totalSteps = totalSteps,
+            overallProgress = uiState.overallProgress,
+            isLandscape = isLandscape,
+            colors = colors
+        )
+
+        Spacer(modifier = Modifier.height(
+            if (isLandscape) Dimensions.spacingLG / 2 else Dimensions.spacingXL / 2
+        ))
+
+        LoadingStepsRow(
+            steps = uiState.steps,
+            isLandscape = isLandscape,
+            colors = colors,
+            onRetryStep = onRetryStep
+        )
+
+        val errorCount = uiState.steps.count { it.status == LoadingStatus.Error }
+        if (shouldShowGlobalRetry(errorCount)) {
+            GlobalRetryButton(
+                isLandscape = isLandscape,
+                colors = colors,
+                onRetry = onRetryAll
+            )
+        }
+    }
+}
+
+@Composable
 fun DataLoadingScreen(
     onLoadingComplete: (CachedData) -> Unit,
     viewModel: DataLoadingViewModel = hiltViewModel()
@@ -281,56 +341,13 @@ fun DataLoadingScreen(
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.dp,
-                        color = colors.cardBorder,
-                        shape = RoundedCornerShape(Dimensions.radiusXL)
-                    )
-                    .padding(
-                        if (isLandscape) Dimensions.spacingLG else Dimensions.spacingXL
-                    ),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(
-                    if (isLandscape) Dimensions.spacingMD else Dimensions.spacingXL
-                )
-            ) {
-                LoadingScreenHeader(isLandscape, colors)
-
-                Spacer(modifier = Modifier.height(Dimensions.spacingXS / 2))
-
-                val completedSteps = calculateCompletedSteps(uiState.steps)
-                val totalSteps = uiState.steps.size
-                LoadingProgressSection(
-                    completedSteps = completedSteps,
-                    totalSteps = totalSteps,
-                    overallProgress = uiState.overallProgress,
-                    isLandscape = isLandscape,
-                    colors = colors
-                )
-
-                Spacer(modifier = Modifier.height(
-                    if (isLandscape) Dimensions.spacingLG / 2 else Dimensions.spacingXL / 2
-                ))
-
-                LoadingStepsRow(
-                    steps = uiState.steps,
-                    isLandscape = isLandscape,
-                    colors = colors,
-                    onRetryStep = { index -> viewModel.retryStep(index) }
-                )
-
-                val errorCount = uiState.steps.count { it.status == LoadingStatus.Error }
-                if (shouldShowGlobalRetry(errorCount)) {
-                    GlobalRetryButton(
-                        isLandscape = isLandscape,
-                        colors = colors,
-                        onRetry = { viewModel.retry() }
-                    )
-                }
-            }
+            DataLoadingCardContent(
+                uiState = uiState,
+                isLandscape = isLandscape,
+                colors = colors,
+                onRetryStep = { index -> viewModel.retryStep(index) },
+                onRetryAll = { viewModel.retry() }
+            )
         }
     }
 }

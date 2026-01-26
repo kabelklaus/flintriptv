@@ -13,6 +13,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.lazy.LazyListState
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.ui.screens.HomeDestination
 import com.flintr.tv.ui.screens.HomeSidebar
@@ -94,6 +95,7 @@ data class MainLayoutParams(
     // Focus Management
     val navbarFocusRequester: FocusRequester,
     val categorySidebarFocusRequester: FocusRequester,
+    val categoryFocusRequesterMap: MutableMap<String, FocusRequester>,
     val onNavigateToNavbar: () -> Unit,
     val onNavigateToCategorySidebar: () -> Unit,
     val onNavigateToContentList: () -> Unit,
@@ -102,7 +104,10 @@ data class MainLayoutParams(
     val onSearchClick: () -> Unit = {},
     val onNavbarReady: (() -> Unit)? = null,
     val onCategorySidebarReady: (() -> Unit)? = null,
-    val onContentListReady: (() -> Unit)? = null
+    val onContentListReady: (() -> Unit)? = null,
+    
+    // State
+    val categorySidebarListState: LazyListState
 )
 
 @Composable

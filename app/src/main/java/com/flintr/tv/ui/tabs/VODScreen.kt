@@ -117,6 +117,9 @@ fun VODContent(params: VODContentParams) {
     
     // Load new category streams (all movies from last 7 days)
     LaunchedEffect(params.selectedCategoryId) {
+        // Reset scroll position when category changes
+        params.lazyGridState.scrollToItem(0)
+
         when {
             isNewCategory -> {
                 loadNewCategoryStreams(

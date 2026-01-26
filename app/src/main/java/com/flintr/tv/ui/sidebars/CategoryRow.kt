@@ -56,6 +56,181 @@ data class CategoryChipParams(
     val onCategoryHidden: ((Category) -> Unit)? = null
 )
 
+/**
+ * Data class holding computed colors for CategoryChip
+ */
+private data class CategoryChipColors(
+    val background: Color,
+    val title: Color,
+    val count: Color,
+    val border: Color,
+    val shadowElevation: androidx.compose.ui.unit.Dp
+)
+
+/**
+ * Calculate colors based on selection and focus state
+ */
+private fun calculateChipColors(
+    isSelected: Boolean,
+    hasFocus: Boolean,
+    colors: com.flintr.tv.ui.theme.AppColors
+): CategoryChipColors {
+    val isHoveredOrFocused = hasFocus && !isSelected
+
+    val background = when {
+        isSelected -> colors.accentColor
+        isHoveredOrFocused -> colors.categoryHoverBg
+        else -> Color.Transparent
+    }
+
+    val title = if (isSelected || isHoveredOrFocused) Color.White else colors.categoryDefaultText
+    val count = if (isSelected || isHoveredOrFocused) Color.White else colors.categoryChannelCountText
+    val border = if (isSelected || hasFocus) colors.accentColor else Color.Transparent
+    val shadowElevation = if (isSelected) 4.dp else 0.dp
+
+    return CategoryChipColors(background, title, count, border, shadowElevation)
+}
+
+/**
+ * Creates D-Pad navigation handler for left direction
+ */
+private fun createLeftNavigationHandler(
+    onNavigateLeft: (() -> Unit)?,
+    categoryName: String
+): (() -> Boolean)? {
+    return if (onNavigateLeft != null) {
+        {
+            Log.i("TVFocus", "[CategoryRow] ⬅️ D-Pad Left: Category '$categoryName' -> Navigating to Navbar")
+            onNavigateLeft()
+            true
+        }
+    } else {
+        null
+    }
+}
+
+/**
+ * Creates D-Pad navigation handler for right direction
+ */
+private fun createRightNavigationHandler(
+    onNavigateRight: (() -> Unit)?,
+    categoryName: String
+): (() -> Boolean)? {
+    return if (onNavigateRight != null) {
+        {
+            Log.i("TVFocus", "[CategoryRow] ➡️ D-Pad Right: Category '$categoryName' -> Navigating to Content")
+            onNavigateRight()
+            true
+        }
+    } else {
+        null
+    }
+}
+
+/**
+ * Text content for CategoryChip
+ */
+@Composable
+private fun CategoryChipContent(
+    name: String,
+    itemCount: Int,
+    itemLabelBuilder: (Int) -> String,
+    isSelected: Boolean,
+    titleColor: Color,
+    countColor: Color
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(Dimensions.categoryTextSpacing)
+    ) {
+        Text(
+            text = name,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                color = titleColor
+            )
+        )
+        if (itemCount > 0) {
+            Text(
+                text = "$itemCount ${itemLabelBuilder(itemCount)}",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = FontSizes.fontSizeXS,
+                    color = countColor
+                )
+            )
+        }
+    }
+}
+
+/**
+ * PopupMenu for category actions (hide)
+ */
+@Composable
+private fun CategoryChipMenu(
+    category: Category,
+    showMenu: Boolean,
+    onDismiss: () -> Unit,
+    onCategoryHidden: (Category) -> Unit
+) {
+    val name = category.categoryName
+    Log.d("CategoryChip", "[MenuRender] Rendering PopupMenu für Kategorie '$name': showMenu = $showMenu")
+    PopupMenu(
+        isOpen = showMenu,
+        menuOptions = listOf("Ausblenden"),
+        onDismiss = {
+            Log.d("CategoryChip", "[MenuDismiss] Menü wird geschlossen für Kategorie '$name'")
+            onDismiss()
+        },
+        onOptionSelected = { index ->
+            Log.d("CategoryChip", "[MenuOption] Option $index ausgewählt für Kategorie '$name'")
+            if (index == 0) {
+                Log.d("CategoryChip", "[MenuOption] Rufe onCategoryHidden() auf für Kategorie '$name'")
+                onCategoryHidden(category)
+            }
+        },
+        menuType = MenuType.CATEGORY
+    )
+}
+
+/**
+ * Creates modifier chain for shadow and border styling
+ */
+private fun Modifier.categoryChipStyling(
+    isSelected: Boolean,
+    chipColors: CategoryChipColors,
+    animatedBackgroundColor: Color,
+    accentColor: Color
+): Modifier {
+    return this
+        .then(
+            if (isSelected) {
+                Modifier.shadow(
+                    elevation = chipColors.shadowElevation,
+                    shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
+                    spotColor = accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
+                    ambientColor = accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
+                )
+            } else {
+                Modifier
+            }
+        )
+        .background(
+            color = animatedBackgroundColor,
+            shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
+        )
+        .then(
+            if (chipColors.border != Color.Transparent) {
+                Modifier.border(
+                    width = Dimensions.listItemHoverBorderWidth,
+                    color = chipColors.border,
+                    shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
+                )
+            } else {
+                Modifier
+            }
+        )
+}
+
 @Composable
 fun CategoryRow(
     params: CategoryRowParams,
@@ -65,15 +240,14 @@ fun CategoryRow(
     val colors = appColors()
     val colorScheme = MaterialTheme.colorScheme
     val isDark = colorScheme.isDark
-    
+
     LazyColumn(
         modifier = modifier
             .fillMaxHeight()
             .width(Dimensions.categorySidebarWidth)
             .background(
                 if (isDark) SharedColors.sidebarCard else colors.bgList
-            )
-            .focusRequester(params.focusRequester),
+            ),
         contentPadding = PaddingValues(all = Dimensions.spacingMD),
         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
     ) {
@@ -98,6 +272,10 @@ fun CategoryRow(
                 items = params.categories,
                 key = { it.categoryId }
             ) { category ->
+                // Apply focusRequester to the selected category, or first item as fallback
+                val isFirstItem = params.categories.firstOrNull()?.categoryId == category.categoryId
+                val shouldReceiveFocus = params.selectedCategoryId == category.categoryId ||
+                    (params.selectedCategoryId == null && isFirstItem)
                 CategoryChip(
                     params = CategoryChipParams(
                         category = category,
@@ -108,7 +286,8 @@ fun CategoryRow(
                         onNavigateLeft = params.onNavigateLeft,
                         onNavigateRight = params.onNavigateRight,
                         onCategoryHidden = params.onCategoryHidden
-                    )
+                    ),
+                    focusRequester = if (shouldReceiveFocus) params.focusRequester else null
                 )
             }
         }
@@ -118,89 +297,39 @@ fun CategoryRow(
 @Composable
 fun CategoryChip(
     params: CategoryChipParams,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null
 ) {
     var hasFocus by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     val colors = appColors()
     val name = params.category.categoryName
-    
+
     // Debug: Log menu state changes
     LaunchedEffect(showMenu) {
         Log.d("CategoryChip", "[MenuState] Category '$name': showMenu = $showMenu, onCategoryHidden = ${params.onCategoryHidden != null}")
     }
-    
-    val isHoveredOrFocused = hasFocus && !params.isSelected
-    
+
+    val chipColors = calculateChipColors(params.isSelected, hasFocus, colors)
+
     // Background color with animation
-    val backgroundColor by animateColorAsState(
-        targetValue = when {
-            params.isSelected -> colors.accentColor
-            isHoveredOrFocused -> colors.categoryHoverBg
-            else -> Color.Transparent
-        },
+    val animatedBackgroundColor by animateColorAsState(
+        targetValue = chipColors.background,
         animationSpec = tween(durationMillis = 200),
         label = "backgroundColor"
     )
-    
-    // Text colors
-    val titleColor = if (params.isSelected || isHoveredOrFocused) {
-        Color.White
-    } else {
-        colors.categoryDefaultText
-    }
-    
-    val countColor = if (params.isSelected || isHoveredOrFocused) {
-        Color.White
-    } else {
-        colors.categoryChannelCountText
-    }
-    
-    // Border
-    val borderColor = if (params.isSelected || hasFocus) {
-        colors.accentColor
-    } else {
-        Color.Transparent
-    }
-    
-    // Shadow for selected items
-    val shadowElevation = if (params.isSelected) {
-        4.dp
-    } else {
-        0.dp
-    }
-    
+
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .categoryChipStyling(params.isSelected, chipColors, animatedBackgroundColor, colors.accentColor)
             .then(
-                if (params.isSelected) {
-                    Modifier.shadow(
-                        elevation = shadowElevation,
-                        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
-                        spotColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
-                        ambientColor = colors.accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
-                    )
+                if (focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
                 } else {
                     Modifier
                 }
             )
-            .background(
-                color = backgroundColor,
-                shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-            )
-            .then(
-                if (borderColor != Color.Transparent) {
-                    Modifier.border(
-                        width = Dimensions.listItemHoverBorderWidth,
-                        color = borderColor,
-                        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            // Correct order: onFocusChanged -> focusable -> key handlers
             .onFocusChanged { focusState ->
                 val wasFocused = hasFocus
                 hasFocus = focusState.hasFocus
@@ -214,34 +343,14 @@ fun CategoryChip(
             }
             .focusable()
             .onDpadDirection(
-                onLeft = if (params.onNavigateLeft != null) {
-                    {
-                        Log.i("TVFocus", "[CategoryRow] ⬅️ D-Pad Left: Category '$name' -> Navigating to Navbar")
-                        params.onNavigateLeft()
-                        true
-                    }
-                } else {
-                    null // Let Compose handle standard navigation
-                },
-                onRight = if (params.onNavigateRight != null) {
-                    {
-                        Log.i("TVFocus", "[CategoryRow] ➡️ D-Pad Right: Category '$name' -> Navigating to Content")
-                        params.onNavigateRight()
-                        true
-                    }
-                } else {
-                    null // Let Compose handle standard navigation
-                }
+                onLeft = createLeftNavigationHandler(params.onNavigateLeft, name),
+                onRight = createRightNavigationHandler(params.onNavigateRight, name)
             )
             .onLongPress(
                 onLongPress = {
                     Log.d("CategoryChip", "[LongPress] ✅ Long-Press erkannt für Kategorie '$name'")
-                    Log.d("CategoryChip", "[LongPress] onCategoryHidden != null: ${params.onCategoryHidden != null}")
                     if (params.onCategoryHidden != null) {
-                        Log.d("CategoryChip", "[LongPress] Setze showMenu = true für Kategorie '$name'")
                         showMenu = true
-                    } else {
-                        Log.w("CategoryChip", "[LongPress] ⚠️ onCategoryHidden ist null - Menü kann nicht geöffnet werden")
                     }
                 },
                 onNormalClick = {
@@ -253,48 +362,23 @@ fun CategoryChip(
             .padding(all = Dimensions.listItemHoverPadding),
         contentAlignment = Alignment.CenterStart
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(Dimensions.categoryTextSpacing)
-        ) {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = if (params.isSelected) FontWeight.Bold else FontWeight.Normal,
-                    color = titleColor
-                )
-            )
-            if (params.itemCount > 0) {
-                Text(
-                    text = "${params.itemCount} ${params.itemLabelBuilder(params.itemCount)}",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = FontSizes.fontSizeXS,
-                        color = countColor
-                    )
-                )
-            }
-        }
+        CategoryChipContent(
+            name = name,
+            itemCount = params.itemCount,
+            itemLabelBuilder = params.itemLabelBuilder,
+            isSelected = params.isSelected,
+            titleColor = chipColors.title,
+            countColor = chipColors.count
+        )
     }
-    
+
     // Category menu dialog - only render when menu should be shown
     if (params.onCategoryHidden != null && showMenu) {
-        Log.d("CategoryChip", "[MenuRender] Rendering PopupMenu für Kategorie '$name': showMenu = $showMenu")
-        PopupMenu(
-            isOpen = showMenu,
-            menuOptions = listOf("Ausblenden"),
-            onDismiss = { 
-                Log.d("CategoryChip", "[MenuDismiss] Menü wird geschlossen für Kategorie '$name'")
-                showMenu = false 
-            },
-            onOptionSelected = { index ->
-                Log.d("CategoryChip", "[MenuOption] Option $index ausgewählt für Kategorie '$name'")
-                if (index == 0) {
-                    Log.d("CategoryChip", "[MenuOption] Rufe onCategoryHidden() auf für Kategorie '$name'")
-                    params.onCategoryHidden(params.category)
-                }
-            },
-            menuType = MenuType.CATEGORY
+        CategoryChipMenu(
+            category = params.category,
+            showMenu = showMenu,
+            onDismiss = { showMenu = false },
+            onCategoryHidden = params.onCategoryHidden
         )
     }
 }
-

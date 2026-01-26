@@ -376,11 +376,11 @@ class UserRepository @Inject constructor() {
         
         return try {
             firestore.runTransaction { transaction ->
-                val snapshot = transaction.get(userDocRef)
-                
+                val snapshot = transaction[userDocRef]
+
                 @Suppress("UNCHECKED_CAST")
                 val favoritesData = snapshot["favorites"] as? List<Map<String, Any?>> ?: emptyList()
-                
+
                 // Check if favorite already exists
                 if (favoritesData.any { (it["id"] as? String) == favorite.id }) {
                     // Favorite already exists, transaction succeeds without changes
@@ -419,8 +419,8 @@ class UserRepository @Inject constructor() {
         
         return try {
             firestore.runTransaction { transaction ->
-                val snapshot = transaction.get(userDocRef)
-                
+                val snapshot = transaction[userDocRef]
+
                 if (!snapshot.exists()) {
                     // Document doesn't exist, nothing to remove
                     return@runTransaction
@@ -471,11 +471,11 @@ class UserRepository @Inject constructor() {
         
         return try {
             firestore.runTransaction { transaction ->
-                val snapshot = transaction.get(userDocRef)
-                
+                val snapshot = transaction[userDocRef]
+
                 @Suppress("UNCHECKED_CAST")
                 val existingFavoritesData = snapshot["favorites"] as? List<Map<String, Any?>> ?: emptyList()
-                
+
                 // Parse existing favorites
                 val existingFavorites = existingFavoritesData.mapNotNull { favoriteMap ->
                     try {
@@ -684,8 +684,8 @@ class UserRepository @Inject constructor() {
         
         return try {
             firestore.runTransaction { transaction ->
-                val snapshot = transaction.get(userDocRef)
-                
+                val snapshot = transaction[userDocRef]
+
                 @Suppress("UNCHECKED_CAST")
                 val existingData = snapshot[fieldName] as? Map<String, Map<String, Any?>> ?: emptyMap()
                 

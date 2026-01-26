@@ -612,9 +612,10 @@ private fun SeriesEpisodesRoute(
         }
     }
     
-    if (selectedSeries != null && selectedSeries!!.seriesId == seriesId) {
+    val series = selectedSeries
+    if (series != null && series.seriesId == seriesId) {
         SeriesEpisodesScreen(
-            series = selectedSeries!!,
+            series = series,
             mainViewModel = mainViewModel,
             watchProgressService = dependencies.watchProgressService,
             onBack = { navController.popBackStack() },
@@ -628,8 +629,8 @@ private fun SeriesEpisodesRoute(
                     mainViewModel.saveNavigationStateBeforePlayer(
                         NavigationStateBeforePlayer(
                             destinationType = com.flintr.tv.data.model.DestinationType.SERIES,
-                            categoryId = selectedSeries!!.categoryId,
-                            contentId = episode.toContentId(selectedSeries!!.seriesId, seasonNum),
+                            categoryId = series.categoryId,
+                            contentId = episode.toContentId(series.seriesId, seasonNum),
                             scrollIndex = 0, // LazyRow doesn't have firstVisibleItemIndex, use 0
                             scrollOffset = 0  // LazyRow doesn't have firstVisibleItemScrollOffset, use 0
                         )
@@ -638,16 +639,16 @@ private fun SeriesEpisodesRoute(
                         creds.serverUrl,
                         creds.username,
                         creds.password,
-                        selectedSeries!!.seriesId
+                        series.seriesId
                     )
                     val route = Screen.Player.createRouteForSeries(
                         streamUrl,
-                        selectedSeries!!.seriesId,
+                        series.seriesId,
                         episode.id,
                         episode.title
                     )
                     navController.logAndNavigate(route, "AppNavigation") {
-                        "📺 SeriesEpisodes onClick - episode.title: ${episode.title}, seriesId: ${selectedSeries!!.seriesId}, episodeId: ${episode.id}, streamUrl: $streamUrl, route: $route"
+                        "📺 SeriesEpisodes onClick - episode.title: ${episode.title}, seriesId: ${series.seriesId}, episodeId: ${episode.id}, streamUrl: $streamUrl, route: $route"
                     }
                 }
             }
@@ -1079,6 +1080,79 @@ private data class CategoryManagementResult(
 )
 
 /**
+ * Determines if the destination supports categories
+ */
+private fun HomeDestination.supportsCategories(): Boolean =
+    this is HomeDestination.LiveTV || this is HomeDestination.VOD || this is HomeDestination.Series
+
+/**
+ * Determines if the destination supports in-progress category
+ */
+private fun HomeDestination.supportsInProgress(): Boolean =
+    this is HomeDestination.VOD || this is HomeDestination.Series
+
+/**
+ * Gets the category type for a destination
+ */
+private fun HomeDestination.toCategoryType(): CategoryType? = when (this) {
+    is HomeDestination.LiveTV -> CategoryType.LIVE_TV
+    is HomeDestination.VOD -> CategoryType.VOD
+    is HomeDestination.Series -> CategoryType.SERIES
+    else -> null
+}
+
+/**
+ * Gets the raw categories for a destination
+ */
+private fun getRawCategoriesForDestination(
+    destination: HomeDestination,
+    liveCategories: List<Category>,
+    vodCategories: List<Category>,
+    seriesCategories: List<Category>
+): List<Category> = when (destination) {
+    is HomeDestination.LiveTV -> liveCategories
+    is HomeDestination.VOD -> vodCategories
+    is HomeDestination.Series -> seriesCategories
+    else -> emptyList()
+}
+
+/**
+ * Filters out hidden categories
+ */
+private fun filterHiddenCategories(
+    categories: List<Category>,
+    categoryType: CategoryType?,
+    hiddenCategories: Map<CategoryType, Set<String>>
+): List<Category> {
+    if (categoryType == null) return categories
+    val hiddenSet = hiddenCategories[categoryType] ?: return categories
+    return categories.filter { it.categoryId !in hiddenSet }
+}
+
+/**
+ * Creates special categories (favorites, new, in-progress)
+ */
+private fun createSpecialCategories(
+    destination: HomeDestination,
+    sortedCategories: List<Category>,
+    favoritesCategoryName: String,
+    newCategoryName: String,
+    inProgressCategoryName: String
+): List<Category> {
+    if (!destination.supportsCategories()) return sortedCategories
+
+    val favoritesCategory = Category(FAVORITES_CATEGORY_ID, favoritesCategoryName, 0)
+    val newCategory = Category(NEW_CATEGORY_ID, newCategoryName, 0)
+
+    return if (destination.supportsInProgress()) {
+        val inProgressCategory = Category(IN_PROGRESS_CATEGORY_ID, inProgressCategoryName, 0)
+        listOf(favoritesCategory, inProgressCategory, newCategory) + sortedCategories
+    } else {
+        listOf(favoritesCategory, newCategory) + sortedCategories
+    }
+}
+
+/**
  * Composable function managing category logic (filtering, sorting, type determination)
  */
 @Composable
@@ -1089,78 +1163,23 @@ private fun useCategoryManagement(
     seriesCategories: List<Category>,
     hiddenCategories: Map<CategoryType, Set<String>>
 ): CategoryManagementResult {
-    // Determine category type based on destination
-    val categoryType: CategoryType? = when (selectedDestination) {
-        is HomeDestination.LiveTV -> CategoryType.LIVE_TV
-        is HomeDestination.VOD -> CategoryType.VOD
-        is HomeDestination.Series -> CategoryType.SERIES
-        else -> null // EPG, Search, Settings don't have categories
-    }
-    
-    // Select categories based on destination
-    val categories = when (selectedDestination) {
-        is HomeDestination.LiveTV -> liveCategories
-        is HomeDestination.VOD -> vodCategories
-        is HomeDestination.Series -> seriesCategories
-        is HomeDestination.EPG -> emptyList()
-        is HomeDestination.Search -> emptyList() // Search doesn't have categories
-        is HomeDestination.Settings -> emptyList() // Settings navigates to separate screen
-    }
-    
-    // Filter out hidden categories using StateFlow
-    val filteredCategories = categories.filter { 
-        categoryType?.let { type ->
-            !(hiddenCategories[type]?.contains(it.categoryId) ?: false)
-        } ?: true // If no categoryType, don't filter
-    }
-    
-    // Sort categories the same way as in CategoryRow for consistency
+    val categoryType = selectedDestination.toCategoryType()
+    val rawCategories = getRawCategoriesForDestination(selectedDestination, liveCategories, vodCategories, seriesCategories)
+    val filteredCategories = filterHiddenCategories(rawCategories, categoryType, hiddenCategories)
     val sortedCategories = filteredCategories.sortedBy { it.categoryName }
-    
-    // Create favorites, new, and in-progress categories and prepend to sorted categories
+
     val favoritesCategoryName = stringResource(R.string.favorites)
     val newCategoryName = stringResource(R.string.new_category)
     val inProgressCategoryName = stringResource(R.string.in_progress_category)
+
     val categoriesWithSpecial = remember(sortedCategories, selectedDestination, favoritesCategoryName, newCategoryName, inProgressCategoryName) {
-        if (selectedDestination is HomeDestination.LiveTV ||
-            selectedDestination is HomeDestination.VOD ||
-            selectedDestination is HomeDestination.Series) {
-            val favoritesCategory = Category(
-                categoryId = FAVORITES_CATEGORY_ID,
-                categoryName = favoritesCategoryName,
-                parentId = 0
-            )
-            val newCategory = Category(
-                categoryId = NEW_CATEGORY_ID,
-                categoryName = newCategoryName,
-                parentId = 0
-            )
-            // In-progress category only for VOD and Series (contains movies and episodes, no live streams)
-            val categories = if (selectedDestination is HomeDestination.VOD ||
-                                  selectedDestination is HomeDestination.Series) {
-                val inProgressCategory = Category(
-                    categoryId = IN_PROGRESS_CATEGORY_ID,
-                    categoryName = inProgressCategoryName,
-                    parentId = 0
-                )
-                listOf(favoritesCategory, inProgressCategory, newCategory) + sortedCategories
-            } else {
-                listOf(favoritesCategory, newCategory) + sortedCategories
-            }
-            categories
-        } else {
-            sortedCategories
-        }
+        createSpecialCategories(selectedDestination, sortedCategories, favoritesCategoryName, newCategoryName, inProgressCategoryName)
     }
-    
-    val showCategories = selectedDestination is HomeDestination.LiveTV ||
-            selectedDestination is HomeDestination.VOD ||
-            selectedDestination is HomeDestination.Series
-    
+
     return CategoryManagementResult(
         categoryType = categoryType,
         sortedCategories = categoriesWithSpecial,
-        showCategories = showCategories
+        showCategories = selectedDestination.supportsCategories()
     )
 }
 
@@ -1352,34 +1371,36 @@ private class FocusManager(
     private val navbarFocusRequester: FocusRequester,
     private val categorySidebarFocusRequester: FocusRequester,
     private val contentListFocusRequester: FocusRequester,
+    private val coroutineScope: CoroutineScope,
     private val logTag: String
 ) {
     fun moveFocusToNavbar() {
         Log.i("TVFocus", "$logTag 🎯 Requesting focus: NAVBAR")
-        try {
-            navbarFocusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "$logTag ⚠️ Navbar FocusRequester not initialized yet")
+        coroutineScope.launch {
+            navbarFocusRequester.safeRequestFocus(
+                logTag = "TVFocus",
+                targetName = "Navbar"
+            )
         }
     }
-    
+
     fun moveFocusToCategorySidebar() {
         Log.i("TVFocus", "$logTag 🎯 Requesting focus: CATEGORY_SIDEBAR")
-        try {
-            categorySidebarFocusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "$logTag ⚠️ CategorySidebar FocusRequester not initialized yet")
+        coroutineScope.launch {
+            categorySidebarFocusRequester.safeRequestFocus(
+                logTag = "TVFocus",
+                targetName = "CategorySidebar"
+            )
         }
     }
-    
+
     fun moveFocusToContentList() {
         Log.i("TVFocus", "$logTag 🎯 Requesting focus: CONTENT_LIST")
-        try {
-            contentListFocusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            // FocusRequester not yet initialized - this can happen if called before content is loaded
-            // The content will request focus automatically when streams are loaded
-            Log.w("TVFocus", "$logTag ⚠️ ContentList FocusRequester not initialized yet, will focus when content loads")
+        coroutineScope.launch {
+            contentListFocusRequester.safeRequestFocus(
+                logTag = "TVFocus",
+                targetName = "ContentList"
+            )
         }
     }
 }
@@ -1573,10 +1594,16 @@ fun MainContentScreen(
     
     // FocusRequester map for content cards (contentId -> FocusRequester)
     val focusRequesterMap = remember { mutableMapOf<String, FocusRequester>() }
-    
+
+    // FocusRequester map for category chips (categoryId -> FocusRequester)
+    val categoryFocusRequesterMap = remember { mutableMapOf<String, FocusRequester>() }
+
+    // LazyListState for category sidebar scrolling
+    val categorySidebarListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
     // Focus manager
-    val focusManager = remember {
-        FocusManager(navbarFocusRequester, categorySidebarFocusRequester, contentListFocusRequester, LOG_TAG_MAIN_CONTENT_SCREEN)
+    val focusManager = remember(coroutineScope) {
+        FocusManager(navbarFocusRequester, categorySidebarFocusRequester, contentListFocusRequester, coroutineScope, LOG_TAG_MAIN_CONTENT_SCREEN)
     }
     
     // Category management
@@ -1741,6 +1768,7 @@ fun MainContentScreen(
                 itemCounts = itemCounts,
                 navbarFocusRequester = navbarFocusRequester,
                 categorySidebarFocusRequester = categorySidebarFocusRequester,
+                categoryFocusRequesterMap = categoryFocusRequesterMap,
                 onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
                 onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
                 onNavigateToContentList = { focusManager.moveFocusToContentList() },
@@ -1764,7 +1792,8 @@ fun MainContentScreen(
                 onSearchClick = { showSearchOverlay = true },
                 onNavbarReady = { focusState.navbarReady = true },
                 onCategorySidebarReady = { focusState.categorySidebarReady = true },
-                onContentListReady = { focusState.contentListReady = true }
+                onContentListReady = { focusState.contentListReady = true },
+                categorySidebarListState = categorySidebarListState
             ),
             content = {
                 MainContentBody(

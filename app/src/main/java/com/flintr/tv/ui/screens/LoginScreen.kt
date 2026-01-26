@@ -68,6 +68,38 @@ data class LoginTextFieldConfig(
 )
 
 /**
+ * State holder for a single form field
+ */
+data class FormFieldState(
+    val value: String,
+    val onValueChange: (String) -> Unit
+)
+
+/**
+ * State holder for the entire login form
+ */
+data class LoginFormState(
+    val serverUrl: FormFieldState,
+    val username: FormFieldState,
+    val password: FormFieldState,
+    val isLoading: Boolean,
+    val error: String?,
+    val onLogin: () -> Unit
+)
+
+/**
+ * State holder for focus management in login form
+ */
+data class LoginFocusState(
+    val serverUrl: FocusRequester,
+    val username: FocusRequester,
+    val password: FocusRequester,
+    val button: FocusRequester,
+    val hasRequestedInitialFocus: Boolean,
+    val onInitialFocusSet: () -> Unit
+)
+
+/**
  * Reusable login text field component
  */
 @Composable
@@ -230,6 +262,160 @@ private fun LoginButton(
     }
 }
 
+/**
+ * Error card component for displaying login errors
+ */
+@Composable
+private fun LoginErrorCard(
+    error: String,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = colors.dangerBg
+        ),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(Dimensions.radiusMD)
+    ) {
+        Text(
+            text = error,
+            color = colors.dangerText,
+            modifier = Modifier.padding(Dimensions.spacingMD),
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+/**
+ * Requests initial focus safely, handling the case where the component is not yet ready
+ */
+private fun requestInitialFocus(
+    focusRequester: FocusRequester,
+    hasRequestedInitialFocus: Boolean,
+    onInitialFocusSet: () -> Unit
+) {
+    if (hasRequestedInitialFocus) return
+    try {
+        focusRequester.requestFocus()
+        onInitialFocusSet()
+    } catch (_: IllegalStateException) {
+        // Component not ready for focus yet
+    }
+}
+
+/**
+ * Password visibility toggle button
+ */
+@Composable
+private fun PasswordVisibilityToggle(
+    passwordVisible: Boolean,
+    onToggle: () -> Unit
+) {
+    val icon = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+    val description = if (passwordVisible) "Passwort verbergen" else "Passwort anzeigen"
+
+    IconButton(onClick = onToggle) {
+        Icon(imageVector = icon, contentDescription = description)
+    }
+}
+
+/**
+ * Form content for login screen - contains all input fields and submit button
+ */
+@Composable
+private fun LoginFormContent(
+    formState: LoginFormState,
+    focusState: LoginFocusState,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = colors.cardBorder,
+                shape = RoundedCornerShape(Dimensions.radiusXL)
+            )
+            .padding(Dimensions.spacingXL),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
+    ) {
+        LoginTextField(
+            value = formState.serverUrl.value,
+            onValueChange = formState.serverUrl.onValueChange,
+            config = LoginTextFieldConfig(
+                label = "Serveradresse",
+                placeholder = "http://example.com",
+                leadingIcon = Icons.Default.Dns,
+                enabled = !formState.isLoading,
+                focusRequester = focusState.serverUrl,
+                onGloballyPositioned = {
+                    requestInitialFocus(
+                        focusState.serverUrl,
+                        focusState.hasRequestedInitialFocus,
+                        focusState.onInitialFocusSet
+                    )
+                }
+            ),
+            colors = colors
+        )
+
+        LoginTextField(
+            value = formState.username.value,
+            onValueChange = formState.username.onValueChange,
+            config = LoginTextFieldConfig(
+                label = "Benutzername",
+                placeholder = "Ihr Benutzername",
+                leadingIcon = Icons.Default.Person,
+                enabled = !formState.isLoading,
+                focusRequester = focusState.username
+            ),
+            colors = colors
+        )
+
+        val visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation()
+
+        LoginTextField(
+            value = formState.password.value,
+            onValueChange = formState.password.onValueChange,
+            config = LoginTextFieldConfig(
+                label = "Passwort",
+                placeholder = "Ihr Passwort",
+                leadingIcon = Icons.Default.Lock,
+                enabled = !formState.isLoading,
+                focusRequester = focusState.password,
+                trailingIcon = { PasswordVisibilityToggle(passwordVisible) { passwordVisible = !passwordVisible } },
+                visualTransformation = visualTransformation
+            ),
+            colors = colors
+        )
+
+        if (formState.error != null) {
+            LoginErrorCard(error = formState.error, colors = colors)
+        }
+
+        Spacer(modifier = Modifier.height(Dimensions.spacingMD))
+
+        val isFormValid = formState.serverUrl.value.isNotBlank() &&
+                formState.username.value.isNotBlank() &&
+                formState.password.value.isNotBlank()
+
+        LoginButton(
+            onClick = {
+                if (isFormValid) {
+                    formState.onLogin()
+                }
+            },
+            isLoading = formState.isLoading,
+            isFormValid = isFormValid,
+            modifier = Modifier.focusRequester(focusState.button),
+            colors = colors
+        )
+    }
+}
+
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
@@ -248,7 +434,7 @@ fun LoginScreen(
     val buttonFocusRequester = remember { FocusRequester() }
 
     val scrollState = rememberScrollState()
-    
+
     // Track if initial focus has been set to prevent re-focusing on layout changes
     var hasRequestedInitialFocus by remember { mutableStateOf(false) }
 
@@ -290,112 +476,25 @@ fun LoginScreen(
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
-            var passwordVisible by remember { mutableStateOf(false) }
-            
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.dp,
-                        color = colors.cardBorder,
-                        shape = RoundedCornerShape(Dimensions.radiusXL)
-                    )
-                    .padding(Dimensions.spacingXL),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
-            ) {
-                LoginTextField(
-                    value = serverUrl,
-                    onValueChange = { serverUrl = it },
-                    config = LoginTextFieldConfig(
-                        label = "Serveradresse",
-                        placeholder = "http://example.com",
-                        leadingIcon = Icons.Default.Dns,
-                        enabled = !uiState.isLoading,
-                        focusRequester = serverUrlFocusRequester,
-                        onGloballyPositioned = {
-                            // Request focus only once when component is first laid out
-                            if (!hasRequestedInitialFocus) {
-                                try {
-                                    serverUrlFocusRequester.requestFocus()
-                                    hasRequestedInitialFocus = true
-                                } catch (e: IllegalStateException) {
-                                    // Component not ready for focus yet
-                                }
-                            }
-                        }
-                    ),
-                    colors = colors
-                )
-
-                LoginTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    config = LoginTextFieldConfig(
-                        label = "Benutzername",
-                        placeholder = "Ihr Benutzername",
-                        leadingIcon = Icons.Default.Person,
-                        enabled = !uiState.isLoading,
-                        focusRequester = usernameFocusRequester
-                    ),
-                    colors = colors
-                )
-
-                LoginTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    config = LoginTextFieldConfig(
-                        label = "Passwort",
-                        placeholder = "Ihr Passwort",
-                        leadingIcon = Icons.Default.Lock,
-                        enabled = !uiState.isLoading,
-                        focusRequester = passwordFocusRequester,
-                        trailingIcon = {
-                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(
-                                    imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                    contentDescription = if (passwordVisible) "Passwort verbergen" else "Passwort anzeigen"
-                                )
-                            }
-                        },
-                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation()
-                    ),
-                    colors = colors
-                )
-
-                if (uiState.error != null) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = colors.dangerBg
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(Dimensions.radiusMD)
-                    ) {
-                        Text(
-                            text = uiState.error ?: "",
-                            color = colors.dangerText,
-                            modifier = Modifier.padding(Dimensions.spacingMD),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(Dimensions.spacingMD))
-
-                val isFormValid = serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
-                
-                LoginButton(
-                    onClick = {
-                        if (isFormValid) {
-                            viewModel.login(serverUrl.trim(), username.trim(), password)
-                        }
-                    },
+            LoginFormContent(
+                formState = LoginFormState(
+                    serverUrl = FormFieldState(serverUrl) { serverUrl = it },
+                    username = FormFieldState(username) { username = it },
+                    password = FormFieldState(password) { password = it },
                     isLoading = uiState.isLoading,
-                    isFormValid = isFormValid,
-                    modifier = Modifier.focusRequester(buttonFocusRequester),
-                    colors = colors
-                )
-            }
+                    error = uiState.error,
+                    onLogin = { viewModel.login(serverUrl.trim(), username.trim(), password) }
+                ),
+                focusState = LoginFocusState(
+                    serverUrl = serverUrlFocusRequester,
+                    username = usernameFocusRequester,
+                    password = passwordFocusRequester,
+                    button = buttonFocusRequester,
+                    hasRequestedInitialFocus = hasRequestedInitialFocus,
+                    onInitialFocusSet = { hasRequestedInitialFocus = true }
+                ),
+                colors = colors
+            )
         }
     }
 }

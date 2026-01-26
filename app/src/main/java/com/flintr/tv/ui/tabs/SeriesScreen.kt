@@ -165,6 +165,9 @@ fun SeriesContent(
     
     // Load new category series (all series modified in last 7 days)
     LaunchedEffect(params.selectedCategoryId) {
+        // Reset scroll position when category changes
+        params.lazyGridState.scrollToItem(0)
+
         when {
             isNewCategory -> {
                 loadNewCategorySeries(
