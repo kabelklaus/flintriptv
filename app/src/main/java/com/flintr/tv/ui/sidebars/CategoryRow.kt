@@ -44,7 +44,7 @@ data class CategoryRowParams(
     val onNavigateLeft: () -> Unit,
     val onNavigateRight: () -> Unit,
     val onCategoryHidden: (Category) -> Unit,
-    val listState: LazyListState? = null
+    val listState: LazyListState
 )
 
 data class CategoryChipParams(
@@ -244,7 +244,7 @@ fun CategoryRow(
     val isDark = colorScheme.isDark
 
     LazyColumn(
-        state = params.listState ?: androidx.compose.foundation.lazy.rememberLazyListState(),
+        state = params.listState,
         modifier = modifier
             .fillMaxHeight()
             .width(Dimensions.categorySidebarWidth)
