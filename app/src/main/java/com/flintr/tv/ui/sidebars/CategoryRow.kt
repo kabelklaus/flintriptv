@@ -7,7 +7,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -40,11 +39,10 @@ data class CategoryRowParams(
     val onCategorySelected: (String?) -> Unit,
     val itemCounts: Map<String, Int>? = null,
     val itemLabelBuilder: (Int) -> String = { _ -> "Kanäle" },
-    val categoryFocusRequesterMap: MutableMap<String, FocusRequester>,
+    val focusRequester: FocusRequester,
     val onNavigateLeft: () -> Unit,
     val onNavigateRight: () -> Unit,
-    val onCategoryHidden: (Category) -> Unit,
-    val listState: LazyListState
+    val onCategoryHidden: (Category) -> Unit
 )
 
 data class CategoryChipParams(
@@ -53,7 +51,6 @@ data class CategoryChipParams(
     val itemLabelBuilder: (Int) -> String = { _ -> "Kanäle" },
     val isSelected: Boolean,
     val onClick: () -> Unit,
-    val categoryFocusRequesterMap: MutableMap<String, FocusRequester>,
     val onNavigateLeft: (() -> Unit)? = null,
     val onNavigateRight: (() -> Unit)? = null,
     val onCategoryHidden: ((Category) -> Unit)? = null
@@ -245,7 +242,6 @@ fun CategoryRow(
     val isDark = colorScheme.isDark
 
     LazyColumn(
-        state = params.listState,
         modifier = modifier
             .fillMaxHeight()
             .width(Dimensions.categorySidebarWidth)
@@ -276,6 +272,10 @@ fun CategoryRow(
                 items = params.categories,
                 key = { it.categoryId }
             ) { category ->
+                // Apply focusRequester to the selected category, or first item as fallback
+                val isFirstItem = params.categories.firstOrNull()?.categoryId == category.categoryId
+                val shouldReceiveFocus = params.selectedCategoryId == category.categoryId ||
+                    (params.selectedCategoryId == null && isFirstItem)
                 CategoryChip(
                     params = CategoryChipParams(
                         category = category,
@@ -283,11 +283,11 @@ fun CategoryRow(
                         itemLabelBuilder = params.itemLabelBuilder,
                         isSelected = params.selectedCategoryId == category.categoryId,
                         onClick = { params.onCategorySelected(category.categoryId) },
-                        categoryFocusRequesterMap = params.categoryFocusRequesterMap,
                         onNavigateLeft = params.onNavigateLeft,
                         onNavigateRight = params.onNavigateRight,
                         onCategoryHidden = params.onCategoryHidden
-                    )
+                    ),
+                    focusRequester = if (shouldReceiveFocus) params.focusRequester else null
                 )
             }
         }
@@ -297,21 +297,13 @@ fun CategoryRow(
 @Composable
 fun CategoryChip(
     params: CategoryChipParams,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null
 ) {
     var hasFocus by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     val colors = appColors()
     val name = params.category.categoryName
-    val categoryId = params.category.categoryId
-
-    // Create individual FocusRequester for this category
-    val categoryFocusRequester = remember { FocusRequester() }
-    
-    // Store FocusRequester in map
-    LaunchedEffect(categoryId) {
-        params.categoryFocusRequesterMap[categoryId] = categoryFocusRequester
-    }
 
     // Debug: Log menu state changes
     LaunchedEffect(showMenu) {
@@ -330,8 +322,14 @@ fun CategoryChip(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .focusRequester(categoryFocusRequester)
             .categoryChipStyling(params.isSelected, chipColors, animatedBackgroundColor, colors.accentColor)
+            .then(
+                if (focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                }
+            )
             .onFocusChanged { focusState ->
                 val wasFocused = hasFocus
                 hasFocus = focusState.hasFocus

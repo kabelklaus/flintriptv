@@ -152,7 +152,7 @@ fun MainLayout(
                     selectedCategoryId = params.selectedCategoryId,
                     onCategorySelected = params.onCategorySelected,
                     itemCounts = params.itemCounts,
-                    categoryFocusRequesterMap = params.categoryFocusRequesterMap,
+                    focusRequester = params.categorySidebarFocusRequester,
                     onNavigateLeft = { wrappedOnNavigateToNavbar() },
                     onNavigateRight = { params.onNavigateToContentList() },
                     onCategoryHidden = { category ->
@@ -160,8 +160,7 @@ fun MainLayout(
                         if (category.categoryId != "__favorites__") {
                             params.onCategoryHidden(category)
                         }
-                    },
-                    listState = params.categorySidebarListState
+                    }
                 ),
                 modifier = createCategorySidebarModifier(params.onCategorySidebarReady)
             )

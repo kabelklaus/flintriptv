@@ -15,7 +15,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.foundation.lazy.rememberLazyListState
 import android.net.Uri
 import android.util.Log
 import com.flintr.tv.BuildConfig
@@ -1372,34 +1371,36 @@ private class FocusManager(
     private val navbarFocusRequester: FocusRequester,
     private val categorySidebarFocusRequester: FocusRequester,
     private val contentListFocusRequester: FocusRequester,
+    private val coroutineScope: CoroutineScope,
     private val logTag: String
 ) {
     fun moveFocusToNavbar() {
         Log.i("TVFocus", "$logTag 🎯 Requesting focus: NAVBAR")
-        try {
-            navbarFocusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "$logTag ⚠️ Navbar FocusRequester not initialized yet")
+        coroutineScope.launch {
+            navbarFocusRequester.safeRequestFocus(
+                logTag = "TVFocus",
+                targetName = "Navbar"
+            )
         }
     }
-    
+
     fun moveFocusToCategorySidebar() {
         Log.i("TVFocus", "$logTag 🎯 Requesting focus: CATEGORY_SIDEBAR")
-        try {
-            categorySidebarFocusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            Log.w("TVFocus", "$logTag ⚠️ CategorySidebar FocusRequester not initialized yet")
+        coroutineScope.launch {
+            categorySidebarFocusRequester.safeRequestFocus(
+                logTag = "TVFocus",
+                targetName = "CategorySidebar"
+            )
         }
     }
-    
+
     fun moveFocusToContentList() {
         Log.i("TVFocus", "$logTag 🎯 Requesting focus: CONTENT_LIST")
-        try {
-            contentListFocusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            // FocusRequester not yet initialized - this can happen if called before content is loaded
-            // The content will request focus automatically when streams are loaded
-            Log.w("TVFocus", "$logTag ⚠️ ContentList FocusRequester not initialized yet, will focus when content loads")
+        coroutineScope.launch {
+            contentListFocusRequester.safeRequestFocus(
+                logTag = "TVFocus",
+                targetName = "ContentList"
+            )
         }
     }
 }
@@ -1591,18 +1592,18 @@ fun MainContentScreen(
     // LazyGridState for content grid (shared across all tabs)
     val lazyGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     
-    // LazyListState for category sidebar
-    val categorySidebarListState = rememberLazyListState()
-    
     // FocusRequester map for content cards (contentId -> FocusRequester)
     val focusRequesterMap = remember { mutableMapOf<String, FocusRequester>() }
-    
-    // FocusRequester map for categories (categoryId -> FocusRequester)
+
+    // FocusRequester map for category chips (categoryId -> FocusRequester)
     val categoryFocusRequesterMap = remember { mutableMapOf<String, FocusRequester>() }
-    
+
+    // LazyListState for category sidebar scrolling
+    val categorySidebarListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
     // Focus manager
-    val focusManager = remember {
-        FocusManager(navbarFocusRequester, categorySidebarFocusRequester, contentListFocusRequester, LOG_TAG_MAIN_CONTENT_SCREEN)
+    val focusManager = remember(coroutineScope) {
+        FocusManager(navbarFocusRequester, categorySidebarFocusRequester, contentListFocusRequester, coroutineScope, LOG_TAG_MAIN_CONTENT_SCREEN)
     }
     
     // Category management
@@ -1771,7 +1772,6 @@ fun MainContentScreen(
                 onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
                 onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
                 onNavigateToContentList = { focusManager.moveFocusToContentList() },
-                categorySidebarListState = categorySidebarListState,
                 onCategoryHidden = { category ->
                     Log.d("AppNavigation", "[CategoryHidden] Callback called for category: ${category.categoryName} (${category.categoryId})")
                     coroutineScope.launch {
@@ -1792,7 +1792,8 @@ fun MainContentScreen(
                 onSearchClick = { showSearchOverlay = true },
                 onNavbarReady = { focusState.navbarReady = true },
                 onCategorySidebarReady = { focusState.categorySidebarReady = true },
-                onContentListReady = { focusState.contentListReady = true }
+                onContentListReady = { focusState.contentListReady = true },
+                categorySidebarListState = categorySidebarListState
             ),
             content = {
                 MainContentBody(
