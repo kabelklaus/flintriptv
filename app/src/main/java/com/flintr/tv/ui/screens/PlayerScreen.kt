@@ -450,6 +450,7 @@ private fun rememberPlayerState() = remember {
         var errorMessage by mutableStateOf<String?>(null)
         var hasRestoredProgress by mutableStateOf(false)
         var lastInteractionTime by mutableStateOf(System.currentTimeMillis())
+        var hasTriggeredCompletion by mutableStateOf(false)
     }
 }
 
@@ -785,6 +786,42 @@ private fun PlayerPositionUpdateEffect(
                 exoPlayer.bufferedPosition
             )
             delay(250) // Update every 250ms
+        }
+    }
+}
+
+/**
+ * Effect to detect completion (>= 90%) and trigger immediate save.
+ * This ensures completion is registered even if player crashes or is killed.
+ */
+@Composable
+private fun CompletionDetectionEffect(
+    position: Long,
+    duration: Long,
+    contentType: String,
+    hasTriggeredCompletion: Boolean,
+    onCompletionTriggered: () -> Unit,
+    saveProgress: suspend () -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(position, duration, hasTriggeredCompletion) {
+        // Skip if already triggered or invalid duration or live content
+        if (hasTriggeredCompletion) return@LaunchedEffect
+        if (duration <= 0) return@LaunchedEffect
+        if (contentType == "live") return@LaunchedEffect
+
+        val progressPercent = position.toDouble() / duration.toDouble()
+        if (progressPercent >= 0.9) {
+            // Immediately save - the completion logic in WatchProgressService
+            // will delete the progress and mark as watched
+            coroutineScope.launch {
+                saveProgress()
+            }
+            onCompletionTriggered()
+            if (BuildConfig.DEBUG) {
+                Log.d("PlayerScreen", "Completion detected at ${(progressPercent * 100).toInt()}% - triggering save")
+            }
         }
     }
 }
@@ -1148,7 +1185,27 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             coroutineScope = coroutineScope
         )
     )
-    
+
+    // Detect completion (>= 90%) and trigger immediate save
+    CompletionDetectionEffect(
+        position = state.currentPosition,
+        duration = state.duration,
+        contentType = contentType,
+        hasTriggeredCompletion = state.hasTriggeredCompletion,
+        onCompletionTriggered = { state.hasTriggeredCompletion = true },
+        saveProgress = {
+            saveWatchProgress(
+                exoPlayer = exoPlayer,
+                contentType = contentType,
+                streamId = streamId,
+                seriesId = seriesId,
+                episodeId = episodeId,
+                title = title,
+                watchProgressService = watchProgressService
+            )
+        }
+    )
+
     // Auto-hide controls
     AutoHideControlsEffect(
         showControls = state.showControls,

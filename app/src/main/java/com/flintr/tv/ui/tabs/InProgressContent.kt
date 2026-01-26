@@ -419,6 +419,12 @@ fun InProgressContent(
         
         // Sync with Firestore before loading (respects cooldown)
         params.watchProgressService.syncIfNeeded()
+        
+        // Cleanup completed entries (>= 90%) before loading
+        Log.d("InProgressContent", "Calling cleanupCompletedProgress()...")
+        val cleanedCount = params.watchProgressService.cleanupCompletedProgress()
+        Log.d("InProgressContent", "cleanupCompletedProgress() returned: $cleanedCount entries cleaned")
+        
         val allProgress = params.watchProgressService.getAllInProgress()
         val items = loadInProgressItems(params, allProgress)
         

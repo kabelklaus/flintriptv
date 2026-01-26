@@ -584,6 +584,39 @@ class UserRepository @Inject constructor() {
     }
     
     /**
+     * Deletes a specific watch progress entry from Firestore.
+     * 
+     * @param username The username to delete progress for
+     * @param key The progress key to delete (e.g., "movie:123" or "series:456:789")
+     * @return Result<Unit> - Success if deleted, Failure with exception otherwise
+     */
+    suspend fun deleteWatchProgress(
+        username: String,
+        key: String
+    ): Result<Unit> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+        
+        return try {
+            val updateData = hashMapOf<String, Any>(
+                "watchProgress.$key" to FieldValue.delete()
+            )
+            
+            firestore.collection(collectionName)
+                .document(username)
+                .update(updateData)
+                .await()
+            
+            Log.d(TAG, "Deleted watch progress key '$key' for user: $username")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delete watch progress key '$key' for user: $username", e)
+            Result.failure(e)
+        }
+    }
+    
+    /**
      * Generic helper to load a user data map from Firestore.
      */
     private suspend fun <T> loadUserDataMap(
