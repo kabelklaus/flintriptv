@@ -15,6 +15,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import android.net.Uri
 import android.util.Log
 import com.flintr.tv.BuildConfig
@@ -1306,16 +1308,59 @@ private fun CategorySidebarFocusEffect(
     pendingFocusDestination: HomeDestination?,
     showCategories: Boolean,
     sortedCategories: List<Category>,
+    selectedCategoryId: String?,
+    categoryFocusRequesterMap: Map<String, FocusRequester>,
     categorySidebarFocusRequester: FocusRequester,
+    categorySidebarListState: LazyListState,
     onFocusSet: () -> Unit
 ) {
-    LaunchedEffect(categorySidebarReady, pendingFocusDestination, showCategories, sortedCategories.size) {
+    LaunchedEffect(categorySidebarReady, pendingFocusDestination, showCategories, sortedCategories.size, selectedCategoryId) {
         if (categorySidebarReady && 
             !categorySidebarFocusSet &&
             pendingFocusDestination != null && 
             showCategories && sortedCategories.isNotEmpty()) {
             onFocusSet()
-            categorySidebarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
+            
+            // Find the index of the selected category
+            val categoryIndex = selectedCategoryId?.let { categoryId ->
+                sortedCategories.indexOfFirst { it.categoryId == categoryId }
+            } ?: run {
+                // Fallback: use first category if no selection
+                if (sortedCategories.isNotEmpty()) 0 else -1
+            }
+            
+            // Try to focus on the selected category if available
+            val categoryToFocus = selectedCategoryId?.let { categoryId ->
+                categoryFocusRequesterMap[categoryId]
+            } ?: run {
+                // Fallback: focus on first category if no selection
+                sortedCategories.firstOrNull()?.categoryId?.let { categoryId ->
+                    categoryFocusRequesterMap[categoryId]
+                }
+            }
+            
+            if (categoryToFocus != null && categoryIndex >= 0) {
+                try {
+                    // Small delay to ensure FocusRequester is initialized
+                    kotlinx.coroutines.delay(50)
+                    // Scroll to the category first
+                    categorySidebarListState.scrollToItem(categoryIndex)
+                    // Another small delay after scrolling before setting focus
+                    kotlinx.coroutines.delay(50)
+                    categoryToFocus.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
+                } catch (e: Exception) {
+                    Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ Error scrolling to category in CategorySidebarFocusEffect: ${e.message}")
+                    // Fallback: try to set focus anyway
+                    try {
+                        categoryToFocus.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
+                    } catch (focusException: Exception) {
+                        Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ Error setting focus: ${focusException.message}")
+                    }
+                }
+            } else {
+                // Fallback to container if no category FocusRequester available
+                categorySidebarFocusRequester.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
+            }
         }
     }
 }
@@ -1352,6 +1397,7 @@ private class FocusManager(
     private val navbarFocusRequester: FocusRequester,
     private val categorySidebarFocusRequester: FocusRequester,
     private val contentListFocusRequester: FocusRequester,
+    private val categorySidebarListState: LazyListState,
     private val logTag: String
 ) {
     fun moveFocusToNavbar() {
@@ -1363,10 +1409,58 @@ private class FocusManager(
         }
     }
     
-    fun moveFocusToCategorySidebar() {
-        Log.i("TVFocus", "$logTag 🎯 Requesting focus: CATEGORY_SIDEBAR")
+    fun moveFocusToCategorySidebar(
+        selectedCategoryId: String?,
+        categoryFocusRequesterMap: Map<String, FocusRequester>,
+        sortedCategories: List<com.flintr.tv.data.model.Category>,
+        coroutineScope: CoroutineScope
+    ) {
+        Log.i("TVFocus", "$logTag 🎯 Requesting focus: CATEGORY_SIDEBAR (selectedCategoryId: $selectedCategoryId)")
         try {
-            categorySidebarFocusRequester.requestFocus()
+            // Find the index of the selected category
+            val categoryIndex = selectedCategoryId?.let { categoryId ->
+                sortedCategories.indexOfFirst { it.categoryId == categoryId }
+            } ?: run {
+                // Fallback: use first category if no selection
+                if (sortedCategories.isNotEmpty()) 0 else -1
+            }
+            
+            // Try to focus on the selected category if available
+            val categoryToFocus = selectedCategoryId?.let { categoryId ->
+                categoryFocusRequesterMap[categoryId]
+            } ?: run {
+                // Fallback: focus on first category if no selection
+                sortedCategories.firstOrNull()?.categoryId?.let { categoryId ->
+                    categoryFocusRequesterMap[categoryId]
+                }
+            }
+            
+            if (categoryToFocus != null && categoryIndex >= 0) {
+                // Scroll to the category first, then set focus
+                coroutineScope.launch {
+                    try {
+                        // Small delay to ensure FocusRequester is initialized
+                        kotlinx.coroutines.delay(50)
+                        categorySidebarListState.scrollToItem(categoryIndex)
+                        // Another small delay after scrolling before setting focus
+                        kotlinx.coroutines.delay(50)
+                        categoryToFocus.requestFocus()
+                        Log.i("TVFocus", "$logTag ✅ Focus set on category: $selectedCategoryId (index: $categoryIndex)")
+                    } catch (e: Exception) {
+                        Log.w("TVFocus", "$logTag ⚠️ Error scrolling to category: ${e.message}")
+                        // Fallback: try to set focus anyway
+                        try {
+                            categoryToFocus.requestFocus()
+                        } catch (focusException: Exception) {
+                            Log.w("TVFocus", "$logTag ⚠️ Error setting focus: ${focusException.message}")
+                        }
+                    }
+                }
+            } else {
+                // Fallback to container if no category FocusRequester available
+                Log.w("TVFocus", "$logTag ⚠️ No category FocusRequester found, falling back to container")
+                categorySidebarFocusRequester.requestFocus()
+            }
         } catch (e: IllegalStateException) {
             Log.w("TVFocus", "$logTag ⚠️ CategorySidebar FocusRequester not initialized yet")
         }
@@ -1571,12 +1665,18 @@ fun MainContentScreen(
     // LazyGridState for content grid (shared across all tabs)
     val lazyGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     
+    // LazyListState for category sidebar
+    val categorySidebarListState = rememberLazyListState()
+    
     // FocusRequester map for content cards (contentId -> FocusRequester)
     val focusRequesterMap = remember { mutableMapOf<String, FocusRequester>() }
     
+    // FocusRequester map for categories (categoryId -> FocusRequester)
+    val categoryFocusRequesterMap = remember { mutableMapOf<String, FocusRequester>() }
+    
     // Focus manager
-    val focusManager = remember {
-        FocusManager(navbarFocusRequester, categorySidebarFocusRequester, contentListFocusRequester, LOG_TAG_MAIN_CONTENT_SCREEN)
+    val focusManager = remember(categorySidebarListState) {
+        FocusManager(navbarFocusRequester, categorySidebarFocusRequester, contentListFocusRequester, categorySidebarListState, LOG_TAG_MAIN_CONTENT_SCREEN)
     }
     
     // Category management
@@ -1639,7 +1739,10 @@ fun MainContentScreen(
         pendingFocusDestination = focusState.pendingFocusDestination,
         showCategories = categoryManagement.showCategories,
         sortedCategories = categoryManagement.sortedCategories,
+        selectedCategoryId = selectedCategoryId,
+        categoryFocusRequesterMap = categoryFocusRequesterMap,
         categorySidebarFocusRequester = categorySidebarFocusRequester,
+        categorySidebarListState = categorySidebarListState,
         onFocusSet = { focusState.categorySidebarFocusSet = true }
     )
     
@@ -1741,8 +1844,16 @@ fun MainContentScreen(
                 itemCounts = itemCounts,
                 navbarFocusRequester = navbarFocusRequester,
                 categorySidebarFocusRequester = categorySidebarFocusRequester,
+                categoryFocusRequesterMap = categoryFocusRequesterMap,
                 onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
-                onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
+                onNavigateToCategorySidebar = { 
+                    focusManager.moveFocusToCategorySidebar(
+                        selectedCategoryId = selectedCategoryId,
+                        categoryFocusRequesterMap = categoryFocusRequesterMap,
+                        sortedCategories = categoryManagement.sortedCategories,
+                        coroutineScope = coroutineScope
+                    )
+                },
                 onNavigateToContentList = { focusManager.moveFocusToContentList() },
                 onCategoryHidden = { category ->
                     Log.d("AppNavigation", "[CategoryHidden] Callback called for category: ${category.categoryName} (${category.categoryId})")
@@ -1764,7 +1875,8 @@ fun MainContentScreen(
                 onSearchClick = { showSearchOverlay = true },
                 onNavbarReady = { focusState.navbarReady = true },
                 onCategorySidebarReady = { focusState.categorySidebarReady = true },
-                onContentListReady = { focusState.contentListReady = true }
+                onContentListReady = { focusState.contentListReady = true },
+                categorySidebarListState = categorySidebarListState
             ),
             content = {
                 MainContentBody(
@@ -1777,7 +1889,14 @@ fun MainContentScreen(
                         navController = navController,
                         lazyGridState = lazyGridState,
                         focusRequesterMap = focusRequesterMap,
-                        onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
+                        onNavigateToCategorySidebar = { 
+                    focusManager.moveFocusToCategorySidebar(
+                        selectedCategoryId = selectedCategoryId,
+                        categoryFocusRequesterMap = categoryFocusRequesterMap,
+                        sortedCategories = categoryManagement.sortedCategories,
+                        coroutineScope = coroutineScope
+                    )
+                },
                         onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
                         dependencies = dependencies
                     )

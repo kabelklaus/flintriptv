@@ -1,3 +1,5 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.flintr.tv.ui.components.player
 
 import androidx.compose.foundation.background
@@ -727,8 +729,9 @@ private fun getUIResolution(context: android.content.Context): String {
         val height = displayMetrics.heightPixels
         
         // Get refresh rate - use context.display for API 30+, fallback to deprecated API
+        @Suppress("UNNECESSARY_SAFE_CALL")
         val refreshRate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.display?.mode?.refreshRate ?: 0f
+            context.display?.let { it.mode.refreshRate } ?: 0f
         } else {
             @Suppress("DEPRECATION")
             val windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? WindowManager
@@ -754,6 +757,7 @@ private fun getUIResolution(context: android.content.Context): String {
 /**
  * Get display mode ID
  */
+@Suppress("UNNECESSARY_SAFE_CALL")
 private fun getDisplayModeID(context: android.content.Context): String {
     return try {
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -918,7 +922,7 @@ private fun getDiskCacheSize(exoPlayer: ExoPlayer?): String {
         // Try to access cache through reflection
         val cacheField = ExoPlayer::class.java.getDeclaredField("cache")
         cacheField.isAccessible = true
-        val cache = cacheField.get(exoPlayer)
+        val cache = cacheField[exoPlayer]
         
         if (cache != null) {
             // Try to get cache size
