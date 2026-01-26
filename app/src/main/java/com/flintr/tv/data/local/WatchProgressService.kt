@@ -489,15 +489,31 @@ class WatchProgressService @Inject constructor(
             val progress = _watchProgress.value[key]
             
             // Optimistic update: Update StateFlow atomically
-            val updatedMap = updateMutex.withLock {
+            updateMutex.withLock {
                 val currentMap = _watchProgress.value
                 val updated = currentMap - key
                 _watchProgress.value = updated
-                updated
             }
             
-            // Save to Firestore asynchronously
-            saveToFirestore(updatedMap)
+            // Delete from Firestore explicitly using FieldValue.delete()
+            val username = credentialsRepository.getCredentials()?.username
+            if (!username.isNullOrBlank()) {
+                serviceScope.launch {
+                    val result = userRepository.deleteWatchProgress(username, key)
+                    result.fold(
+                        onSuccess = {
+                            Log.d(TAG, "Successfully deleted watch progress from Firestore: key=$key")
+                        },
+                        onFailure = { exception ->
+                            Log.e(TAG, "Failed to delete watch progress from Firestore: key=$key", exception)
+                            // StateFlow already updated, so UI will reflect the change
+                            // Firestore will sync when connection is restored
+                        }
+                    )
+                }
+            } else {
+                Log.w(TAG, "Cannot delete from Firestore: no username available")
+            }
 
             // Automatically remove movie from favorites when progress is deleted
             // Reconstruct the favorite ID directly (same format as addMovieToFavoritesIfNeeded)
@@ -519,6 +535,124 @@ class WatchProgressService @Inject constructor(
             Log.e(TAG, "Error deleting progress for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
             false
         }
+    }
+
+    /**
+     * Result of parsing a progress key to extract content type and IDs.
+     */
+    private sealed class ParsedProgressKey {
+        data class Movie(val streamId: Int) : ParsedProgressKey()
+        data class Series(val seriesId: Int, val episodeId: Int) : ParsedProgressKey()
+        object Unknown : ParsedProgressKey()
+    }
+
+    /**
+     * Checks if a progress entry is completed (>= 90%).
+     */
+    private fun isCompletedProgress(progress: WatchProgress): Boolean {
+        if (progress.duration <= 0) return false
+        val progressPercent = progress.position.toDouble() / progress.duration.toDouble()
+        return progressPercent >= COMPLETION_THRESHOLD
+    }
+
+    /**
+     * Parses a progress key to extract content type and IDs.
+     */
+    private fun parseProgressKey(key: String): ParsedProgressKey {
+        return when {
+            key.startsWith(KEY_PREFIX_MOVIE) -> {
+                val streamId = key.removePrefix(KEY_PREFIX_MOVIE).toIntOrNull()
+                if (streamId != null) {
+                    ParsedProgressKey.Movie(streamId)
+                } else {
+                    Log.w(TAG, "Failed to parse streamId from key: $key")
+                    ParsedProgressKey.Unknown
+                }
+            }
+            key.startsWith(KEY_PREFIX_SERIES) -> {
+                val parts = key.removePrefix(KEY_PREFIX_SERIES).split(":")
+                if (parts.size == 2) {
+                    val seriesId = parts[0].toIntOrNull()
+                    val episodeId = parts[1].toIntOrNull()
+                    if (seriesId != null && episodeId != null) {
+                        ParsedProgressKey.Series(seriesId, episodeId)
+                    } else {
+                        Log.w(TAG, "Failed to parse seriesId/episodeId from key: $key")
+                        ParsedProgressKey.Unknown
+                    }
+                } else {
+                    Log.w(TAG, "Invalid series key format: $key")
+                    ParsedProgressKey.Unknown
+                }
+            }
+            else -> {
+                Log.w(TAG, "Unknown key prefix: $key")
+                ParsedProgressKey.Unknown
+            }
+        }
+    }
+
+    /**
+     * Cleans up a single completed progress entry.
+     * Returns true if the entry was successfully cleaned up.
+     */
+    private suspend fun cleanupSingleEntry(parsedKey: ParsedProgressKey): Boolean {
+        return when (parsedKey) {
+            is ParsedProgressKey.Movie -> {
+                Log.d(TAG, "cleanupCompletedProgress() - cleaning up movie: streamId=${parsedKey.streamId}")
+                watchedHistoryService.markAsWatched("movie", parsedKey.streamId, null, null)
+                deleteProgress("movie", parsedKey.streamId, null, null)
+                true
+            }
+            is ParsedProgressKey.Series -> {
+                Log.d(TAG, "cleanupCompletedProgress() - cleaning up episode: seriesId=${parsedKey.seriesId}, episodeId=${parsedKey.episodeId}")
+                watchedHistoryService.markAsWatched("series", null, parsedKey.seriesId, parsedKey.episodeId)
+                deleteProgress("series", null, parsedKey.seriesId, parsedKey.episodeId)
+                true
+            }
+            is ParsedProgressKey.Unknown -> false
+        }
+    }
+
+    /**
+     * Cleans up completed progress entries (>= 90%)
+     * Automatically marks them as watched and removes from progress list
+     * Returns the number of entries cleaned up
+     */
+    suspend fun cleanupCompletedProgress(): Int = withContext(ioDispatcher) {
+        Log.d(TAG, "cleanupCompletedProgress() called - starting cleanup")
+        val progressMap = _watchProgress.value
+        Log.d(TAG, "cleanupCompletedProgress() - total entries: ${progressMap.size}")
+        
+        if (progressMap.isEmpty()) {
+            Log.d(TAG, "cleanupCompletedProgress() - no entries to check")
+            return@withContext 0
+        }
+        
+        var cleanedCount = 0
+        
+        progressMap.forEach { (key, progress) ->
+            if (!isCompletedProgress(progress)) {
+                return@forEach
+            }
+            
+            val progressPercent = (progress.position.toDouble() / progress.duration.toDouble() * 100).toInt()
+            Log.d(TAG, "cleanupCompletedProgress() - checking key=$key, position=${progress.position}ms, duration=${progress.duration}ms, progress=$progressPercent%")
+            Log.d(TAG, "cleanupCompletedProgress() - entry >= 90% found: key=$key, progress=$progressPercent%")
+            
+            val parsedKey = parseProgressKey(key)
+            if (cleanupSingleEntry(parsedKey)) {
+                cleanedCount++
+            }
+        }
+        
+        if (cleanedCount > 0) {
+            Log.d(TAG, "cleanupCompletedProgress() - cleaned up $cleanedCount completed progress entries")
+        } else {
+            Log.d(TAG, "cleanupCompletedProgress() - no entries needed cleanup")
+        }
+        
+        cleanedCount
     }
 
     /**
