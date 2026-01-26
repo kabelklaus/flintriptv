@@ -1299,6 +1299,42 @@ private fun NavbarFocusEffect(
 }
 
 /**
+ * Data class grouping category focus information (index and FocusRequester)
+ */
+private data class CategoryFocusInfo(
+    val categoryIndex: Int,
+    val categoryToFocus: FocusRequester?
+)
+
+/**
+ * Helper function to find the category index and FocusRequester for the selected category.
+ * Returns fallback values (first category or -1/null) if no category is selected.
+ */
+private fun findCategoryFocusInfo(
+    selectedCategoryId: String?,
+    sortedCategories: List<Category>,
+    categoryFocusRequesterMap: Map<String, FocusRequester>
+): CategoryFocusInfo {
+    val categoryIndex = selectedCategoryId?.let { categoryId ->
+        sortedCategories.indexOfFirst { it.categoryId == categoryId }
+    } ?: run {
+        // Fallback: use first category if no selection
+        if (sortedCategories.isNotEmpty()) 0 else -1
+    }
+    
+    val categoryToFocus = selectedCategoryId?.let { categoryId ->
+        categoryFocusRequesterMap[categoryId]
+    } ?: run {
+        // Fallback: focus on first category if no selection
+        sortedCategories.firstOrNull()?.categoryId?.let { categoryId ->
+            categoryFocusRequesterMap[categoryId]
+        }
+    }
+    
+    return CategoryFocusInfo(categoryIndex, categoryToFocus)
+}
+
+/**
  * LaunchedEffect for setting focus on CategorySidebar when ready
  */
 @Composable
@@ -1321,38 +1357,34 @@ private fun CategorySidebarFocusEffect(
             showCategories && sortedCategories.isNotEmpty()) {
             onFocusSet()
             
-            // Find the index of the selected category
-            val categoryIndex = selectedCategoryId?.let { categoryId ->
-                sortedCategories.indexOfFirst { it.categoryId == categoryId }
-            } ?: run {
-                // Fallback: use first category if no selection
-                if (sortedCategories.isNotEmpty()) 0 else -1
-            }
+            // Find the category index and FocusRequester using shared helper function
+            val focusInfo = findCategoryFocusInfo(
+                selectedCategoryId = selectedCategoryId,
+                sortedCategories = sortedCategories,
+                categoryFocusRequesterMap = categoryFocusRequesterMap
+            )
             
-            // Try to focus on the selected category if available
-            val categoryToFocus = selectedCategoryId?.let { categoryId ->
-                categoryFocusRequesterMap[categoryId]
-            } ?: run {
-                // Fallback: focus on first category if no selection
-                sortedCategories.firstOrNull()?.categoryId?.let { categoryId ->
-                    categoryFocusRequesterMap[categoryId]
-                }
-            }
-            
-            if (categoryToFocus != null && categoryIndex >= 0) {
+            if (focusInfo.categoryToFocus != null && focusInfo.categoryIndex >= 0) {
                 try {
-                    // Small delay to ensure FocusRequester is initialized
+                    // Delay before scrolling: Compose requires a brief moment for FocusRequester
+                    // initialization after composition. Without this delay, scrollToItem may fail
+                    // silently or the FocusRequester may not be ready. Alternative approaches like
+                    // observing layout state or using LaunchedEffect with layout state dependencies
+                    // were considered but proved more complex and less reliable in practice.
                     kotlinx.coroutines.delay(50)
                     // Scroll to the category first
-                    categorySidebarListState.scrollToItem(categoryIndex)
-                    // Another small delay after scrolling before setting focus
+                    categorySidebarListState.scrollToItem(focusInfo.categoryIndex)
+                    // Delay after scrolling: LazyList scroll animations need time to complete before
+                    // focus can be reliably set. Setting focus immediately after scrollToItem can
+                    // result in focus being set on the wrong item or not at all. This is a known
+                    // limitation of Compose's LazyList focus management on TV platforms.
                     kotlinx.coroutines.delay(50)
-                    categoryToFocus.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
+                    focusInfo.categoryToFocus.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
                 } catch (e: Exception) {
                     Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ Error scrolling to category in CategorySidebarFocusEffect: ${e.message}")
                     // Fallback: try to set focus anyway
                     try {
-                        categoryToFocus.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
+                        focusInfo.categoryToFocus?.safeRequestFocus(LOG_TAG_MAIN_CONTENT_SCREEN, "CATEGORY_SIDEBAR")
                     } catch (focusException: Exception) {
                         Log.w("TVFocus", "$LOG_TAG_MAIN_CONTENT_SCREEN ⚠️ Error setting focus: ${focusException.message}")
                     }
@@ -1417,40 +1449,36 @@ private class FocusManager(
     ) {
         Log.i("TVFocus", "$logTag 🎯 Requesting focus: CATEGORY_SIDEBAR (selectedCategoryId: $selectedCategoryId)")
         try {
-            // Find the index of the selected category
-            val categoryIndex = selectedCategoryId?.let { categoryId ->
-                sortedCategories.indexOfFirst { it.categoryId == categoryId }
-            } ?: run {
-                // Fallback: use first category if no selection
-                if (sortedCategories.isNotEmpty()) 0 else -1
-            }
+            // Find the category index and FocusRequester using shared helper function
+            val focusInfo = findCategoryFocusInfo(
+                selectedCategoryId = selectedCategoryId,
+                sortedCategories = sortedCategories,
+                categoryFocusRequesterMap = categoryFocusRequesterMap
+            )
             
-            // Try to focus on the selected category if available
-            val categoryToFocus = selectedCategoryId?.let { categoryId ->
-                categoryFocusRequesterMap[categoryId]
-            } ?: run {
-                // Fallback: focus on first category if no selection
-                sortedCategories.firstOrNull()?.categoryId?.let { categoryId ->
-                    categoryFocusRequesterMap[categoryId]
-                }
-            }
-            
-            if (categoryToFocus != null && categoryIndex >= 0) {
+            if (focusInfo.categoryToFocus != null && focusInfo.categoryIndex >= 0) {
                 // Scroll to the category first, then set focus
                 coroutineScope.launch {
                     try {
-                        // Small delay to ensure FocusRequester is initialized
+                        // Delay before scrolling: Compose requires a brief moment for FocusRequester
+                        // initialization after composition. Without this delay, scrollToItem may fail
+                        // silently or the FocusRequester may not be ready. Alternative approaches like
+                        // observing layout state or using LaunchedEffect with layout state dependencies
+                        // were considered but proved more complex and less reliable in practice.
                         kotlinx.coroutines.delay(50)
-                        categorySidebarListState.scrollToItem(categoryIndex)
-                        // Another small delay after scrolling before setting focus
+                        categorySidebarListState.scrollToItem(focusInfo.categoryIndex)
+                        // Delay after scrolling: LazyList scroll animations need time to complete before
+                        // focus can be reliably set. Setting focus immediately after scrollToItem can
+                        // result in focus being set on the wrong item or not at all. This is a known
+                        // limitation of Compose's LazyList focus management on TV platforms.
                         kotlinx.coroutines.delay(50)
-                        categoryToFocus.requestFocus()
-                        Log.i("TVFocus", "$logTag ✅ Focus set on category: $selectedCategoryId (index: $categoryIndex)")
+                        focusInfo.categoryToFocus.requestFocus()
+                        Log.i("TVFocus", "$logTag ✅ Focus set on category: $selectedCategoryId (index: ${focusInfo.categoryIndex})")
                     } catch (e: Exception) {
                         Log.w("TVFocus", "$logTag ⚠️ Error scrolling to category: ${e.message}")
                         // Fallback: try to set focus anyway
                         try {
-                            categoryToFocus.requestFocus()
+                            focusInfo.categoryToFocus.requestFocus()
                         } catch (focusException: Exception) {
                             Log.w("TVFocus", "$logTag ⚠️ Error setting focus: ${focusException.message}")
                         }
