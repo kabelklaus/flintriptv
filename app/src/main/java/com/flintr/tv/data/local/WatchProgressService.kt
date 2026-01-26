@@ -337,33 +337,6 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Automatically adds a movie to favorites when progress is saved.
-     * Failures are logged but don't affect the progress save operation.
-     */
-    private suspend fun addMovieToFavoritesIfNeeded(
-        contentType: String,
-        streamId: Int?,
-        title: String
-    ) {
-        if (contentType != "movie" || streamId == null) return
-        
-        try {
-            val encodedName = URLEncoder.encode(title, "UTF-8")
-            val favoriteId = "$KEY_PREFIX_MOVIE$streamId:$encodedName"
-            val favorite = Favorite.create(
-                id = favoriteId,
-                type = FavoriteType.MOVIE,
-                streamId = streamId,
-                name = title
-            )
-            favoritesRepository.addFavorite(favorite)
-            Log.d(TAG, "Automatically added movie to favorites: streamId=$streamId, title=$title")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to automatically add movie to favorites: streamId=$streamId, title=$title", e)
-        }
-    }
-
-    /**
      * Saves watch progress for a movie or series episode
      * 
      * @param contentType "movie" or "series"
@@ -403,7 +376,6 @@ class WatchProgressService @Inject constructor(
                     Log.d(TAG, "Saving progress: key=$key, position=${position}ms, duration=${duration}ms, progress=${(validation.progressPercent * 100).toInt()}%, title=$title")
                     
                     persistProgress(key, position, duration, title)
-                    addMovieToFavoritesIfNeeded(contentType, streamId, title)
                     
                     Log.d(TAG, "Progress saved successfully: key=$key, position=${position}ms")
                     true
@@ -516,7 +488,6 @@ class WatchProgressService @Inject constructor(
             }
 
             // Automatically remove movie from favorites when progress is deleted
-            // Reconstruct the favorite ID directly (same format as addMovieToFavoritesIfNeeded)
             if (contentType == "movie" && streamId != null && progress != null) {
                 try {
                     val encodedName = URLEncoder.encode(progress.title, "UTF-8")
