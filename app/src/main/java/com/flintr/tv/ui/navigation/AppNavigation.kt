@@ -163,13 +163,9 @@ suspend fun handleDeepLink(
         "series" -> {
             val seriesIdStr = uri.getQueryParameter("seriesId")
             val episodeIdStr = uri.getQueryParameter("episodeId")
-            val seasonNumberStr = uri.getQueryParameter("seasonNumber")
             
             val seriesId = seriesIdStr?.toIntOrNull() ?: return null
             val episodeId = episodeIdStr?.toIntOrNull() ?: return null
-            // seasonNumber is required for Watch Next ID generation (series_{seriesId}_s{seasonNumber}_e{episodeId})
-            // even though it's not needed for stream URL construction
-            val seasonNumber = seasonNumberStr?.toIntOrNull() ?: return null
 
             // Try to get extension from cache, fallback to "mkv"
             val extension = cacheService?.loadCachedDataAsync()
@@ -301,42 +297,57 @@ private suspend fun restoreDestination(
 }
 
 /**
+ * Data class grouping parameters for category restoration
+ */
+private data class CategoryRestoreContext(
+    val state: NavigationStateBeforePlayer,
+    val destination: HomeDestination,
+    val currentCategoryId: String?,
+    val onCategoryIdChanged: (String?) -> Unit,
+    val sortedCategories: List<Category>,
+    val liveCategories: List<Category>,
+    val vodCategories: List<Category>,
+    val seriesCategories: List<Category>
+)
+
+/**
  * Restores the category with fallback logic if category no longer exists.
  */
-private suspend fun restoreCategory(
-    state: NavigationStateBeforePlayer,
-    destination: HomeDestination,
-    currentCategoryId: String?,
-    onCategoryIdChanged: (String?) -> Unit,
-    liveCategories: List<Category>,
-    vodCategories: List<Category>,
-    seriesCategories: List<Category>
-) {
-    if (state.categoryId == null) return
+private suspend fun restoreCategory(context: CategoryRestoreContext) {
+    if (context.state.categoryId == null) return
     
-    // Check if category still exists
-    val categoryExists = when (destination) {
-        is HomeDestination.LiveTV -> liveCategories.any { it.categoryId == state.categoryId }
-        is HomeDestination.VOD -> vodCategories.any { it.categoryId == state.categoryId }
-        is HomeDestination.Series -> seriesCategories.any { it.categoryId == state.categoryId }
-        else -> false
+    // Step 1: Check if category exists in sortedCategories (includes special categories like __in_progress__)
+    val categoryExistsInSorted = context.sortedCategories.any { it.categoryId == context.state.categoryId }
+    
+    if (categoryExistsInSorted) {
+        if (context.currentCategoryId != context.state.categoryId) {
+            context.onCategoryIdChanged(context.state.categoryId)
+        }
+        return
     }
     
-    if (categoryExists) {
-        if (currentCategoryId != state.categoryId) {
-            onCategoryIdChanged(state.categoryId)
+    // Step 2: If not found in sortedCategories, check in raw category lists
+    // This handles cases where the category was filtered out (e.g., hidden categories)
+    // but should still be restored if it exists in the raw data
+    val categoryExistsInRaw = getRawCategoriesForDestination(
+        destination = context.destination,
+        liveCategories = context.liveCategories,
+        vodCategories = context.vodCategories,
+        seriesCategories = context.seriesCategories
+    ).any { it.categoryId == context.state.categoryId }
+    
+    if (categoryExistsInRaw) {
+        // Category exists in raw lists, restore it even if it's currently filtered/hidden
+        if (context.currentCategoryId != context.state.categoryId) {
+            context.onCategoryIdChanged(context.state.categoryId)
         }
-    } else {
-        // Fallback: Select first available category
-        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Category ${state.categoryId} no longer exists, selecting first available category")
-        val firstCategory = when (destination) {
-            is HomeDestination.LiveTV -> liveCategories.firstOrNull()
-            is HomeDestination.VOD -> vodCategories.firstOrNull()
-            is HomeDestination.Series -> seriesCategories.firstOrNull()
-            else -> null
-        }
-        onCategoryIdChanged(firstCategory?.categoryId)
+        return
     }
+    
+    // Step 3: Category not found in either sortedCategories or raw lists - use fallback
+    Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Category ${context.state.categoryId} no longer exists, selecting first available category")
+    val firstCategory = context.sortedCategories.firstOrNull()
+    context.onCategoryIdChanged(firstCategory?.categoryId)
 }
 
 /**
@@ -432,6 +443,7 @@ private data class NavigationRestoreContext(
     val liveCategories: List<Category>,
     val vodCategories: List<Category>,
     val seriesCategories: List<Category>,
+    val sortedCategories: List<Category>,
     val isLoading: Boolean,
     val lazyGridState: androidx.compose.foundation.lazy.grid.LazyGridState,
     val focusRequesterMap: MutableMap<String, FocusRequester>,
@@ -449,7 +461,18 @@ private suspend fun restoreNavigationState(context: NavigationRestoreContext) {
     val destination = restoreDestination(context.state, context.currentDestination, context.onDestinationChanged)
     
     // 2. Set category (if available) - with fallback
-    restoreCategory(context.state, destination, context.currentCategoryId, context.onCategoryIdChanged, context.liveCategories, context.vodCategories, context.seriesCategories)
+    restoreCategory(
+        CategoryRestoreContext(
+            state = context.state,
+            destination = destination,
+            currentCategoryId = context.currentCategoryId,
+            onCategoryIdChanged = context.onCategoryIdChanged,
+            sortedCategories = context.sortedCategories,
+            liveCategories = context.liveCategories,
+            vodCategories = context.vodCategories,
+            seriesCategories = context.seriesCategories
+        )
+    )
     
     // 3. Wait for content to be loaded (state-based check instead of fixed delay)
     waitForContentLoaded(context.isLoading)
@@ -1792,6 +1815,7 @@ fun MainContentScreen(
                     liveCategories = liveCategories,
                     vodCategories = vodCategories,
                     seriesCategories = seriesCategories,
+                    sortedCategories = categoryManagement.sortedCategories,
                     isLoading = uiState.isLoading,
                     lazyGridState = lazyGridState,
                     focusRequesterMap = focusRequesterMap,
