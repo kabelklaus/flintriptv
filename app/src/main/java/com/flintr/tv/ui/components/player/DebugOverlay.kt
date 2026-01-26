@@ -729,9 +729,8 @@ private fun getUIResolution(context: android.content.Context): String {
         val height = displayMetrics.heightPixels
         
         // Get refresh rate - use context.display for API 30+, fallback to deprecated API
-        @Suppress("UNNECESSARY_SAFE_CALL")
         val refreshRate = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            context.display?.let { it.mode.refreshRate } ?: 0f
+            context.display?.mode?.refreshRate ?: 0f
         } else {
             @Suppress("DEPRECATION")
             val windowManager = context.getSystemService(android.content.Context.WINDOW_SERVICE) as? WindowManager
@@ -757,7 +756,6 @@ private fun getUIResolution(context: android.content.Context): String {
 /**
  * Get display mode ID
  */
-@Suppress("UNNECESSARY_SAFE_CALL")
 private fun getDisplayModeID(context: android.content.Context): String {
     return try {
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
