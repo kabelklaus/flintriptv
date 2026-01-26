@@ -329,12 +329,12 @@ private suspend fun restoreCategory(context: CategoryRestoreContext) {
     // Step 2: If not found in sortedCategories, check in raw category lists
     // This handles cases where the category was filtered out (e.g., hidden categories)
     // but should still be restored if it exists in the raw data
-    val categoryExistsInRaw = when (context.destination) {
-        is HomeDestination.LiveTV -> context.liveCategories.any { it.categoryId == context.state.categoryId }
-        is HomeDestination.VOD -> context.vodCategories.any { it.categoryId == context.state.categoryId }
-        is HomeDestination.Series -> context.seriesCategories.any { it.categoryId == context.state.categoryId }
-        else -> false
-    }
+    val categoryExistsInRaw = getRawCategoriesForDestination(
+        destination = context.destination,
+        liveCategories = context.liveCategories,
+        vodCategories = context.vodCategories,
+        seriesCategories = context.seriesCategories
+    ).any { it.categoryId == context.state.categoryId }
     
     if (categoryExistsInRaw) {
         // Category exists in raw lists, restore it even if it's currently filtered/hidden

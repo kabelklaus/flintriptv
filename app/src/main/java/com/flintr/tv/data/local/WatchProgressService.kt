@@ -5,8 +5,6 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.core.content.edit
 import com.flintr.tv.data.model.Episode
-import com.flintr.tv.data.model.Favorite
-import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.WatchProgress
