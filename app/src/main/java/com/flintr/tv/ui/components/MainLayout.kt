@@ -160,7 +160,8 @@ fun MainLayout(
                         if (category.categoryId != "__favorites__") {
                             params.onCategoryHidden(category)
                         }
-                    }
+                    },
+                    listState = params.categorySidebarListState
                 ),
                 modifier = createCategorySidebarModifier(params.onCategorySidebarReady)
             )

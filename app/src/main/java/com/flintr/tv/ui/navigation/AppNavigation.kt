@@ -1372,7 +1372,10 @@ private class FocusManager(
     private val categorySidebarFocusRequester: FocusRequester,
     private val contentListFocusRequester: FocusRequester,
     private val coroutineScope: CoroutineScope,
-    private val logTag: String
+    private val logTag: String,
+    private val categorySidebarListState: androidx.compose.foundation.lazy.LazyListState? = null,
+    private val sortedCategories: List<com.flintr.tv.data.model.Category> = emptyList(),
+    private val selectedCategoryId: String? = null
 ) {
     fun moveFocusToNavbar() {
         Log.i("TVFocus", "$logTag 🎯 Requesting focus: NAVBAR")
@@ -1391,6 +1394,19 @@ private class FocusManager(
                 logTag = "TVFocus",
                 targetName = "CategorySidebar"
             )
+            
+            // Scroll to selected category if one is selected
+            if (selectedCategoryId != null && categorySidebarListState != null && sortedCategories.isNotEmpty()) {
+                val categoryIndex = sortedCategories.indexOfFirst { it.categoryId == selectedCategoryId }
+                if (categoryIndex >= 0) {
+                    try {
+                        categorySidebarListState.animateScrollToItem(categoryIndex)
+                        Log.d("TVFocus", "$logTag 📜 Scrolled to category at index $categoryIndex")
+                    } catch (e: Exception) {
+                        Log.w("TVFocus", "$logTag ⚠️ Failed to scroll to category: ${e.message}")
+                    }
+                }
+            }
         }
     }
 
@@ -1601,11 +1617,6 @@ fun MainContentScreen(
     // LazyListState for category sidebar scrolling
     val categorySidebarListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
-    // Focus manager
-    val focusManager = remember(coroutineScope) {
-        FocusManager(navbarFocusRequester, categorySidebarFocusRequester, contentListFocusRequester, coroutineScope, LOG_TAG_MAIN_CONTENT_SCREEN)
-    }
-    
     // Category management
     val categoryManagement = useCategoryManagement(
         selectedDestination = selectedDestination,
@@ -1614,6 +1625,20 @@ fun MainContentScreen(
         seriesCategories = seriesCategories,
         hiddenCategories = hiddenCategories
     )
+    
+    // Focus manager
+    val focusManager = remember(coroutineScope, categorySidebarListState, categoryManagement.sortedCategories, selectedCategoryId) {
+        FocusManager(
+            navbarFocusRequester, 
+            categorySidebarFocusRequester, 
+            contentListFocusRequester, 
+            coroutineScope, 
+            LOG_TAG_MAIN_CONTENT_SCREEN,
+            categorySidebarListState,
+            categoryManagement.sortedCategories,
+            selectedCategoryId
+        )
+    }
     
     // LaunchedEffects
     UpdateCheckEffect(

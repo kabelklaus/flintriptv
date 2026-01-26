@@ -597,7 +597,13 @@ private fun CardContent(
             colors = colors
         )
     } else {
-        buildTextFallback(title, colors)
+        CardFallbackWithOverlays(
+            title = title,
+            rating = rating,
+            isFavorite = isFavorite,
+            isWatched = isWatched,
+            colors = colors
+        )
     }
 }
 
@@ -614,7 +620,13 @@ private fun CardImageWithOverlays(
     val imageState = painter.state
     
     if (imageState is AsyncImagePainter.State.Error) {
-        buildTextFallback(title, colors)
+        CardFallbackWithOverlays(
+            title = title,
+            rating = rating,
+            isFavorite = isFavorite,
+            isWatched = isWatched,
+            colors = colors
+        )
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
             Image(
@@ -803,6 +815,33 @@ private fun buildTextFallback(
             overflow = TextOverflow.Ellipsis,
             fontSize = ContentCardTitleFontSize,
             color = colors.textPrimary
+        )
+    }
+}
+
+@Composable
+private fun CardFallbackWithOverlays(
+    title: String,
+    rating: String?,
+    isFavorite: Boolean,
+    isWatched: Boolean,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Text-Fallback als Hintergrund
+        buildTextFallback(title, colors)
+
+        // Badges (Stern, Rating, Watched)
+        CardBadges(
+            isFavorite = isFavorite,
+            rating = rating,
+            isWatched = isWatched
+        )
+
+        // Titel-Overlay unten
+        TitleOverlay(
+            title = title,
+            modifier = Modifier.align(Alignment.BottomCenter)
         )
     }
 }
