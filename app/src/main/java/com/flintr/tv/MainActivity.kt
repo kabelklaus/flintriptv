@@ -21,6 +21,7 @@ import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.ui.navigation.AppNavigation
 import com.flintr.tv.ui.navigation.AppNavigationDependencies
+import com.flintr.tv.ui.navigation.Screen
 import com.flintr.tv.ui.navigation.handleDeepLink
 import com.flintr.tv.ui.theme.FlintRTVTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -70,7 +71,8 @@ class MainActivity : ComponentActivity() {
                     DeepLinkHandler(
                         navController = navController,
                         intent = intent,
-                        credentials = credentials
+                        credentials = credentials,
+                        cacheService = cacheService
                     )
                     
                     AppNavigation(
@@ -101,24 +103,25 @@ class MainActivity : ComponentActivity() {
 private fun DeepLinkHandler(
     navController: androidx.navigation.NavHostController,
     intent: Intent,
-    credentials: com.flintr.tv.data.local.Credentials?
+    credentials: com.flintr.tv.data.local.Credentials?,
+    cacheService: DataCacheService
 ) {
     LaunchedEffect(intent) {
         if (intent.action == Intent.ACTION_VIEW && intent.data != null) {
             val uri = intent.data ?: return@LaunchedEffect
             if (uri.scheme == "flintrtv" && uri.host == "play") {
                 Log.d("MainActivity", "Handling deep link: $uri")
-                val route = handleDeepLink(uri, credentials)
+                val route = handleDeepLink(uri, credentials, cacheService)
                 if (route != null) {
                     navController.navigate(route) {
                         // Clear back stack to start fresh
-                        popUpTo(0) { inclusive = false }
+                        popUpTo(navController.graph.startDestinationId) { inclusive = false }
                     }
                 } else {
                     Log.w("MainActivity", "Failed to handle deep link: $uri")
                     // Fallback: navigate to main screen
-                    navController.navigate("main") {
-                        popUpTo(0) { inclusive = false }
+                    navController.navigate(Screen.Main.route) {
+                        popUpTo(navController.graph.startDestinationId) { inclusive = false }
                     }
                 }
             }

@@ -126,11 +126,13 @@ sealed class Screen(val route: String) {
  * 
  * @param uri Deep link URI (flintrtv://play?type=...&streamId=...)
  * @param credentials Credentials for building stream URLs
+ * @param cacheService Optional DataCacheService to load container extension from cache
  * @return Navigation route string or null if invalid
  */
-fun handleDeepLink(
+suspend fun handleDeepLink(
     uri: Uri,
-    credentials: com.flintr.tv.data.local.Credentials?
+    credentials: com.flintr.tv.data.local.Credentials?,
+    cacheService: com.flintr.tv.data.local.DataCacheService? = null
 ): String? {
     if (credentials == null) {
         Log.w("AppNavigation", "Cannot handle deep link: no credentials")
@@ -144,8 +146,13 @@ fun handleDeepLink(
             val streamIdStr = uri.getQueryParameter("streamId")
             val streamId = streamIdStr?.toIntOrNull() ?: return null
             
-            // Build stream URL
-            val extension = "mkv" // Default extension
+            // Try to get extension from cache, fallback to "mkv"
+            val extension = cacheService?.loadCachedDataAsync()
+                ?.movies
+                ?.find { it.streamId == streamId }
+                ?.containerExtension
+                ?: "mkv"
+            
             val streamUrl = "${credentials.serverUrl}/movie/${credentials.username}/${credentials.password}/$streamId.$extension"
             
             // Try to get title from VOD data (optional)
@@ -160,11 +167,21 @@ fun handleDeepLink(
             
             val seriesId = seriesIdStr?.toIntOrNull() ?: return null
             val episodeId = episodeIdStr?.toIntOrNull() ?: return null
-            // Note: seasonNumber is parsed but not needed for stream URL construction
-            seasonNumberStr?.toIntOrNull() ?: return null
+            // seasonNumber is required for Watch Next ID generation (series_{seriesId}_s{seasonNumber}_e{episodeId})
+            // even though it's not needed for stream URL construction
+            val seasonNumber = seasonNumberStr?.toIntOrNull() ?: return null
 
-            // Build stream URL
-            val extension = "mkv" // Default extension
+            // Try to get extension from cache, fallback to "mkv"
+            val extension = cacheService?.loadCachedDataAsync()
+                ?.series
+                ?.find { it.seriesId == seriesId }
+                ?.seasons
+                ?.asSequence()
+                ?.flatMap { it.episodes?.asSequence() ?: emptySequence() }
+                ?.find { it.id == episodeId }
+                ?.containerExtension
+                ?: "mkv"
+            
             val streamUrl = "${credentials.serverUrl}/series/${credentials.username}/${credentials.password}/$episodeId.$extension"
             
             // Try to get title from episode data (optional)

@@ -118,8 +118,8 @@ class WatchNextService @Inject constructor(
                 validateDeepLinkUri(deepLinkUriString)
 
                 val values = buildWatchNextContentValues(
-                    internalProviderId, programType, title, lastEngagementTime,
-                    duration, deepLinkUriString, validatedPosterUrl, posterUrlToUse
+                    internalProviderId, programType, title, description, lastEngagementTime,
+                    duration, progress, deepLinkUriString, validatedPosterUrl, posterUrlToUse
                 )
 
                 val existingUri = findExistingProgram(internalProviderId)
@@ -210,16 +210,12 @@ class WatchNextService @Inject constructor(
                 ContentType.SERIES -> {
                     if (seriesId != null && episodeId != null) {
                         val series = cachedData.series.find { it.seriesId == seriesId }
-                        series?.seasons?.forEach { season ->
-                            season.episodes?.forEach { episode ->
-                                if (episode.id == episodeId) {
-                                    // Prefer episode poster, fallback to series cover
-                                    return episode.info?.movieImage ?: series.cover
-                                }
-                            }
-                        }
-                        // Fallback to series cover if episode not found
-                        series?.cover
+                        val episode = series?.seasons
+                            ?.asSequence()
+                            ?.flatMap { season -> season.episodes?.asSequence() ?: emptySequence() }
+                            ?.find { it.id == episodeId }
+                        // Prefer episode poster, fallback to series cover
+                        episode?.info?.movieImage ?: series?.cover
                     } else {
                         null
                     }
@@ -233,8 +229,9 @@ class WatchNextService @Inject constructor(
     
     /**
      * Generates a stable internal provider ID for a content item.
+     * Public to allow consistent ID generation across the app (e.g., PlayerScreen).
      */
-    private fun generateInternalProviderId(
+    fun generateInternalProviderId(
         contentType: ContentType,
         streamId: Int?,
         seriesId: Int?,
@@ -290,7 +287,7 @@ class WatchNextService @Inject constructor(
         val intentUriString = StringBuilder()
             .append("intent://play")
             .append(customUri.query?.let { "?$it" } ?: "")
-            .append("#Intent;scheme=flintrtv;package=com.flintr.tv;end")
+            .append("#Intent;scheme=flintrtv;package=${context.packageName};end")
             .toString()
         
         return intentUriString.toUri()
@@ -503,8 +500,10 @@ class WatchNextService @Inject constructor(
         internalProviderId: String,
         programType: Int,
         title: String,
+        description: String?,
         lastEngagementTime: Long,
         duration: Long,
+        progress: Float,
         deepLinkUriString: String,
         validatedPosterUrl: String?,
         posterUrlToUse: String?
@@ -517,6 +516,9 @@ class WatchNextService @Inject constructor(
             put(TvContractCompat.WatchNextPrograms.COLUMN_CONTENT_ID, internalProviderId)
             put(TvContractCompat.WatchNextPrograms.COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS, lastEngagementTime)
             put(TvContractCompat.WatchNextPrograms.COLUMN_DURATION_MILLIS, duration)
+            val lastPlaybackPositionMillis = (progress * duration).toLong()
+            put(TvContractCompat.WatchNextPrograms.COLUMN_LAST_PLAYBACK_POSITION_MILLIS, lastPlaybackPositionMillis)
+            description?.let { put(TvContractCompat.WatchNextPrograms.COLUMN_SHORT_DESCRIPTION, it) }
             put(TvContractCompat.WatchNextPrograms.COLUMN_INTENT_URI, deepLinkUriString)
             setPosterUrl(validatedPosterUrl, posterUrlToUse, internalProviderId)
         }

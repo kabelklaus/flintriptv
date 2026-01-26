@@ -956,7 +956,10 @@ private suspend fun updateSeriesWatchNext(
 private suspend fun handleVodCompletion(params: WatchNextEffectParams) {
     if (params.streamId == null) return
 
-    val internalProviderId = "vod_${params.streamId}"
+    val internalProviderId = params.watchNextService.generateInternalProviderId(
+        WatchNextService.ContentType.VOD,
+        params.streamId, null, null, null
+    )
     params.watchNextService.removeWatchNextProgram(internalProviderId)
     if (BuildConfig.DEBUG) {
         Log.d("PlayerScreen", "Removed Watch Next entry for completed VOD: streamId=${params.streamId}")
@@ -972,7 +975,10 @@ private suspend fun handleSeriesCompletion(
 ) {
     if (params.seriesId == null || params.episodeId == null || params.seasonNumber == null) return
 
-    val internalProviderId = "series_${params.seriesId}_s${params.seasonNumber}_e${params.episodeId}"
+    val internalProviderId = params.watchNextService.generateInternalProviderId(
+        WatchNextService.ContentType.SERIES,
+        null, params.seriesId, params.seasonNumber, params.episodeId
+    )
     params.watchNextService.removeWatchNextProgram(internalProviderId)
     if (BuildConfig.DEBUG) {
         Log.d("PlayerScreen", "Removed Watch Next entry for completed episode: seriesId=${params.seriesId}, episodeId=${params.episodeId}")
@@ -1307,13 +1313,8 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     }
     
     // Get season number for Watch Next (from seriesData or ViewModel)
-    val seasonNumber = remember(contentInfoSeriesData, seriesContextLoaded) {
+    val seasonNumber = remember(contentInfoSeriesData) {
         contentInfoSeriesData?.currentSeason?.seasonNumber
-            ?: if (seriesContextLoaded) {
-                viewModel.getSeriesContext()?.currentSeason?.seasonNumber
-            } else {
-                null
-            }
     }
     
     // State for Watch Next tracking
