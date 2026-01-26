@@ -121,6 +121,81 @@ sealed class Screen(val route: String) {
     }
 }
 
+/**
+ * Handles deep link URIs and converts them to navigation routes.
+ * 
+ * @param uri Deep link URI (flintrtv://play?type=...&streamId=...)
+ * @param credentials Credentials for building stream URLs
+ * @param cacheService Optional DataCacheService to load container extension from cache
+ * @return Navigation route string or null if invalid
+ */
+suspend fun handleDeepLink(
+    uri: Uri,
+    credentials: com.flintr.tv.data.local.Credentials?,
+    cacheService: com.flintr.tv.data.local.DataCacheService? = null
+): String? {
+    if (credentials == null) {
+        Log.w("AppNavigation", "Cannot handle deep link: no credentials")
+        return null
+    }
+    
+    val type = uri.getQueryParameter("type") ?: return null
+    
+    return when (type.lowercase()) {
+        "vod" -> {
+            val streamIdStr = uri.getQueryParameter("streamId")
+            val streamId = streamIdStr?.toIntOrNull() ?: return null
+            
+            // Try to get extension from cache, fallback to "mkv"
+            val extension = cacheService?.loadCachedDataAsync()
+                ?.movies
+                ?.find { it.streamId == streamId }
+                ?.containerExtension
+                ?: "mkv"
+            
+            val streamUrl = "${credentials.serverUrl}/movie/${credentials.username}/${credentials.password}/$streamId.$extension"
+            
+            // Try to get title from VOD data (optional)
+            val title = uri.getQueryParameter("title") ?: ""
+            
+            Screen.Player.createRouteForMovie(streamUrl, streamId, title)
+        }
+        "series" -> {
+            val seriesIdStr = uri.getQueryParameter("seriesId")
+            val episodeIdStr = uri.getQueryParameter("episodeId")
+            val seasonNumberStr = uri.getQueryParameter("seasonNumber")
+            
+            val seriesId = seriesIdStr?.toIntOrNull() ?: return null
+            val episodeId = episodeIdStr?.toIntOrNull() ?: return null
+            // seasonNumber is required for Watch Next ID generation (series_{seriesId}_s{seasonNumber}_e{episodeId})
+            // even though it's not needed for stream URL construction
+            val seasonNumber = seasonNumberStr?.toIntOrNull() ?: return null
+
+            // Try to get extension from cache, fallback to "mkv"
+            val extension = cacheService?.loadCachedDataAsync()
+                ?.series
+                ?.find { it.seriesId == seriesId }
+                ?.seasons
+                ?.asSequence()
+                ?.flatMap { it.episodes?.asSequence() ?: emptySequence() }
+                ?.find { it.id == episodeId }
+                ?.containerExtension
+                ?: "mkv"
+            
+            val streamUrl = "${credentials.serverUrl}/series/${credentials.username}/${credentials.password}/$episodeId.$extension"
+            
+            // Try to get title from episode data (optional)
+            val title = uri.getQueryParameter("title") ?: ""
+            
+            Screen.Player.createRouteForSeries(streamUrl, seriesId, episodeId, title)
+        }
+        else -> {
+            Log.w("AppNavigation", "Unknown deep link type: $type")
+            null
+        }
+    }
+}
+
 private fun NavHostController.logAndNavigate(route: String, tag: String, message: () -> String) {
     if (BuildConfig.DEBUG) {
         android.util.Log.d(tag, message())
