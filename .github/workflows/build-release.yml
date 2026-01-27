@@ -190,13 +190,21 @@ jobs:
             exit 0
           fi
 
-          # Fallback: Use first line of commit message
-          TITLE=$(git log -1 --pretty=%s)
+          # Fallback: Extract PR number from merge commit and fetch its title
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP 'Merge pull request #\K[0-9]+' || echo "")
+
+          if [ -n "$PR_NUMBER" ]; then
+            TITLE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUMBER}" | \
+              jq -r '.title // empty' 2>/dev/null || echo "")
+          fi
+
           if [ -z "$TITLE" ]; then
             TITLE="Release v${{ steps.version.outputs.name }}"
           fi
           echo "title=$TITLE" >> $GITHUB_OUTPUT
-          echo "📝 Using commit message: $TITLE"
+          echo "📝 Using title: $TITLE"
 
       - name: Create GitHub Release
         if: steps.should_release.outputs.should_release == 'true'
