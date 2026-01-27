@@ -5,7 +5,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.flintr.tv.data.local.CategoryVisibilityService
+import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.model.*
 import com.flintr.tv.data.repository.UserRepository
@@ -87,7 +89,26 @@ class MainViewModel @Inject constructor(
             return
         }
 
-        // Save username to Firestore if not already written this session
+        saveUsernameIfNeeded(credentials)
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            Log.d("MainViewModel", "Loading initial data...")
+
+            val cachedData = loadFromCacheIfValid()
+
+            loadServerInfo(credentials)
+
+            if (cachedData == null) {
+                loadCategoriesFromRepository(credentials)
+            }
+
+            _uiState.value = _uiState.value.copy(isLoading = false)
+            Log.d("MainViewModel", "Initial data loading finished.")
+        }
+    }
+
+    private fun saveUsernameIfNeeded(credentials: Credentials) {
         val usernameWrittenThisSession = savedStateHandle[KEY_USERNAME_WRITTEN_THIS_SESSION] ?: false
         if (!usernameWrittenThisSession) {
             viewModelScope.launch {
@@ -102,74 +123,75 @@ class MainViewModel @Inject constructor(
                 )
             }
         }
+    }
 
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            Log.d("MainViewModel", "Loading initial data...")
+    private suspend fun loadFromCacheIfValid(): CachedData? {
+        if (!cacheService.isCacheValid()) {
+            Log.d("MainViewModel", "Cache not available, loading from repository")
+            return null
+        }
 
-            // Try to load from cache first
-            val cachedData = if (cacheService.isCacheValid()) {
-                cacheService.loadCachedData()
-            } else {
-                null
+        val cachedData = cacheService.loadCachedData() ?: run {
+            Log.d("MainViewModel", "Cache not available, loading from repository")
+            return null
+        }
+
+        Log.d("MainViewModel", "Loading data from cache")
+        _liveCategories.value = cachedData.liveCategories
+        _vodCategories.value = cachedData.vodCategories
+        _seriesCategories.value = cachedData.seriesCategories
+        _uiState.value = _uiState.value.copy(isLoading = false)
+        Log.d("MainViewModel", "Categories loaded from cache successfully")
+        return cachedData
+    }
+
+    private suspend fun loadServerInfo(credentials: Credentials) {
+        repository.getServerInfo(credentials.username, credentials.password)
+            .onSuccess { serverInfo ->
+                _uiState.value = _uiState.value.copy(serverInfo = serverInfo)
+                Log.d("MainViewModel", "Server info loaded successfully: $serverInfo")
+            }
+            .onFailure { error ->
+                _uiState.value = _uiState.value.copy(error = error.message)
+                Log.e("MainViewModel", "Failed to load server info", error)
+            }
+    }
+
+    private suspend fun loadCategoriesFromRepository(credentials: Credentials) {
+        var categoryLoadError: String? = null
+
+        repository.getLiveCategories(credentials.username, credentials.password)
+            .onSuccess {
+                _liveCategories.value = it
+                Log.d("MainViewModel", "Live categories loaded successfully: ${it.size} categories")
+            }
+            .onFailure {
+                Log.e("MainViewModel", "Failed to load live categories", it)
+                if (categoryLoadError == null) categoryLoadError = it.message
             }
 
-            if (cachedData != null) {
-                Log.d("MainViewModel", "Loading data from cache")
-                _liveCategories.value = cachedData.liveCategories
-                _vodCategories.value = cachedData.vodCategories
-                _seriesCategories.value = cachedData.seriesCategories
-                // Don't load streams here - they will be loaded when a category is selected
-                // Streams are category-specific and should be loaded on demand
-                _uiState.value = _uiState.value.copy(isLoading = false)
-                Log.d("MainViewModel", "Categories loaded from cache successfully")
-            } else {
-                Log.d("MainViewModel", "Cache not available, loading from repository")
+        repository.getVodCategories(credentials.username, credentials.password)
+            .onSuccess {
+                _vodCategories.value = it
+                Log.d("MainViewModel", "VOD categories loaded successfully: ${it.size} categories")
+            }
+            .onFailure {
+                Log.e("MainViewModel", "Failed to load VOD categories", it)
+                if (categoryLoadError == null) categoryLoadError = it.message
             }
 
-            // Always load server info from repository (not cached)
-            repository.getServerInfo(credentials.username, credentials.password)
-                .onSuccess { serverInfo ->
-                    _uiState.value = _uiState.value.copy(serverInfo = serverInfo)
-                    Log.d("MainViewModel", "Server info loaded successfully: $serverInfo")
-                }
-                .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(error = error.message)
-                    Log.e("MainViewModel", "Failed to load server info", error)
-                }
-
-            // If cache was not available, load categories from repository
-            if (cachedData == null) {
-                repository.getLiveCategories(credentials.username, credentials.password)
-                    .onSuccess { 
-                        _liveCategories.value = it
-                        Log.d("MainViewModel", "Live categories loaded successfully: ${it.size} categories")
-                     }
-                    .onFailure { 
-                        Log.e("MainViewModel", "Failed to load live categories", it)
-                    }
-
-                repository.getVodCategories(credentials.username, credentials.password)
-                    .onSuccess { 
-                        _vodCategories.value = it
-                        Log.d("MainViewModel", "VOD categories loaded successfully: ${it.size} categories")
-                    }
-                    .onFailure { 
-                        Log.e("MainViewModel", "Failed to load VOD categories", it)
-                    }
-
-                repository.getSeriesCategories(credentials.username, credentials.password)
-                    .onSuccess { 
-                        _seriesCategories.value = it
-                        Log.d("MainViewModel", "Series categories loaded successfully: ${it.size} categories")
-                    }
-                    .onFailure { 
-                        Log.e("MainViewModel", "Failed to load series categories", it)
-                    }
+        repository.getSeriesCategories(credentials.username, credentials.password)
+            .onSuccess {
+                _seriesCategories.value = it
+                Log.d("MainViewModel", "Series categories loaded successfully: ${it.size} categories")
+            }
+            .onFailure {
+                Log.e("MainViewModel", "Failed to load series categories", it)
+                if (categoryLoadError == null) categoryLoadError = it.message
             }
 
-            _uiState.value = _uiState.value.copy(isLoading = false)
-            Log.d("MainViewModel", "Initial data loading finished.")
+        if (_liveCategories.value.isEmpty() && _vodCategories.value.isEmpty() && _seriesCategories.value.isEmpty() && categoryLoadError != null) {
+            _uiState.value = _uiState.value.copy(error = categoryLoadError)
         }
     }
 
