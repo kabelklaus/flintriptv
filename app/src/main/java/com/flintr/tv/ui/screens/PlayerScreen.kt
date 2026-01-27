@@ -75,6 +75,9 @@ import android.content.Context
 import android.util.Base64
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.flintr.tv.R
 
 // Constants
@@ -1343,6 +1346,34 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         coroutineScope = coroutineScope
     )
     
+    // Lifecycle observer: pause player when app goes to background (Minimizer-Vorbereitung)
+    var isMinimizerActive by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE && !isMinimizerActive) {
+                exoPlayer.playWhenReady = false
+                exoPlayer.pause()
+                // Save watch progress for non-live content
+                coroutineScope.launch {
+                    saveWatchProgress(
+                        exoPlayer = exoPlayer,
+                        contentType = contentType,
+                        streamId = streamId,
+                        seriesId = seriesId,
+                        episodeId = episodeId,
+                        title = currentTitle,
+                        watchProgressService = watchProgressService
+                    )
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     // AnalyticsListener for debug information
     DisposableEffect(exoPlayer) {
         if (!BuildConfig.DEBUG) {

@@ -140,32 +140,42 @@ class MainViewModel @Inject constructor(
 
             // If cache was not available, load categories from repository
             if (cachedData == null) {
+                var categoryLoadError: String? = null
+
                 repository.getLiveCategories(credentials.username, credentials.password)
-                    .onSuccess { 
+                    .onSuccess {
                         _liveCategories.value = it
                         Log.d("MainViewModel", "Live categories loaded successfully: ${it.size} categories")
                      }
-                    .onFailure { 
+                    .onFailure {
                         Log.e("MainViewModel", "Failed to load live categories", it)
+                        categoryLoadError = it.message
                     }
 
                 repository.getVodCategories(credentials.username, credentials.password)
-                    .onSuccess { 
+                    .onSuccess {
                         _vodCategories.value = it
                         Log.d("MainViewModel", "VOD categories loaded successfully: ${it.size} categories")
                     }
-                    .onFailure { 
+                    .onFailure {
                         Log.e("MainViewModel", "Failed to load VOD categories", it)
+                        categoryLoadError = it.message
                     }
 
                 repository.getSeriesCategories(credentials.username, credentials.password)
-                    .onSuccess { 
+                    .onSuccess {
                         _seriesCategories.value = it
                         Log.d("MainViewModel", "Series categories loaded successfully: ${it.size} categories")
                     }
-                    .onFailure { 
+                    .onFailure {
                         Log.e("MainViewModel", "Failed to load series categories", it)
+                        categoryLoadError = it.message
                     }
+
+                // If all categories failed to load, set error state
+                if (_liveCategories.value.isEmpty() && _vodCategories.value.isEmpty() && _seriesCategories.value.isEmpty() && categoryLoadError != null) {
+                    _uiState.value = _uiState.value.copy(error = categoryLoadError)
+                }
             }
 
             _uiState.value = _uiState.value.copy(isLoading = false)

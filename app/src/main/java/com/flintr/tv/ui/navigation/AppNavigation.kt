@@ -69,7 +69,12 @@ import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.unit.dp
+import com.flintr.tv.ui.theme.appColors
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.res.stringResource
@@ -1438,6 +1443,166 @@ private fun CategorySidebarFocusEffect(
 }
 
 /**
+ * LaunchedEffect for handling navigation state restoration
+ */
+@Composable
+private fun NavigationRestoreEffect(
+    pendingNavigationRestore: NavigationStateBeforePlayer?,
+    restoreContext: NavigationRestoreContext?,
+    mainViewModel: MainViewModel
+) {
+    // Check for navigation state when returning from Player or SeriesEpisodesScreen
+    // This LaunchedEffect runs when the screen is first composed (e.g., after process death)
+    LaunchedEffect(Unit) {
+        mainViewModel.consumeNavigationState()
+    }
+
+    // Navigation state restoration effect
+    // Combines both restoration logic and state consumption check
+    LaunchedEffect(pendingNavigationRestore) {
+        if (pendingNavigationRestore != null && restoreContext != null) {
+            // Restore navigation state using extracted function
+            restoreNavigationState(context = restoreContext)
+        } else {
+            // If pendingNavigationRestore is null but there might be a state in SavedStateHandle,
+            // try to consume it (this handles the case when returning from SeriesEpisodesScreen)
+            // Small delay to ensure navigation is complete
+            kotlinx.coroutines.delay(100)
+            mainViewModel.consumeNavigationState()
+        }
+    }
+}
+
+/**
+ * Parameters for [MainContentScaffold]
+ */
+private data class MainContentScaffoldParams(
+    val showLoading: Boolean,
+    val uiState: com.flintr.tv.viewmodel.MainUiState,
+    val selectedDestination: HomeDestination,
+    val onDestinationChangeHandler: (HomeDestination) -> Unit,
+    val categoryManagement: CategoryManagementResult,
+    val selectedCategoryId: String?,
+    val onCategorySelected: (String?) -> Unit,
+    val itemCounts: Map<String, Int>,
+    val navbarFocusRequester: FocusRequester,
+    val categorySidebarFocusRequester: FocusRequester,
+    val categoryFocusRequesterMap: MutableMap<String, FocusRequester>,
+    val focusManager: FocusManager,
+    val onCategoryHidden: (Category) -> Unit,
+    val onSearchClick: () -> Unit,
+    val focusState: MainContentFocusState,
+    val categorySidebarListState: androidx.compose.foundation.lazy.LazyListState,
+    val snackbarHostState: SnackbarHostState,
+    val showSearchOverlay: Boolean,
+    val onSearchOverlayDismiss: () -> Unit,
+    val searchState: com.flintr.tv.data.model.SearchState,
+    val mainViewModel: MainViewModel,
+    val searchClickHandlers: SearchClickHandlers,
+    val credentials: Credentials?,
+    val navController: NavHostController,
+    val contentListFocusRequester: FocusRequester,
+    val lazyGridState: LazyGridState,
+    val focusRequesterMap: MutableMap<String, FocusRequester>,
+    val dependencies: AppNavigationDependencies
+)
+
+/**
+ * Composable rendering the main content scaffold (Loading, Error, or Main UI)
+ */
+@Composable
+private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params) {
+    if (showLoading) {
+        val colors = appColors()
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(48.dp),
+                strokeWidth = 2.dp,
+                color = colors.accentColor
+            )
+        }
+    } else if (uiState.error != null && !uiState.isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = uiState.error,
+                color = appColors().dangerText,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+    } else {
+        Box(modifier = Modifier.fillMaxSize()) {
+            MainLayout(
+                params = MainLayoutParams(
+                    selectedDestination = selectedDestination,
+                    onDestinationChange = onDestinationChangeHandler,
+                    showCategories = categoryManagement.showCategories,
+                    categories = categoryManagement.sortedCategories,
+                    selectedCategoryId = selectedCategoryId,
+                    onCategorySelected = onCategorySelected,
+                    itemCounts = itemCounts,
+                    navbarFocusRequester = navbarFocusRequester,
+                    categorySidebarFocusRequester = categorySidebarFocusRequester,
+                    categoryFocusRequesterMap = categoryFocusRequesterMap,
+                    onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
+                    onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
+                    onNavigateToContentList = { focusManager.moveFocusToContentList() },
+                    onCategoryHidden = onCategoryHidden,
+                    onSearchClick = onSearchClick,
+                    onNavbarReady = { focusState.navbarReady = true },
+                    onCategorySidebarReady = { focusState.categorySidebarReady = true },
+                    onContentListReady = { focusState.contentListReady = true },
+                    categorySidebarListState = categorySidebarListState
+                ),
+                content = {
+                    MainContentBody(
+                        params = MainContentBodyParams(
+                            destination = selectedDestination,
+                            selectedCategoryId = selectedCategoryId,
+                            credentials = credentials,
+                            mainViewModel = mainViewModel,
+                            contentListFocusRequester = contentListFocusRequester,
+                            navController = navController,
+                            lazyGridState = lazyGridState,
+                            focusRequesterMap = focusRequesterMap,
+                            onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
+                            onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
+                            dependencies = dependencies
+                        )
+                    )
+                }
+            )
+
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
+            )
+
+            if (showSearchOverlay) {
+                SearchOverlay(
+                    searchState = searchState,
+                    onQueryChange = { mainViewModel.searchContent(it) },
+                    onSearchImmediate = { mainViewModel.searchContentImmediate() },
+                    onDismiss = {
+                        mainViewModel.clearSearch()
+                        onSearchOverlayDismiss()
+                        focusManager.moveFocusToNavbar()
+                    },
+                    onLiveStreamClick = searchClickHandlers.onLiveStreamClick,
+                    onVodClick = searchClickHandlers.onVodClick,
+                    onSeriesClick = searchClickHandlers.onSeriesClick
+                )
+            }
+        }
+    }
+}
+
+/**
  * State holder class encapsulating focus-related state
  */
 private class MainContentFocusState {
@@ -1793,43 +1958,28 @@ fun MainContentScreen(
         onFocusSet = { focusState.categorySidebarFocusSet = true }
     )
     
-    // Check for navigation state when returning from Player or SeriesEpisodesScreen
-    // This LaunchedEffect runs when the screen is first composed (e.g., after process death)
-    LaunchedEffect(Unit) {
-        mainViewModel.consumeNavigationState()
-    }
-    
     // Navigation state restoration effect
-    // Combines both restoration logic and state consumption check
-    LaunchedEffect(pendingNavigationRestore) {
-        val state = pendingNavigationRestore
-        if (state != null) {
-            // Restore navigation state using extracted function
-            restoreNavigationState(
-                context = NavigationRestoreContext(
-                    state = state,
-                    currentDestination = selectedDestination,
-                    currentCategoryId = selectedCategoryId,
-                    onDestinationChanged = { selectedDestination = it },
-                    onCategoryIdChanged = { selectedCategoryId = it },
-                    liveCategories = liveCategories,
-                    vodCategories = vodCategories,
-                    seriesCategories = seriesCategories,
-                    sortedCategories = categoryManagement.sortedCategories,
-                    isLoading = uiState.isLoading,
-                    lazyGridState = lazyGridState,
-                    focusRequesterMap = focusRequesterMap,
-                    mainViewModel = mainViewModel
-                )
+    NavigationRestoreEffect(
+        pendingNavigationRestore = pendingNavigationRestore,
+        restoreContext = pendingNavigationRestore?.let { state ->
+            NavigationRestoreContext(
+                state = state,
+                currentDestination = selectedDestination,
+                currentCategoryId = selectedCategoryId,
+                onDestinationChanged = { selectedDestination = it },
+                onCategoryIdChanged = { selectedCategoryId = it },
+                liveCategories = liveCategories,
+                vodCategories = vodCategories,
+                seriesCategories = seriesCategories,
+                sortedCategories = categoryManagement.sortedCategories,
+                isLoading = uiState.isLoading,
+                lazyGridState = lazyGridState,
+                focusRequesterMap = focusRequesterMap,
+                mainViewModel = mainViewModel
             )
-        } else {
-            // If pendingNavigationRestore is null but there might be a state in SavedStateHandle,
-            // try to consume it (this handles the case when returning from SeriesEpisodesScreen)
-            // Small delay to ensure navigation is complete
-            kotlinx.coroutines.delay(100)
-            mainViewModel.consumeNavigationState()
-        }
-    }
+        },
+        mainViewModel = mainViewModel
+    )
     
     // Handler function wrapper
     val onDestinationChangeHandler: (HomeDestination) -> Unit = { destination ->
@@ -1879,86 +2029,74 @@ fun MainContentScreen(
         watchProgressService = dependencies.watchProgressService
     )
     
-    // Main UI
-    Box(modifier = Modifier.fillMaxSize()) {
-        MainLayout(
-            params = MainLayoutParams(
-                selectedDestination = selectedDestination,
-                onDestinationChange = onDestinationChangeHandler,
-                showCategories = categoryManagement.showCategories,
-                categories = categoryManagement.sortedCategories,
-                selectedCategoryId = selectedCategoryId,
-                onCategorySelected = { selectedCategoryId = it },
-                itemCounts = itemCounts,
-                navbarFocusRequester = navbarFocusRequester,
-                categorySidebarFocusRequester = categorySidebarFocusRequester,
-                categoryFocusRequesterMap = categoryFocusRequesterMap,
-                onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
-                onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
-                onNavigateToContentList = { focusManager.moveFocusToContentList() },
-                onCategoryHidden = { category ->
-                    Log.d("AppNavigation", "[CategoryHidden] Callback called for category: ${category.categoryName} (${category.categoryId})")
-                    coroutineScope.launch {
-                        handleCategoryHidden(
-                            category = category,
-                            context = CategoryHiddenContext(
-                                categoryType = categoryManagement.categoryType,
-                                selectedCategoryId = selectedCategoryId,
-                                sortedCategories = categoryManagement.sortedCategories,
-                                categoryVisibilityService = dependencies.categoryVisibilityService,
-                                onCategoryIdChanged = { selectedCategoryId = it },
-                                onSnackbarMessage = { snackbarMessage = it },
-                                categoryHiddenMessage = categoryHiddenMessage
-                            )
-                        )
-                    }
-                },
-                onSearchClick = { showSearchOverlay = true },
-                onNavbarReady = { focusState.navbarReady = true },
-                onCategorySidebarReady = { focusState.categorySidebarReady = true },
-                onContentListReady = { focusState.contentListReady = true },
-                categorySidebarListState = categorySidebarListState
-            ),
-            content = {
-                MainContentBody(
-                    params = MainContentBodyParams(
-                        destination = selectedDestination,
-                        selectedCategoryId = selectedCategoryId,
-                        credentials = credentials,
-                        mainViewModel = mainViewModel,
-                        contentListFocusRequester = contentListFocusRequester,
-                        navController = navController,
-                        lazyGridState = lazyGridState,
-                        focusRequesterMap = focusRequesterMap,
-                        onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
-                        onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
-                        dependencies = dependencies
-                    )
-                )
+    // Loading indicator with minimum display duration
+    var loadingStartTime by remember { mutableStateOf(0L) }
+    var showLoading by remember { mutableStateOf(uiState.isLoading) }
+    val minLoadingDuration = 300L
+
+    LaunchedEffect(uiState.isLoading) {
+        if (uiState.isLoading) {
+            loadingStartTime = System.currentTimeMillis()
+            showLoading = true
+        } else if (loadingStartTime > 0L) {
+            val elapsed = System.currentTimeMillis() - loadingStartTime
+            val remaining = minLoadingDuration - elapsed
+            if (remaining > 0) {
+                kotlinx.coroutines.delay(remaining)
             }
-        )
-        
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter)
-        )
-        
-        if (showSearchOverlay) {
-            SearchOverlay(
-                searchState = searchState,
-                onQueryChange = { mainViewModel.searchContent(it) },
-                onSearchImmediate = { mainViewModel.searchContentImmediate() },
-                onDismiss = {
-                    mainViewModel.clearSearch()
-                    showSearchOverlay = false
-                    focusManager.moveFocusToNavbar()
-                },
-                onLiveStreamClick = searchClickHandlers.onLiveStreamClick,
-                onVodClick = searchClickHandlers.onVodClick,
-                onSeriesClick = searchClickHandlers.onSeriesClick
-            )
+            showLoading = false
         }
     }
+
+    // Main UI
+    MainContentScaffold(
+        params = MainContentScaffoldParams(
+            showLoading = showLoading,
+            uiState = uiState,
+            selectedDestination = selectedDestination,
+            onDestinationChangeHandler = onDestinationChangeHandler,
+            categoryManagement = categoryManagement,
+            selectedCategoryId = selectedCategoryId,
+            onCategorySelected = { selectedCategoryId = it },
+            itemCounts = itemCounts,
+            navbarFocusRequester = navbarFocusRequester,
+            categorySidebarFocusRequester = categorySidebarFocusRequester,
+            categoryFocusRequesterMap = categoryFocusRequesterMap,
+            focusManager = focusManager,
+            onCategoryHidden = { category ->
+                Log.d("AppNavigation", "[CategoryHidden] Callback called for category: ${category.categoryName} (${category.categoryId})")
+                coroutineScope.launch {
+                    handleCategoryHidden(
+                        category = category,
+                        context = CategoryHiddenContext(
+                            categoryType = categoryManagement.categoryType,
+                            selectedCategoryId = selectedCategoryId,
+                            sortedCategories = categoryManagement.sortedCategories,
+                            categoryVisibilityService = dependencies.categoryVisibilityService,
+                            onCategoryIdChanged = { selectedCategoryId = it },
+                            onSnackbarMessage = { snackbarMessage = it },
+                            categoryHiddenMessage = categoryHiddenMessage
+                        )
+                    )
+                }
+            },
+            onSearchClick = { showSearchOverlay = true },
+            focusState = focusState,
+            categorySidebarListState = categorySidebarListState,
+            snackbarHostState = snackbarHostState,
+            showSearchOverlay = showSearchOverlay,
+            onSearchOverlayDismiss = { showSearchOverlay = false },
+            searchState = searchState,
+            mainViewModel = mainViewModel,
+            searchClickHandlers = searchClickHandlers,
+            credentials = credentials,
+            navController = navController,
+            contentListFocusRequester = contentListFocusRequester,
+            lazyGridState = lazyGridState,
+            focusRequesterMap = focusRequesterMap,
+            dependencies = dependencies
+        )
+    )
 }
 
 
