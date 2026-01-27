@@ -89,7 +89,7 @@ private suspend fun AwaitPointerEventScope.awaitDragGestureOrNull(
 
 /**
  * Handles complete drag gesture flow
- * @return the final progress value if drag was handled, null if it should be treated as tap
+ * @return true if drag was handled, false if it should be treated as tap
  */
 private suspend fun AwaitPointerEventScope.handleDragGesture(
     downEvent: PointerInputChange,
