@@ -21,7 +21,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -455,6 +457,8 @@ private fun rememberPlayerState() = remember {
         var hasRestoredProgress by mutableStateOf(false)
         var lastInteractionTime by mutableStateOf(System.currentTimeMillis())
         var hasTriggeredCompletion by mutableStateOf(false)
+        var seekFeedbackText by mutableStateOf<String?>(null)
+        var lastSeekTime = 0L
     }
 }
 
@@ -1228,7 +1232,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         state.showControls = true
         state.lastInteractionTime = System.currentTimeMillis()
     }
-    
+
+    // Seek commit job - delays the actual exoPlayer.seekTo until user stops pressing
+    var seekCommitJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // Pending seek position (visual only, not yet committed to ExoPlayer)
+    var pendingSeekPosition by remember { mutableStateOf<Long?>(null) }
+    // Start position when beginning a seek sequence (for accumulated offset calculation)
+    var seekStartPosition by remember { mutableStateOf<Long?>(null) }
+
     // Function to switch to a new channel
     val switchToChannel: (LiveStream) -> Unit = { newStream ->
         credentials?.let { creds ->
@@ -1470,7 +1481,9 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         exoPlayer = exoPlayer,
         isPlaying = state.isPlaying,
         onPositionUpdate = { position, durationValue, buffered ->
-            state.currentPosition = position
+            if (pendingSeekPosition == null) {
+                state.currentPosition = position
+            }
             state.duration = durationValue
             state.bufferedPosition = buffered
         }
@@ -1680,6 +1693,64 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         }
     }
     
+    // D-Pad seek handler (left/right during playback)
+    // Accumulates seek offset visually; only commits exoPlayer.seekTo after user stops pressing.
+    // Shows the standard controls overlay with the red progress bar.
+    val handleDpadSeek: (Boolean) -> Boolean = { isForward ->
+        if (state.isPlaying) {
+            val now = System.currentTimeMillis()
+            if (now - state.lastSeekTime < PlayerConstants.SEEK_DEBOUNCE_MS) {
+                true // consumed but debounced
+            } else {
+                state.lastSeekTime = now
+                val duration = exoPlayer.duration
+                if (duration != androidx.media3.common.C.TIME_UNSET && duration > 0) {
+                    // Use pending position if we're in a seek sequence, otherwise use current player position
+                    val basePosition = pendingSeekPosition ?: exoPlayer.currentPosition
+                    
+                    // Store start position when beginning a new seek sequence
+                    if (pendingSeekPosition == null) {
+                        seekStartPosition = exoPlayer.currentPosition
+                    }
+                    
+                    val newPos = if (isForward) {
+                        (basePosition + PlayerConstants.DPAD_SEEK_FORWARD_MS).coerceAtMost(duration)
+                    } else {
+                        (basePosition - PlayerConstants.DPAD_SEEK_BACK_MS).coerceAtLeast(0L)
+                    }
+
+                    // Update visual position immediately (no exoPlayer.seekTo yet)
+                    pendingSeekPosition = newPos
+                    state.currentPosition = newPos
+
+                    // Show accumulated seek feedback relative to start position
+                    val startPos = seekStartPosition ?: exoPlayer.currentPosition
+                    val totalOffset = newPos - startPos
+                    val offsetSeconds = totalOffset / 1000
+                    state.seekFeedbackText = if (offsetSeconds >= 0) "+${offsetSeconds}s" else "${offsetSeconds}s"
+                    resetControlsTimer()
+
+                    // Cancel previous commit job and schedule a new one
+                    seekCommitJob?.cancel()
+                    seekCommitJob = coroutineScope.launch {
+                        delay(PlayerConstants.SEEK_COMMIT_DELAY_MS)
+                        val commitPos = pendingSeekPosition
+                        if (commitPos != null) {
+                            pendingSeekPosition = null
+                            seekStartPosition = null
+                            exoPlayer.seekTo(commitPos)
+                            state.seekFeedbackText = null
+                            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Seek committed to ${commitPos}ms")
+                        }
+                    }
+                }
+                true
+            }
+        } else {
+            false
+        }
+    }
+
     // Create callbacks
     val onSeek = { seekProgress: Float ->
         createSeekCallback(exoPlayer, state.duration)(seekProgress)
@@ -1752,6 +1823,8 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 }
             }
             .onDpadDirection(
+                onLeft = { handleDpadSeek(false) },
+                onRight = { handleDpadSeek(true) },
                 onUp = handleChannelUp,
                 onDown = handleChannelDown
             )
@@ -1781,7 +1854,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             isBuffering = state.playbackState == Player.STATE_BUFFERING,
             modifier = Modifier.fillMaxSize()
         )
-        
+
         // Content info overlay (top center)
         if (state.showControls) {
             ContentInfoOverlay(
@@ -1840,12 +1913,53 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 modifier = Modifier.fillMaxSize()
             )
             
-            // Central play/pause button
-            CentralPlayPauseButton(
-                isPlaying = state.isPlaying,
-                onClick = onPlayPause,
-                modifier = Modifier.align(Alignment.Center)
-            )
+            // Central play/pause button with seek feedback
+            val seekFeedback = state.seekFeedbackText
+            Row(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                // Left spacer (for backward seek feedback)
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    if (seekFeedback != null && seekFeedback.startsWith("-")) {
+                        Text(
+                            text = seekFeedback,
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(end = 16.dp)
+                        )
+                    }
+                }
+                
+                // Central button (always at same position)
+                CentralPlayPauseButton(
+                    isPlaying = state.isPlaying,
+                    onClick = onPlayPause
+                )
+                
+                // Right spacer (for forward seek feedback)
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (seekFeedback != null && seekFeedback.startsWith("+")) {
+                        Text(
+                            text = seekFeedback,
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 16.dp)
+                        )
+                    }
+                }
+            }
         }
         
         // Debug overlay

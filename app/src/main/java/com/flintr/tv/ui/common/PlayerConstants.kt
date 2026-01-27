@@ -18,4 +18,10 @@ object PlayerConstants {
     
     // Next episode button display threshold (as percentage of episode duration)
     const val NEXT_EPISODE_BUTTON_THRESHOLD = 0.985f
+
+    // D-Pad seek configuration
+    const val DPAD_SEEK_BACK_MS = 10_000L
+    const val DPAD_SEEK_FORWARD_MS = 10_000L
+    const val SEEK_DEBOUNCE_MS = 200L
+    const val SEEK_COMMIT_DELAY_MS = 400L
 }
