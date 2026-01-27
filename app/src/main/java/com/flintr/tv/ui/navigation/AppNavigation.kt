@@ -283,6 +283,7 @@ private fun com.flintr.tv.data.model.DestinationType.toHomeDestination(): HomeDe
 }
 
 private const val LOG_TAG_MAIN_CONTENT_SCREEN = "[MainContentScreen]"
+private const val MIN_LOADING_DURATION_MS = 300L
 
 /**
  * Restores the destination (tab) and waits for UI propagation.
@@ -1466,8 +1467,6 @@ private fun NavigationRestoreEffect(
         } else {
             // If pendingNavigationRestore is null but there might be a state in SavedStateHandle,
             // try to consume it (this handles the case when returning from SeriesEpisodesScreen)
-            // Small delay to ensure navigation is complete
-            kotlinx.coroutines.delay(100)
             mainViewModel.consumeNavigationState()
         }
     }
@@ -2032,7 +2031,6 @@ fun MainContentScreen(
     // Loading indicator with minimum display duration
     var loadingStartTime by remember { mutableStateOf(0L) }
     var showLoading by remember { mutableStateOf(uiState.isLoading) }
-    val minLoadingDuration = 300L
 
     LaunchedEffect(uiState.isLoading) {
         if (uiState.isLoading) {
@@ -2040,7 +2038,7 @@ fun MainContentScreen(
             showLoading = true
         } else if (loadingStartTime > 0L) {
             val elapsed = System.currentTimeMillis() - loadingStartTime
-            val remaining = minLoadingDuration - elapsed
+            val remaining = MIN_LOADING_DURATION_MS - elapsed
             if (remaining > 0) {
                 kotlinx.coroutines.delay(remaining)
             }

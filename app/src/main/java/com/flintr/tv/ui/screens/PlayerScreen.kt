@@ -1346,7 +1346,9 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         coroutineScope = coroutineScope
     )
     
-    // Lifecycle observer: pause player when app goes to background (Minimizer-Vorbereitung)
+    // Lifecycle observer: pause player when app goes to background
+    // TODO: isMinimizerActive will be set to true when picture-in-picture / minimizer mode is implemented,
+    //  so that the player continues playing in the background instead of pausing.
     var isMinimizerActive by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, exoPlayer) {
