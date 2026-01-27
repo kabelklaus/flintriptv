@@ -814,12 +814,15 @@ private fun CompletionDetectionEffect(
     duration: Long,
     contentType: String,
     hasTriggeredCompletion: Boolean,
+    isDragging: Boolean,
     onCompletionTriggered: () -> Unit,
     saveProgress: suspend () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(position, duration, hasTriggeredCompletion) {
+    LaunchedEffect(position, duration, hasTriggeredCompletion, isDragging) {
+        // Skip during drag to prevent false completion triggers from visual-only position updates
+        if (isDragging) return@LaunchedEffect
         // Skip if already triggered or invalid duration or live content
         if (hasTriggeredCompletion) return@LaunchedEffect
         if (duration <= 0) return@LaunchedEffect
@@ -1086,9 +1089,11 @@ private fun WatchNextCompletionEffect(
     params: WatchNextEffectParams,
     progress: Float,
     hasTriggeredCompletion: Boolean,
+    isDragging: Boolean,
     nextEpisodeInfo: com.flintr.tv.viewmodel.NextEpisodeInfo?
 ) {
-    LaunchedEffect(progress, hasTriggeredCompletion, nextEpisodeInfo) {
+    LaunchedEffect(progress, hasTriggeredCompletion, isDragging, nextEpisodeInfo) {
+        if (isDragging) return@LaunchedEffect
         if (params.contentType == "live" || !hasTriggeredCompletion || progress < 0.9f) return@LaunchedEffect
 
         params.coroutineScope.launch {
@@ -1336,6 +1341,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         mutableStateOf(false) 
     }
     var wasPlaying by remember { mutableStateOf(false) }
+    var wasPlayingBeforeDrag by remember { mutableStateOf(false) }
     
     // State for measured bitrate and decoder info
     var measuredBitrate by remember { mutableStateOf(0L) }
@@ -1524,6 +1530,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         duration = state.duration,
         contentType = contentType,
         hasTriggeredCompletion = state.hasTriggeredCompletion,
+        isDragging = state.isDraggingProgress,
         onCompletionTriggered = { state.hasTriggeredCompletion = true },
         saveProgress = {
             saveWatchProgress(
@@ -1617,11 +1624,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         params = watchNextParams,
         progress = progress,
         hasTriggeredCompletion = state.hasTriggeredCompletion,
+        isDragging = state.isDraggingProgress,
         nextEpisodeInfo = nextEpisodeInfoForWatchNext
     )
     
     // Show/hide next episode button based on progress (98.5% threshold)
-    LaunchedEffect(progress, contentType, seriesContextLoaded, watchCreditsMode) {
+    // Skip during drag to prevent false triggers from visual-only position updates
+    LaunchedEffect(progress, contentType, seriesContextLoaded, watchCreditsMode, state.isDraggingProgress) {
+        if (state.isDraggingProgress) return@LaunchedEffect
         if (contentType == "series" && seriesContextLoaded) {
             // Don't show button if watch credits mode is active
             if (watchCreditsMode) {
@@ -1887,13 +1897,31 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                         null
                     },
                     onSeek = onSeek,
-                    onDragStart = {
-                        state.isDraggingProgress = true
-                    },
-                    onDragEnd = {
-                        state.isDraggingProgress = false
-                        resetControlsTimer()
-                    }
+                    dragCallbacks = DragCallbacks(
+                        onDragStart = {
+                            wasPlayingBeforeDrag = exoPlayer.isPlaying
+                            exoPlayer.pause()
+                            state.isDraggingProgress = true
+                        },
+                        onDragProgress = { dragProg ->
+                            if (state.duration > 0) {
+                                state.currentPosition = (dragProg * state.duration).toLong()
+                            }
+                        },
+                        onDragEnd = { finalProgress ->
+                            if (state.duration > 0) {
+                                val seekPosition = (finalProgress * state.duration).toLong()
+                                exoPlayer.seekTo(seekPosition)
+                                state.currentPosition = seekPosition
+                            }
+                            if (wasPlayingBeforeDrag) {
+                                exoPlayer.play()
+                            }
+                            state.isDraggingProgress = false
+                            resetControlsTimer()
+                        }
+                    ),
+                    isDragging = state.isDraggingProgress
                 ),
                 utilityCallbacks = PlayerUtilityCallbacks(
                     onDebug = {

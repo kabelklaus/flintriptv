@@ -1,22 +1,36 @@
 package com.flintr.tv.ui.components.player
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitHorizontalDragOrCancellation
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.ui.theme.SharedColors
 import kotlinx.coroutines.withTimeout
+
+/**
+ * Data class containing drag gesture callbacks
+ */
+data class DragCallbacks(
+    val onDragStart: () -> Unit = {},
+    val onDragProgress: (Float) -> Unit = {},
+    val onDragEnd: (Float) -> Unit = {}
+)
 
 /**
  * Calculates progress value from x position
@@ -40,20 +54,20 @@ private fun handleTapSeek(
 }
 
 /**
- * Processes continuous drag events and updates seek position
+ * Processes continuous drag events and updates drag progress (visual only)
  */
 private suspend fun AwaitPointerEventScope.processDragEvents(
     initialDrag: PointerInputChange,
     containerWidthPx: Float,
-    onSeek: (Float) -> Unit
+    onDragProgress: (Float) -> Unit
 ) {
     var currentDrag = initialDrag
-    onSeek(calculateProgress(currentDrag.position.x, containerWidthPx))
-    
+    onDragProgress(calculateProgress(currentDrag.position.x, containerWidthPx))
+
     while (true) {
         val dragEvent = awaitHorizontalDragOrCancellation(currentDrag.id) ?: break
         currentDrag = dragEvent
-        onSeek(calculateProgress(currentDrag.position.x, containerWidthPx))
+        onDragProgress(calculateProgress(currentDrag.position.x, containerWidthPx))
     }
 }
 
@@ -82,45 +96,59 @@ private suspend fun AwaitPointerEventScope.handleDragGesture(
     containerWidthPx: Float,
     timeoutMillis: Long,
     onDragStart: () -> Unit,
-    onSeek: (Float) -> Unit,
-    onDragEnd: () -> Unit
+    onDragProgress: (Float) -> Unit,
+    onDragEnd: (Float) -> Unit
 ): Boolean {
     val initialDrag = awaitDragGestureOrNull(downEvent, timeoutMillis) ?: return false
-    
+
     onDragStart()
-    processDragEvents(initialDrag, containerWidthPx, onSeek)
-    onDragEnd()
-    
+    var lastProgress = calculateProgress(initialDrag.position.x, containerWidthPx)
+    onDragProgress(lastProgress)
+
+    var currentDrag = initialDrag
+    while (true) {
+        val dragEvent = awaitHorizontalDragOrCancellation(currentDrag.id) ?: break
+        currentDrag = dragEvent
+        lastProgress = calculateProgress(currentDrag.position.x, containerWidthPx)
+        onDragProgress(lastProgress)
+    }
+
+    onDragEnd(lastProgress)
     return true
 }
 
 
 /**
- * Custom video progress bar with drag interaction
+ * Custom video progress bar with drag interaction and scrubber dot
  * @param progress Progress value between 0.0 and 1.0 (current position - dark red)
  * @param bufferedProgress Buffered progress value between 0.0 and 1.0 (light red)
- * @param onSeek Callback when user seeks to a new position (0.0 to 1.0)
- * @param onDragStart Callback when drag starts
- * @param onDragEnd Callback when drag ends
+ * @param isDragging Whether the user is currently dragging the scrubber
+ * @param onSeek Callback when user taps to seek to a new position (0.0 to 1.0)
+ * @param dragCallbacks Callbacks for drag gestures (start, progress, end)
  * @param modifier Modifier for the progress bar
  */
 @Composable
 fun VideoProgressBar(
     progress: Float,
     bufferedProgress: Float = 0f,
+    isDragging: Boolean = false,
     onSeek: (Float) -> Unit,
-    onDragStart: () -> Unit = {},
-    onDragEnd: () -> Unit = {},
+    dragCallbacks: DragCallbacks = DragCallbacks(),
     modifier: Modifier = Modifier
 ) {
     val progressHeight = 4.dp
+    val scrubberSize by animateDpAsState(
+        targetValue = if (isDragging) 18.dp else 12.dp,
+        label = "scrubberSize"
+    )
     var containerWidthPx by remember { mutableStateOf(0f) }
     val viewConfiguration = LocalViewConfiguration.current
-    
+    val density = LocalDensity.current
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(progressHeight)
+            .height(48.dp) // Large touch target
             .onSizeChanged { size ->
                 containerWidthPx = size.width.toFloat()
             }
@@ -128,54 +156,80 @@ fun VideoProgressBar(
                 awaitPointerEventScope {
                     while (true) {
                         val down = awaitFirstDown()
-                        
+
                         val wasDragged = handleDragGesture(
                             downEvent = down,
                             containerWidthPx = containerWidthPx,
                             timeoutMillis = viewConfiguration.longPressTimeoutMillis,
-                            onDragStart = onDragStart,
-                            onSeek = onSeek,
-                            onDragEnd = onDragEnd
+                            onDragStart = dragCallbacks.onDragStart,
+                            onDragProgress = dragCallbacks.onDragProgress,
+                            onDragEnd = dragCallbacks.onDragEnd
                         )
-                        
+
                         if (!wasDragged) {
                             handleTapSeek(down, containerWidthPx, onSeek)
                         }
                     }
                 }
-            }
+            },
+        contentAlignment = Alignment.CenterStart
     ) {
-        // Background progress bar (white 30% opacity)
-        LinearProgressIndicator(
-            progress = 1f,
+        // Progress bar layers (centered vertically)
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(progressHeight)
-                .align(Alignment.Center),
-            color = Color.White.copy(alpha = 0.3f),
-            trackColor = Color.White.copy(alpha = 0.3f)
-        )
-        
-        // Buffered progress indicator (light red)
-        LinearProgressIndicator(
-            progress = bufferedProgress.coerceIn(0f, 1f),
+                .align(Alignment.Center)
+        ) {
+            // Background progress bar (white 30% opacity)
+            LinearProgressIndicator(
+                progress = 1f,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(progressHeight),
+                color = Color.White.copy(alpha = 0.3f),
+                trackColor = Color.White.copy(alpha = 0.3f)
+            )
+
+            // Buffered progress indicator (light red)
+            LinearProgressIndicator(
+                progress = bufferedProgress.coerceIn(0f, 1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(progressHeight),
+                color = SharedColors.red.copy(alpha = 0.5f),
+                trackColor = Color.Transparent
+            )
+
+            // Current position indicator (dark red)
+            LinearProgressIndicator(
+                progress = progress,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(progressHeight),
+                color = SharedColors.red,
+                trackColor = Color.Transparent
+            )
+        }
+
+        // Scrubber dot
+        val scrubberOffsetDp = with(density) {
+            (progress * containerWidthPx).toDp()
+        }
+
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(progressHeight)
-                .align(Alignment.Center),
-            color = SharedColors.red.copy(alpha = 0.5f),
-            trackColor = Color.Transparent
-        )
-        
-        // Current position indicator (dark red)
-        LinearProgressIndicator(
-            progress = progress,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(progressHeight)
-                .align(Alignment.Center),
-            color = SharedColors.red,
-            trackColor = Color.Transparent
+                .offset(x = scrubberOffsetDp - scrubberSize / 2)
+                .align(Alignment.CenterStart)
+                .size(scrubberSize)
+                .then(
+                    if (isDragging) {
+                        Modifier.shadow(4.dp, CircleShape)
+                    } else {
+                        Modifier
+                    }
+                )
+                .background(SharedColors.red, CircleShape)
         )
     }
 }
