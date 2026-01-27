@@ -46,8 +46,8 @@ data class PlayerCallbacks(
     val onNext: () -> Unit,
     val onNextEpisode: (() -> Unit)? = null,
     val onSeek: (Float) -> Unit,
-    val onDragStart: () -> Unit,
-    val onDragEnd: () -> Unit
+    val dragCallbacks: DragCallbacks = DragCallbacks(),
+    val isDragging: Boolean = false
 )
 
 /**
@@ -157,9 +157,9 @@ fun CustomPlayerControls(
                 } else {
                     0f
                 },
+                isDragging = callbacks.isDragging,
                 onSeek = callbacks.onSeek,
-                onDragStart = callbacks.onDragStart,
-                onDragEnd = callbacks.onDragEnd,
+                dragCallbacks = callbacks.dragCallbacks,
                 modifier = Modifier.fillMaxWidth()
             )
             

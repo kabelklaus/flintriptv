@@ -131,7 +131,7 @@ class MainViewModel @Inject constructor(
             return null
         }
 
-        val cachedData = cacheService.loadCachedData() ?: run {
+        val cachedData = cacheService.loadCachedDataAsync() ?: run {
             Log.d("MainViewModel", "Cache not available, loading from repository")
             return null
         }

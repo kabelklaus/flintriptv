@@ -216,14 +216,13 @@ private fun buildDpadHandler(
 }
 
 @Composable
-private fun buildCardModifier(
-    baseModifier: Modifier,
+private fun Modifier.buildCardModifier(
     config: CardConfig,
     colors: com.flintr.tv.ui.theme.AppColors,
     visualState: CardVisualState,
     handlers: CardInteractionHandlers
 ): Modifier {
-    return baseModifier
+    return this
         .width(Dimensions.contentCardMaxCrossAxisExtent)
         .aspectRatio(Dimensions.contentCardAspectRatio)
         .shadowModifier(config.isSelected, colors, visualState.shadowElevation)
@@ -272,8 +271,8 @@ private fun ContentCardInternal(
         showMenu = showMenu,
         favoritesRepository = favoritesRepository
     )
-    useLongPressState(longPressDetected, contentInfo.title) { longPressDetected = it }
-    useMenuStateLogging(showMenu, contentInfo.title)
+    UseLongPressState(longPressDetected, contentInfo.title) { longPressDetected = it }
+    UseMenuStateLogging(showMenu, contentInfo.title)
     
     val performClick = createPerformClickHandler(
         showMenu = showMenu,
@@ -284,8 +283,7 @@ private fun ContentCardInternal(
     
     val visualState = useCardVisualState(config, isFocused, colors)
     
-    val cardModifier = buildCardModifier(
-        baseModifier = modifier,
+    val cardModifier = modifier.buildCardModifier(
         config = config,
         colors = colors,
         visualState = visualState,
@@ -517,7 +515,7 @@ private fun useFavoriteState(
 }
 
 @Composable
-private fun useLongPressState(
+private fun UseLongPressState(
     longPressDetected: Boolean,
     title: String,
     setLongPressDetected: (Boolean) -> Unit
@@ -532,7 +530,7 @@ private fun useLongPressState(
 }
 
 @Composable
-private fun useMenuStateLogging(
+private fun UseMenuStateLogging(
     showMenu: Boolean,
     title: String
 ) {
@@ -798,7 +796,7 @@ private fun TitleOverlay(
 }
 
 @Composable
-private fun buildTextFallback(
+private fun BuildTextFallback(
     title: String,
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
@@ -829,7 +827,7 @@ private fun CardFallbackWithOverlays(
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // Text-Fallback als Hintergrund
-        buildTextFallback(title, colors)
+        BuildTextFallback(title, colors)
 
         // Badges (Stern, Rating, Watched)
         CardBadges(

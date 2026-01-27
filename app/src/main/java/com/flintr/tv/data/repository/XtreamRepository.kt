@@ -118,7 +118,7 @@ class XtreamRepository @Inject constructor(
      * @param filterByCategory Lambda to filter data by categoryId (returns true if item matches categoryId)
      * @return Result containing the cached data or an error if no cache is available
      */
-    private inline fun <T> getCachedData(
+    private suspend inline fun <T> getCachedData(
         getFromCachedData: (CachedData) -> List<T>,
         categoryId: String? = null,
         filterByCategory: (T, String) -> Boolean = { _, _ -> true }
@@ -126,7 +126,7 @@ class XtreamRepository @Inject constructor(
         return try {
             // Only use persistent cache (no in-memory cache for large lists)
             val allData = if (cacheService.isCacheValid()) {
-                val cachedData = cacheService.loadCachedData()
+                val cachedData = cacheService.loadCachedDataAsync()
                 if (cachedData != null) {
                     getFromCachedData(cachedData)
                 } else {
