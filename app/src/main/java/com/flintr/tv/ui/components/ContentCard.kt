@@ -78,6 +78,9 @@ private val ContentCardTextFontWeight = FontWeight.Bold
 // Content Card Title Line Height
 private const val ContentCardTitleLineHeightFactor = 1.2f
 
+// Watch Progress Display Threshold
+private const val WATCH_PROGRESS_DISPLAY_THRESHOLD = 0.9f
+
 data class CardConfig(
     val isSelected: Boolean = false,
     val onFocusChanged: ((Boolean) -> Unit)? = null,
@@ -188,7 +191,7 @@ fun VODCard(params: VODCardParams) {
             )
             if (watchProgress != null && watchProgress.duration > 0) {
                 val percent = watchProgress.position.toFloat() / watchProgress.duration.toFloat()
-                if (percent > 0f && percent < 0.9f) {
+                if (percent > 0f && percent < WATCH_PROGRESS_DISPLAY_THRESHOLD) {
                     progressPercent = percent
                     val remainingMs = watchProgress.duration - watchProgress.position
                     remainingMinutes = (remainingMs / 60000).toInt()

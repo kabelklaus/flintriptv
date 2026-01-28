@@ -457,7 +457,7 @@ class WatchProgressService @Inject constructor(
             val key = generateKey(contentType, streamId, seriesId, episodeId)
             _watchProgress.value[key]
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting watch progress for contentType: $contentType, streamId: $streamId", e)
+            Log.e(TAG, "Error getting watch progress for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
             null
         }
     }

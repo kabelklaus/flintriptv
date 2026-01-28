@@ -13,7 +13,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.AppColors
 
 @Composable
@@ -46,7 +48,7 @@ fun InProgressIndicator(
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "${minutes}m verbleibend",
+                        text = stringResource(R.string.remaining_minutes, minutes),
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.9f)
                     )
