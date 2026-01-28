@@ -1340,6 +1340,21 @@ private fun AutoCloseDialogEffect(
 }
 
 /**
+ * Determines the target category ID based on the current sorted categories and selection.
+ * Returns null if the list is empty, the current ID if it exists in the list,
+ * or the first category's ID otherwise.
+ */
+private fun resolveTargetCategoryId(
+    sortedCategories: List<Category>,
+    selectedCategoryId: String?
+): String? {
+    if (sortedCategories.isEmpty()) return null
+    val currentExists = selectedCategoryId != null &&
+        sortedCategories.any { it.categoryId == selectedCategoryId }
+    return if (currentExists) selectedCategoryId else sortedCategories.first().categoryId
+}
+
+/**
  * LaunchedEffect for category selection when destination or categories change
  */
 @Composable
@@ -1355,16 +1370,10 @@ private fun CategorySelectionEffect(
         if (pendingNavigationRestore != null) {
             return@LaunchedEffect
         }
-        
-        if (sortedCategories.isEmpty()) {
-            onCategoryIdChanged(null)
-        } else {
-            // Always select first category if none selected or selected category doesn't exist in current list
-            val currentCategoryExists = selectedCategoryId != null && 
-                sortedCategories.any { it.categoryId == selectedCategoryId }
-            if (!currentCategoryExists) {
-                onCategoryIdChanged(sortedCategories.first().categoryId)
-            }
+
+        val newCategoryId = resolveTargetCategoryId(sortedCategories, selectedCategoryId)
+        if (newCategoryId != selectedCategoryId) {
+            onCategoryIdChanged(newCategoryId)
         }
     }
 }
