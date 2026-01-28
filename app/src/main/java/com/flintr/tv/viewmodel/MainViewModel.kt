@@ -62,6 +62,7 @@ class MainViewModel @Inject constructor(
     val pendingNavigationRestore: StateFlow<NavigationStateBeforePlayer?> = _pendingNavigationRestore.asStateFlow()
 
     private var searchJob: Job? = null
+    private var dataLoadingJob: Job? = null
 
     companion object {
         private const val MIN_QUERY_LENGTH = 2
@@ -200,8 +201,9 @@ class MainViewModel @Inject constructor(
         logName: String,
         fetchCall: suspend (username: String, password: String) -> Result<List<T>>
     ) {
+        dataLoadingJob?.cancel()
         val credentials = credentialsRepository.getCredentials() ?: return
-        viewModelScope.launch {
+        dataLoadingJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(error = null)
             dataFlow.value = emptyList() // Clear old content while loading
             Log.d("MainViewModel", "Loading $logName")
