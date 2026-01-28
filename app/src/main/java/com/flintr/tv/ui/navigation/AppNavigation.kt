@@ -1349,9 +1349,11 @@ private fun resolveTargetCategoryId(
     selectedCategoryId: String?
 ): String? {
     if (sortedCategories.isEmpty()) return null
-    val currentExists = selectedCategoryId != null &&
-        sortedCategories.any { it.categoryId == selectedCategoryId }
-    return if (currentExists) selectedCategoryId else sortedCategories.first().categoryId
+    return if (sortedCategories.any { it.categoryId == selectedCategoryId }) {
+        selectedCategoryId
+    } else {
+        sortedCategories.first().categoryId
+    }
 }
 
 /**
