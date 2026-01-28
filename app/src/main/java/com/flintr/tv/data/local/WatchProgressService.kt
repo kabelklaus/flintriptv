@@ -444,6 +444,25 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
+     * Returns the full WatchProgress object for a movie or series episode,
+     * or null if no progress exists.
+     */
+    suspend fun getWatchProgress(
+        contentType: String,
+        streamId: Int?,
+        seriesId: Int?,
+        episodeId: Int?
+    ): WatchProgress? = withContext(ioDispatcher) {
+        try {
+            val key = generateKey(contentType, streamId, seriesId, episodeId)
+            _watchProgress.value[key]
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting watch progress for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
+            null
+        }
+    }
+
+    /**
      * Deletes watch progress for a movie or series episode (optimistic update).
      */
     private suspend fun deleteProgress(

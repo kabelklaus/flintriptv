@@ -329,6 +329,7 @@ private fun RenderInProgressCard(
                     vod = item.vod,
                     onClick = { params.onVodClick(item.vod) },
                     favoritesRepository = params.favoritesRepository,
+                    watchProgressService = params.watchProgressService,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
                     focusRequester = cardFocusRequester
