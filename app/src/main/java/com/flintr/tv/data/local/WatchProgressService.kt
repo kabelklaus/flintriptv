@@ -587,7 +587,8 @@ class WatchProgressService @Inject constructor(
      */
     private fun lookupMovieFromCache(
         cachedData: CachedData,
-        streamId: Int
+        streamId: Int,
+        vodCategoryMap: Map<String, com.flintr.tv.data.model.Category>
     ): Triple<String?, String?, String?> {
         val vodStream = cachedData.movies.find { it.streamId == streamId }
         if (vodStream == null) {
@@ -597,7 +598,7 @@ class WatchProgressService @Inject constructor(
 
         val categoryName = vodStream.categoryName ?: lookupCategoryName(
             vodStream.categoryId,
-            cachedData.vodCategories,
+            vodCategoryMap,
             "vodCategories"
         )
         Log.d(TAG, "Found movie in cache: streamId=$streamId, name=${vodStream.name}, genre=${vodStream.genre}, categoryId=${vodStream.categoryId}, categoryName=$categoryName")
@@ -609,7 +610,8 @@ class WatchProgressService @Inject constructor(
      */
     private fun lookupSeriesFromCache(
         cachedData: CachedData,
-        seriesId: Int
+        seriesId: Int,
+        seriesCategoryMap: Map<String, com.flintr.tv.data.model.Category>
     ): Triple<String?, String?, String?> {
         val series = cachedData.series.find { it.seriesId == seriesId }
         if (series == null) {
@@ -619,7 +621,7 @@ class WatchProgressService @Inject constructor(
 
         val categoryName = series.categoryName ?: lookupCategoryName(
             series.categoryId,
-            cachedData.seriesCategories,
+            seriesCategoryMap,
             "seriesCategories"
         )
         Log.d(TAG, "Found series in cache: seriesId=$seriesId, name=${series.name}, genre=${series.genre}, categoryId=${series.categoryId}, categoryName=$categoryName")
@@ -627,17 +629,18 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Looks up a category name from a list of categories by ID.
+     * Looks up a category name from a pre-built map of categories by ID.
+     * Using a Map provides O(1) lookup instead of O(n) with List.find().
      */
     private fun lookupCategoryName(
         categoryId: String?,
-        categories: List<com.flintr.tv.data.model.Category>,
+        categoryMap: Map<String, com.flintr.tv.data.model.Category>,
         categoryType: String
     ): String? {
         val catId = categoryId?.trim() ?: return null
-        val foundCategory = categories.find { it.categoryId.trim() == catId }
+        val foundCategory = categoryMap[catId]
         if (foundCategory == null) {
-            Log.w(TAG, "Category not found in $categoryType: categoryId='$catId' (available categories: ${categories.map { it.categoryId }.take(5)})")
+            Log.w(TAG, "Category not found in $categoryType: categoryId='$catId' (available categories: ${categoryMap.keys.take(5)})")
         }
         return foundCategory?.categoryName
     }
@@ -658,9 +661,13 @@ class WatchProgressService @Inject constructor(
                 return Triple(null, null, null)
             }
 
+            // Create maps for O(1) category lookups instead of O(n) List.find()
+            val vodCategoryMap = cachedData.vodCategories.associateBy { it.categoryId.trim() }
+            val seriesCategoryMap = cachedData.seriesCategories.associateBy { it.categoryId.trim() }
+
             when (contentType) {
-                "movie" -> if (streamId != null) lookupMovieFromCache(cachedData, streamId) else Triple(null, null, null)
-                "series" -> if (seriesId != null) lookupSeriesFromCache(cachedData, seriesId) else Triple(null, null, null)
+                "movie" -> if (streamId != null) lookupMovieFromCache(cachedData, streamId, vodCategoryMap) else Triple(null, null, null)
+                "series" -> if (seriesId != null) lookupSeriesFromCache(cachedData, seriesId, seriesCategoryMap) else Triple(null, null, null)
                 else -> Triple(null, null, null)
             }
         } catch (e: Exception) {
