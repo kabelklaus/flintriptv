@@ -184,6 +184,7 @@ fun VODContent(params: VODContentParams) {
                     vod = vod,
                     onClick = { params.onVodClick(vod) },
                     favoritesRepository = params.favoritesRepository,
+                    watchProgressService = params.watchProgressService,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = if (columnIndex == 0) {
                         { params.onNavigateLeft() }

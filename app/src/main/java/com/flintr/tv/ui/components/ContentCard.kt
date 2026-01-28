@@ -39,6 +39,7 @@ import coil.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.Image
 import android.util.Log
 import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.Favorite
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
@@ -89,6 +90,7 @@ data class VODCardParams(
     val series: Series? = null,
     val onClick: () -> Unit,
     val favoritesRepository: FavoritesRepository,
+    val watchProgressService: WatchProgressService? = null,
     val modifier: Modifier = Modifier,
     val isSelected: Boolean = false,
     val onFocusChanged: ((Boolean) -> Unit)? = null,
@@ -115,6 +117,19 @@ private data class ContentInfo(
     val coverImageUrl: String?,
     val title: String,
     val rating: String?
+)
+
+private data class WatchState(
+    val isWatched: Boolean = false,
+    val progressPercent: Float = 0f,
+    val remainingMinutes: Int? = null
+)
+
+private data class CardOverlayParams(
+    val rating: String?,
+    val isFavorite: Boolean,
+    val watchState: WatchState,
+    val colors: com.flintr.tv.ui.theme.AppColors
 )
 
 private sealed class ContentType {
@@ -152,13 +167,36 @@ fun VODCard(params: VODCardParams) {
         )
         else -> throw IllegalArgumentException("Either vod or series must be provided")
     }
-    
+
     val contentType = when {
         params.vod != null -> ContentType.Movie(params.vod)
         params.series != null -> ContentType.Series(params.series)
         else -> throw IllegalArgumentException("Either vod or series must be provided")
     }
-    
+
+    // Load progress asynchronously for movies (VOD) only
+    var progressPercent by remember { mutableStateOf(0f) }
+    var remainingMinutes by remember { mutableStateOf<Int?>(null) }
+
+    if (params.vod != null && params.watchProgressService != null && !params.isWatched) {
+        LaunchedEffect(params.vod.streamId) {
+            val watchProgress = params.watchProgressService.getWatchProgress(
+                contentType = "movie",
+                streamId = params.vod.streamId,
+                seriesId = null,
+                episodeId = null
+            )
+            if (watchProgress != null && watchProgress.duration > 0) {
+                val percent = watchProgress.position.toFloat() / watchProgress.duration.toFloat()
+                if (percent > 0f && percent < 0.9f) {
+                    progressPercent = percent
+                    val remainingMs = watchProgress.duration - watchProgress.position
+                    remainingMinutes = (remainingMs / 60000).toInt()
+                }
+            }
+        }
+    }
+
     ContentCardInternal(
         contentInfo = contentInfo,
         onClick = params.onClick,
@@ -171,7 +209,11 @@ fun VODCard(params: VODCardParams) {
         ),
         contentType = contentType,
         favoritesRepository = params.favoritesRepository,
-        isWatched = params.isWatched
+        watchState = WatchState(
+            isWatched = params.isWatched,
+            progressPercent = progressPercent,
+            remainingMinutes = remainingMinutes
+        )
     )
 }
 
@@ -254,7 +296,7 @@ private fun ContentCardInternal(
     modifier: Modifier = Modifier,
     config: CardConfig = CardConfig(),
     contentType: ContentType? = null,
-    isWatched: Boolean = false
+    watchState: WatchState = WatchState()
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
@@ -317,10 +359,12 @@ private fun ContentCardInternal(
         CardContent(
             coverImageUrl = contentInfo.coverImageUrl,
             title = contentInfo.title,
-            rating = contentInfo.rating,
-            isFavorite = isFavorite,
-            isWatched = isWatched,
-            colors = colors
+            overlayParams = CardOverlayParams(
+                rating = contentInfo.rating,
+                isFavorite = isFavorite,
+                watchState = watchState,
+                colors = colors
+            )
         )
     }
     
@@ -580,27 +624,18 @@ private fun useCardVisualState(
 private fun CardContent(
     coverImageUrl: String?,
     title: String,
-    rating: String?,
-    isFavorite: Boolean,
-    isWatched: Boolean,
-    colors: com.flintr.tv.ui.theme.AppColors
+    overlayParams: CardOverlayParams
 ) {
     if (!coverImageUrl.isNullOrEmpty()) {
         CardImageWithOverlays(
             coverImageUrl = coverImageUrl,
             title = title,
-            rating = rating,
-            isFavorite = isFavorite,
-            isWatched = isWatched,
-            colors = colors
+            overlayParams = overlayParams
         )
     } else {
         CardFallbackWithOverlays(
             title = title,
-            rating = rating,
-            isFavorite = isFavorite,
-            isWatched = isWatched,
-            colors = colors
+            overlayParams = overlayParams
         )
     }
 }
@@ -609,21 +644,15 @@ private fun CardContent(
 private fun CardImageWithOverlays(
     coverImageUrl: String,
     title: String,
-    rating: String?,
-    isFavorite: Boolean,
-    isWatched: Boolean,
-    colors: com.flintr.tv.ui.theme.AppColors
+    overlayParams: CardOverlayParams
 ) {
     val painter = rememberAsyncImagePainter(model = coverImageUrl)
     val imageState = painter.state
-    
+
     if (imageState is AsyncImagePainter.State.Error) {
         CardFallbackWithOverlays(
             title = title,
-            rating = rating,
-            isFavorite = isFavorite,
-            isWatched = isWatched,
-            colors = colors
+            overlayParams = overlayParams
         )
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -633,17 +662,27 @@ private fun CardImageWithOverlays(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
-            
+
             CardBadges(
-                isFavorite = isFavorite,
-                rating = rating,
-                isWatched = isWatched
+                isFavorite = overlayParams.isFavorite,
+                rating = overlayParams.rating,
+                isWatched = overlayParams.watchState.isWatched
             )
-            
-            TitleOverlay(
-                title = title,
+
+            Column(
                 modifier = Modifier.align(Alignment.BottomCenter)
-            )
+            ) {
+                if (overlayParams.watchState.progressPercent > 0f && !overlayParams.watchState.isWatched) {
+                    Box(modifier = Modifier.padding(horizontal = 4.dp)) {
+                        InProgressIndicator(
+                            progressPercent = overlayParams.watchState.progressPercent,
+                            remainingMinutes = overlayParams.watchState.remainingMinutes,
+                            colors = overlayParams.colors
+                        )
+                    }
+                }
+                TitleOverlay(title = title)
+            }
         }
     }
 }
@@ -820,26 +859,33 @@ private fun BuildTextFallback(
 @Composable
 private fun CardFallbackWithOverlays(
     title: String,
-    rating: String?,
-    isFavorite: Boolean,
-    isWatched: Boolean,
-    colors: com.flintr.tv.ui.theme.AppColors
+    overlayParams: CardOverlayParams
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         // Text-Fallback als Hintergrund
-        BuildTextFallback(title, colors)
+        BuildTextFallback(title, overlayParams.colors)
 
         // Badges (Stern, Rating, Watched)
         CardBadges(
-            isFavorite = isFavorite,
-            rating = rating,
-            isWatched = isWatched
+            isFavorite = overlayParams.isFavorite,
+            rating = overlayParams.rating,
+            isWatched = overlayParams.watchState.isWatched
         )
 
-        // Titel-Overlay unten
-        TitleOverlay(
-            title = title,
+        // Progress-Indicator und Titel-Overlay unten
+        Column(
             modifier = Modifier.align(Alignment.BottomCenter)
-        )
+        ) {
+            if (overlayParams.watchState.progressPercent > 0f && !overlayParams.watchState.isWatched) {
+                Box(modifier = Modifier.padding(horizontal = 4.dp)) {
+                    InProgressIndicator(
+                        progressPercent = overlayParams.watchState.progressPercent,
+                        remainingMinutes = overlayParams.watchState.remainingMinutes,
+                        colors = overlayParams.colors
+                    )
+                }
+            }
+            TitleOverlay(title = title)
+        }
     }
 }

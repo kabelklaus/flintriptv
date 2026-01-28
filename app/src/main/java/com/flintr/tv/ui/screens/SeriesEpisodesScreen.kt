@@ -36,6 +36,7 @@ import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
+import com.flintr.tv.ui.components.InProgressIndicator
 import com.flintr.tv.ui.components.WatchedBadge
 import com.flintr.tv.ui.theme.AppColors
 import com.flintr.tv.ui.theme.Dimensions
@@ -1116,29 +1117,12 @@ private fun EpisodeProgressIndicator(
     colors: AppColors
 ) {
     // Only show progress bar for in-progress episodes (badge is now on thumbnail)
-    if (progressState.progressPercent > 0f && !progressState.isCompleted) {
-        Column(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            LinearProgressIndicator(
-                progress = progressState.progressPercent,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp),
-                color = colors.accentColor,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-            
-            // Remaining time
-            progressState.remainingMinutes?.let { minutes ->
-                Text(
-                    text = "${minutes}m verbleibend",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-        }
+    if (!progressState.isCompleted) {
+        InProgressIndicator(
+            progressPercent = progressState.progressPercent,
+            remainingMinutes = progressState.remainingMinutes,
+            colors = colors
+        )
     }
 }
 
