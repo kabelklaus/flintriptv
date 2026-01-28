@@ -57,6 +57,7 @@ class WatchProgressService @Inject constructor(
     private val watchedHistoryService: WatchedHistoryService,
     private val userRepository: UserRepository,
     private val credentialsRepository: CredentialsRepository,
+    private val cacheService: DataCacheService,
     @Named("WatchProgress") private val syncManager: FirestoreSyncManager,
     private val ioDispatcher: CoroutineDispatcher
 ) {
@@ -366,7 +367,8 @@ class WatchProgressService @Inject constructor(
                 is ProgressValidationResult.Completed -> {
                     Log.d(TAG, "Progress >= 90%, marking as watched and deleting progress for $logContext")
                     // Mark as watched BEFORE deleting progress
-                    watchedHistoryService.markAsWatched(contentType, streamId, seriesId, episodeId)
+                    val (name, genre, categoryName) = getNameGenreAndCategoryFromCache(contentType, streamId, seriesId)
+                    watchedHistoryService.markAsWatched(contentType, streamId, seriesId, episodeId, name, genre, categoryName)
                     return@withContext deleteProgress(contentType, streamId, seriesId, episodeId)
                 }
                 is ProgressValidationResult.Valid -> {
@@ -581,6 +583,93 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
+     * Looks up a movie's metadata from cache.
+     */
+    private fun lookupMovieFromCache(
+        cachedData: CachedData,
+        streamId: Int
+    ): Triple<String?, String?, String?> {
+        val vodStream = cachedData.movies.find { it.streamId == streamId }
+        if (vodStream == null) {
+            Log.w(TAG, "Movie not found in cache: streamId=$streamId (total movies in cache: ${cachedData.movies.size})")
+            return Triple(null, null, null)
+        }
+
+        val categoryName = vodStream.categoryName ?: lookupCategoryName(
+            vodStream.categoryId,
+            cachedData.vodCategories,
+            "vodCategories"
+        )
+        Log.d(TAG, "Found movie in cache: streamId=$streamId, name=${vodStream.name}, genre=${vodStream.genre}, categoryId=${vodStream.categoryId}, categoryName=$categoryName")
+        return Triple(vodStream.name, vodStream.genre, categoryName)
+    }
+
+    /**
+     * Looks up a series' metadata from cache.
+     */
+    private fun lookupSeriesFromCache(
+        cachedData: CachedData,
+        seriesId: Int
+    ): Triple<String?, String?, String?> {
+        val series = cachedData.series.find { it.seriesId == seriesId }
+        if (series == null) {
+            Log.w(TAG, "Series not found in cache: seriesId=$seriesId (total series in cache: ${cachedData.series.size})")
+            return Triple(null, null, null)
+        }
+
+        val categoryName = series.categoryName ?: lookupCategoryName(
+            series.categoryId,
+            cachedData.seriesCategories,
+            "seriesCategories"
+        )
+        Log.d(TAG, "Found series in cache: seriesId=$seriesId, name=${series.name}, genre=${series.genre}, categoryId=${series.categoryId}, categoryName=$categoryName")
+        return Triple(series.name, series.genre, categoryName)
+    }
+
+    /**
+     * Looks up a category name from a list of categories by ID.
+     */
+    private fun lookupCategoryName(
+        categoryId: String?,
+        categories: List<com.flintr.tv.data.model.Category>,
+        categoryType: String
+    ): String? {
+        val catId = categoryId?.trim() ?: return null
+        val foundCategory = categories.find { it.categoryId.trim() == catId }
+        if (foundCategory == null) {
+            Log.w(TAG, "Category not found in $categoryType: categoryId='$catId' (available categories: ${categories.map { it.categoryId }.take(5)})")
+        }
+        return foundCategory?.categoryName
+    }
+
+    /**
+     * Gets name, genre and categoryName from cache for a content item.
+     * Returns Triple(name, genre, categoryName) or (null, null, null) if not found.
+     */
+    private suspend fun getNameGenreAndCategoryFromCache(
+        contentType: String,
+        streamId: Int?,
+        seriesId: Int?
+    ): Triple<String?, String?, String?> {
+        return try {
+            val cachedData = cacheService.loadCachedDataAsync()
+            if (cachedData == null) {
+                Log.w(TAG, "Cache data is null for contentType: $contentType, streamId: $streamId, seriesId: $seriesId")
+                return Triple(null, null, null)
+            }
+
+            when (contentType) {
+                "movie" -> if (streamId != null) lookupMovieFromCache(cachedData, streamId) else Triple(null, null, null)
+                "series" -> if (seriesId != null) lookupSeriesFromCache(cachedData, seriesId) else Triple(null, null, null)
+                else -> Triple(null, null, null)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to get name/genre/categoryName from cache for contentType: $contentType, streamId: $streamId, seriesId: $seriesId", e)
+            Triple(null, null, null)
+        }
+    }
+
+    /**
      * Cleans up a single completed progress entry.
      * Returns true if the entry was successfully cleaned up.
      */
@@ -588,14 +677,16 @@ class WatchProgressService @Inject constructor(
         return when (parsedKey) {
             is ParsedProgressKey.Movie -> {
                 Log.d(TAG, "cleanupCompletedProgress() - cleaning up movie: streamId=${parsedKey.streamId}")
-                watchedHistoryService.markAsWatched("movie", parsedKey.streamId, null, null)
+                val (name, genre, categoryName) = getNameGenreAndCategoryFromCache("movie", parsedKey.streamId, null)
+                watchedHistoryService.markAsWatched("movie", parsedKey.streamId, null, null, name, genre, categoryName)
                 deleteProgress("movie", parsedKey.streamId, null, null)
                 true
             }
             is ParsedProgressKey.Series -> {
                 Log.d(TAG, "cleanupCompletedProgress() - cleaning up episode: seriesId=${parsedKey.seriesId}, episodeId=${parsedKey.episodeId}")
-                watchedHistoryService.markAsWatched("series", null, parsedKey.seriesId, parsedKey.episodeId)
-                deleteProgress("series", null, parsedKey.seriesId, parsedKey.episodeId)
+                val (name, genre, categoryName) = getNameGenreAndCategoryFromCache("series", null, parsedKey.seriesId)
+                watchedHistoryService.markAsWatched("series", parsedKey.episodeId, parsedKey.seriesId, parsedKey.episodeId, name, genre, categoryName)
+                deleteProgress("series", parsedKey.episodeId, parsedKey.seriesId, parsedKey.episodeId)
                 true
             }
             is ParsedProgressKey.Unknown -> false

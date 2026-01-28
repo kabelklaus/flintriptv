@@ -816,6 +816,9 @@ class UserRepository @Inject constructor() {
                     "streamId" to watchedItem.streamId,
                     "seriesId" to watchedItem.seriesId,
                     "episodeId" to watchedItem.episodeId,
+                    "name" to watchedItem.name,
+                    "genre" to watchedItem.genre,
+                    "categoryName" to watchedItem.categoryName,
                     "watchedAt" to watchedItem.watchedAt
                 )
             },
@@ -840,6 +843,9 @@ class UserRepository @Inject constructor() {
                 val streamId = (itemMap["streamId"] as? Number)?.toInt()
                 val seriesId = (itemMap["seriesId"] as? Number)?.toInt()
                 val episodeId = (itemMap["episodeId"] as? Number)?.toInt()
+                val name = itemMap["name"] as? String
+                val genre = itemMap["genre"] as? String
+                val categoryName = itemMap["categoryName"] as? String
                 val watchedAt = itemMap["watchedAt"] as? String ?: return@loadUserDataMap null
                 
                 key to WatchedItem(
@@ -847,6 +853,9 @@ class UserRepository @Inject constructor() {
                     streamId = streamId,
                     seriesId = seriesId,
                     episodeId = episodeId,
+                    name = name,
+                    genre = genre,
+                    categoryName = categoryName,
                     watchedAt = watchedAt
                 )
             }
@@ -875,6 +884,9 @@ class UserRepository @Inject constructor() {
                 val streamId = (itemMap["streamId"] as? Number)?.toInt()
                 val seriesId = (itemMap["seriesId"] as? Number)?.toInt()
                 val episodeId = (itemMap["episodeId"] as? Number)?.toInt()
+                val name = itemMap["name"] as? String
+                val genre = itemMap["genre"] as? String
+                val categoryName = itemMap["categoryName"] as? String
                 val watchedAt = itemMap["watchedAt"] as? String ?: return@migrateUserDataMapFromLocal null
                 
                 key to WatchedItem(
@@ -882,6 +894,9 @@ class UserRepository @Inject constructor() {
                     streamId = streamId,
                     seriesId = seriesId,
                     episodeId = episodeId,
+                    name = name,
+                    genre = genre,
+                    categoryName = categoryName,
                     watchedAt = watchedAt
                 )
             },
@@ -891,6 +906,9 @@ class UserRepository @Inject constructor() {
                     "streamId" to watchedItem.streamId,
                     "seriesId" to watchedItem.seriesId,
                     "episodeId" to watchedItem.episodeId,
+                    "name" to watchedItem.name,
+                    "genre" to watchedItem.genre,
+                    "categoryName" to watchedItem.categoryName,
                     "watchedAt" to watchedItem.watchedAt
                 )
             },

@@ -283,6 +283,7 @@ object AppModule {
         val watchedHistoryService: WatchedHistoryService,
         val userRepository: UserRepository,
         val credentialsRepository: CredentialsRepository,
+        val cacheService: DataCacheService,
         val syncManager: FirestoreSyncManager
     )
 
@@ -293,6 +294,7 @@ object AppModule {
         watchedHistoryService: WatchedHistoryService,
         userRepository: UserRepository,
         credentialsRepository: CredentialsRepository,
+        cacheService: DataCacheService,
         @Named("WatchProgress") syncManager: FirestoreSyncManager
     ): WatchProgressServiceDependencies {
         return WatchProgressServiceDependencies(
@@ -300,6 +302,7 @@ object AppModule {
             watchedHistoryService,
             userRepository,
             credentialsRepository,
+            cacheService,
             syncManager
         )
     }
@@ -319,6 +322,7 @@ object AppModule {
             dependencies.watchedHistoryService,
             dependencies.userRepository,
             dependencies.credentialsRepository,
+            dependencies.cacheService,
             dependencies.syncManager,
             ioDispatcher
         )
