@@ -202,18 +202,17 @@ class MainViewModel @Inject constructor(
     ) {
         val credentials = credentialsRepository.getCredentials() ?: return
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.value = _uiState.value.copy(error = null)
             dataFlow.value = emptyList() // Clear old content while loading
             Log.d("MainViewModel", "Loading $logName")
-            
+
             fetchCall(credentials.username, credentials.password)
                 .onSuccess { data ->
                     dataFlow.value = data
-                    _uiState.value = _uiState.value.copy(isLoading = false)
                     Log.d("MainViewModel", "$logName loaded successfully: ${data.size} items")
                 }
                 .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = error.message)
+                    _uiState.value = _uiState.value.copy(error = error.message)
                     Log.e("MainViewModel", "Failed to load $logName", error)
                 }
         }
