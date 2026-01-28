@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,9 +38,46 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onClick
+import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.ui.utils.safeRequestFocus
+import androidx.compose.ui.res.stringResource
+import com.flintr.tv.R
+import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.model.Favorite
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+/**
+ * Callbacks for search result content clicks
+ */
+data class SearchResultCallbacks(
+    val onLiveStreamClick: (LiveStream) -> Unit,
+    val onVodClick: (VodStream) -> Unit,
+    val onSeriesClick: (Series) -> Unit
+)
+
+/**
+ * Sealed class for type-safe search content handling with favorite support
+ */
+private sealed class SearchContentType {
+    abstract fun toFavoriteId(): String
+    abstract fun toFavorite(): Favorite
+
+    data class Live(val stream: LiveStream) : SearchContentType() {
+        override fun toFavoriteId() = stream.toFavoriteId()
+        override fun toFavorite() = stream.toFavorite()
+    }
+
+    data class Movie(val vod: VodStream) : SearchContentType() {
+        override fun toFavoriteId() = vod.toFavoriteId()
+        override fun toFavorite() = vod.toFavorite()
+    }
+
+    data class Series(val series: com.flintr.tv.data.model.Series) : SearchContentType() {
+        override fun toFavoriteId() = series.toFavoriteId()
+        override fun toFavorite() = series.toFavorite()
+    }
+}
 
 /**
  * Handles key events for the search field
@@ -67,11 +105,10 @@ private fun handleSearchFieldKeyEvent(
 @Composable
 private fun SearchContent(
     searchState: SearchState,
-    onLiveStreamClick: (LiveStream) -> Unit,
-    onVodClick: (VodStream) -> Unit,
-    onSeriesClick: (Series) -> Unit,
+    resultCallbacks: SearchResultCallbacks,
     colors: com.flintr.tv.ui.theme.AppColors,
-    onNavigateUpToSearchField: () -> Unit
+    onNavigateUpToSearchField: () -> Unit,
+    favoritesRepository: FavoritesRepository
 ) {
     // Use trimmed length for display logic (original query kept for TextField)
     val effectiveQueryLength = searchState.query.trim().length
@@ -96,11 +133,10 @@ private fun SearchContent(
         effectiveQueryLength >= 2 && searchState.results.totalCount > 0 -> {
             SearchResultsList(
                 searchState = searchState,
-                onLiveStreamClick = onLiveStreamClick,
-                onVodClick = onVodClick,
-                onSeriesClick = onSeriesClick,
+                resultCallbacks = resultCallbacks,
                 colors = colors,
-                onNavigateUp = onNavigateUpToSearchField
+                onNavigateUp = onNavigateUpToSearchField,
+                favoritesRepository = favoritesRepository
             )
         }
     }
@@ -116,9 +152,8 @@ fun SearchOverlay(
     onQueryChange: (String) -> Unit,
     onSearchImmediate: () -> Unit,
     onDismiss: () -> Unit,
-    onLiveStreamClick: (LiveStream) -> Unit,
-    onVodClick: (VodStream) -> Unit,
-    onSeriesClick: (Series) -> Unit
+    resultCallbacks: SearchResultCallbacks,
+    favoritesRepository: FavoritesRepository
 ) {
     val colors = appColors()
     val searchFieldFocusRequester = remember { FocusRequester() }
@@ -241,13 +276,12 @@ fun SearchOverlay(
             // Search results or hints
             SearchContent(
                 searchState = searchState,
-                onLiveStreamClick = onLiveStreamClick,
-                onVodClick = onVodClick,
-                onSeriesClick = onSeriesClick,
+                resultCallbacks = resultCallbacks,
                 colors = colors,
                 onNavigateUpToSearchField = {
                     searchFieldFocusRequester.requestFocus()
-                }
+                },
+                favoritesRepository = favoritesRepository
             )
         }
     }
@@ -261,17 +295,28 @@ private data class SearchSection<T>(
     val items: List<T>,
     val getName: (T) -> String,
     val onClick: (T) -> Unit,
-    val categoryId: String
+    val categoryId: String,
+    val toContentType: (T) -> SearchContentType
+)
+
+/**
+ * Configuration for focus management in search sections
+ */
+private data class SearchSectionFocusConfig(
+    val firstCategory: String?,
+    val firstItemRendered: Boolean,
+    val onFirstItemRendered: () -> Unit,
+    val firstItemFocusRequester: FocusRequester,
+    val onNavigateUp: () -> Unit
 )
 
 @Composable
 private fun SearchResultsList(
     searchState: SearchState,
-    onLiveStreamClick: (LiveStream) -> Unit,
-    onVodClick: (VodStream) -> Unit,
-    onSeriesClick: (Series) -> Unit,
+    resultCallbacks: SearchResultCallbacks,
     colors: com.flintr.tv.ui.theme.AppColors,
-    onNavigateUp: () -> Unit
+    onNavigateUp: () -> Unit,
+    favoritesRepository: FavoritesRepository
 ) {
     val firstItemFocusRequester = remember { FocusRequester() }
     var firstItemRendered by remember { mutableStateOf(false) }
@@ -283,8 +328,9 @@ private fun SearchResultsList(
                 title = "LiveTV",
                 items = searchState.results.liveTV,
                 getName = { it.name },
-                onClick = { onLiveStreamClick(it) },
-                categoryId = "liveTV"
+                onClick = { resultCallbacks.onLiveStreamClick(it) },
+                categoryId = "liveTV",
+                toContentType = { SearchContentType.Live(it) }
             ))
         }
         if (searchState.results.vod.isNotEmpty()) {
@@ -292,8 +338,9 @@ private fun SearchResultsList(
                 title = "Movies",
                 items = searchState.results.vod,
                 getName = { it.name },
-                onClick = { onVodClick(it) },
-                categoryId = "vod"
+                onClick = { resultCallbacks.onVodClick(it) },
+                categoryId = "vod",
+                toContentType = { SearchContentType.Movie(it) }
             ))
         }
         if (searchState.results.series.isNotEmpty()) {
@@ -301,8 +348,9 @@ private fun SearchResultsList(
                 title = "Series",
                 items = searchState.results.series,
                 getName = { it.name },
-                onClick = { onSeriesClick(it) },
-                categoryId = "series"
+                onClick = { resultCallbacks.onSeriesClick(it) },
+                categoryId = "series",
+                toContentType = { SearchContentType.Series(it) }
             ))
         }
     }
@@ -321,15 +369,19 @@ private fun SearchResultsList(
         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
         contentPadding = PaddingValues(horizontal = Dimensions.spacingMD)
     ) {
+        val focusConfig = SearchSectionFocusConfig(
+            firstCategory = firstCategory,
+            firstItemRendered = firstItemRendered,
+            onFirstItemRendered = { firstItemRendered = true },
+            firstItemFocusRequester = firstItemFocusRequester,
+            onNavigateUp = onNavigateUp
+        )
         sections.forEach { section ->
             searchSection(
                 section = section,
-                firstCategory = firstCategory,
-                firstItemRendered = firstItemRendered,
-                onFirstItemRendered = { firstItemRendered = true },
+                focusConfig = focusConfig,
                 colors = colors,
-                firstItemFocusRequester = firstItemFocusRequester,
-                onNavigateUp = onNavigateUp
+                favoritesRepository = favoritesRepository
             )
         }
     }
@@ -340,27 +392,26 @@ private fun SearchResultsList(
  */
 private fun <T> LazyListScope.searchSection(
     section: SearchSection<T>,
-    firstCategory: String?,
-    firstItemRendered: Boolean,
-    onFirstItemRendered: () -> Unit,
+    focusConfig: SearchSectionFocusConfig,
     colors: com.flintr.tv.ui.theme.AppColors,
-    firstItemFocusRequester: FocusRequester,
-    onNavigateUp: () -> Unit
+    favoritesRepository: FavoritesRepository
 ) {
     item {
         SearchSectionHeader("${section.title} (${section.items.size})", colors)
     }
     items(section.items) { item ->
-        val isFirstItem = section.categoryId == firstCategory && !firstItemRendered
+        val isFirstItem = section.categoryId == focusConfig.firstCategory && !focusConfig.firstItemRendered
         if (isFirstItem) {
-            onFirstItemRendered()
+            focusConfig.onFirstItemRendered()
         }
         SearchResultItem(
             title = section.getName(item),
+            contentType = section.toContentType(item),
             onClick = { section.onClick(item) },
             colors = colors,
-            focusRequester = if (isFirstItem) firstItemFocusRequester else null,
-            onNavigateUp = if (isFirstItem) onNavigateUp else null
+            focusRequester = if (isFirstItem) focusConfig.firstItemFocusRequester else null,
+            onNavigateUp = if (isFirstItem) focusConfig.onNavigateUp else null,
+            favoritesRepository = favoritesRepository
         )
     }
 }
@@ -382,86 +433,179 @@ private fun SearchSectionHeader(
     )
 }
 
+/**
+ * Creates a conditional border modifier
+ */
+private fun Modifier.conditionalBorder(
+    borderColor: Color,
+    shape: RoundedCornerShape
+): Modifier = if (borderColor != Color.Transparent) {
+    this.border(width = 2.dp, color = borderColor, shape = shape)
+} else {
+    this
+}
+
+/**
+ * Creates a conditional focus requester modifier
+ */
+private fun Modifier.conditionalFocusRequester(
+    focusRequester: FocusRequester?
+): Modifier = if (focusRequester != null) {
+    this.focusRequester(focusRequester)
+} else {
+    this
+}
+
+/**
+ * Handles key events for search result navigation
+ */
+private fun handleSearchResultKeyEvent(
+    event: androidx.compose.ui.input.key.KeyEvent,
+    onNavigateUp: (() -> Unit)?
+): Boolean {
+    val isUpPressed = event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp
+    return if (isUpPressed && onNavigateUp != null) {
+        onNavigateUp()
+        true
+    } else {
+        false
+    }
+}
+
+/**
+ * Handles favorite toggle action
+ */
+private suspend fun handleFavoriteToggle(
+    isFavorite: Boolean,
+    favoriteId: String,
+    contentType: SearchContentType,
+    favoritesRepository: FavoritesRepository,
+    onFavoriteChanged: (Boolean) -> Unit
+) {
+    if (isFavorite) {
+        favoritesRepository.removeFavorite(favoriteId)
+        onFavoriteChanged(false)
+    } else {
+        val favorite = contentType.toFavorite()
+        favoritesRepository.addFavorite(favorite)
+        onFavoriteChanged(true)
+    }
+}
+
 @Composable
 private fun SearchResultItem(
     title: String,
+    contentType: SearchContentType,
     onClick: () -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors,
     focusRequester: FocusRequester? = null,
-    onNavigateUp: (() -> Unit)? = null
+    onNavigateUp: (() -> Unit)? = null,
+    favoritesRepository: FavoritesRepository
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    
-    // Request focus when this is the first item and focusRequester is provided
-    LaunchedEffect(focusRequester) {
-        if (focusRequester != null) {
-            focusRequester.safeRequestFocus("SearchOverlay", "SearchResultItem: $title")
-        }
+    var showMenu by remember { mutableStateOf(false) }
+    var longPressDetected by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    val favoriteId = remember(contentType) { contentType.toFavoriteId() }
+    var isFavorite by remember { mutableStateOf(false) }
+
+    LaunchedEffect(favoriteId, showMenu) {
+        isFavorite = favoritesRepository.isFavorite(favoriteId)
     }
-    
+
+    LaunchedEffect(longPressDetected) {
+        if (!longPressDetected) return@LaunchedEffect
+        delay(100)
+        longPressDetected = false
+    }
+
+    LaunchedEffect(focusRequester) {
+        focusRequester?.safeRequestFocus("SearchOverlay", "SearchResultItem: $title")
+    }
+
     val backgroundColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (isFocused) colors.bgHover else Color.Transparent,
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
         label = "backgroundColor"
     )
-    
+
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (isFocused) colors.accentColor else Color.Transparent,
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
         label = "borderColor"
     )
-    
+
+    val removeFromFavoritesText = stringResource(R.string.remove_from_favorites)
+    val addToFavoritesText = stringResource(R.string.add_to_favorites)
+    val menuOptions = remember(isFavorite, removeFromFavoritesText, addToFavoritesText) {
+        if (isFavorite) listOf(removeFromFavoritesText) else listOf(addToFavoritesText)
+    }
+
+    val itemShape = RoundedCornerShape(Dimensions.radiusSM)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                color = backgroundColor,
-                shape = RoundedCornerShape(Dimensions.radiusSM)
-            )
-            .then(
-                if (borderColor != Color.Transparent) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color = borderColor,
-                        shape = RoundedCornerShape(Dimensions.radiusSM)
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                }
-            )
-            .onFocusChanged { focusState ->
-                isFocused = focusState.isFocused
-            }
+            .background(color = backgroundColor, shape = itemShape)
+            .conditionalBorder(borderColor, itemShape)
+            .conditionalFocusRequester(focusRequester)
+            .onFocusChanged { isFocused = it.isFocused }
             .focusable()
-            .onKeyEvent { event ->
-                // Navigate back to search field when Up is pressed on first item
-                if (event.type == KeyEventType.KeyDown && 
-                    event.key == Key.DirectionUp && 
-                    onNavigateUp != null) {
-                    onNavigateUp()
-                    true
-                } else {
-                    false
+            .onKeyEvent { handleSearchResultKeyEvent(it, onNavigateUp) }
+            .onLongPress(
+                onLongPress = {
+                    longPressDetected = true
+                    showMenu = true
+                },
+                onNormalClick = {
+                    if (!showMenu && !longPressDetected) onClick()
+                }
+            )
+            .padding(horizontal = Dimensions.spacingMD, vertical = Dimensions.spacingSM)
+    ) {
+        SearchResultItemContent(title, isFavorite, isFocused, colors)
+    }
+
+    PopupMenu(
+        isOpen = showMenu,
+        menuOptions = menuOptions,
+        onDismiss = { showMenu = false },
+        onOptionSelected = {
+            coroutineScope.launch {
+                handleFavoriteToggle(isFavorite, favoriteId, contentType, favoritesRepository) {
+                    isFavorite = it
                 }
             }
-            .onClick(onClick)
-            .padding(
-                horizontal = Dimensions.spacingMD,
-                vertical = Dimensions.spacingSM
-            )
+        }
+    )
+}
+
+@Composable
+private fun SearchResultItemContent(
+    title: String,
+    isFavorite: Boolean,
+    isFocused: Boolean,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
     ) {
+        if (isFavorite) {
+            Icon(
+                imageVector = Icons.Filled.Star,
+                contentDescription = null,
+                tint = colors.accentColor,
+                modifier = Modifier.size(16.dp)
+            )
+        }
         Text(
             text = title,
             fontSize = FontSizes.fontSizeMD,
             color = if (isFocused) colors.textPrimary else colors.textSecondary,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.weight(1f)
         )
     }
 }

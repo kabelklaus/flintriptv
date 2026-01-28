@@ -64,6 +64,7 @@ import com.flintr.tv.utils.DownloadProgress
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
 import com.flintr.tv.ui.components.SearchOverlay
+import com.flintr.tv.ui.components.SearchResultCallbacks
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
@@ -1603,9 +1604,12 @@ private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params
                         onSearchOverlayDismiss()
                         focusManager.moveFocusToNavbar()
                     },
-                    onLiveStreamClick = searchClickHandlers.onLiveStreamClick,
-                    onVodClick = searchClickHandlers.onVodClick,
-                    onSeriesClick = searchClickHandlers.onSeriesClick
+                    resultCallbacks = SearchResultCallbacks(
+                        onLiveStreamClick = searchClickHandlers.onLiveStreamClick,
+                        onVodClick = searchClickHandlers.onVodClick,
+                        onSeriesClick = searchClickHandlers.onSeriesClick
+                    ),
+                    favoritesRepository = dependencies.favoritesRepository
                 )
             }
         }
