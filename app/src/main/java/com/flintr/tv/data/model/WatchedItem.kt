@@ -13,6 +13,12 @@ data class WatchedItem(
     val seriesId: Int?, // For episodes
     @Json(name = "episodeId")
     val episodeId: Int?, // For episodes
+    @Json(name = "name")
+    val name: String?,
+    @Json(name = "genre")
+    val genre: String?,
+    @Json(name = "categoryName")
+    val categoryName: String?,
     @Json(name = "watchedAt")
     val watchedAt: String // ISO8601 format timestamp
 )

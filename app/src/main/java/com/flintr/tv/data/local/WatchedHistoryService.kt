@@ -114,6 +114,16 @@ class WatchedHistoryService @Inject constructor(
                     _watchedHistory.value = history
                     syncManager.updateLastSyncTimestamp()
                     Log.d(TAG, "Loaded watched history from Firestore: ${history.size} total")
+                    // Log entries with name/genre/categoryName for debugging
+                    val entriesWithMetadata = history.filter { (_, item) -> item.name != null || item.genre != null || item.categoryName != null }
+                    if (entriesWithMetadata.isNotEmpty()) {
+                        Log.d(TAG, "Entries with name/genre/categoryName: ${entriesWithMetadata.size}")
+                        entriesWithMetadata.forEach { (key, item) ->
+                            Log.d(TAG, "  Entry $key: name=${item.name}, genre=${item.genre}, categoryName=${item.categoryName}")
+                        }
+                    } else {
+                        Log.d(TAG, "No entries with name/genre/categoryName found (all entries have null values)")
+                    }
                 },
                 onFailure = { exception ->
                     Log.e(TAG, "Failed to load watched history from Firestore", exception)
@@ -228,7 +238,13 @@ class WatchedHistoryService @Inject constructor(
             val result = userRepository.saveWatchedHistory(username, history)
             result.fold(
                 onSuccess = {
-                    Log.d(TAG, "Successfully saved watched history to Firestore")
+                    Log.d(TAG, "Successfully saved watched history to Firestore (${history.size} entries)")
+                    // Log details of entries with name/genre/categoryName for debugging
+                    history.forEach { (key, item) ->
+                        if (item.name != null || item.genre != null || item.categoryName != null) {
+                            Log.d(TAG, "  Entry $key: name=${item.name}, genre=${item.genre}, categoryName=${item.categoryName}")
+                        }
+                    }
                 },
                 onFailure = { exception ->
                     Log.e(TAG, "Failed to save watched history to Firestore", exception)
@@ -269,17 +285,23 @@ class WatchedHistoryService @Inject constructor(
         contentType: String,
         streamId: Int?,
         seriesId: Int?,
-        episodeId: Int?
+        episodeId: Int?,
+        name: String? = null,
+        genre: String? = null,
+        categoryName: String? = null
     ): Boolean = withContext(ioDispatcher) {
         try {
             val key = generateKey(contentType, streamId, seriesId, episodeId)
-            Log.d(TAG, "Marking as watched: key=$key, contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId")
+            Log.d(TAG, "Marking as watched: key=$key, contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId, name: $name, genre: $genre, categoryName: $categoryName")
 
             val watchedItem = WatchedItem(
                 contentType = contentType,
                 streamId = streamId,
                 seriesId = seriesId,
                 episodeId = episodeId,
+                name = name,
+                genre = genre,
+                categoryName = categoryName,
                 watchedAt = Instant.now().toString()
             )
             
@@ -294,7 +316,7 @@ class WatchedHistoryService @Inject constructor(
             // Save to Firestore asynchronously
             saveToFirestore(updatedMap)
             
-            Log.d(TAG, "Marked as watched successfully: key=$key")
+            Log.d(TAG, "Marked as watched successfully: key=$key, name: $name, genre: $genre, categoryName: $categoryName")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error marking as watched for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)

@@ -504,7 +504,6 @@ private fun SearchResultItem(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
-    var longPressDetected by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
     val favoriteId = remember(contentType) { contentType.toFavoriteId() }
@@ -512,12 +511,6 @@ private fun SearchResultItem(
 
     LaunchedEffect(favoriteId, showMenu) {
         isFavorite = favoritesRepository.isFavorite(favoriteId)
-    }
-
-    LaunchedEffect(longPressDetected) {
-        if (!longPressDetected) return@LaunchedEffect
-        delay(100)
-        longPressDetected = false
     }
 
     LaunchedEffect(focusRequester) {
@@ -554,13 +547,8 @@ private fun SearchResultItem(
             .focusable()
             .onKeyEvent { handleSearchResultKeyEvent(it, onNavigateUp) }
             .onLongPress(
-                onLongPress = {
-                    longPressDetected = true
-                    showMenu = true
-                },
-                onNormalClick = {
-                    if (!showMenu && !longPressDetected) onClick()
-                }
+                onLongPress = { showMenu = true },
+                onNormalClick = onClick
             )
             .padding(horizontal = Dimensions.spacingMD, vertical = Dimensions.spacingSM)
     ) {

@@ -107,7 +107,7 @@ sealed class Screen(val route: String) {
         fun createRouteForSeries(streamUrl: String, seriesId: Int, episodeId: Int, title: String): String {
             val encodedUrl = Uri.encode(streamUrl, null)
             val encodedTitle = if (title.isNotEmpty()) Uri.encode(title, null) else EMPTY_TITLE_PLACEHOLDER
-            return "player/$encodedUrl/series/-1/$seriesId/$episodeId/$encodedTitle/$EMPTY_CATEGORY_PLACEHOLDER/$EMPTY_CATEGORY_PLACEHOLDER"
+            return "player/$encodedUrl/series/$episodeId/$seriesId/$episodeId/$encodedTitle/$EMPTY_CATEGORY_PLACEHOLDER/$EMPTY_CATEGORY_PLACEHOLDER"
         }
         
         fun createRouteForLive(streamUrl: String, channelName: String = "", categoryId: String? = null, categoryName: String? = null, streamId: Int? = null): String {
