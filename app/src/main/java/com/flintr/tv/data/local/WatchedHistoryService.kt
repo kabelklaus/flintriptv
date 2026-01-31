@@ -286,9 +286,9 @@ class WatchedHistoryService @Inject constructor(
         streamId: Int?,
         seriesId: Int?,
         episodeId: Int?,
-        name: String?,
-        genre: String?,
-        categoryName: String?
+        name: String? = null,
+        genre: String? = null,
+        categoryName: String? = null
     ): Boolean = withContext(ioDispatcher) {
         try {
             val key = generateKey(contentType, streamId, seriesId, episodeId)
