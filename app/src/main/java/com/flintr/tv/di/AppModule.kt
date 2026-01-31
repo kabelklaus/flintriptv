@@ -6,6 +6,7 @@ import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
+import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.FirestoreSyncManager
 import com.flintr.tv.data.local.WatchedHistoryService
@@ -356,6 +357,14 @@ object AppModule {
         return FirestoreSyncManager(tag = "FirestoreSyncManager-WatchedHistory")
     }
     
+    @Provides
+    @Singleton
+    fun providePlaybackSettingsRepository(
+        @ApplicationContext context: Context
+    ): PlaybackSettingsRepository {
+        return PlaybackSettingsRepository(context)
+    }
+
     @Provides
     @Singleton
     fun provideCategoryVisibilityService(

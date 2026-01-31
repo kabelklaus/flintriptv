@@ -17,6 +17,7 @@ import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.ui.navigation.AppNavigation
@@ -48,6 +49,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var categoryVisibilityService: CategoryVisibilityService
+
+    @Inject
+    lateinit var playbackSettingsRepository: PlaybackSettingsRepository
 
     @Inject
     lateinit var xtreamRepository: XtreamRepository
@@ -83,6 +87,7 @@ class MainActivity : ComponentActivity() {
                             favoritesRepository = favoritesRepository,
                             watchProgressService = watchProgressService,
                             categoryVisibilityService = categoryVisibilityService,
+                            playbackSettingsRepository = playbackSettingsRepository,
                             xtreamRepository = xtreamRepository,
                             ioDispatcher = ioDispatcher
                         )

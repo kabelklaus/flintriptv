@@ -1,4 +1,4 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+@file:androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 
 package com.flintr.tv.ui.components.player
 
@@ -76,6 +76,9 @@ data class VideoMediaDebugParams(
     val bitrate: String,
     val decoderName: String,
     val audioDecoderName: String,
+    val audioCodec: String,
+    val audioSampleRate: String,
+    val audioChannels: String,
     val hardwareAccelerated: String,
     val transferFunction: String,
     val colorSpace: String,
@@ -146,6 +149,9 @@ private fun createVideoMediaDebugInfo(
         DebugInfo("Video/Audio bitrate", params.bitrate),
         DebugInfo("Video decoder name", params.decoderName),
         DebugInfo("Audio decoder name", formatDecoderName(params.audioDecoderName)),
+        DebugInfo("Audio codec", params.audioCodec),
+        DebugInfo("Audio sample rate", params.audioSampleRate),
+        DebugInfo("Audio channels", params.audioChannels),
         DebugInfo("Hardware accelerated", params.hardwareAccelerated),
         DebugInfo("Transfer function", params.transferFunction),
         DebugInfo("Color space", params.colorSpace),
@@ -218,6 +224,7 @@ private fun createAppVersionDebugInfo(
  * @param params DebugOverlayParams containing all player and system information
  * @param modifier Modifier for the overlay
  */
+@androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 @Composable
 fun DebugOverlay(
     params: DebugOverlayParams,
@@ -243,6 +250,9 @@ fun DebugOverlay(
     var transferFunction by remember { mutableStateOf("N/A") }
     var colorSpace by remember { mutableStateOf("N/A") }
     var droppedRenderedFrames by remember { mutableStateOf("") }
+    var audioCodec by remember { mutableStateOf("N/A") }
+    var audioSampleRate by remember { mutableStateOf("N/A") }
+    var audioChannels by remember { mutableStateOf("N/A") }
     
     // STATE for dynamic system values
     var cpuUsage by remember { mutableStateOf("") }
@@ -293,7 +303,10 @@ fun DebugOverlay(
             hardwareAccelerated = isHardwareAccelerated(currentVideoDecoderName)
             transferFunction = getTransferFunction(exoPlayer)
             colorSpace = getColorSpace(exoPlayer)
-            
+            audioCodec = getAudioCodec(exoPlayer)
+            audioSampleRate = getAudioSampleRate(exoPlayer)
+            audioChannels = getAudioChannels(exoPlayer)
+
             delay(500)
         }
     }
@@ -325,6 +338,9 @@ fun DebugOverlay(
             bitrate = bitrate,
             decoderName = decoderName,
             audioDecoderName = audioDecoderName,
+            audioCodec = audioCodec,
+            audioSampleRate = audioSampleRate,
+            audioChannels = audioChannels,
             hardwareAccelerated = hardwareAccelerated,
             transferFunction = transferFunction,
             colorSpace = colorSpace,
@@ -474,6 +490,38 @@ private fun getVideoAudioCodecs(exoPlayer: ExoPlayer?): String {
         audioPart.isNotEmpty() -> audioPart
         else -> ""
     }
+}
+
+/**
+ * Extract audio codec from ExoPlayer audio format.
+ */
+@UnstableApi
+private fun getAudioCodec(exoPlayer: ExoPlayer?): String {
+    if (exoPlayer == null) return "N/A"
+    val format = exoPlayer.audioFormat ?: return "N/A"
+    return format.codecs?.takeIf { it.isNotEmpty() } ?: "N/A"
+}
+
+/**
+ * Extract audio sample rate from ExoPlayer audio format.
+ */
+@UnstableApi
+private fun getAudioSampleRate(exoPlayer: ExoPlayer?): String {
+    if (exoPlayer == null) return "N/A"
+    val format = exoPlayer.audioFormat ?: return "N/A"
+    val rate = format.sampleRate
+    return if (rate != Format.NO_VALUE && rate > 0) "${rate}Hz" else "N/A"
+}
+
+/**
+ * Extract audio channel count from ExoPlayer audio format.
+ */
+@UnstableApi
+private fun getAudioChannels(exoPlayer: ExoPlayer?): String {
+    if (exoPlayer == null) return "N/A"
+    val format = exoPlayer.audioFormat ?: return "N/A"
+    val channels = format.channelCount
+    return if (channels != Format.NO_VALUE && channels > 0) channels.toString() else "N/A"
 }
 
 /**
