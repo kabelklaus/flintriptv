@@ -29,6 +29,7 @@ import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.data.model.Category
@@ -541,6 +542,7 @@ data class AppNavigationDependencies(
     val favoritesRepository: FavoritesRepository,
     val watchProgressService: WatchProgressService,
     val categoryVisibilityService: CategoryVisibilityService,
+    val playbackSettingsRepository: PlaybackSettingsRepository,
     val xtreamRepository: XtreamRepository,
     val ioDispatcher: CoroutineDispatcher
 )
@@ -600,7 +602,8 @@ fun AppNavigation(
                 onNavigateLeft = { navController.popBackStack() },
                 categoryVisibilityService = dependencies.categoryVisibilityService,
                 mainViewModel = mainViewModel,
-                credentialsRepository = dependencies.credentialsRepository
+                credentialsRepository = dependencies.credentialsRepository,
+                playbackSettingsRepository = dependencies.playbackSettingsRepository
             )
         }
         

@@ -28,6 +28,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -46,6 +47,7 @@ import androidx.media3.common.Format
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import com.flintr.tv.BuildConfig
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.local.WatchNextService
 import dagger.hilt.EntryPoint
@@ -129,7 +131,11 @@ private fun createBasicAuthHeader(username: String, password: String): String {
  * Creates and configures an ExoPlayer instance with optimized settings
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-private fun createExoPlayer(context: Context, credentials: com.flintr.tv.data.local.Credentials?): ExoPlayer {
+private fun createExoPlayer(
+    context: Context,
+    credentials: com.flintr.tv.data.local.Credentials?,
+    audioDecoderMode: com.flintr.tv.data.local.AudioDecoderMode
+): ExoPlayer {
     // Configure LoadControl with optimized buffer settings to prevent main thread blocking
     val allocator = DefaultAllocator(true, 16 * 1024)
     val loadControl: LoadControl = DefaultLoadControl.Builder()
@@ -143,11 +149,18 @@ private fun createExoPlayer(context: Context, credentials: com.flintr.tv.data.lo
         .setTargetBufferBytes(2 * 1024 * 1024) // 2MB target buffer
         .setPrioritizeTimeOverSizeThresholds(true)
         .build()
-    
-    // Configure RenderersFactory to allow software decoders as fallback
+
+    // Configure RenderersFactory based on audio decoder setting
     val renderersFactory = DefaultRenderersFactory(context).apply {
         setEnableDecoderFallback(true)
-        setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        when (audioDecoderMode) {
+            com.flintr.tv.data.local.AudioDecoderMode.SOFTWARE ->
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            com.flintr.tv.data.local.AudioDecoderMode.HARDWARE ->
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+            com.flintr.tv.data.local.AudioDecoderMode.AUTO ->
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        }
     }
     
     // Configure HTTP DataSource with custom headers to avoid 513 errors
@@ -234,8 +247,8 @@ private fun getErrorMessage(context: Context, error: PlaybackException): String 
         error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> 
             context.getString(R.string.video_format_unsupported)
         error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
-        error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> 
-            context.getString(R.string.codec_error)
+        error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ->
+            context.getString(R.string.codec_error_try_software)
         else -> {
             val errorMessage = error.message ?: context.getString(R.string.playback_error_unknown)
             context.getString(R.string.playback_error_generic, errorMessage)
@@ -255,6 +268,10 @@ private fun createPlayerListener(
     return object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
             Log.e("PlayerScreen", "Player Error:", error)
+            if (error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED) {
+                Log.w("PlayerScreen", "Decoder error: code=${error.errorCode}, message=${error.message}")
+            }
             onError(getErrorMessage(context, error))
         }
 
@@ -459,6 +476,7 @@ private fun rememberPlayerState() = remember {
         var hasTriggeredCompletion by mutableStateOf(false)
         var seekFeedbackText by mutableStateOf<String?>(null)
         var lastSeekTime = 0L
+        var hasShownAudioWarning by mutableStateOf(false)
     }
 }
 
@@ -475,6 +493,12 @@ fun interface CredentialsRepositoryEntryPoint {
 @InstallIn(SingletonComponent::class)
 fun interface WatchNextServiceEntryPoint {
     fun watchNextService(): WatchNextService
+}
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+fun interface PlaybackSettingsRepositoryEntryPoint {
+    fun playbackSettingsRepository(): PlaybackSettingsRepository
 }
 
 /**
@@ -572,9 +596,16 @@ private fun rememberPlayerSetup(
     coroutineScope: CoroutineScope
 ): ExoPlayer {
     val credentials = rememberCredentials(context)
-    
-    val exoPlayer = remember(credentials) {
-        createExoPlayer(context, credentials)
+    val playbackSettingsRepository = remember {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            PlaybackSettingsRepositoryEntryPoint::class.java
+        ).playbackSettingsRepository()
+    }
+    val audioDecoderMode = playbackSettingsRepository.getAudioDecoderMode()
+
+    val exoPlayer = remember(credentials, audioDecoderMode) {
+        createExoPlayer(context, credentials, audioDecoderMode)
     }
     
     // Add listener once when ExoPlayer is created
@@ -1157,6 +1188,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     val view = LocalView.current
     val coroutineScope = rememberCoroutineScope()
     val state = rememberPlayerState()
+    val snackbarHostState = remember { SnackbarHostState() }
     val viewModel: PlayerViewModel = hiltViewModel()
     
     // Observe category channels (must be defined before LaunchedEffects that use it)
@@ -1591,6 +1623,26 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         position = state.currentPosition,
         duration = state.duration
     )
+
+    // No-audio warning: after 3s when video is playing but no audio detected
+    LaunchedEffect(state.playbackState, state.hasShownAudioWarning) {
+        if (state.playbackState != Player.STATE_READY || state.hasShownAudioWarning) return@LaunchedEffect
+        delay(3000)
+        val hasVideo = exoPlayer.videoFormat != null
+        val hasAudio = exoPlayer.audioFormat != null ||
+            exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO }
+        if (hasVideo && !hasAudio) {
+            state.hasShownAudioWarning = true
+            val result = snackbarHostState.showSnackbar(
+                message = context.getString(R.string.no_audio_detected),
+                actionLabel = context.getString(R.string.open_audio_settings),
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                state.showSettingsDialog = true
+            }
+        }
+    }
     
     // Auto-hide controls
     AutoHideControlsEffect(
@@ -2013,7 +2065,8 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         // Settings dialog
         if (state.showSettingsDialog) {
             VideoSettingsDialog(
-                onDismiss = { state.showSettingsDialog = false }
+                onDismiss = { state.showSettingsDialog = false },
+                exoPlayer = exoPlayer
             )
         }
         
@@ -2080,5 +2133,13 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 // Nothing to show
             }
         }
+
+        // Snackbar for no-audio warning
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+        )
     }
 }

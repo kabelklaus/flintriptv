@@ -37,6 +37,7 @@ import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.viewmodel.MainViewModel
 
 private const val LOG_BACK_TO_MAIN = "🔙 BACK: SettingsMainScreen -> AppNavigation (Main Screen) via D-Pad Left"
@@ -57,6 +58,7 @@ fun SettingsScreen(
     categoryVisibilityService: CategoryVisibilityService,
     mainViewModel: MainViewModel,
     credentialsRepository: CredentialsRepository,
+    playbackSettingsRepository: PlaybackSettingsRepository,
     modifier: Modifier = Modifier
 ) {
     var currentDestination by remember { mutableStateOf<SettingsDestination>(SettingsDestination.Main) }
@@ -124,7 +126,8 @@ fun SettingsScreen(
                 SettingsPlayback(
                     onBack = {
                         currentDestination = SettingsDestination.Main
-                    }
+                    },
+                    playbackSettingsRepository = playbackSettingsRepository
                 )
             }
             is SettingsDestination.General -> {
