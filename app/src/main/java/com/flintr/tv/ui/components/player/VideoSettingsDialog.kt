@@ -52,30 +52,29 @@ fun getAudioTracksFromPlayer(player: ExoPlayer?): List<AudioTrackInfo> {
     if (player == null) return emptyList()
     val tracks = player.currentTracks
     val result = mutableListOf<AudioTrackInfo>()
-    var groupIndex = 0
-    for (group in tracks.groups) {
-        if (group.type != C.TRACK_TYPE_AUDIO) continue
-        for (i in 0 until group.length) {
-            val format = group.getTrackFormat(i)
-            val codecs = format.codecs
-            val channels = if (format.channelCount != Format.NO_VALUE) format.channelCount else 0
-            val rate = if (format.sampleRate != Format.NO_VALUE) format.sampleRate else 0
-            val lang = format.language?.takeIf { s -> s.isNotEmpty() }
-            val label = buildAudioTrackLabel(codecs, channels, rate, lang, result.size + 1)
-            result.add(
-                AudioTrackInfo(
-                    groupIndex = groupIndex,
-                    trackIndex = i,
-                    codecs = codecs,
-                    channelCount = channels,
-                    sampleRate = rate,
-                    language = lang,
-                    displayLabel = label
+    tracks.groups
+        .filter { it.type == C.TRACK_TYPE_AUDIO }
+        .forEachIndexed { groupIndex, group ->
+            for (i in 0 until group.length) {
+                val format = group.getTrackFormat(i)
+                val codecs = format.codecs
+                val channels = if (format.channelCount != Format.NO_VALUE) format.channelCount else 0
+                val rate = if (format.sampleRate != Format.NO_VALUE) format.sampleRate else 0
+                val lang = format.language?.takeIf { s -> s.isNotEmpty() }
+                val label = buildAudioTrackLabel(codecs, channels, rate, lang, result.size + 1)
+                result.add(
+                    AudioTrackInfo(
+                        groupIndex = groupIndex,
+                        trackIndex = i,
+                        codecs = codecs,
+                        channelCount = channels,
+                        sampleRate = rate,
+                        language = lang,
+                        displayLabel = label
+                    )
                 )
-            )
+            }
         }
-        groupIndex++
-    }
     return result
 }
 

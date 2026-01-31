@@ -53,7 +53,7 @@ class PlaybackSettingsRepository @Inject constructor(
     }
 
     fun getAudioDecoderMode(): AudioDecoderMode {
-        val value = prefs.getString(KEY_AUDIO_DECODER_MODE, AudioDecoderMode.AUTO.value) ?: AudioDecoderMode.AUTO.value
+        val value = prefs.getString(KEY_AUDIO_DECODER_MODE, AudioDecoderMode.AUTO.value)!!
         return AudioDecoderMode.fromValue(value)
     }
 
@@ -69,7 +69,7 @@ class PlaybackSettingsRepository @Inject constructor(
     }
 
     fun getPreferredAudioCodec(): PreferredAudioCodec {
-        val value = prefs.getString(KEY_PREFERRED_AUDIO_CODEC, PreferredAudioCodec.AUTO.value) ?: PreferredAudioCodec.AUTO.value
+        val value = prefs.getString(KEY_PREFERRED_AUDIO_CODEC, PreferredAudioCodec.AUTO.value)!!
         return PreferredAudioCodec.fromValue(value)
     }
 
