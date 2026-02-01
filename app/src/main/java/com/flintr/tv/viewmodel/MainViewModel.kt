@@ -16,6 +16,7 @@ import com.flintr.tv.ui.common.ContentFilterUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -176,7 +177,9 @@ class MainViewModel @Inject constructor(
                 repository.getSeriesCategories(credentials.username, credentials.password)
             }
 
-            liveJob.await()
+            val results = awaitAll(liveJob, vodJob, seriesJob)
+
+            results[0]
                 .onSuccess {
                     _liveCategories.value = it
                     Log.d("MainViewModel", "Live categories loaded successfully: ${it.size} categories")
@@ -186,7 +189,7 @@ class MainViewModel @Inject constructor(
                     if (categoryLoadError == null) categoryLoadError = it.message
                 }
 
-            vodJob.await()
+            results[1]
                 .onSuccess {
                     _vodCategories.value = it
                     Log.d("MainViewModel", "VOD categories loaded successfully: ${it.size} categories")
@@ -196,7 +199,7 @@ class MainViewModel @Inject constructor(
                     if (categoryLoadError == null) categoryLoadError = it.message
                 }
 
-            seriesJob.await()
+            results[2]
                 .onSuccess {
                     _seriesCategories.value = it
                     Log.d("MainViewModel", "Series categories loaded successfully: ${it.size} categories")
