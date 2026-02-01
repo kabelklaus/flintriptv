@@ -46,6 +46,7 @@ class DataCacheService @Inject constructor(
         private const val KEY_CACHE_CHANNELS_COUNT = "iptv_cache_channels_count"
         private const val KEY_CACHE_MOVIES_COUNT = "iptv_cache_movies_count"
         private const val KEY_CACHE_SERIES_COUNT = "iptv_cache_series_count"
+        private const val KEY_FALLBACK_COOLDOWN_TIMESTAMP = "iptv_fallback_cooldown_timestamp"
         private const val CACHE_VALIDITY_DURATION = 24 * 60 * 60 * 1000L // 24 hours in milliseconds
         private val ISO8601_FORMAT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US)
     }
@@ -114,7 +115,12 @@ class DataCacheService @Inject constructor(
         liveCategories: List<Category>,
         vodCategories: List<Category>,
         seriesCategories: List<Category>
-    ) {
+    ): Boolean {
+        if (channels.isEmpty() || movies.isEmpty() || series.isEmpty()) {
+            android.util.Log.w("DataCacheService", "Refusing to save empty data to cache: " +
+                "channels=${channels.size}, movies=${movies.size}, series=${series.size}")
+            return false
+        }
         try {
             val timestamp = ISO8601_FORMAT.format(Date())
 
@@ -149,9 +155,11 @@ class DataCacheService @Inject constructor(
                 putInt(KEY_CACHE_SERIES_COUNT, series.size)
             }
             android.util.Log.d("DataCacheService", "Cache saved successfully: $timestamp | Channels: ${channels.size}, Movies: ${movies.size}, Series: ${series.size}")
+            return true
         } catch (e: Exception) {
             // Log error but don't crash
             android.util.Log.e("DataCacheService", "Failed to save cache", e)
+            return false
         }
     }
 
@@ -214,6 +222,45 @@ class DataCacheService @Inject constructor(
      */
     suspend fun loadCachedDataAsync(): CachedData? = withContext(ioDispatcher) {
         loadCachedDataInternal()
+    }
+
+    fun hasCacheData(): Boolean {
+        val channelsCount = sharedPreferences.getInt(KEY_CACHE_CHANNELS_COUNT, -1)
+        val moviesCount = sharedPreferences.getInt(KEY_CACHE_MOVIES_COUNT, -1)
+        val seriesCount = sharedPreferences.getInt(KEY_CACHE_SERIES_COUNT, -1)
+
+        android.util.Log.d("DataCacheService", "hasCacheData: counts=$channelsCount/$moviesCount/$seriesCount")
+
+        if (channelsCount > 0 && moviesCount > 0 && seriesCount > 0) {
+            return true
+        }
+
+        // Fallback: check JSON strings exist (for old cache without count keys)
+        val channelsJson = sharedPreferences.getString(KEY_CACHE_CHANNELS, null)
+        val moviesJson = sharedPreferences.getString(KEY_CACHE_MOVIES, null)
+        val seriesJson = sharedPreferences.getString(KEY_CACHE_SERIES, null)
+        val hasJson = !channelsJson.isNullOrBlank() && !moviesJson.isNullOrBlank() && !seriesJson.isNullOrBlank()
+        android.util.Log.d("DataCacheService", "hasCacheData: json fallback=" +
+            "channels=${channelsJson?.length ?: "null"}, movies=${moviesJson?.length ?: "null"}, series=${seriesJson?.length ?: "null"} -> $hasJson")
+        return hasJson
+    }
+
+    fun setFallbackCooldownTimestamp(timestamp: Long) {
+        sharedPreferences.edit {
+            putLong(KEY_FALLBACK_COOLDOWN_TIMESTAMP, timestamp)
+        }
+    }
+
+    fun isFallbackCooldownActive(): Boolean {
+        val cooldownTimestamp = sharedPreferences.getLong(KEY_FALLBACK_COOLDOWN_TIMESTAMP, 0L)
+        if (cooldownTimestamp == 0L) return false
+        return (System.currentTimeMillis() - cooldownTimestamp) < CACHE_VALIDITY_DURATION
+    }
+
+    fun clearFallbackCooldown() {
+        sharedPreferences.edit {
+            remove(KEY_FALLBACK_COOLDOWN_TIMESTAMP)
+        }
     }
 
     fun clearCache() {

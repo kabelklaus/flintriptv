@@ -13,6 +13,7 @@ import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.model.*
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.domain.usecase.DataRefreshProgress
 import com.flintr.tv.domain.usecase.DataRefreshUseCase
 import com.flintr.tv.domain.usecase.RefreshStep
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -27,6 +28,7 @@ import javax.inject.Inject
 enum class LoadingStatus {
     Pending,
     Loading,
+    Retrying,
     Success,
     Error
 }
@@ -36,7 +38,9 @@ data class LoadingStep(
     val icon: ImageVector? = null,
     var status: LoadingStatus = LoadingStatus.Pending,
     var itemCount: Int? = null,
-    var errorMessage: String? = null
+    var errorMessage: String? = null,
+    val retryAttempt: Int = 0,
+    val maxRetries: Int = 0
 )
 
 data class DataLoadingUiState(
@@ -48,7 +52,9 @@ data class DataLoadingUiState(
     val overallProgress: Float = 0f,
     val error: String? = null,
     val isLoading: Boolean = false,
-    val loadingComplete: Boolean = false
+    val loadingComplete: Boolean = false,
+    val isOfflineMode: Boolean = false,
+    val offlineModeMessage: String? = null
     // Note: cachedData removed from StateFlow to prevent OutOfMemoryError
     // Data is only held temporarily during loading and then saved to persistent cache
 )
@@ -68,51 +74,68 @@ class DataLoadingViewModel @Inject constructor(
         checkCacheAndLoad()
     }
 
+    private fun stepsFromCachedData(cachedData: CachedData): List<LoadingStep> {
+        return _uiState.value.steps.mapIndexed { index, step ->
+            when (index) {
+                0 -> step.copy(status = LoadingStatus.Success, itemCount = cachedData.channels.size)
+                1 -> step.copy(status = LoadingStatus.Success, itemCount = cachedData.movies.size)
+                2 -> step.copy(status = LoadingStatus.Success, itemCount = cachedData.series.size)
+                else -> step
+            }
+        }
+    }
+
+    private fun finishWithCachedData(
+        cachedData: CachedData,
+        isOfflineMode: Boolean = false,
+        offlineModeMessage: String? = null
+    ) {
+        _uiState.value = _uiState.value.copy(
+            steps = stepsFromCachedData(cachedData),
+            overallProgress = 1f,
+            isLoading = false,
+            loadingComplete = true,
+            isOfflineMode = isOfflineMode,
+            offlineModeMessage = offlineModeMessage
+        )
+    }
+
     fun checkCacheAndLoad() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
-            val isCacheValid = cacheService.isCacheValid()
-
-            if (isCacheValid) {
-                Log.d("DataLoadingViewModel", "Using cached data")
-                val cachedData = cacheService.loadCachedData()
-
-                if (cachedData != null) {
-                    // Update UI to show cached data counts
-                    val updatedSteps = _uiState.value.steps.mapIndexed { index, step ->
-                        when (index) {
-                            0 -> step.copy(
-                                status = LoadingStatus.Success,
-                                itemCount = cachedData.channels.size
-                            )
-                            1 -> step.copy(
-                                status = LoadingStatus.Success,
-                                itemCount = cachedData.movies.size
-                            )
-                            2 -> step.copy(
-                                status = LoadingStatus.Success,
-                                itemCount = cachedData.series.size
-                            )
-                            else -> step
-                        }
-                    }
-
-                    _uiState.value = _uiState.value.copy(
-                        steps = updatedSteps,
-                        overallProgress = 1f,
-                        isLoading = false,
-                        loadingComplete = true
-                    )
-                    // cachedData is not stored in StateFlow to prevent OutOfMemoryError
-                    return@launch
-                }
-            }
+            if (tryLoadFromFallbackCooldown()) return@launch
+            if (tryLoadFromValidCache()) return@launch
 
             // Cache invalid or missing - load fresh data
             Log.d("DataLoadingViewModel", "Cache invalid or missing - loading fresh data")
             loadData()
         }
+    }
+
+    private suspend fun tryLoadFromFallbackCooldown(): Boolean {
+        if (!cacheService.isFallbackCooldownActive() || !cacheService.hasCacheData()) return false
+
+        Log.d("DataLoadingViewModel", "Fallback cooldown active, using cached data")
+        val cachedData = cacheService.loadCachedData() ?: return false
+
+        finishWithCachedData(
+            cachedData,
+            isOfflineMode = true,
+            offlineModeMessage = "Server nicht erreichbar. Verwende gespeicherte Daten."
+        )
+        return true
+    }
+
+    private suspend fun tryLoadFromValidCache(): Boolean {
+        if (!cacheService.isCacheValid()) return false
+
+        Log.d("DataLoadingViewModel", "Using cached data")
+        val cachedData = cacheService.loadCachedData() ?: return false
+
+        finishWithCachedData(cachedData)
+        // cachedData is not stored in StateFlow to prevent OutOfMemoryError
+        return true
     }
 
     private fun loadData() {
@@ -134,59 +157,105 @@ class DataLoadingViewModel @Inject constructor(
         dataRefreshUseCase.refreshData(credentials.username, credentials.password)
             .onEach { progress ->
                 when {
-                    progress.error != null -> {
-                        // Map error to appropriate step
-                        val stepIndex = when (progress.step) {
-                            RefreshStep.CHANNELS -> 0
-                            RefreshStep.MOVIES -> 1
-                            RefreshStep.SERIES -> 2
-                            RefreshStep.SAVING -> 2 // Error during saving is shown on last step
-                        }
-                        handleStepError(stepIndex, Exception(progress.error))
-                    }
-                    progress.isComplete -> {
-                        // All data loaded and saved successfully
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            loadingComplete = true,
-                            overallProgress = 1f
-                        )
-                        Log.d("DataLoadingViewModel", "All data loaded successfully")
-                    }
-                    else -> {
-                        // Update step status based on current step
-                        when (progress.step) {
-                            RefreshStep.CHANNELS -> {
-                                updateStepStatus(0, LoadingStatus.Loading)
-                            }
-                            RefreshStep.MOVIES -> {
-                                updateStepStatus(0, LoadingStatus.Success, progress.itemCounts?.channels)
-                                updateStepStatus(1, LoadingStatus.Loading)
-                                updateProgress(1, 3)
-                            }
-                            RefreshStep.SERIES -> {
-                                updateStepStatus(1, LoadingStatus.Success, progress.itemCounts?.movies)
-                                updateStepStatus(2, LoadingStatus.Loading)
-                                updateProgress(2, 3)
-                            }
-                            RefreshStep.SAVING -> {
-                                updateStepStatus(2, LoadingStatus.Success, progress.itemCounts?.series)
-                                updateProgress(3, 3)
-                            }
-                        }
-                    }
+                    progress.usedCacheFallback -> handleCacheFallbackProgress(progress)
+                    progress.error != null -> handleErrorProgress(progress)
+                    progress.isComplete -> handleCompleteProgress()
+                    progress.retryAttempt > 0 -> handleRetryProgress(progress)
+                    else -> handleNormalProgress(progress)
                 }
             }
             .launchIn(viewModelScope)
     }
 
-    private fun updateStepStatus(stepIndex: Int, status: LoadingStatus, itemCount: Int? = null, errorMessage: String? = null) {
+    private fun handleCacheFallbackProgress(progress: DataRefreshProgress) {
+        val cachedData = cacheService.loadCachedData()
+        val updatedSteps = if (cachedData != null) {
+            stepsFromCachedData(cachedData)
+        } else {
+            _uiState.value.steps
+        }
+
+        _uiState.value = _uiState.value.copy(
+            steps = updatedSteps,
+            isLoading = false,
+            loadingComplete = true,
+            overallProgress = 1f,
+            isOfflineMode = true,
+            offlineModeMessage = progress.message
+        )
+    }
+
+    private fun handleErrorProgress(progress: DataRefreshProgress) {
+        val stepIndex = stepIndexFromRefreshStep(progress.step)
+        handleStepError(stepIndex, Exception(progress.error))
+    }
+
+    private fun handleCompleteProgress() {
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            loadingComplete = true,
+            overallProgress = 1f
+        )
+        Log.d("DataLoadingViewModel", "All data loaded successfully")
+    }
+
+    private fun handleRetryProgress(progress: DataRefreshProgress) {
+        val stepIndex = stepIndexFromRefreshStep(progress.step)
+        updateStepStatus(
+            stepIndex,
+            LoadingStatus.Retrying,
+            retryAttempt = progress.retryAttempt,
+            maxRetries = progress.maxRetries
+        )
+    }
+
+    private fun handleNormalProgress(progress: DataRefreshProgress) {
+        when (progress.step) {
+            RefreshStep.CHANNELS -> {
+                updateStepStatus(0, LoadingStatus.Loading)
+            }
+            RefreshStep.MOVIES -> {
+                updateStepStatus(0, LoadingStatus.Success, progress.itemCounts?.channels)
+                updateStepStatus(1, LoadingStatus.Loading)
+                updateProgress(1, 3)
+            }
+            RefreshStep.SERIES -> {
+                updateStepStatus(1, LoadingStatus.Success, progress.itemCounts?.movies)
+                updateStepStatus(2, LoadingStatus.Loading)
+                updateProgress(2, 3)
+            }
+            RefreshStep.SAVING -> {
+                updateStepStatus(2, LoadingStatus.Success, progress.itemCounts?.series)
+                updateProgress(3, 3)
+            }
+        }
+    }
+
+    private fun stepIndexFromRefreshStep(step: RefreshStep): Int {
+        return when (step) {
+            RefreshStep.CHANNELS -> 0
+            RefreshStep.MOVIES -> 1
+            RefreshStep.SERIES -> 2
+            RefreshStep.SAVING -> 2
+        }
+    }
+
+    private fun updateStepStatus(
+        stepIndex: Int,
+        status: LoadingStatus,
+        itemCount: Int? = null,
+        errorMessage: String? = null,
+        retryAttempt: Int = 0,
+        maxRetries: Int = 0
+    ) {
         val updatedSteps = _uiState.value.steps.toMutableList()
         if (stepIndex < updatedSteps.size) {
             updatedSteps[stepIndex] = updatedSteps[stepIndex].copy(
                 status = status,
                 itemCount = itemCount ?: updatedSteps[stepIndex].itemCount,
-                errorMessage = errorMessage
+                errorMessage = errorMessage,
+                retryAttempt = retryAttempt,
+                maxRetries = maxRetries
             )
         }
         _uiState.value = _uiState.value.copy(steps = updatedSteps)
@@ -207,21 +276,28 @@ class DataLoadingViewModel @Inject constructor(
     }
 
     fun retry() {
+        // Clear fallback cooldown on manual retry
+        cacheService.clearFallbackCooldown()
+
         // Reset all steps to pending
-        val resetSteps = _uiState.value.steps.map { 
+        val resetSteps = _uiState.value.steps.map {
             it.copy(
-                status = LoadingStatus.Pending, 
-                itemCount = null, 
+                status = LoadingStatus.Pending,
+                itemCount = null,
                 errorMessage = null,
-                icon = it.icon // Preserve icon when resetting
-            ) 
+                icon = it.icon, // Preserve icon when resetting
+                retryAttempt = 0,
+                maxRetries = 0
+            )
         }
         _uiState.value = _uiState.value.copy(
             steps = resetSteps,
             overallProgress = 0f,
             error = null,
             isLoading = false,
-            loadingComplete = false
+            loadingComplete = false,
+            isOfflineMode = false,
+            offlineModeMessage = null
         )
         checkCacheAndLoad()
     }
@@ -313,4 +389,3 @@ class DataLoadingViewModel @Inject constructor(
         )
     }
 }
-
