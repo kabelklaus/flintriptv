@@ -14,11 +14,14 @@ import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.ui.common.ContentFilterUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
 import javax.inject.Inject
 
 @HiltViewModel
@@ -96,9 +99,11 @@ class MainViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             Log.d("MainViewModel", "Loading initial data...")
 
-            val cachedData = loadFromCacheIfValid()
+            val cachedDataDeferred = async { loadFromCacheIfValid() }
+            val serverInfoJob = async { loadServerInfo(credentials) }
 
-            loadServerInfo(credentials)
+            val cachedData = cachedDataDeferred.await()
+            serverInfoJob.await()
 
             if (cachedData == null) {
                 loadCategoriesFromRepository(credentials)
@@ -161,35 +166,49 @@ class MainViewModel @Inject constructor(
     private suspend fun loadCategoriesFromRepository(credentials: Credentials) {
         var categoryLoadError: String? = null
 
-        repository.getLiveCategories(credentials.username, credentials.password)
-            .onSuccess {
-                _liveCategories.value = it
-                Log.d("MainViewModel", "Live categories loaded successfully: ${it.size} categories")
+        coroutineScope {
+            val liveJob = async {
+                repository.getLiveCategories(credentials.username, credentials.password)
             }
-            .onFailure {
-                Log.e("MainViewModel", "Failed to load live categories", it)
-                if (categoryLoadError == null) categoryLoadError = it.message
+            val vodJob = async {
+                repository.getVodCategories(credentials.username, credentials.password)
             }
-
-        repository.getVodCategories(credentials.username, credentials.password)
-            .onSuccess {
-                _vodCategories.value = it
-                Log.d("MainViewModel", "VOD categories loaded successfully: ${it.size} categories")
-            }
-            .onFailure {
-                Log.e("MainViewModel", "Failed to load VOD categories", it)
-                if (categoryLoadError == null) categoryLoadError = it.message
+            val seriesJob = async {
+                repository.getSeriesCategories(credentials.username, credentials.password)
             }
 
-        repository.getSeriesCategories(credentials.username, credentials.password)
-            .onSuccess {
-                _seriesCategories.value = it
-                Log.d("MainViewModel", "Series categories loaded successfully: ${it.size} categories")
-            }
-            .onFailure {
-                Log.e("MainViewModel", "Failed to load series categories", it)
-                if (categoryLoadError == null) categoryLoadError = it.message
-            }
+            val results = awaitAll(liveJob, vodJob, seriesJob)
+
+            results[0]
+                .onSuccess {
+                    _liveCategories.value = it
+                    Log.d("MainViewModel", "Live categories loaded successfully: ${it.size} categories")
+                }
+                .onFailure {
+                    Log.e("MainViewModel", "Failed to load live categories", it)
+                    if (categoryLoadError == null) categoryLoadError = it.message
+                }
+
+            results[1]
+                .onSuccess {
+                    _vodCategories.value = it
+                    Log.d("MainViewModel", "VOD categories loaded successfully: ${it.size} categories")
+                }
+                .onFailure {
+                    Log.e("MainViewModel", "Failed to load VOD categories", it)
+                    if (categoryLoadError == null) categoryLoadError = it.message
+                }
+
+            results[2]
+                .onSuccess {
+                    _seriesCategories.value = it
+                    Log.d("MainViewModel", "Series categories loaded successfully: ${it.size} categories")
+                }
+                .onFailure {
+                    Log.e("MainViewModel", "Failed to load series categories", it)
+                    if (categoryLoadError == null) categoryLoadError = it.message
+                }
+        }
 
         if (_liveCategories.value.isEmpty() && _vodCategories.value.isEmpty() && _seriesCategories.value.isEmpty() && categoryLoadError != null) {
             _uiState.value = _uiState.value.copy(error = categoryLoadError)
