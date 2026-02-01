@@ -38,6 +38,7 @@ import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.viewmodel.DataLoadingViewModel
 import com.flintr.tv.viewmodel.LoadingStatus
+import kotlinx.coroutines.delay
 import java.text.NumberFormat
 
 private const val STATUS_ANIMATION_DURATION_MS = 300
@@ -88,6 +89,7 @@ private fun getStepColors(
     return when (status) {
         LoadingStatus.Pending -> colors.textSecondary to colors.bgCard
         LoadingStatus.Loading -> colors.accentColor to colors.accentColor.copy(alpha = 0.1f)
+        LoadingStatus.Retrying -> colors.accentColor.copy(alpha = 0.7f) to colors.accentColor.copy(alpha = 0.05f)
         LoadingStatus.Success -> colors.successColor to colors.successColor.copy(alpha = 0.1f)
         LoadingStatus.Error -> colors.dangerText to colors.dangerBg
     }
@@ -100,6 +102,7 @@ private fun getStepTextColor(
     return when (status) {
         LoadingStatus.Pending -> colors.textSecondary
         LoadingStatus.Loading -> colors.textPrimary
+        LoadingStatus.Retrying -> colors.textPrimary
         LoadingStatus.Success -> colors.textPrimary
         LoadingStatus.Error -> colors.dangerText
     }
@@ -294,6 +297,7 @@ fun DataLoadingScreen(
     val colors = appColors()
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // Fade-in animation on screen start
     var isVisible by remember { mutableStateOf(false) }
@@ -307,9 +311,22 @@ fun DataLoadingScreen(
         isVisible = true
     }
 
+    // Show offline mode snackbar
+    LaunchedEffect(uiState.offlineModeMessage) {
+        uiState.offlineModeMessage?.let { message ->
+            snackbarHostState.showSnackbar(
+                message = message,
+                duration = SnackbarDuration.Short
+            )
+        }
+    }
+
     // Navigate on loading complete
     LaunchedEffect(uiState.loadingComplete) {
         if (uiState.loadingComplete) {
+            if (uiState.isOfflineMode) {
+                delay(2500L) // Show snackbar before navigating
+            }
             // Create empty CachedData for callback (parameter is ignored anyway)
             // cachedData is no longer stored in StateFlow to prevent OutOfMemoryError
             val emptyCachedData = CachedData(
@@ -349,6 +366,11 @@ fun DataLoadingScreen(
                 onRetryAll = { viewModel.retry() }
             )
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 
@@ -361,19 +383,19 @@ private fun StepIconContainer(
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
     val (iconColor, iconBgColor) = getStepColors(step.status, colors)
-    
+
     val animatedIconColor by animateColorAsState(
         targetValue = iconColor,
         animationSpec = tween(STATUS_ANIMATION_DURATION_MS, easing = EaseInOut),
         label = "iconColor"
     )
-    
+
     val animatedIconBgColor by animateColorAsState(
         targetValue = iconBgColor,
         animationSpec = tween(STATUS_ANIMATION_DURATION_MS, easing = EaseInOut),
         label = "iconBgColor"
     )
-    
+
     Box(
         modifier = Modifier
             .size(dimensions.iconSize)
@@ -408,7 +430,7 @@ private fun StepLabel(
         label = "labelColor"
     ) { currentStatus ->
         val currentTextColor = getStepTextColor(currentStatus, colors)
-        
+
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium.copy(
@@ -456,8 +478,7 @@ private fun StepItem(
         Spacer(modifier = Modifier.height(dimensions.statusLabelSpacing))
 
         StepStatusWidget(
-            status = step.status,
-            itemCount = step.itemCount,
+            step = step,
             isLandscape = isLandscape,
             colors = colors,
             statusIconSize = dimensions.statusIconSize,
@@ -469,15 +490,14 @@ private fun StepItem(
 // Status Widget Components
 @Composable
 private fun StepStatusWidget(
-    status: LoadingStatus,
-    itemCount: Int?,
+    step: com.flintr.tv.viewmodel.LoadingStep,
     isLandscape: Boolean,
     colors: com.flintr.tv.ui.theme.AppColors,
     statusIconSize: androidx.compose.ui.unit.Dp,
     onRetry: () -> Unit
 ) {
     AnimatedContent(
-        targetState = status,
+        targetState = step.status,
         transitionSpec = {
             fadeIn(animationSpec = tween(STATUS_ANIMATION_DURATION_MS)) togetherWith
                     fadeOut(animationSpec = tween(STATUS_ANIMATION_DURATION_MS))
@@ -487,7 +507,14 @@ private fun StepStatusWidget(
         when (currentStatus) {
             LoadingStatus.Pending -> PendingStatusWidget(statusIconSize)
             LoadingStatus.Loading -> LoadingStatusWidget(statusIconSize, colors)
-            LoadingStatus.Success -> SuccessStatusWidget(itemCount, isLandscape, statusIconSize, colors)
+            LoadingStatus.Retrying -> RetryingStatusWidget(
+                retryAttempt = step.retryAttempt,
+                maxRetries = step.maxRetries,
+                isLandscape = isLandscape,
+                statusIconSize = statusIconSize,
+                colors = colors
+            )
+            LoadingStatus.Success -> SuccessStatusWidget(step.itemCount, isLandscape, statusIconSize, colors)
             LoadingStatus.Error -> ErrorStatusWidget(isLandscape, statusIconSize, colors, onRetry)
         }
     }
@@ -511,6 +538,35 @@ private fun LoadingStatusWidget(
 }
 
 @Composable
+private fun RetryingStatusWidget(
+    retryAttempt: Int,
+    maxRetries: Int,
+    isLandscape: Boolean,
+    statusIconSize: androidx.compose.ui.unit.Dp,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    val totalAttempts = maxRetries + 1
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(statusIconSize),
+            strokeWidth = 2.dp,
+            color = colors.accentColor.copy(alpha = 0.7f)
+        )
+        Text(
+            text = stringResource(R.string.retry_attempt, retryAttempt + 1, totalAttempts),
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = if (isLandscape) 10.sp else 11.sp
+            ),
+            color = colors.textSecondary,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
 private fun SuccessStatusWidget(
     itemCount: Int?,
     isLandscape: Boolean,
@@ -518,11 +574,11 @@ private fun SuccessStatusWidget(
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
     val configuration = LocalConfiguration.current
-    val numberFormat = remember(configuration.locales) { 
-        NumberFormat.getNumberInstance(configuration.locales[0]) 
+    val numberFormat = remember(configuration.locales) {
+        NumberFormat.getNumberInstance(configuration.locales[0])
     }
     val formattedCount = itemCount?.let { numberFormat.format(it) } ?: "0"
-    
+
     Row(
         horizontalArrangement = Arrangement.spacedBy(
             if (isLandscape) 4.dp else Dimensions.spacingXS

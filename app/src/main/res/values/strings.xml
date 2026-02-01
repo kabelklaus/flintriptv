@@ -80,6 +80,7 @@
     <string name="progress">Fortschritt</string>
     <string name="retry_all">Alle erneut versuchen</string>
     <string name="retry">Wiederholen</string>
+    <string name="retry_attempt">Versuch %1$d/%2$d</string>
     
     <!-- Watched Badge -->
     <string name="watched_badge_description">Geschaut</string>

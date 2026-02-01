@@ -87,8 +87,11 @@ class SettingsConnectionViewModel @Inject constructor(
         }
         
         viewModelScope.launch {
+            // Clear fallback cooldown on manual refresh
+            cacheService.clearFallbackCooldown()
+
             _connectionTestState.value = ConnectionTestState(isLoading = true, error = null)
-            
+
             try {
                 // Reload server info
                 repository.getServerInfo(credentials.username, credentials.password)
