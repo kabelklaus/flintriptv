@@ -51,12 +51,8 @@ class CategoryVisibilityService @Inject constructor(
     private val loadMutex = Mutex()
 
     init {
-        // Initial load
-        serviceScope.launch {
-            loadFromFirestore()
-        }
-
         // React to credential changes (e.g., user login/logout or user switch)
+        // This also handles the initial load since credentialsFlow emits the current value on collection
         serviceScope.launch {
             credentialsRepository.credentialsFlow.collect { credentials ->
                 val username = credentials?.username
