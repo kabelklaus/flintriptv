@@ -116,6 +116,10 @@ class DataCacheService @Inject constructor(
         vodCategories: List<Category>,
         seriesCategories: List<Category>
     ): Boolean {
+        // NOTE: Use || (not &&) here — all three content types must be present.
+        // isCacheValid(), hasCacheData(), and loadCachedDataInternal() all require
+        // channels, movies, AND series to be non-empty. Saving partial data would
+        // create a cache that immediately fails validation elsewhere.
         if (channels.isEmpty() || movies.isEmpty() || series.isEmpty()) {
             android.util.Log.w("DataCacheService", "Refusing to save empty data to cache: " +
                 "channels=${channels.size}, movies=${movies.size}, series=${series.size}")
