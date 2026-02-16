@@ -23,8 +23,8 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 87
-        versionName = "2.29"
+        versionCode = 88
+        versionName = "2.30"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -145,7 +145,6 @@ dependencies {
     
     // TV Support
     implementation(libs.leanback)
-    implementation(libs.tvprovider)
     
     // Security
     implementation(libs.security.crypto)
