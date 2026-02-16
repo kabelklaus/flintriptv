@@ -25,6 +25,11 @@ import com.flintr.tv.ui.utils.FocusedButton
 import com.flintr.tv.ui.utils.formatTime
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
+import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Data class containing player state information
@@ -93,11 +98,31 @@ data class ButtonConfig(
     val onNavigateRight: () -> Unit
 )
 
+internal fun formatFinishTimeText(
+    contentType: String,
+    nowMillis: Long,
+    currentPositionMillis: Long,
+    durationMillis: Long,
+    zoneId: ZoneId,
+    locale: Locale
+): String? {
+    val isVodContent = contentType == "movie" || contentType == "series"
+    if (!isVodContent || durationMillis <= 0L) return null
+
+    val remainingMillis = (durationMillis - currentPositionMillis).coerceAtLeast(0L)
+    val finishInstant = Instant.ofEpochMilli(nowMillis + remainingMillis)
+    val finishTime = DateTimeFormatter.ofPattern("HH:mm", locale)
+        .format(finishInstant.atZone(zoneId))
+
+    return "Fertig um $finishTime"
+}
+
 /**
  * Custom player controls with progress bar, navigation buttons, time display, and utility buttons
  * @param state Player state information
  * @param callbacks Player control callbacks
  * @param utilityCallbacks Utility callbacks
+ * @param contentType Current content type (live/movie/series)
  * @param focusedButton Currently focused button
  * @param modifier Modifier for the controls
  */
@@ -106,6 +131,7 @@ fun CustomPlayerControls(
     state: PlayerState,
     callbacks: PlayerCallbacks,
     utilityCallbacks: PlayerUtilityCallbacks,
+    contentType: String,
     focusedButton: FocusedButton?,
     modifier: Modifier = Modifier
 ) {
@@ -123,6 +149,27 @@ fun CustomPlayerControls(
     // Request focus when focusedButton changes
     LaunchedEffect(focusedButton) {
         focusRequesters[focusedButton]?.requestFocus()
+    }
+
+    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            val delayToNextMinute = 60_000L - (now % 60_000L)
+            delay(delayToNextMinute)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
+
+    val finishTimeText = remember(contentType, nowMillis, state.currentPosition, state.duration) {
+        formatFinishTimeText(
+            contentType = contentType,
+            nowMillis = nowMillis,
+            currentPositionMillis = state.currentPosition,
+            durationMillis = state.duration,
+            zoneId = ZoneId.systemDefault(),
+            locale = Locale.getDefault()
+        )
     }
     
     Box(
@@ -168,34 +215,50 @@ fun CustomPlayerControls(
             // Controls bar
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Navigation buttons
-                NavigationButtons(
-                    state = state,
-                    callbacks = callbacks,
-                    utilityCallbacks = utilityCallbacks,
-                    focusedButton = focusedButton,
-                    focusRequesters = focusRequesters,
-                    hasNextEpisode = callbacks.onNextEpisode != null
-                )
-                
-                // Time display
-                Text(
-                    text = "${formatTime(state.currentPosition)} / ${formatTime(state.duration)}",
-                    fontSize = FontSizes.fontSizeLG,
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = Dimensions.spacingMD)
-                )
-                
-                // Utility buttons
-                UtilityButtons(
-                    utilityCallbacks = utilityCallbacks,
-                    focusedButton = focusedButton,
-                    focusRequesters = focusRequesters,
-                    hasNextEpisode = callbacks.onNextEpisode != null
-                )
+                // All controls grouped on the left side
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingLG),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Navigation buttons
+                    NavigationButtons(
+                        state = state,
+                        callbacks = callbacks,
+                        utilityCallbacks = utilityCallbacks,
+                        focusedButton = focusedButton,
+                        focusRequesters = focusRequesters,
+                        hasNextEpisode = callbacks.onNextEpisode != null
+                    )
+
+                    // Utility buttons
+                    UtilityButtons(
+                        utilityCallbacks = utilityCallbacks,
+                        focusedButton = focusedButton,
+                        focusRequesters = focusRequesters,
+                        hasNextEpisode = callbacks.onNextEpisode != null
+                    )
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Time block fixed at the right side
+                Column(horizontalAlignment = Alignment.End) {
+                    if (finishTimeText != null) {
+                        Text(
+                            text = finishTimeText,
+                            fontSize = FontSizes.fontSizeMD,
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
+                    }
+
+                    Text(
+                        text = "${formatTime(state.currentPosition)} / ${formatTime(state.duration)}",
+                        fontSize = FontSizes.fontSizeLG,
+                        color = Color.White
+                    )
+                }
             }
         }
     }
