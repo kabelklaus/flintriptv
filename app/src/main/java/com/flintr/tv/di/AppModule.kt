@@ -11,7 +11,6 @@ import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.FirestoreSyncManager
 import com.flintr.tv.data.local.WatchedHistoryService
 import com.flintr.tv.data.local.WatchProgressService
-import com.flintr.tv.data.local.WatchNextService
 import com.flintr.tv.data.model.SeriesInfoResponseAdapterFactory
 import com.flintr.tv.data.repository.UpdateRepository
 import com.flintr.tv.data.repository.UserRepository
@@ -374,17 +373,6 @@ object AppModule {
         @Named("CategoryVisibility") syncManager: FirestoreSyncManager
     ): CategoryVisibilityService {
         return CategoryVisibilityService(context, userRepository, credentialsRepository, syncManager)
-    }
-    
-    @Provides
-    @Singleton
-    fun provideWatchNextService(
-        @ApplicationContext context: Context,
-        @Named("IO") ioDispatcher: CoroutineDispatcher,
-        cacheService: DataCacheService,
-        credentialsRepository: CredentialsRepository
-    ): WatchNextService {
-        return WatchNextService(context, ioDispatcher, cacheService, credentialsRepository)
     }
     
     @Provides

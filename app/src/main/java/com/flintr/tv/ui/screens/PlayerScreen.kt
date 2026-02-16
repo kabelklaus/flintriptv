@@ -49,7 +49,6 @@ import com.flintr.tv.BuildConfig
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.WatchProgressService
-import com.flintr.tv.data.local.WatchNextService
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -491,12 +490,6 @@ fun interface CredentialsRepositoryEntryPoint {
 
 @EntryPoint
 @InstallIn(SingletonComponent::class)
-fun interface WatchNextServiceEntryPoint {
-    fun watchNextService(): WatchNextService
-}
-
-@EntryPoint
-@InstallIn(SingletonComponent::class)
 fun interface PlaybackSettingsRepositoryEntryPoint {
     fun playbackSettingsRepository(): PlaybackSettingsRepository
 }
@@ -874,267 +867,6 @@ private fun CompletionDetectionEffect(
     }
 }
 
-/**
- * Data class grouping parameters for WatchNextEffects
- */
-private data class WatchNextEffectParams(
-    val exoPlayer: ExoPlayer,
-    val contentType: String,
-    val streamId: Int?,
-    val seriesId: Int?,
-    val episodeId: Int?,
-    val seasonNumber: Int?,
-    val title: String?,
-    val watchNextService: WatchNextService,
-    val coroutineScope: CoroutineScope
-)
-
-/**
- * Adds VOD to Watch Next.
- */
-private suspend fun addVodToWatchNext(
-    params: WatchNextEffectParams,
-    position: Long,
-    duration: Long,
-    onWatchNextAdded: () -> Unit
-) {
-    if (params.streamId == null || duration <= 0) return
-
-    params.watchNextService.addOrUpdateWatchNextProgram(
-        contentType = WatchNextService.ContentType.VOD,
-        streamId = params.streamId,
-        title = params.title ?: "",
-        description = null,
-        posterUrl = null,
-        progress = if (duration > 0) position.toFloat() / duration else 0f,
-        duration = duration,
-        lastEngagementTime = System.currentTimeMillis()
-    )
-    onWatchNextAdded()
-    if (BuildConfig.DEBUG) {
-        Log.d("PlayerScreen", "Added Watch Next entry for VOD: streamId=${params.streamId}")
-    }
-}
-
-/**
- * Adds Series to Watch Next.
- */
-private suspend fun addSeriesToWatchNext(
-    params: WatchNextEffectParams,
-    position: Long,
-    duration: Long,
-    onWatchNextAdded: () -> Unit
-) {
-    if (params.seriesId == null || params.episodeId == null || params.seasonNumber == null || duration <= 0) return
-
-    params.watchNextService.addOrUpdateWatchNextProgram(
-        contentType = WatchNextService.ContentType.SERIES,
-        seriesId = params.seriesId,
-        seasonNumber = params.seasonNumber,
-        episodeId = params.episodeId,
-        title = params.title ?: "",
-        description = null,
-        posterUrl = null,
-        progress = if (duration > 0) position.toFloat() / duration else 0f,
-        duration = duration,
-        lastEngagementTime = System.currentTimeMillis()
-    )
-    onWatchNextAdded()
-    if (BuildConfig.DEBUG) {
-        Log.d("PlayerScreen", "Added Watch Next entry for Series: seriesId=${params.seriesId}, episodeId=${params.episodeId}")
-    }
-}
-
-/**
- * Updates VOD in Watch Next.
- */
-private suspend fun updateVodWatchNext(
-    params: WatchNextEffectParams,
-    progress: Float,
-    duration: Long
-) {
-    if (params.streamId == null) return
-
-    params.watchNextService.addOrUpdateWatchNextProgram(
-        contentType = WatchNextService.ContentType.VOD,
-        streamId = params.streamId,
-        title = params.title ?: "",
-        description = null,
-        posterUrl = null,
-        progress = progress,
-        duration = duration,
-        lastEngagementTime = System.currentTimeMillis()
-    )
-}
-
-/**
- * Updates Series in Watch Next.
- */
-private suspend fun updateSeriesWatchNext(
-    params: WatchNextEffectParams,
-    progress: Float,
-    duration: Long
-) {
-    if (params.seriesId == null || params.episodeId == null || params.seasonNumber == null) return
-
-    params.watchNextService.addOrUpdateWatchNextProgram(
-        contentType = WatchNextService.ContentType.SERIES,
-        seriesId = params.seriesId,
-        seasonNumber = params.seasonNumber,
-        episodeId = params.episodeId,
-        title = params.title ?: "",
-        description = null,
-        posterUrl = null,
-        progress = progress,
-        duration = duration,
-        lastEngagementTime = System.currentTimeMillis()
-    )
-}
-
-/**
- * Handles VOD completion - removes from Watch Next.
- */
-private suspend fun handleVodCompletion(params: WatchNextEffectParams) {
-    if (params.streamId == null) return
-
-    val internalProviderId = params.watchNextService.generateInternalProviderId(
-        WatchNextService.ContentType.VOD,
-        params.streamId, null, null, null
-    )
-    params.watchNextService.removeWatchNextProgram(internalProviderId)
-    if (BuildConfig.DEBUG) {
-        Log.d("PlayerScreen", "Removed Watch Next entry for completed VOD: streamId=${params.streamId}")
-    }
-}
-
-/**
- * Handles Series completion - removes current episode and adds next if available.
- */
-private suspend fun handleSeriesCompletion(
-    params: WatchNextEffectParams,
-    nextEpisodeInfo: com.flintr.tv.viewmodel.NextEpisodeInfo?
-) {
-    if (params.seriesId == null || params.episodeId == null || params.seasonNumber == null) return
-
-    val internalProviderId = params.watchNextService.generateInternalProviderId(
-        WatchNextService.ContentType.SERIES,
-        null, params.seriesId, params.seasonNumber, params.episodeId
-    )
-    params.watchNextService.removeWatchNextProgram(internalProviderId)
-    if (BuildConfig.DEBUG) {
-        Log.d("PlayerScreen", "Removed Watch Next entry for completed episode: seriesId=${params.seriesId}, episodeId=${params.episodeId}")
-    }
-
-    addNextEpisodeToWatchNext(params, nextEpisodeInfo)
-}
-
-/**
- * Adds next episode to Watch Next if available.
- */
-private suspend fun addNextEpisodeToWatchNext(
-    params: WatchNextEffectParams,
-    nextEpisodeInfo: com.flintr.tv.viewmodel.NextEpisodeInfo?
-) {
-    if (nextEpisodeInfo == null || params.seriesId == null) return
-
-    val nextEpisode = nextEpisodeInfo.episode
-    val nextSeason = nextEpisodeInfo.season
-
-    params.watchNextService.addOrUpdateWatchNextProgram(
-        contentType = WatchNextService.ContentType.SERIES,
-        seriesId = params.seriesId,
-        seasonNumber = nextSeason.seasonNumber,
-        episodeId = nextEpisode.id,
-        title = nextEpisode.title,
-        description = nextEpisode.info?.plot,
-        posterUrl = nextEpisode.info?.movieImage,
-        progress = 0f,
-        duration = nextEpisode.info?.duration?.toLongOrNull() ?: 0L,
-        lastEngagementTime = System.currentTimeMillis()
-    )
-    if (BuildConfig.DEBUG) {
-        Log.d("PlayerScreen", "Added Watch Next entry for next episode: seriesId=${params.seriesId}, episodeId=${nextEpisode.id}")
-    }
-}
-
-/**
- * Effect to add Watch Next entry after 5 seconds of playback (only for VOD/Series, not Live)
- */
-@Composable
-private fun WatchNextAddEffect(
-    params: WatchNextEffectParams,
-    isPlaying: Boolean,
-    hasAddedWatchNext: Boolean,
-    onWatchNextAdded: () -> Unit
-) {
-    LaunchedEffect(isPlaying, hasAddedWatchNext, params.contentType) {
-        if (params.contentType == "live" || hasAddedWatchNext || !isPlaying) return@LaunchedEffect
-
-        delay(5000)
-
-        if (!isPlaying || hasAddedWatchNext) return@LaunchedEffect
-
-        params.coroutineScope.launch {
-            val position = params.exoPlayer.currentPosition
-            val duration = params.exoPlayer.duration
-
-            when (params.contentType) {
-                "movie" -> addVodToWatchNext(params, position, duration, onWatchNextAdded)
-                "series" -> addSeriesToWatchNext(params, position, duration, onWatchNextAdded)
-            }
-        }
-    }
-}
-
-/**
- * Effect to update Watch Next lastEngagementTime on stop/seek
- */
-@Composable
-private fun WatchNextUpdateEffect(
-    params: WatchNextEffectParams,
-    isPlaying: Boolean,
-    wasPlaying: Boolean,
-    position: Long,
-    duration: Long
-) {
-    LaunchedEffect(isPlaying, wasPlaying, position) {
-        if (!wasPlaying || isPlaying || params.contentType == "live") return@LaunchedEffect
-
-        params.coroutineScope.launch {
-            val progress = if (duration > 0) position.toFloat() / duration else 0f
-            if (progress >= 0.9f) return@launch
-
-            when (params.contentType) {
-                "movie" -> updateVodWatchNext(params, progress, duration)
-                "series" -> updateSeriesWatchNext(params, progress, duration)
-            }
-        }
-    }
-}
-
-/**
- * Effect to remove Watch Next entry on completion (>= 90%) and add next episode for series
- */
-@Composable
-private fun WatchNextCompletionEffect(
-    params: WatchNextEffectParams,
-    progress: Float,
-    hasTriggeredCompletion: Boolean,
-    isDragging: Boolean,
-    nextEpisodeInfo: com.flintr.tv.viewmodel.NextEpisodeInfo?
-) {
-    LaunchedEffect(progress, hasTriggeredCompletion, isDragging, nextEpisodeInfo) {
-        if (isDragging) return@LaunchedEffect
-        if (params.contentType == "live" || !hasTriggeredCompletion || progress < 0.9f) return@LaunchedEffect
-
-        params.coroutineScope.launch {
-            when (params.contentType) {
-                "movie" -> handleVodCompletion(params)
-                "series" -> handleSeriesCompletion(params, nextEpisodeInfo)
-            }
-        }
-    }
-}
 
 /**
  * Effect to auto-hide controls after inactivity (5 seconds minimum display duration)
@@ -1246,14 +978,6 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     val credentials by credentialsRepository.getCredentialsFlow()
         .collectAsState(initial = credentialsRepository.getCredentials())
     
-    // Get WatchNextService
-    val watchNextService = remember {
-        EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            WatchNextServiceEntryPoint::class.java
-        ).watchNextService()
-    }
-    
     // State for current stream URL (can be changed when switching channels)
     var currentStreamUrl by remember { mutableStateOf(streamUrl) }
     var currentTitle by remember { mutableStateOf(title) }
@@ -1363,16 +1087,6 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         seriesData ?: if (seriesContextLoaded) viewModel.getSeriesContext() else null
     }
     
-    // Get season number for Watch Next (from seriesData or ViewModel)
-    val seasonNumber = remember(contentInfoSeriesData) {
-        contentInfoSeriesData?.currentSeason?.seasonNumber
-    }
-    
-    // State for Watch Next tracking
-    var hasAddedWatchNext by remember(contentType, streamId, seriesId, episodeId) { 
-        mutableStateOf(false) 
-    }
-    var wasPlaying by remember { mutableStateOf(false) }
     var wasPlayingBeforeDrag by remember { mutableStateOf(false) }
     
     // State for measured bitrate and decoder info
@@ -1577,52 +1291,6 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         }
     )
     
-    // Watch Next integration
-    val watchNextParams = remember(
-        exoPlayer,
-        contentType,
-        streamId,
-        seriesId,
-        episodeId,
-        seasonNumber,
-        title,
-        watchNextService,
-        coroutineScope
-    ) {
-        WatchNextEffectParams(
-            exoPlayer = exoPlayer,
-            contentType = contentType,
-            streamId = streamId,
-            seriesId = seriesId,
-            episodeId = episodeId,
-            seasonNumber = seasonNumber,
-            title = title,
-            watchNextService = watchNextService,
-            coroutineScope = coroutineScope
-        )
-    }
-    
-    // Track playing state for Watch Next updates
-    LaunchedEffect(state.isPlaying) {
-        wasPlaying = state.isPlaying
-    }
-    
-    // Add Watch Next entry after 5 seconds of playback
-    WatchNextAddEffect(
-        params = watchNextParams,
-        isPlaying = state.isPlaying,
-        hasAddedWatchNext = hasAddedWatchNext,
-        onWatchNextAdded = { hasAddedWatchNext = true }
-    )
-    
-    // Update Watch Next on stop/seek
-    WatchNextUpdateEffect(
-        params = watchNextParams,
-        isPlaying = state.isPlaying,
-        wasPlaying = wasPlaying,
-        position = state.currentPosition,
-        duration = state.duration
-    )
 
     // No-audio warning: after 3s when video is playing but no audio detected
     LaunchedEffect(state.playbackState, state.hasShownAudioWarning) {
@@ -1661,24 +1329,6 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     } else {
         0f
     }
-    
-    // Get next episode info from ViewModel (without consuming it, as it's used elsewhere)
-    val nextEpisodeInfoForWatchNext = remember(seriesContextLoaded) {
-        if (seriesContextLoaded && contentType == "series") {
-            viewModel.findNextEpisode()
-        } else {
-            null
-        }
-    }
-    
-    // Remove Watch Next on completion and add next episode
-    WatchNextCompletionEffect(
-        params = watchNextParams,
-        progress = progress,
-        hasTriggeredCompletion = state.hasTriggeredCompletion,
-        isDragging = state.isDraggingProgress,
-        nextEpisodeInfo = nextEpisodeInfoForWatchNext
-    )
     
     // Show/hide next episode button based on progress (98.5% threshold)
     // Skip during drag to prevent false triggers from visual-only position updates
@@ -1856,6 +1506,9 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         playerFocusRequester.requestFocus()
     }
 
+    val isControlsFocusActive = state.showControls && state.focusedButton != null
+    val isOverlayWithoutControlFocus = state.showControls && state.focusedButton == null
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -1885,10 +1538,44 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 }
             }
             .onDpadDirection(
-                onLeft = { handleDpadSeek(false) },
-                onRight = { handleDpadSeek(true) },
-                onUp = handleChannelUp,
-                onDown = handleChannelDown
+                onLeft = {
+                    if (isControlsFocusActive) {
+                        false
+                    } else {
+                        handleDpadSeek(false)
+                    }
+                },
+                onRight = {
+                    if (isControlsFocusActive) {
+                        false
+                    } else {
+                        handleDpadSeek(true)
+                    }
+                },
+                onUp = {
+                    if (isControlsFocusActive) {
+                        state.focusedButton = null
+                        playerFocusRequester.requestFocus()
+                        resetControlsTimer()
+                        true
+                    } else {
+                        handleChannelUp()
+                    }
+                },
+                onDown = {
+                    if (isControlsFocusActive) {
+                        state.focusedButton = null
+                        playerFocusRequester.requestFocus()
+                        resetControlsTimer()
+                        true
+                    } else if (isOverlayWithoutControlFocus) {
+                        state.focusedButton = FocusedButton.PLAY_PAUSE
+                        resetControlsTimer()
+                        true
+                    } else {
+                        handleChannelDown()
+                    }
+                }
             )
             .createVerticalSwipeGestureModifier(
                 onSwipeUp = { handleChannelUp() },
