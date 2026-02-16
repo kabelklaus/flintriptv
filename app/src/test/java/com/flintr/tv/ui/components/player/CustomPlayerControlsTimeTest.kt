@@ -20,7 +20,7 @@ class CustomPlayerControlsTimeTest {
             locale = Locale.GERMANY
         )
 
-        assertEquals("Fertig um 20:30", result)
+        assertEquals("20:30", result)
     }
 
     @Test
@@ -34,7 +34,7 @@ class CustomPlayerControlsTimeTest {
             locale = Locale.GERMANY
         )
 
-        assertEquals("Fertig um 09:15", result)
+        assertEquals("09:15", result)
     }
 
     @Test
@@ -76,7 +76,7 @@ class CustomPlayerControlsTimeTest {
             locale = Locale.GERMANY
         )
 
-        assertEquals("Fertig um 14:42", result)
+        assertEquals("14:42", result)
     }
 
     @Test
@@ -101,8 +101,8 @@ class CustomPlayerControlsTimeTest {
             locale = Locale.GERMANY
         )
 
-        assertEquals("Fertig um 10:20", firstResult)
-        assertEquals("Fertig um 10:21", secondResult)
+        assertEquals("10:20", firstResult)
+        assertEquals("10:21", secondResult)
     }
 
     @Test
@@ -116,6 +116,6 @@ class CustomPlayerControlsTimeTest {
             locale = Locale.GERMANY
         )
 
-        assertEquals("Fertig um 00:10", result)
+        assertEquals("00:10", result)
     }
 }

@@ -17,7 +17,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
@@ -30,6 +32,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+private val FINISH_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 /**
  * Data class containing player state information
@@ -111,10 +115,10 @@ internal fun formatFinishTimeText(
 
     val remainingMillis = (durationMillis - currentPositionMillis).coerceAtLeast(0L)
     val finishInstant = Instant.ofEpochMilli(nowMillis + remainingMillis)
-    val finishTime = DateTimeFormatter.ofPattern("HH:mm", locale)
+    val finishTime = FINISH_TIME_FORMATTER.withLocale(locale)
         .format(finishInstant.atZone(zoneId))
 
-    return "Fertig um $finishTime"
+    return finishTime
 }
 
 /**
@@ -151,20 +155,21 @@ fun CustomPlayerControls(
         focusRequesters[focusedButton]?.requestFocus()
     }
 
-    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    var minuteTickMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
             val now = System.currentTimeMillis()
             val delayToNextMinute = 60_000L - (now % 60_000L)
             delay(delayToNextMinute)
-            nowMillis = System.currentTimeMillis()
+            minuteTickMillis = System.currentTimeMillis()
         }
     }
 
-    val finishTimeText = remember(contentType, nowMillis, state.currentPosition, state.duration) {
+    val sampledNowMillis = if (state.isPlaying) System.currentTimeMillis() else minuteTickMillis
+    val finishTime = remember(contentType, sampledNowMillis, state.currentPosition, state.duration) {
         formatFinishTimeText(
             contentType = contentType,
-            nowMillis = nowMillis,
+            nowMillis = sampledNowMillis,
             currentPositionMillis = state.currentPosition,
             durationMillis = state.duration,
             zoneId = ZoneId.systemDefault(),
@@ -245,9 +250,9 @@ fun CustomPlayerControls(
 
                 // Time block fixed at the right side
                 Column(horizontalAlignment = Alignment.End) {
-                    if (finishTimeText != null) {
+                    if (finishTime != null) {
                         Text(
-                            text = finishTimeText,
+                            text = stringResource(R.string.finish_time_at, finishTime),
                             fontSize = FontSizes.fontSizeMD,
                             color = Color.White.copy(alpha = 0.85f)
                         )
