@@ -1615,6 +1615,15 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                     .padding(top = 16.dp)
             )
         }
+
+        // Clock/date overlay (top right)
+        if (state.showControls) {
+            OverlayClockDate(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 16.dp, end = 16.dp)
+            )
+        }
         
         // Custom player controls
         if (state.showControls) {
