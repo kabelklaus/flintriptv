@@ -57,6 +57,7 @@ import com.flintr.tv.ui.components.player.*
 import com.flintr.tv.ui.components.player.NextEpisodeButtonGroup
 import com.flintr.tv.ui.components.player.ContentInfoOverlay
 import com.flintr.tv.ui.common.PlayerConstants
+import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.FocusedButton
 import com.flintr.tv.ui.utils.onBackButton
@@ -1613,6 +1614,15 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 16.dp)
+            )
+        }
+
+        // Clock/date overlay (top right)
+        if (state.showControls) {
+            OverlayClockDate(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = Dimensions.spacingMD, end = Dimensions.spacingMD)
             )
         }
         
