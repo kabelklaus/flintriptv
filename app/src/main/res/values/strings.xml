@@ -87,6 +87,7 @@
     
     <!-- Watch Progress -->
     <string name="remaining_minutes">%1$dm verbleibend</string>
+    <string name="finish_time_at">Fertig um %1$s</string>
     
     <!-- Player Error Messages -->
     <string name="http_error_458">Stream ist nicht verfügbar. Der Server hat den Zugriff verweigert.</string>

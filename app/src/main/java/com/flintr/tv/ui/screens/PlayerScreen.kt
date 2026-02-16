@@ -1686,6 +1686,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                         }
                     }
                 ),
+                contentType = contentType,
                 focusedButton = state.focusedButton,
                 modifier = Modifier.fillMaxSize()
             )

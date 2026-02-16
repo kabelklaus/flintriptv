@@ -17,7 +17,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
@@ -25,6 +27,13 @@ import com.flintr.tv.ui.utils.FocusedButton
 import com.flintr.tv.ui.utils.formatTime
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
+import kotlinx.coroutines.delay
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+private val FINISH_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 /**
  * Data class containing player state information
@@ -93,11 +102,31 @@ data class ButtonConfig(
     val onNavigateRight: () -> Unit
 )
 
+internal fun formatFinishTimeText(
+    contentType: String,
+    nowMillis: Long,
+    currentPositionMillis: Long,
+    durationMillis: Long,
+    zoneId: ZoneId,
+    locale: Locale
+): String? {
+    val isVodContent = contentType == "movie" || contentType == "series"
+    if (!isVodContent || durationMillis <= 0L) return null
+
+    val remainingMillis = (durationMillis - currentPositionMillis).coerceAtLeast(0L)
+    val finishInstant = Instant.ofEpochMilli(nowMillis + remainingMillis)
+    val finishTime = FINISH_TIME_FORMATTER.withLocale(locale)
+        .format(finishInstant.atZone(zoneId))
+
+    return finishTime
+}
+
 /**
  * Custom player controls with progress bar, navigation buttons, time display, and utility buttons
  * @param state Player state information
  * @param callbacks Player control callbacks
  * @param utilityCallbacks Utility callbacks
+ * @param contentType Current content type (live/movie/series)
  * @param focusedButton Currently focused button
  * @param modifier Modifier for the controls
  */
@@ -106,6 +135,7 @@ fun CustomPlayerControls(
     state: PlayerState,
     callbacks: PlayerCallbacks,
     utilityCallbacks: PlayerUtilityCallbacks,
+    contentType: String,
     focusedButton: FocusedButton?,
     modifier: Modifier = Modifier
 ) {
@@ -123,6 +153,28 @@ fun CustomPlayerControls(
     // Request focus when focusedButton changes
     LaunchedEffect(focusedButton) {
         focusRequesters[focusedButton]?.requestFocus()
+    }
+
+    var minuteTickMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            val delayToNextMinute = 60_000L - (now % 60_000L)
+            delay(delayToNextMinute)
+            minuteTickMillis = System.currentTimeMillis()
+        }
+    }
+
+    val sampledNowMillis = if (state.isPlaying) System.currentTimeMillis() else minuteTickMillis
+    val finishTime = remember(contentType, sampledNowMillis, state.currentPosition, state.duration) {
+        formatFinishTimeText(
+            contentType = contentType,
+            nowMillis = sampledNowMillis,
+            currentPositionMillis = state.currentPosition,
+            durationMillis = state.duration,
+            zoneId = ZoneId.systemDefault(),
+            locale = Locale.getDefault()
+        )
     }
     
     Box(
@@ -168,34 +220,50 @@ fun CustomPlayerControls(
             // Controls bar
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Navigation buttons
-                NavigationButtons(
-                    state = state,
-                    callbacks = callbacks,
-                    utilityCallbacks = utilityCallbacks,
-                    focusedButton = focusedButton,
-                    focusRequesters = focusRequesters,
-                    hasNextEpisode = callbacks.onNextEpisode != null
-                )
-                
-                // Time display
-                Text(
-                    text = "${formatTime(state.currentPosition)} / ${formatTime(state.duration)}",
-                    fontSize = FontSizes.fontSizeLG,
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = Dimensions.spacingMD)
-                )
-                
-                // Utility buttons
-                UtilityButtons(
-                    utilityCallbacks = utilityCallbacks,
-                    focusedButton = focusedButton,
-                    focusRequesters = focusRequesters,
-                    hasNextEpisode = callbacks.onNextEpisode != null
-                )
+                // All controls grouped on the left side
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingLG),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Navigation buttons
+                    NavigationButtons(
+                        state = state,
+                        callbacks = callbacks,
+                        utilityCallbacks = utilityCallbacks,
+                        focusedButton = focusedButton,
+                        focusRequesters = focusRequesters,
+                        hasNextEpisode = callbacks.onNextEpisode != null
+                    )
+
+                    // Utility buttons
+                    UtilityButtons(
+                        utilityCallbacks = utilityCallbacks,
+                        focusedButton = focusedButton,
+                        focusRequesters = focusRequesters,
+                        hasNextEpisode = callbacks.onNextEpisode != null
+                    )
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Time block fixed at the right side
+                Column(horizontalAlignment = Alignment.End) {
+                    if (finishTime != null) {
+                        Text(
+                            text = stringResource(R.string.finish_time_at, finishTime),
+                            fontSize = FontSizes.fontSizeMD,
+                            color = Color.White.copy(alpha = 0.85f)
+                        )
+                    }
+
+                    Text(
+                        text = "${formatTime(state.currentPosition)} / ${formatTime(state.duration)}",
+                        fontSize = FontSizes.fontSizeLG,
+                        color = Color.White
+                    )
+                }
             }
         }
     }
