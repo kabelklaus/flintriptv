@@ -1508,6 +1508,12 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
 
     val isControlsFocusActive = state.showControls && state.focusedButton != null
     val isOverlayWithoutControlFocus = state.showControls && state.focusedButton == null
+    val exitControlsFocus: () -> Boolean = {
+        state.focusedButton = null
+        playerFocusRequester.requestFocus()
+        resetControlsTimer()
+        true
+    }
 
     Box(
         modifier = modifier
@@ -1554,20 +1560,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 },
                 onUp = {
                     if (isControlsFocusActive) {
-                        state.focusedButton = null
-                        playerFocusRequester.requestFocus()
-                        resetControlsTimer()
-                        true
+                        exitControlsFocus()
                     } else {
                         handleChannelUp()
                     }
                 },
                 onDown = {
                     if (isControlsFocusActive) {
-                        state.focusedButton = null
-                        playerFocusRequester.requestFocus()
-                        resetControlsTimer()
-                        true
+                        exitControlsFocus()
                     } else if (isOverlayWithoutControlFocus) {
                         state.focusedButton = FocusedButton.PLAY_PAUSE
                         resetControlsTimer()
