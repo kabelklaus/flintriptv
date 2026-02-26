@@ -470,6 +470,7 @@ private fun rememberPlayerState() = remember {
         var duration by mutableStateOf(0L)
         var bufferedPosition by mutableStateOf(0L)
         var isPlaying by mutableStateOf(false)
+        var isPreparingStream by mutableStateOf(true)
         var errorMessage by mutableStateOf<String?>(null)
         var hasRestoredProgress by mutableStateOf(false)
         var lastInteractionTime by mutableStateOf(System.currentTimeMillis())
@@ -585,6 +586,7 @@ private fun rememberPlayerSetup(
     context: Context,
     streamUrl: String,
     onError: (String) -> Unit,
+    onStreamPreparingChanged: (Boolean) -> Unit,
     onPlaybackStateChanged: (Int) -> Unit,
     onIsPlayingChanged: (Boolean) -> Unit,
     coroutineScope: CoroutineScope
@@ -623,12 +625,20 @@ private fun rememberPlayerSetup(
     // Handle stream URL changes (for channel switching)
     DisposableEffect(streamUrl) {
         if (BuildConfig.DEBUG) Log.d("PlayerScreen", "DisposableEffect triggered for streamUrl: $streamUrl")
+        onStreamPreparingChanged(true)
         val prepareJob = coroutineScope.launch(Dispatchers.IO) { // NOSONAR - UI component, hardcoded dispatcher acceptable
-            prepareMediaItem(exoPlayer, streamUrl, onError)
+            try {
+                prepareMediaItem(exoPlayer, streamUrl, onError)
+            } finally {
+                withContext(Dispatchers.Main) { // NOSONAR - Compose state update must run on main
+                    onStreamPreparingChanged(false)
+                }
+            }
         }
 
         onDispose {
             prepareJob.cancel()
+            onStreamPreparingChanged(false)
         }
     }
     
@@ -937,7 +947,9 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     val state = rememberPlayerState()
     val snackbarHostState = remember { SnackbarHostState() }
     val viewModel: PlayerViewModel = hiltViewModel()
-    val keepScreenOn = state.isPlaying || state.playbackState == Player.STATE_BUFFERING
+    val keepScreenOn = state.isPlaying ||
+        state.playbackState == Player.STATE_BUFFERING ||
+        state.isPreparingStream
     
     // Observe category channels (must be defined before LaunchedEffects that use it)
     val categoryChannels by viewModel.currentCategoryChannels.collectAsState()
@@ -1115,6 +1127,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         context = context,
         streamUrl = currentStreamUrl,
         onError = { message -> state.errorMessage = message },
+        onStreamPreparingChanged = { preparing -> state.isPreparingStream = preparing },
         onPlaybackStateChanged = { playbackStateValue ->
             state.playbackState = playbackStateValue
             if (playbackStateValue == Player.STATE_READY) {
