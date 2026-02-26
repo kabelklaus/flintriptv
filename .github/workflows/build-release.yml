@@ -6,13 +6,21 @@ on:
       - main
 
 jobs:
-  build-and-release:
-    name: Build APK & Create Release
+  prepare:
+    name: Prepare release metadata
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       pull-requests: read
-    
+    outputs:
+      should_release: ${{ steps.should_release.outputs.should_release }}
+      version_name: ${{ steps.version.outputs.name }}
+      build_number: ${{ steps.version.outputs.build }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+      apk_filename: ${{ steps.meta.outputs.apk_filename }}
+      heading: ${{ steps.release_info.outputs.heading }}
+      description: ${{ steps.release_info.outputs.description }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -76,102 +84,17 @@ jobs:
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "✅ Patch version update detected ($LAST_VERSION → $CURRENT_VERSION), creating release"
           fi
-
-      - name: Setup Java
+      - name: Prepare release filenames
         if: steps.should_release.outputs.should_release == 'true'
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'  # Required by compileOptions in build.gradle.kts
-
-      - name: Cache Gradle
-        if: steps.should_release.outputs.should_release == 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            ~/.gradle/build-cache
-          key: gradle-${{ runner.os }}-java21-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-java21-
-            gradle-${{ runner.os }}-
-
-      - name: Setup signing key
-        if: steps.should_release.outputs.should_release == 'true'
+        id: meta
         run: |
-          # Erstelle Keystore-Datei (.jks Format)
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/flintrtv-release.jks
-          
-          # Erstelle local.properties (wie in build.gradle.kts erwartet)
-          cat > local.properties << EOF
-          keystore.path=app/flintrtv-release.jks
-          keystore.password=${{ secrets.KEYSTORE_PASSWORD }}
-          keystore.keyAlias=${{ secrets.KEY_ALIAS }}
-          keystore.keyPassword=${{ secrets.KEY_PASSWORD }}
-          EOF
-          
-          echo "✅ Signing key configured"
+          TAG_NAME="v${{ steps.version.outputs.name }}"
+          RELEASE_NAME="Release v${{ steps.version.outputs.name }}"
+          APK_FILENAME="flintrTV-v${{ steps.version.outputs.name }}.apk"
 
-      - name: Setup Google Services
-        if: steps.should_release.outputs.should_release == 'true'
-        run: |
-          # Prüfe ob Secret gesetzt ist
-          if [ -z "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
-            echo "❌ GOOGLE_SERVICES_JSON secret is not set"
-            exit 1
-          fi
-          
-          # Versuche Base64-Dekodierung (falls Secret Base64-kodiert ist)
-          JSON_CONTENT="${{ secrets.GOOGLE_SERVICES_JSON }}"
-          
-          # Prüfe ob es Base64-kodiert ist (beginnt nicht mit {)
-          if ! echo "$JSON_CONTENT" | grep -q '^{'; then
-            echo "🔍 Attempting Base64 decode..."
-            JSON_CONTENT=$(echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d 2>/dev/null || echo "${{ secrets.GOOGLE_SERVICES_JSON }}")
-          fi
-          
-          # Validiere JSON
-          if ! echo "$JSON_CONTENT" | jq . > /dev/null 2>&1; then
-            echo "❌ Invalid JSON in GOOGLE_SERVICES_JSON secret"
-            echo "First 100 chars: $(echo "$JSON_CONTENT" | head -c 100)"
-            exit 1
-          fi
-          
-          # Schreibe Datei
-          echo "$JSON_CONTENT" > app/google-services.json
-          
-          # Validiere Datei nochmal
-          if ! jq . app/google-services.json > /dev/null 2>&1; then
-            echo "❌ Failed to write valid google-services.json"
-            exit 1
-          fi
-          
-          echo "✅ Google Services configured"
-
-      - name: Grant execute permission for gradlew
-        if: steps.should_release.outputs.should_release == 'true'
-        run: chmod +x gradlew
-
-      - name: Build Release APK
-        if: steps.should_release.outputs.should_release == 'true'
-        run: ./gradlew assembleRelease
-        env:
-          GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true
-          GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-
-      - name: Upload APK artifact
-        if: steps.should_release.outputs.should_release == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk
-          path: app/build/outputs/apk/release/app-release.apk
-          retention-days: 30
-
-      - name: Rename artifacts
-        if: steps.should_release.outputs.should_release == 'true'
-        run: |
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/flintrTV-v${{ steps.version.outputs.name }}.apk
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "apk_filename=$APK_FILENAME" >> $GITHUB_OUTPUT
 
       - name: Extract release info from commit
         if: steps.should_release.outputs.should_release == 'true'
@@ -200,22 +123,149 @@ jobs:
           echo "📝 Heading: $COMMIT_MSG"
           echo "📝 Description: $DESCRIPTION"
 
-      - name: Create GitHub Release
-        if: steps.should_release.outputs.should_release == 'true'
-        uses: softprops/action-gh-release@v1
+  create-release:
+    name: Create draft release
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create draft GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.name }}
-          name: Release v${{ steps.version.outputs.name }}
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          name: ${{ needs.prepare.outputs.release_name }}
           body: |
-            ## ${{ steps.release_info.outputs.heading }}
+            ## ${{ needs.prepare.outputs.heading }}
 
-            Build: ${{ steps.version.outputs.build }}
+            Build: ${{ needs.prepare.outputs.build_number }}
 
-            ${{ steps.release_info.outputs.description }}
-          files: |
-            app/build/outputs/apk/release/flintrTV-v${{ steps.version.outputs.name }}.apk
-          draft: false
+            ${{ needs.prepare.outputs.description }}
+          draft: true
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  android:
+    name: Build Android & upload to draft
+    needs:
+      - prepare
+      - create-release
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.gradle/build-cache
+          key: gradle-${{ runner.os }}-java21-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-java21-
+            gradle-${{ runner.os }}-
+
+      - name: Setup signing key
+        run: |
+          # Erstelle Keystore-Datei (.jks Format)
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/flintrtv-release.jks
+
+          # Erstelle local.properties (wie in build.gradle.kts erwartet)
+          cat > local.properties << EOF
+          keystore.path=app/flintrtv-release.jks
+          keystore.password=${{ secrets.KEYSTORE_PASSWORD }}
+          keystore.keyAlias=${{ secrets.KEY_ALIAS }}
+          keystore.keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+
+          echo "✅ Signing key configured"
+
+      - name: Setup Google Services
+        run: |
+          # Prüfe ob Secret gesetzt ist
+          if [ -z "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo "❌ GOOGLE_SERVICES_JSON secret is not set"
+            exit 1
+          fi
+
+          # Versuche Base64-Dekodierung (falls Secret Base64-kodiert ist)
+          JSON_CONTENT="${{ secrets.GOOGLE_SERVICES_JSON }}"
+
+          # Prüfe ob es Base64-kodiert ist (beginnt nicht mit {)
+          if ! echo "$JSON_CONTENT" | grep -q '^{'; then
+            echo "🔍 Attempting Base64 decode..."
+            JSON_CONTENT=$(echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d 2>/dev/null || echo "${{ secrets.GOOGLE_SERVICES_JSON }}")
+          fi
+
+          # Validiere JSON
+          if ! echo "$JSON_CONTENT" | jq . > /dev/null 2>&1; then
+            echo "❌ Invalid JSON in GOOGLE_SERVICES_JSON secret"
+            echo "First 100 chars: $(echo "$JSON_CONTENT" | head -c 100)"
+            exit 1
+          fi
+
+          # Schreibe Datei
+          echo "$JSON_CONTENT" > app/google-services.json
+
+          # Validiere Datei nochmal
+          if ! jq . app/google-services.json > /dev/null 2>&1; then
+            echo "❌ Failed to write valid google-services.json"
+            exit 1
+          fi
+
+          echo "✅ Google Services configured"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true
+          GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+
+      - name: Rename APK for release
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/${{ needs.prepare.outputs.apk_filename }}
+
+      - name: Upload APK directly to draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          files: |
+            app/build/outputs/apk/release/${{ needs.prepare.outputs.apk_filename }}
+          overwrite_files: true
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-release:
+    name: Publish release
+    needs:
+      - prepare
+      - android
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
