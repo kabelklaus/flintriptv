@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -286,6 +287,37 @@ private fun com.flintr.tv.data.model.DestinationType.toHomeDestination(): HomeDe
 
 private const val LOG_TAG_MAIN_CONTENT_SCREEN = "[MainContentScreen]"
 private const val MIN_LOADING_DURATION_MS = 300L
+private const val DESTINATION_KEY_LIVE_TV = "live_tv"
+private const val DESTINATION_KEY_VOD = "vod"
+private const val DESTINATION_KEY_SERIES = "series"
+private const val DESTINATION_KEY_EPG = "epg"
+private const val DESTINATION_KEY_SEARCH = "search"
+private const val DESTINATION_KEY_SETTINGS = "settings"
+
+/**
+ * Converts HomeDestination to a saveable key for rememberSaveable state restoration.
+ */
+private fun HomeDestination.toSaveKey(): String = when (this) {
+    is HomeDestination.LiveTV -> DESTINATION_KEY_LIVE_TV
+    is HomeDestination.VOD -> DESTINATION_KEY_VOD
+    is HomeDestination.Series -> DESTINATION_KEY_SERIES
+    is HomeDestination.EPG -> DESTINATION_KEY_EPG
+    is HomeDestination.Search -> DESTINATION_KEY_SEARCH
+    is HomeDestination.Settings -> DESTINATION_KEY_SETTINGS
+}
+
+/**
+ * Restores HomeDestination from saveable key with LiveTV as fallback.
+ */
+private fun String.toHomeDestination(): HomeDestination = when (this) {
+    DESTINATION_KEY_LIVE_TV -> HomeDestination.LiveTV
+    DESTINATION_KEY_VOD -> HomeDestination.VOD
+    DESTINATION_KEY_SERIES -> HomeDestination.Series
+    DESTINATION_KEY_EPG -> HomeDestination.EPG
+    DESTINATION_KEY_SEARCH -> HomeDestination.Search
+    DESTINATION_KEY_SETTINGS -> HomeDestination.Settings
+    else -> HomeDestination.LiveTV
+}
 
 /**
  * Restores the destination (tab) and waits for UI propagation.
@@ -1858,8 +1890,9 @@ fun MainContentScreen(
     // State initialization
     val credentials = dependencies.credentialsRepository.getCredentials()
     val context = LocalContext.current
-    var selectedDestination by remember { mutableStateOf<HomeDestination>(HomeDestination.LiveTV) }
-    var selectedCategoryId by remember { mutableStateOf<String?>(null) }
+    var selectedDestinationKey by rememberSaveable { mutableStateOf(DESTINATION_KEY_LIVE_TV) }
+    val selectedDestination = selectedDestinationKey.toHomeDestination()
+    var selectedCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     var snackbarMessage by remember { mutableStateOf<String?>(null) }
     var hasCheckedForUpdates by remember { mutableStateOf(false) }
@@ -1983,7 +2016,7 @@ fun MainContentScreen(
                 state = state,
                 currentDestination = selectedDestination,
                 currentCategoryId = selectedCategoryId,
-                onDestinationChanged = { selectedDestination = it },
+                onDestinationChanged = { selectedDestinationKey = it.toSaveKey() },
                 onCategoryIdChanged = { selectedCategoryId = it },
                 liveCategories = liveCategories,
                 vodCategories = vodCategories,
@@ -2009,7 +2042,7 @@ fun MainContentScreen(
             onCategoryIdChanged = { selectedCategoryId = it },
             onDestinationChanged = { newDestination ->
                 clearStreamsForDestination(selectedDestination, mainViewModel)
-                selectedDestination = newDestination
+                selectedDestinationKey = newDestination.toSaveKey()
             }
         )
     }
@@ -2114,5 +2147,4 @@ fun MainContentScreen(
         )
     )
 }
-
 
