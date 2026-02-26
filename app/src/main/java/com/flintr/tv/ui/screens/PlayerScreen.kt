@@ -3,7 +3,6 @@ package com.flintr.tv.ui.screens
 import android.app.Activity
 import android.util.Log
 import android.view.ViewGroup
-import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -669,18 +668,10 @@ private fun HideSystemUIEffect(view: android.view.View) {
 @Composable
 private fun KeepScreenOnEffect(view: android.view.View, keepScreenOn: Boolean) {
     DisposableEffect(view, keepScreenOn) {
-        val activity = view.context as? Activity
-        if (keepScreenOn) {
-            view.keepScreenOn = true
-            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            view.keepScreenOn = false
-            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
+        view.keepScreenOn = keepScreenOn
 
         onDispose {
             view.keepScreenOn = false
-            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 }
@@ -1620,7 +1611,6 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                     useController = false // Disable default controls
                 }
             },
-            update = { it.keepScreenOn = keepScreenOn },
             modifier = Modifier.fillMaxSize()
         )
         

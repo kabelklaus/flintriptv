@@ -70,6 +70,7 @@ class DataRefreshUseCase @Inject constructor(
 ) {
     companion object {
         private const val TAG = "DataRefreshUseCase"
+        private const val UNKNOWN_ERROR_MESSAGE = "Unbekannter Fehler"
         private const val MAX_PARALLEL_LOADS = 3
         private const val MAX_RETRIES = 3
         private val RETRY_DELAYS_MS = longArrayOf(2000L, 4000L, 8000L)
@@ -116,59 +117,69 @@ class DataRefreshUseCase @Inject constructor(
         return RetryLoadResult.failure(errorMsg)
     }
 
+    private suspend fun <T> loadBundle(
+        step: RefreshStep,
+        username: String,
+        password: String,
+        semaphore: Semaphore,
+        contentLabel: String,
+        loadStreams: suspend (String, String) -> Result<List<T>>,
+        loadCategories: suspend (String, String) -> Result<List<Category>>
+    ): ContentLoadResult<T> = semaphore.withPermit {
+        val streamsResult = loadWithRetry(step) {
+            loadStreams(username, password)
+        }
+        val streams = streamsResult.data ?: return@withPermit ContentLoadResult.failure(
+            step = step,
+            errorMessage = streamsResult.errorMessage ?: UNKNOWN_ERROR_MESSAGE
+        )
+
+        val categories = loadCategories(username, password).getOrNull() ?: emptyList()
+        Log.d(TAG, "Loaded ${streams.size} $contentLabel, ${categories.size} categories")
+        ContentLoadResult.success(step, streams, categories)
+    }
+
     private suspend fun loadLiveBundle(
         username: String,
         password: String,
         semaphore: Semaphore
-    ): ContentLoadResult<LiveStream> = semaphore.withPermit {
-        val streamsResult = loadWithRetry(RefreshStep.CHANNELS) {
-            repository.loadLiveStreamsFromApi(username, password)
-        }
-        val streams = streamsResult.data ?: return@withPermit ContentLoadResult.failure(
-            step = RefreshStep.CHANNELS,
-            errorMessage = streamsResult.errorMessage ?: "Unbekannter Fehler"
-        )
-
-        val categories = repository.getLiveCategories(username, password).getOrNull() ?: emptyList()
-        Log.d(TAG, "Loaded ${streams.size} channels, ${categories.size} categories")
-        ContentLoadResult.success(RefreshStep.CHANNELS, streams, categories)
-    }
+    ): ContentLoadResult<LiveStream> = loadBundle(
+        step = RefreshStep.CHANNELS,
+        username = username,
+        password = password,
+        semaphore = semaphore,
+        contentLabel = "channels",
+        loadStreams = repository::loadLiveStreamsFromApi,
+        loadCategories = repository::getLiveCategories
+    )
 
     private suspend fun loadVodBundle(
         username: String,
         password: String,
         semaphore: Semaphore
-    ): ContentLoadResult<VodStream> = semaphore.withPermit {
-        val streamsResult = loadWithRetry(RefreshStep.MOVIES) {
-            repository.loadVodStreamsFromApi(username, password)
-        }
-        val streams = streamsResult.data ?: return@withPermit ContentLoadResult.failure(
-            step = RefreshStep.MOVIES,
-            errorMessage = streamsResult.errorMessage ?: "Unbekannter Fehler"
-        )
-
-        val categories = repository.getVodCategories(username, password).getOrNull() ?: emptyList()
-        Log.d(TAG, "Loaded ${streams.size} movies, ${categories.size} categories")
-        ContentLoadResult.success(RefreshStep.MOVIES, streams, categories)
-    }
+    ): ContentLoadResult<VodStream> = loadBundle(
+        step = RefreshStep.MOVIES,
+        username = username,
+        password = password,
+        semaphore = semaphore,
+        contentLabel = "movies",
+        loadStreams = repository::loadVodStreamsFromApi,
+        loadCategories = repository::getVodCategories
+    )
 
     private suspend fun loadSeriesBundle(
         username: String,
         password: String,
         semaphore: Semaphore
-    ): ContentLoadResult<Series> = semaphore.withPermit {
-        val seriesResult = loadWithRetry(RefreshStep.SERIES) {
-            repository.loadSeriesFromApi(username, password)
-        }
-        val series = seriesResult.data ?: return@withPermit ContentLoadResult.failure(
-            step = RefreshStep.SERIES,
-            errorMessage = seriesResult.errorMessage ?: "Unbekannter Fehler"
-        )
-
-        val categories = repository.getSeriesCategories(username, password).getOrNull() ?: emptyList()
-        Log.d(TAG, "Loaded ${series.size} series, ${categories.size} categories")
-        ContentLoadResult.success(RefreshStep.SERIES, series, categories)
-    }
+    ): ContentLoadResult<Series> = loadBundle(
+        step = RefreshStep.SERIES,
+        username = username,
+        password = password,
+        semaphore = semaphore,
+        contentLabel = "series",
+        loadStreams = repository::loadSeriesFromApi,
+        loadCategories = repository::getSeriesCategories
+    )
 
     private suspend fun cancelRemaining(vararg deferreds: Deferred<*>) {
         deferreds.forEach { deferred -> deferred.cancel() }

@@ -245,7 +245,7 @@ class DataLoadingViewModel @Inject constructor(
 
     private fun ensureStepIsLoading(stepIndex: Int) {
         val currentStep = _uiState.value.steps.getOrNull(stepIndex) ?: return
-        if (currentStep.status == LoadingStatus.Pending || currentStep.status == LoadingStatus.Loading) {
+        if (currentStep.status == LoadingStatus.Pending) {
             updateStepStatus(stepIndex, LoadingStatus.Loading)
         }
     }
