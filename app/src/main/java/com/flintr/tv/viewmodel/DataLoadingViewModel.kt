@@ -212,22 +212,41 @@ class DataLoadingViewModel @Inject constructor(
     private fun handleNormalProgress(progress: DataRefreshProgress) {
         when (progress.step) {
             RefreshStep.CHANNELS -> {
-                updateStepStatus(0, LoadingStatus.Loading)
+                markPendingStepsAsLoading()
             }
             RefreshStep.MOVIES -> {
                 updateStepStatus(0, LoadingStatus.Success, progress.itemCounts?.channels)
-                updateStepStatus(1, LoadingStatus.Loading)
+                ensureStepIsLoading(stepIndex = 1)
+                ensureStepIsLoading(stepIndex = 2)
                 updateProgress(1, 3)
             }
             RefreshStep.SERIES -> {
                 updateStepStatus(1, LoadingStatus.Success, progress.itemCounts?.movies)
-                updateStepStatus(2, LoadingStatus.Loading)
+                ensureStepIsLoading(stepIndex = 2)
                 updateProgress(2, 3)
             }
             RefreshStep.SAVING -> {
                 updateStepStatus(2, LoadingStatus.Success, progress.itemCounts?.series)
                 updateProgress(3, 3)
             }
+        }
+    }
+
+    private fun markPendingStepsAsLoading() {
+        val updatedSteps = _uiState.value.steps.map { step ->
+            if (step.status == LoadingStatus.Pending) {
+                step.copy(status = LoadingStatus.Loading)
+            } else {
+                step
+            }
+        }
+        _uiState.value = _uiState.value.copy(steps = updatedSteps)
+    }
+
+    private fun ensureStepIsLoading(stepIndex: Int) {
+        val currentStep = _uiState.value.steps.getOrNull(stepIndex) ?: return
+        if (currentStep.status == LoadingStatus.Pending) {
+            updateStepStatus(stepIndex, LoadingStatus.Loading)
         }
     }
 

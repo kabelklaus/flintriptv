@@ -663,6 +663,20 @@ private fun HideSystemUIEffect(view: android.view.View) {
 }
 
 /**
+ * Keeps screen on while playback is active
+ */
+@Composable
+private fun KeepScreenOnEffect(view: android.view.View, keepScreenOn: Boolean) {
+    DisposableEffect(view, keepScreenOn) {
+        view.keepScreenOn = keepScreenOn
+
+        onDispose {
+            view.keepScreenOn = false
+        }
+    }
+}
+
+/**
  * Creates seek callback
  */
 private fun createSeekCallback(
@@ -923,6 +937,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     val state = rememberPlayerState()
     val snackbarHostState = remember { SnackbarHostState() }
     val viewModel: PlayerViewModel = hiltViewModel()
+    val keepScreenOn = state.isPlaying || state.playbackState == Player.STATE_BUFFERING
     
     // Observe category channels (must be defined before LaunchedEffects that use it)
     val categoryChannels by viewModel.currentCategoryChannels.collectAsState()
@@ -1228,6 +1243,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     
     // Hide system UI
     HideSystemUIEffect(view)
+    KeepScreenOnEffect(view, keepScreenOn)
     
     // Update position and duration
     PlayerPositionUpdateEffect(
@@ -1593,7 +1609,6 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                     useController = false // Disable default controls
-                    keepScreenOn = true
                 }
             },
             modifier = Modifier.fillMaxSize()
