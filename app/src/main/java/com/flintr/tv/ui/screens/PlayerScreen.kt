@@ -3,6 +3,7 @@ package com.flintr.tv.ui.screens
 import android.app.Activity
 import android.util.Log
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -263,7 +264,8 @@ private fun createPlayerListener(
     context: Context,
     onError: (String) -> Unit,
     onPlaybackStateChanged: (Int) -> Unit,
-    onIsPlayingChanged: (Boolean) -> Unit
+    onIsPlayingChanged: (Boolean) -> Unit,
+    onPlayWhenReadyChanged: (Boolean) -> Unit
 ): Player.Listener {
     return object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
@@ -291,6 +293,10 @@ private fun createPlayerListener(
         
         override fun onIsPlayingChanged(playing: Boolean) {
             onIsPlayingChanged(playing)
+        }
+
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            onPlayWhenReadyChanged(playWhenReady)
         }
     }
 }
@@ -470,6 +476,7 @@ private fun rememberPlayerState() = remember {
         var duration by mutableStateOf(0L)
         var bufferedPosition by mutableStateOf(0L)
         var isPlaying by mutableStateOf(false)
+        var playWhenReady by mutableStateOf(false)
         var isPreparingStream by mutableStateOf(true)
         var errorMessage by mutableStateOf<String?>(null)
         var hasRestoredProgress by mutableStateOf(false)
@@ -589,6 +596,7 @@ private fun rememberPlayerSetup(
     onStreamPreparingChanged: (Boolean) -> Unit,
     onPlaybackStateChanged: (Int) -> Unit,
     onIsPlayingChanged: (Boolean) -> Unit,
+    onPlayWhenReadyChanged: (Boolean) -> Unit,
     coroutineScope: CoroutineScope
 ): ExoPlayer {
     val credentials = rememberCredentials(context)
@@ -612,7 +620,8 @@ private fun rememberPlayerSetup(
             onPlaybackStateChanged = { state ->
                 onPlaybackStateChanged(state)
             },
-            onIsPlayingChanged = onIsPlayingChanged
+            onIsPlayingChanged = onIsPlayingChanged,
+            onPlayWhenReadyChanged = onPlayWhenReadyChanged
         )
         
         exoPlayer.addListener(listener)
@@ -678,10 +687,17 @@ private fun HideSystemUIEffect(view: android.view.View) {
 @Composable
 private fun KeepScreenOnEffect(view: android.view.View, keepScreenOn: Boolean) {
     DisposableEffect(view, keepScreenOn) {
+        val activity = view.context as? Activity
         view.keepScreenOn = keepScreenOn
+        if (keepScreenOn) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
 
         onDispose {
             view.keepScreenOn = false
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 }
@@ -948,6 +964,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     val snackbarHostState = remember { SnackbarHostState() }
     val viewModel: PlayerViewModel = hiltViewModel()
     val keepScreenOn = state.isPlaying ||
+        state.playWhenReady ||
         state.playbackState == Player.STATE_BUFFERING ||
         state.isPreparingStream
     
@@ -1135,6 +1152,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             }
         },
         onIsPlayingChanged = { playing -> state.isPlaying = playing },
+        onPlayWhenReadyChanged = { ready -> state.playWhenReady = ready },
         coroutineScope = coroutineScope
     )
     
@@ -1624,6 +1642,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                     useController = false // Disable default controls
                 }
             },
+            update = { it.keepScreenOn = keepScreenOn },
             modifier = Modifier.fillMaxSize()
         )
         
