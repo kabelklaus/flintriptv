@@ -286,9 +286,9 @@ fun FavoritesContent(
             },
             contentIdSelector = { item ->
                 when (item) {
-                    is FavoriteContentItem.Live -> item.favorite.id
-                    is FavoriteContentItem.Movie -> item.favorite.id
-                    is FavoriteContentItem.SeriesItem -> item.favorite.id
+                    is FavoriteContentItem.Live -> "live_${item.stream.streamId}"
+                    is FavoriteContentItem.Movie -> "vod_${item.vod.streamId}"
+                    is FavoriteContentItem.SeriesItem -> "series_${item.series.seriesId}"
                 }
             },
             focusRequesterMap = params.focusRequesterMap,
