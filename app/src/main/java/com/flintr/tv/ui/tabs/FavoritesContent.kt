@@ -279,9 +279,9 @@ fun FavoritesContent(
             lazyGridState = params.lazyGridState,
             keySelector = { item ->
                 when (item) {
-                    is FavoriteContentItem.Live -> item.stream.streamId
-                    is FavoriteContentItem.Movie -> item.vod.streamId
-                    is FavoriteContentItem.SeriesItem -> item.series.seriesId
+                    is FavoriteContentItem.Live -> item.favorite.id
+                    is FavoriteContentItem.Movie -> item.favorite.id
+                    is FavoriteContentItem.SeriesItem -> item.favorite.id
                 }
             },
             contentIdSelector = { item ->
