@@ -233,100 +233,7 @@ class DataRefreshUseCase @Inject constructor(
                 isComplete = false
             ))
 
-            val loadResult = supervisorScope {
-                Log.d(TAG, "Starting parallel refresh with max $MAX_PARALLEL_LOADS concurrent loads")
-                val semaphore = Semaphore(MAX_PARALLEL_LOADS)
-
-                val liveDeferred = async { loadLiveBundle(username, password, semaphore) }
-                val vodDeferred = async { loadVodBundle(username, password, semaphore) }
-                val seriesDeferred = async { loadSeriesBundle(username, password, semaphore) }
-
-                val liveResult = liveDeferred.await()
-                if (!liveResult.isSuccess) {
-                    cancelRemaining(vodDeferred, seriesDeferred)
-                    return@supervisorScope RefreshLoadResult.failure(
-                        step = RefreshStep.CHANNELS,
-                        counts = ItemCounts(),
-                        errorMessage = liveResult.errorMessage,
-                        errorCause = liveResult.errorCause
-                    )
-                }
-                val liveStreams = liveResult.data ?: return@supervisorScope RefreshLoadResult.failure(
-                    step = RefreshStep.CHANNELS,
-                    counts = ItemCounts(),
-                    errorMessage = liveResult.errorMessage,
-                    errorCause = liveResult.errorCause
-                )
-                val liveCategories = liveResult.categories
-
-                // Step 2: Load VOD Streams (already in progress in background)
-                val countsAfterChannels = ItemCounts(
-                    channels = liveStreams.size,
-                    liveCategories = liveCategories.size
-                )
-                emit(DataRefreshProgress(
-                    step = RefreshStep.MOVIES,
-                    message = "Lade Filme... (${liveStreams.size} Kanäle geladen)",
-                    itemCounts = countsAfterChannels,
-                    isComplete = false
-                ))
-
-                val vodResult = vodDeferred.await()
-                if (!vodResult.isSuccess) {
-                    cancelRemaining(seriesDeferred)
-                    return@supervisorScope RefreshLoadResult.failure(
-                        step = RefreshStep.MOVIES,
-                        counts = countsAfterChannels,
-                        errorMessage = vodResult.errorMessage,
-                        errorCause = vodResult.errorCause
-                    )
-                }
-                val vodStreams = vodResult.data ?: return@supervisorScope RefreshLoadResult.failure(
-                    step = RefreshStep.MOVIES,
-                    counts = countsAfterChannels,
-                    errorMessage = vodResult.errorMessage,
-                    errorCause = vodResult.errorCause
-                )
-                val vodCategories = vodResult.categories
-
-                // Step 3: Load Series (already in progress in background)
-                val countsAfterMovies = ItemCounts(
-                    channels = liveStreams.size,
-                    movies = vodStreams.size,
-                    liveCategories = liveCategories.size,
-                    vodCategories = vodCategories.size
-                )
-                emit(DataRefreshProgress(
-                    step = RefreshStep.SERIES,
-                    message = "Lade Serien... (${liveStreams.size} Kanäle, ${vodStreams.size} Filme geladen)",
-                    itemCounts = countsAfterMovies,
-                    isComplete = false
-                ))
-
-                val seriesResult = seriesDeferred.await()
-                if (!seriesResult.isSuccess) {
-                    return@supervisorScope RefreshLoadResult.failure(
-                        step = RefreshStep.SERIES,
-                        counts = countsAfterMovies,
-                        errorMessage = seriesResult.errorMessage,
-                        errorCause = seriesResult.errorCause
-                    )
-                }
-
-                RefreshLoadResult.success(
-                    liveStreams = liveStreams,
-                    liveCategories = liveCategories,
-                    vodStreams = vodStreams,
-                    vodCategories = vodCategories,
-                    series = seriesResult.data ?: return@supervisorScope RefreshLoadResult.failure(
-                        step = RefreshStep.SERIES,
-                        counts = countsAfterMovies,
-                        errorMessage = seriesResult.errorMessage,
-                        errorCause = seriesResult.errorCause
-                    ),
-                    seriesCategories = seriesResult.categories
-                )
-            }
+            val loadResult = loadAllContent(username, password)
 
             if (!loadResult.isSuccess) {
                 val shouldUseCacheFallback = isConnectivityFallbackEligible(loadResult.errorCause)
@@ -398,6 +305,104 @@ class DataRefreshUseCase @Inject constructor(
                 error = e.message
             ))
         }
+    }
+
+    private suspend fun FlowCollector<DataRefreshProgress>.loadAllContent(
+        username: String,
+        password: String
+    ): RefreshLoadResult = supervisorScope {
+        Log.d(TAG, "Starting parallel refresh with max $MAX_PARALLEL_LOADS concurrent loads")
+        val semaphore = Semaphore(MAX_PARALLEL_LOADS)
+
+        val liveDeferred = async { loadLiveBundle(username, password, semaphore) }
+        val vodDeferred = async { loadVodBundle(username, password, semaphore) }
+        val seriesDeferred = async { loadSeriesBundle(username, password, semaphore) }
+
+        val liveResult = liveDeferred.await()
+        if (!liveResult.isSuccess) {
+            cancelRemaining(vodDeferred, seriesDeferred)
+            return@supervisorScope RefreshLoadResult.failure(
+                step = RefreshStep.CHANNELS,
+                counts = ItemCounts(),
+                errorMessage = liveResult.errorMessage,
+                errorCause = liveResult.errorCause
+            )
+        }
+        val liveStreams = liveResult.data ?: return@supervisorScope RefreshLoadResult.failure(
+            step = RefreshStep.CHANNELS,
+            counts = ItemCounts(),
+            errorMessage = liveResult.errorMessage,
+            errorCause = liveResult.errorCause
+        )
+        val liveCategories = liveResult.categories
+
+        // Step 2: Load VOD Streams (already in progress in background)
+        val countsAfterChannels = ItemCounts(
+            channels = liveStreams.size,
+            liveCategories = liveCategories.size
+        )
+        emit(DataRefreshProgress(
+            step = RefreshStep.MOVIES,
+            message = "Lade Filme... (${liveStreams.size} Kanäle geladen)",
+            itemCounts = countsAfterChannels,
+            isComplete = false
+        ))
+
+        val vodResult = vodDeferred.await()
+        if (!vodResult.isSuccess) {
+            cancelRemaining(seriesDeferred)
+            return@supervisorScope RefreshLoadResult.failure(
+                step = RefreshStep.MOVIES,
+                counts = countsAfterChannels,
+                errorMessage = vodResult.errorMessage,
+                errorCause = vodResult.errorCause
+            )
+        }
+        val vodStreams = vodResult.data ?: return@supervisorScope RefreshLoadResult.failure(
+            step = RefreshStep.MOVIES,
+            counts = countsAfterChannels,
+            errorMessage = vodResult.errorMessage,
+            errorCause = vodResult.errorCause
+        )
+        val vodCategories = vodResult.categories
+
+        // Step 3: Load Series (already in progress in background)
+        val countsAfterMovies = ItemCounts(
+            channels = liveStreams.size,
+            movies = vodStreams.size,
+            liveCategories = liveCategories.size,
+            vodCategories = vodCategories.size
+        )
+        emit(DataRefreshProgress(
+            step = RefreshStep.SERIES,
+            message = "Lade Serien... (${liveStreams.size} Kanäle, ${vodStreams.size} Filme geladen)",
+            itemCounts = countsAfterMovies,
+            isComplete = false
+        ))
+
+        val seriesResult = seriesDeferred.await()
+        if (!seriesResult.isSuccess) {
+            return@supervisorScope RefreshLoadResult.failure(
+                step = RefreshStep.SERIES,
+                counts = countsAfterMovies,
+                errorMessage = seriesResult.errorMessage,
+                errorCause = seriesResult.errorCause
+            )
+        }
+
+        RefreshLoadResult.success(
+            liveStreams = liveStreams,
+            liveCategories = liveCategories,
+            vodStreams = vodStreams,
+            vodCategories = vodCategories,
+            series = seriesResult.data ?: return@supervisorScope RefreshLoadResult.failure(
+                step = RefreshStep.SERIES,
+                counts = countsAfterMovies,
+                errorMessage = seriesResult.errorMessage,
+                errorCause = seriesResult.errorCause
+            ),
+            seriesCategories = seriesResult.categories
+        )
     }
 
     /**

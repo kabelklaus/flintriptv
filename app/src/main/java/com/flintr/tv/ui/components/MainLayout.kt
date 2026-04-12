@@ -24,7 +24,6 @@ import com.flintr.tv.ui.sidebars.CategoryRowParams
  * Creates a callback for onGloballyPositioned that invokes the ready callback
  * when the component has valid dimensions.
  */
-@Composable
 private fun createPositionedCallback(
     onReady: (() -> Unit)?
 ): (LayoutCoordinates) -> Unit {
@@ -54,11 +53,10 @@ private fun createNavbarOnNavigateRight(
 /**
  * Creates the modifier for the navbar with positioning callback.
  */
-@Composable
-private fun createNavbarModifier(
+private fun Modifier.createNavbarModifier(
     onNavbarReady: (() -> Unit)?
 ): Modifier {
-    return Modifier
+    return this
         .fillMaxHeight()
         .onGloballyPositioned(createPositionedCallback(onNavbarReady))
 }
@@ -66,11 +64,10 @@ private fun createNavbarModifier(
 /**
  * Creates the modifier for the category sidebar with positioning callback.
  */
-@Composable
-private fun createCategorySidebarModifier(
+private fun Modifier.createCategorySidebarModifier(
     onCategorySidebarReady: (() -> Unit)?
 ): Modifier {
-    return Modifier
+    return this
         .width(240.dp)
         .fillMaxHeight()
         .onGloballyPositioned(createPositionedCallback(onCategorySidebarReady))
@@ -141,7 +138,7 @@ fun MainLayout(
             externalFocusRequested = externalFocusRequested,
             onNavigateRight = createNavbarOnNavigateRight(params.showCategories, params.onNavigateToCategorySidebar),
             onSearchClick = params.onSearchClick,
-            modifier = createNavbarModifier(params.onNavbarReady)
+            modifier = Modifier.createNavbarModifier(params.onNavbarReady)
         )
         
         // Middle Column: Categories (if applicable)
@@ -163,7 +160,7 @@ fun MainLayout(
                     },
                     listState = params.categorySidebarListState
                 ),
-                modifier = createCategorySidebarModifier(params.onCategorySidebarReady)
+                modifier = Modifier.createCategorySidebarModifier(params.onCategorySidebarReady)
             )
         } else {
             // Empty space for EPG or other screens without categories
@@ -186,4 +183,3 @@ fun MainLayout(
         }
     }
 }
-
