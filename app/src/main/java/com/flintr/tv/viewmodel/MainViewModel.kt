@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.IOException
 import javax.inject.Inject
 
 @HiltViewModel
@@ -163,9 +164,21 @@ class MainViewModel @Inject constructor(
                 Log.d("MainViewModel", "Server info loaded successfully: $serverInfo")
             }
             .onFailure { error ->
+                if (cacheService.shouldUseCacheForBrowsing() && error.isConnectivityError()) {
+                    Log.w("MainViewModel", "Skipping server info error because cached browsing is available", error)
+                    return@onFailure
+                }
+
                 _uiState.value = _uiState.value.copy(error = error.message)
                 Log.e("MainViewModel", "Failed to load server info", error)
             }
+    }
+
+    private fun Throwable.isConnectivityError(): Boolean {
+        return when (this) {
+            is IOException -> true
+            else -> cause?.isConnectivityError() == true
+        }
     }
 
     private suspend fun loadCategoriesFromRepository(credentials: Credentials) {

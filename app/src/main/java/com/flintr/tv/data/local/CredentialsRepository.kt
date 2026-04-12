@@ -81,10 +81,11 @@ class CredentialsRepository @Inject constructor(
     }
 
     fun hasCredentials(): Boolean {
-        val serverUrl = sharedPreferences.getString(KEY_SERVER_URL, null)
-        val username = sharedPreferences.getString(KEY_USERNAME, null)
-        val password = sharedPreferences.getString(KEY_PASSWORD, null)
-        return !serverUrl.isNullOrBlank() && !username.isNullOrBlank() && !password.isNullOrBlank()
+        val credentials = _credentialsFlow.value
+        return credentials != null &&
+            credentials.serverUrl.isNotBlank() &&
+            credentials.username.isNotBlank() &&
+            credentials.password.isNotBlank()
     }
 
     fun getLoginPrefill(): LoginPrefill {

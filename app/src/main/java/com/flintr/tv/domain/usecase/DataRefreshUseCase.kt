@@ -17,11 +17,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.io.EOFException
 import java.io.IOException
-import java.net.ConnectException
-import java.net.SocketTimeoutException
-import java.net.UnknownHostException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -87,10 +83,6 @@ class DataRefreshUseCase @Inject constructor(
 
         private fun Throwable.isConnectivityError(): Boolean {
             return when (this) {
-                is UnknownHostException,
-                is ConnectException,
-                is SocketTimeoutException,
-                is EOFException -> true
                 is IOException -> true
                 else -> cause?.isConnectivityError() == true
             }
