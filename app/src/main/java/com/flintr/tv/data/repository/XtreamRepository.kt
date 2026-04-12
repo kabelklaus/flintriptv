@@ -33,7 +33,7 @@ class XtreamRepository @Inject constructor(
     // Lazy initialization of API service based on the current credentials
     @Synchronized
     private fun getApiService(): XtreamApiService? {
-        val credentials = credentialsRepository.getCredentials()
+        val credentials = credentialsRepository.credentialsFlow.value
         if (credentials == null) {
             // Invalidate cached service if user logs out
             dynamicApiService = null

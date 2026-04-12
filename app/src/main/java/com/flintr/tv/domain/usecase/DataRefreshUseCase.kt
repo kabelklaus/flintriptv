@@ -7,6 +7,7 @@ import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.utils.isConnectivityError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -17,7 +18,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -79,13 +79,6 @@ class DataRefreshUseCase @Inject constructor(
 
         internal fun isConnectivityFallbackEligible(errorCause: Throwable?): Boolean {
             return errorCause?.isConnectivityError() == true
-        }
-
-        private fun Throwable.isConnectivityError(): Boolean {
-            return when (this) {
-                is IOException -> true
-                else -> cause?.isConnectivityError() == true
-            }
         }
     }
 

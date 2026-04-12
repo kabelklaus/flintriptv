@@ -13,6 +13,7 @@ import com.flintr.tv.data.model.*
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.ui.common.ContentFilterUtils
+import com.flintr.tv.utils.isConnectivityError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -22,7 +23,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.io.IOException
 import javax.inject.Inject
 
 @HiltViewModel
@@ -172,13 +172,6 @@ class MainViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(error = error.message)
                 Log.e("MainViewModel", "Failed to load server info", error)
             }
-    }
-
-    private fun Throwable.isConnectivityError(): Boolean {
-        return when (this) {
-            is IOException -> true
-            else -> cause?.isConnectivityError() == true
-        }
     }
 
     private suspend fun loadCategoriesFromRepository(credentials: Credentials) {

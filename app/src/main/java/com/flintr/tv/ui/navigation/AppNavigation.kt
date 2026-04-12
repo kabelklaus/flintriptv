@@ -598,8 +598,10 @@ fun AppNavigation(
         }
 
         composable(Screen.Login.route) {
-            val activeCredentials = dependencies.credentialsRepository.getCredentials()
-            val loginPrefill = dependencies.credentialsRepository.getLoginPrefill()
+            val activeCredentials by dependencies.credentialsRepository.credentialsFlow.collectAsState(
+                initial = dependencies.credentialsRepository.credentialsFlow.value
+            )
+            val loginPrefill = remember { dependencies.credentialsRepository.getLoginPrefill() }
             LoginScreen(
                 initialServerUrl = activeCredentials?.serverUrl ?: "",
                 initialUsername = loginPrefill.username,
