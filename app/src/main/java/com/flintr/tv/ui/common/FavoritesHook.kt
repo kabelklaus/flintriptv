@@ -3,6 +3,7 @@ package com.flintr.tv.ui.common
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -213,17 +214,23 @@ fun <T : Any> useFavorites(
     favoriteType: FavoriteType,
     idSelector: (T) -> Int
 ): FavoritesState<SourcedFavoriteItem<T>> {
-    var favoriteItems by remember { mutableStateOf<List<SourcedFavoriteItem<T>>>(emptyList()) }
     var ownItems by remember { mutableStateOf<List<T>>(emptyList()) }
     var friendItems by remember { mutableStateOf<List<Pair<FriendEntry, List<T>>>>(emptyList()) }
     var isLoadingOwnFavorites by remember { mutableStateOf(false) }
     var isLoadingFriendFavorites by remember { mutableStateOf(false) }
+    val favoriteItems by remember(ownItems, friendItems) {
+        derivedStateOf {
+            combineSourcedItems(
+                ownItems = ownItems,
+                friendItems = friendItems
+            )
+        }
+    }
 
     LaunchedEffect(isFavoritesCategory, favoriteType) {
         if (!isFavoritesCategory) {
             ownItems = emptyList()
             friendItems = emptyList()
-            favoriteItems = emptyList()
             isLoadingOwnFavorites = false
             return@LaunchedEffect
         }
@@ -237,10 +244,6 @@ fun <T : Any> useFavorites(
                 favoriteType = favoriteType,
                 cacheService = cacheService,
                 idSelector = idSelector
-            )
-            favoriteItems = combineSourcedItems(
-                ownItems = ownItems,
-                friendItems = friendItems
             )
             isLoadingOwnFavorites = false
         }
@@ -266,10 +269,6 @@ fun <T : Any> useFavorites(
                 idSelector = idSelector
             )
         }
-        favoriteItems = combineSourcedItems(
-            ownItems = ownItems,
-            friendItems = friendItems
-        )
         isLoadingFriendFavorites = false
     }
 

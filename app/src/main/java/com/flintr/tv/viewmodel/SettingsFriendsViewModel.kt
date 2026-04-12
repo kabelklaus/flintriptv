@@ -123,20 +123,21 @@ class SettingsFriendsViewModel @Inject constructor(
                 return@launch
             }
 
+            val newFriend = FriendEntry.create(
+                username = normalizedUsername,
+                alias = normalizedAlias
+            )
+
             val result = userRepository.addFriendAtomically(
                 username = currentUsername,
-                friendEntry = FriendEntry.create(
-                    username = normalizedUsername,
-                    alias = normalizedAlias
-                )
+                friendEntry = newFriend
             )
 
             result.fold(
                 onSuccess = {
-                    val updatedFriends = userRepository.loadFriends(currentUsername).getOrDefault(_uiState.value.friends)
                     _uiState.value = _uiState.value.copy(
                         isSaving = false,
-                        friends = updatedFriends,
+                        friends = _uiState.value.friends + newFriend,
                         successMessage = resourcesProvider.getString(R.string.friend_added),
                         errorMessage = null
                     )
