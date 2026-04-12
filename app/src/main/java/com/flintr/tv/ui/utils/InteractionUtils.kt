@@ -325,8 +325,8 @@ private fun createKeyEventHandler(
     state: LongPressState,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     durationMillis: Long,
-    onLongPress: () -> Unit,
-    onNormalClick: (() -> Unit)?
+    currentOnLongPress: State<() -> Unit>,
+    currentOnNormalClick: State<(() -> Unit)?>
 ): (androidx.compose.ui.input.key.KeyEvent) -> Boolean {
     return { event ->
         when (event.key) {
@@ -338,8 +338,14 @@ private fun createKeyEventHandler(
                     true
                 } else {
                     when (event.type) {
-                        KeyEventType.KeyDown -> handleKeyDown(event, state, coroutineScope, durationMillis, onLongPress)
-                        KeyEventType.KeyUp -> handleKeyUp(event, state, now, onNormalClick)
+                        KeyEventType.KeyDown -> handleKeyDown(
+                            event,
+                            state,
+                            coroutineScope,
+                            durationMillis,
+                            currentOnLongPress
+                        )
+                        KeyEventType.KeyUp -> handleKeyUp(event, state, now, currentOnNormalClick)
                         else -> false
                     }
                 }
@@ -356,10 +362,10 @@ private fun Modifier.createTouchEventHandler(
     state: LongPressState,
     coroutineScope: CoroutineScope,
     durationMillis: Long,
-    onLongPress: () -> Unit,
-    onNormalClick: (() -> Unit)?
+    currentOnLongPress: State<() -> Unit>,
+    currentOnNormalClick: State<(() -> Unit)?>
 ): Modifier {
-    return this.pointerInput(onLongPress, onNormalClick, durationMillis) {
+    return this.pointerInput(durationMillis) {
         detectTapGestures(
             onPress = { _ ->
                 val now = System.currentTimeMillis()
@@ -372,12 +378,12 @@ private fun Modifier.createTouchEventHandler(
                 
                 // Use coroutineScope from Composable, but the gesture lifecycle will cancel
                 // the job automatically when the gesture ends (via tryAwaitRelease)
-                handleTouchDown(state, coroutineScope, durationMillis, onLongPress)
+                handleTouchDown(state, coroutineScope, durationMillis, currentOnLongPress)
                 
                 val released = tryAwaitRelease()
                 if (released) {
                     val touchUpNow = System.currentTimeMillis()
-                    val handled = handleTouchUp(state, touchUpNow, onNormalClick)
+                    val handled = handleTouchUp(state, touchUpNow, currentOnNormalClick)
                     
                     if (!handled) {
                         // Normal tap if not handled by long press logic
@@ -411,20 +417,22 @@ fun Modifier.onLongPress(
 ): Modifier = composed {
     val state = remember { LongPressState() }
     val coroutineScope = rememberCoroutineScope()
+    val currentOnLongPress = rememberUpdatedState(onLongPress)
+    val currentOnNormalClick = rememberUpdatedState(onNormalClick)
 
     val keyEventHandler = createKeyEventHandler(
         state,
         coroutineScope,
         durationMillis,
-        onLongPress,
-        onNormalClick
+        currentOnLongPress,
+        currentOnNormalClick
     )
     val touchHandler = Modifier.createTouchEventHandler(
         state = state,
         coroutineScope = coroutineScope,
         durationMillis = durationMillis,
-        onLongPress = onLongPress,
-        onNormalClick = onNormalClick
+        currentOnLongPress = currentOnLongPress,
+        currentOnNormalClick = currentOnNormalClick
     )
 
     this
@@ -440,7 +448,7 @@ private fun handleKeyDown(
     state: LongPressState,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     durationMillis: Long,
-    onLongPress: () -> Unit
+    currentOnLongPress: State<() -> Unit>
 ): Boolean {
     val keyName = InteractionUtils.getKeyName(event.key)
     Log.d("ContentCardLongPress", "[KeyDown] $keyName gedrückt - Starte Long-Press Timer (${durationMillis}ms)")
@@ -472,7 +480,7 @@ private fun handleKeyDown(
         keyState.blockUntilTime = System.currentTimeMillis() + LONG_PRESS_BLOCKING_PERIOD_MS
         Log.d("ContentCardLongPress", "[Block] Blocking-Periode gestartet (${LONG_PRESS_BLOCKING_PERIOD_MS}ms)")
         Log.d("ContentCardLongPress", "[Block] consumeNextKeyUp Flag gesetzt - nächster KeyUp wird konsumiert")
-        onLongPress()
+        currentOnLongPress.value.invoke()
     }
     return true
 }
@@ -484,7 +492,7 @@ private fun handleKeyUp(
     event: androidx.compose.ui.input.key.KeyEvent,
     state: LongPressState,
     now: Long,
-    onNormalClick: (() -> Unit)?
+    currentOnNormalClick: State<(() -> Unit)?>
 ): Boolean {
     val keyName = InteractionUtils.getKeyName(event.key)
     val keyState = state.keyState
@@ -511,9 +519,9 @@ private fun handleKeyUp(
         keyState.job != null && keyState.job!!.isActive -> {
             Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Timer wird abgebrochen (zu früh)")
             state.resetTimer()
-            if (onNormalClick != null) {
+            if (currentOnNormalClick.value != null) {
                 Log.d("ContentCardLongPress", "[KeyUp] Rufe onNormalClick() auf (Timer abgebrochen)")
-                onNormalClick()
+                currentOnNormalClick.value?.invoke()
                 true
             } else {
                 false
@@ -522,9 +530,9 @@ private fun handleKeyUp(
         else -> {
             Log.d("ContentCardLongPress", "[KeyUp] $keyName losgelassen nach ${elapsed}ms - Kein aktiver Timer")
             // Fallback: Call onNormalClick if no timer was active (edge case)
-            if (onNormalClick != null) {
+            if (currentOnNormalClick.value != null) {
                 Log.d("InteractionUtils", "🔵 SHORT PRESS KEY (Fallback - kein Timer)")
-                onNormalClick()
+                currentOnNormalClick.value?.invoke()
                 true
             } else {
                 false
@@ -541,7 +549,7 @@ private fun handleTouchDown(
     state: LongPressState,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     durationMillis: Long,
-    onLongPress: () -> Unit
+    currentOnLongPress: State<() -> Unit>
 ) {
     Log.d("TVFocusUtils", "👆 TOUCH DOWN erkannt - Starte Long-Press Timer (${durationMillis}ms)")
     Log.d("ContentCardLongPress", "[TouchDown] Touch erkannt - Starte Long-Press Timer (${durationMillis}ms)")
@@ -575,7 +583,7 @@ private fun handleTouchDown(
         touchState.blockUntilTime = System.currentTimeMillis() + LONG_PRESS_BLOCKING_PERIOD_MS
         Log.d("ContentCardLongPress", "[TouchBlock] Blocking-Periode gestartet (${LONG_PRESS_BLOCKING_PERIOD_MS}ms)")
         Log.d("ContentCardLongPress", "[TouchBlock] consumeNextTouchUp Flag gesetzt - nächster TouchUp wird konsumiert")
-        onLongPress()
+        currentOnLongPress.value.invoke()
     }
 }
 
@@ -585,7 +593,7 @@ private fun handleTouchDown(
 private fun handleTouchUp(
     state: LongPressState,
     now: Long,
-    onNormalClick: (() -> Unit)?
+    currentOnNormalClick: State<(() -> Unit)?>
 ): Boolean {
     val touchState = state.touchState
     val elapsed = touchState.timerStartTime?.let { System.currentTimeMillis() - it } ?: 0
@@ -614,9 +622,9 @@ private fun handleTouchUp(
             Log.d("TVFocusUtils", "🔵 SHORT PRESS TOUCH erkannt (${elapsed}ms - Timer abgebrochen)")
             Log.d("ContentCardLongPress", "[TouchUp] Touch losgelassen nach ${elapsed}ms - Timer wird abgebrochen (zu früh)")
             state.resetTouchTimer()
-            if (onNormalClick != null) {
+            if (currentOnNormalClick.value != null) {
                 Log.d("ContentCardLongPress", "[TouchUp] Rufe onNormalClick() auf (Timer abgebrochen)")
-                onNormalClick()
+                currentOnNormalClick.value?.invoke()
                 true
             } else {
                 false
@@ -625,9 +633,9 @@ private fun handleTouchUp(
         else -> {
             Log.d("ContentCardLongPress", "[TouchUp] Touch losgelassen nach ${elapsed}ms - Kein aktiver Timer")
             // Fallback: Call onNormalClick if no timer was active (edge case)
-            if (onNormalClick != null) {
+            if (currentOnNormalClick.value != null) {
                 Log.d("InteractionUtils", "🔵 SHORT PRESS TOUCH (Fallback - kein Timer)")
-                onNormalClick()
+                currentOnNormalClick.value?.invoke()
                 true
             } else {
                 false
