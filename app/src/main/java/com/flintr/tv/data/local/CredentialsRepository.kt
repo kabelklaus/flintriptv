@@ -89,11 +89,9 @@ class CredentialsRepository @Inject constructor(
 
     fun getLoginPrefill(): LoginPrefill {
         val username = sharedPreferences.getString(KEY_PREFILL_USERNAME, null)
-            ?: sharedPreferences.getString(KEY_USERNAME, "")
-            ?: ""
+            ?: sharedPreferences.getString(KEY_USERNAME, null) ?: ""
         val password = sharedPreferences.getString(KEY_PREFILL_PASSWORD, null)
-            ?: sharedPreferences.getString(KEY_PASSWORD, "")
-            ?: ""
+            ?: sharedPreferences.getString(KEY_PASSWORD, null) ?: ""
 
         return LoginPrefill(
             username = username,

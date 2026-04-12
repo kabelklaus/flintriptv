@@ -1,6 +1,7 @@
 package com.flintr.tv.data.repository
 
 import android.util.Log
+import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
@@ -25,13 +26,13 @@ class XtreamRepository @Inject constructor(
         const val ERROR_NO_CACHE_AVAILABLE = "No cache available. Please load data first."
     }
     // Helper function to require API service or throw exception
-    private fun requireApiService(): com.flintr.tv.data.api.XtreamApiService {
+    private fun requireApiService(): XtreamApiService {
         return getApiService() ?: throw Exception(ERROR_API_SERVICE_NOT_AVAILABLE)
     }
     
     // Lazy initialization of API service based on the current credentials
     @Synchronized
-    private fun getApiService(): com.flintr.tv.data.api.XtreamApiService? {
+    private fun getApiService(): XtreamApiService? {
         val credentials = credentialsRepository.getCredentials()
         if (credentials == null) {
             // Invalidate cached service if user logs out
@@ -54,7 +55,7 @@ class XtreamRepository @Inject constructor(
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
         
-        dynamicApiService = retrofit.create(com.flintr.tv.data.api.XtreamApiService::class.java)
+        dynamicApiService = retrofit.create(XtreamApiService::class.java)
         dynamicApiServiceBaseUrl = baseUrl
         return dynamicApiService
     }
@@ -67,7 +68,7 @@ class XtreamRepository @Inject constructor(
     // to avoid OutOfMemoryError. They are only loaded from persistent cache when needed.
     
     // Caching for dynamically created API service
-    private var dynamicApiService: com.flintr.tv.data.api.XtreamApiService? = null
+    private var dynamicApiService: XtreamApiService? = null
     private var dynamicApiServiceBaseUrl: String? = null
 
     suspend fun getServerInfo(username: String, password: String): Result<ServerInfo> {
