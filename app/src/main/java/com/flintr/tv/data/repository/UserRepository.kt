@@ -4,6 +4,7 @@ import android.util.Log
 import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.Favorite
 import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.FriendEntry
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.WatchedItem
 import com.google.android.gms.tasks.Task
@@ -27,6 +28,8 @@ class UserRepository @Inject constructor() {
     companion object {
         private const val TAG = "UserRepository"
         private const val ERROR_USERNAME_BLANK = "Username cannot be blank"
+        private const val ERROR_FRIEND_ALREADY_EXISTS = "Friend already exists"
+        private const val ERROR_CANNOT_ADD_SELF = "Cannot add yourself as friend"
     }
     
     /**
@@ -353,6 +356,95 @@ class UserRepository @Inject constructor() {
             Result.success(result)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load favorites for user: $username", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Loads friends for a user from Firestore.
+     *
+     * @param username The username to load friends for
+     * @return Result<List<FriendEntry>> - Success with friends list, Failure with exception otherwise
+     */
+    suspend fun loadFriends(
+        username: String
+    ): Result<List<FriendEntry>> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+
+        return try {
+            val documentSnapshot: DocumentSnapshot = firestore.collection(collectionName)
+                .document(username)
+                .get()
+                .await()
+
+            if (!documentSnapshot.exists()) {
+                Log.d(TAG, "User document does not exist: $username, returning empty friends list")
+                return Result.success(emptyList())
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            val friendsData = documentSnapshot["friends"] as? List<Map<String, Any?>>
+
+            if (friendsData == null) {
+                Log.d(TAG, "No friends field found for user: $username")
+                return Result.success(emptyList())
+            }
+
+            val result = friendsData.mapNotNull(::parseFriendEntry)
+            Log.d(TAG, "Friends loaded successfully for user: $username, count: ${result.size}")
+            Result.success(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load friends for user: $username", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Adds a friend atomically using Firestore transaction to prevent duplicates.
+     *
+     * @param username The current username
+     * @param friendEntry The friend entry to add
+     * @return Result<Unit> - Success if added, Failure with exception otherwise
+     */
+    suspend fun addFriendAtomically(
+        username: String,
+        friendEntry: FriendEntry
+    ): Result<Unit> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+
+        if (friendEntry.username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+
+        if (username == friendEntry.username) {
+            return Result.failure(IllegalArgumentException(ERROR_CANNOT_ADD_SELF))
+        }
+
+        val userDocRef = firestore.collection(collectionName).document(username)
+
+        return try {
+            firestore.runTransaction { transaction ->
+                val snapshot = transaction[userDocRef]
+
+                @Suppress("UNCHECKED_CAST")
+                val friendsData = snapshot["friends"] as? List<Map<String, Any?>> ?: emptyList()
+
+                if (friendsData.any { (it["username"] as? String) == friendEntry.username }) {
+                    throw IllegalStateException(ERROR_FRIEND_ALREADY_EXISTS)
+                }
+
+                val updatedFriends = friendsData + friendEntry.toFirestoreMap()
+                transaction.set(userDocRef, mapOf("friends" to updatedFriends), SetOptions.merge())
+            }.await()
+
+            Log.d(TAG, "Friend added atomically for user: $username, friend=${friendEntry.username}")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to add friend atomically for user: $username", e)
             Result.failure(e)
         }
     }
@@ -930,6 +1022,23 @@ class UserRepository @Inject constructor() {
                     cont.resumeWithException(exception)
                 }
             }
+        }
+    }
+
+    private fun parseFriendEntry(friendMap: Map<String, Any?>): FriendEntry? {
+        return try {
+            val username = friendMap["username"] as? String ?: return null
+            val alias = friendMap["alias"] as? String
+            val addedAt = friendMap["addedAt"] as? String ?: return null
+
+            FriendEntry(
+                username = username,
+                alias = alias,
+                addedAt = addedAt
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Error parsing friend from Firestore", e)
+            null
         }
     }
 }

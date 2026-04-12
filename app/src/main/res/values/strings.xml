@@ -56,6 +56,17 @@
     <string name="user">Benutzer</string>
     <string name="connection">Verbindung</string>
     <string name="connection_successful">Verbindung erfolgreich!</string>
+    <string name="friends">Freunde</string>
+    <string name="add_friend">Freund hinzufügen</string>
+    <string name="friend_is_being_added">Wird hinzugefügt…</string>
+    <string name="friend_username_placeholder">Benutzername des Freundes</string>
+    <string name="friend_alias_optional">Alias (optional)</string>
+    <string name="friend_alias_placeholder">Thomas</string>
+    <string name="my_friends">Meine Freunde</string>
+    <string name="no_friends_added_yet">Noch keine Freunde hinzugefügt</string>
+    <string name="your_share_username">Dein Benutzername zum Teilen</string>
+    <string name="copy_username">Benutzernamen kopieren</string>
+    <string name="username_copied">Benutzername kopiert</string>
     
     <!-- Category Management -->
     <string name="category_hidden">Kategorie wurde ausgeblendet</string>
