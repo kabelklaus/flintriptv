@@ -166,6 +166,9 @@ fun SettingsScreen(
                 SettingsFriends(
                     onBack = {
                         currentDestination = SettingsDestination.Main
+                    },
+                    onShowSnackbar = { message ->
+                        snackbarMessage = message
                     }
                 )
             }

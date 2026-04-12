@@ -15,7 +15,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Info
@@ -50,11 +49,10 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.viewmodel.SettingsFriendsViewModel
 import kotlinx.coroutines.delay
 
-private const val STATUS_MESSAGE_DISPLAY_TIME_MS = 3500L
-
 @Composable
 fun SettingsFriends(
     onBack: () -> Unit,
+    onShowSnackbar: (String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsFriendsViewModel = hiltViewModel()
 ) {
@@ -76,17 +74,18 @@ fun SettingsFriends(
         usernameFocusRequester.requestFocus()
     }
 
-    LaunchedEffect(uiState.errorMessage, uiState.successMessage) {
-        if (uiState.errorMessage != null || uiState.successMessage != null) {
-            delay(STATUS_MESSAGE_DISPLAY_TIME_MS)
-            viewModel.clearMessages()
-        }
-    }
-
     LaunchedEffect(uiState.successMessage) {
         if (uiState.successMessage != null) {
             username = ""
             alias = ""
+        }
+    }
+
+    LaunchedEffect(uiState.errorMessage, uiState.successMessage) {
+        val message = uiState.errorMessage ?: uiState.successMessage
+        if (message != null) {
+            onShowSnackbar(message)
+            viewModel.clearMessages()
         }
     }
 
@@ -188,26 +187,6 @@ fun SettingsFriends(
                             )
                         )
                     }
-                }
-
-                uiState.errorMessage?.let { message ->
-                    StatusCard(
-                        message = message,
-                        icon = Icons.Default.PersonAdd,
-                        iconTint = colors.dangerText,
-                        backgroundColor = colors.dangerBg,
-                        textColor = colors.dangerText
-                    )
-                }
-
-                uiState.successMessage?.let { message ->
-                    StatusCard(
-                        message = message,
-                        icon = Icons.Default.CheckCircle,
-                        iconTint = colors.successColor,
-                        backgroundColor = colors.accentColorHoverBg,
-                        textColor = colors.textPrimary
-                    )
                 }
 
                 SettingsCard(

@@ -2,9 +2,11 @@ package com.flintr.tv.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.flintr.tv.R
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.model.FriendEntry
 import com.flintr.tv.data.repository.UserRepository
+import com.flintr.tv.di.ResourcesProvider
 import com.flintr.tv.ui.settings.FriendValidationError
 import com.flintr.tv.ui.settings.normalizeFriendAlias
 import com.flintr.tv.ui.settings.normalizeFriendUsername
@@ -28,7 +30,8 @@ data class SettingsFriendsUiState(
 @HiltViewModel
 class SettingsFriendsViewModel @Inject constructor(
     private val userRepository: UserRepository,
-    private val credentialsRepository: CredentialsRepository
+    private val credentialsRepository: CredentialsRepository,
+    private val resourcesProvider: ResourcesProvider
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsFriendsUiState(isLoading = true))
@@ -43,7 +46,7 @@ class SettingsFriendsViewModel @Inject constructor(
         if (currentUsername.isNullOrBlank()) {
             _uiState.value = SettingsFriendsUiState(
                 isLoading = false,
-                errorMessage = "Kein aktiver Benutzer gefunden"
+                errorMessage = resourcesProvider.getString(R.string.error_no_active_user)
             )
             return
         }
@@ -70,7 +73,7 @@ class SettingsFriendsViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         currentUsername = currentUsername,
-                        errorMessage = "Freundesliste konnte nicht geladen werden"
+                        errorMessage = resourcesProvider.getString(R.string.error_loading_friends)
                     )
                 }
             )
@@ -83,7 +86,7 @@ class SettingsFriendsViewModel @Inject constructor(
     ) {
         val currentUsername = credentialsRepository.getCredentials()?.username
         if (currentUsername.isNullOrBlank()) {
-            _uiState.value = _uiState.value.copy(errorMessage = "Kein aktiver Benutzer gefunden")
+            _uiState.value = _uiState.value.copy(errorMessage = resourcesProvider.getString(R.string.error_no_active_user))
             return
         }
 
@@ -107,7 +110,7 @@ class SettingsFriendsViewModel @Inject constructor(
             val exists = usernameExists.getOrElse {
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
-                    errorMessage = "Benutzername konnte nicht geprüft werden"
+                    errorMessage = resourcesProvider.getString(R.string.error_checking_username)
                 )
                 return@launch
             }
@@ -115,7 +118,7 @@ class SettingsFriendsViewModel @Inject constructor(
             if (!exists) {
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
-                    errorMessage = "Dieser Benutzername existiert nicht"
+                    errorMessage = resourcesProvider.getString(R.string.error_username_not_found)
                 )
                 return@launch
             }
@@ -134,7 +137,7 @@ class SettingsFriendsViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         isSaving = false,
                         friends = updatedFriends,
-                        successMessage = "Freund wurde hinzugefügt",
+                        successMessage = resourcesProvider.getString(R.string.friend_added),
                         errorMessage = null
                     )
                 },
@@ -155,17 +158,17 @@ class SettingsFriendsViewModel @Inject constructor(
 
     private fun FriendValidationError.toMessage(): String {
         return when (this) {
-            FriendValidationError.EMPTY_USERNAME -> "Bitte einen Benutzernamen eingeben"
-            FriendValidationError.OWN_USERNAME -> "Der eigene Benutzername kann nicht hinzugefügt werden"
-            FriendValidationError.DUPLICATE -> "Dieser Freund wurde bereits hinzugefügt"
+            FriendValidationError.EMPTY_USERNAME -> resourcesProvider.getString(R.string.error_empty_friend_username)
+            FriendValidationError.OWN_USERNAME -> resourcesProvider.getString(R.string.error_own_username_friend)
+            FriendValidationError.DUPLICATE -> resourcesProvider.getString(R.string.error_duplicate_friend)
         }
     }
 
     private fun mapAddFriendError(error: Throwable): String {
         return when (error.message) {
-            "Friend already exists" -> "Dieser Freund wurde bereits hinzugefügt"
-            "Cannot add yourself as friend" -> "Der eigene Benutzername kann nicht hinzugefügt werden"
-            else -> "Freund konnte nicht gespeichert werden"
+            "Friend already exists" -> resourcesProvider.getString(R.string.error_duplicate_friend)
+            "Cannot add yourself as friend" -> resourcesProvider.getString(R.string.error_own_username_friend)
+            else -> resourcesProvider.getString(R.string.error_saving_friend)
         }
     }
 }

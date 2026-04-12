@@ -67,6 +67,15 @@
     <string name="your_share_username">Dein Benutzername zum Teilen</string>
     <string name="copy_username">Benutzernamen kopieren</string>
     <string name="username_copied">Benutzername kopiert</string>
+    <string name="error_no_active_user">Kein aktiver Benutzer gefunden</string>
+    <string name="error_loading_friends">Freundesliste konnte nicht geladen werden</string>
+    <string name="error_checking_username">Benutzername konnte nicht geprüft werden</string>
+    <string name="error_username_not_found">Dieser Benutzername existiert nicht</string>
+    <string name="friend_added">Freund wurde hinzugefügt</string>
+    <string name="error_empty_friend_username">Bitte einen Benutzernamen eingeben</string>
+    <string name="error_own_username_friend">Der eigene Benutzername kann nicht hinzugefügt werden</string>
+    <string name="error_duplicate_friend">Dieser Freund wurde bereits hinzugefügt</string>
+    <string name="error_saving_friend">Freund konnte nicht gespeichert werden</string>
     
     <!-- Category Management -->
     <string name="category_hidden">Kategorie wurde ausgeblendet</string>

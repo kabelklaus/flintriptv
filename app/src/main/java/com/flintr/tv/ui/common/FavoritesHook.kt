@@ -203,39 +203,6 @@ private suspend fun <T : Any> loadSingleFriendFavoriteItems(
     return friend to items
 }
 
-private suspend fun <T : Any> loadSourcedFavoriteItems(
-    ownFavorites: List<Favorite>,
-    currentUsername: String?,
-    userRepository: UserRepository,
-    cacheService: DataCacheService,
-    favoriteType: FavoriteType,
-    idSelector: (T) -> Int
-): List<SourcedFavoriteItem<T>> {
-    val ownItems = loadFavoriteItems(
-        favorites = ownFavorites,
-        cacheService = cacheService,
-        favoriteType = favoriteType,
-        idSelector = idSelector
-    )
-
-    val friendItems = if (currentUsername.isNullOrBlank()) {
-        emptyList()
-    } else {
-        loadFriendFavoriteItems(
-            currentUsername = currentUsername,
-            userRepository = userRepository,
-            cacheService = cacheService,
-            favoriteType = favoriteType,
-            idSelector = idSelector
-        )
-    }
-
-    return combineSourcedItems(
-        ownItems = ownItems,
-        friendItems = friendItems
-    )
-}
-
 @Composable
 fun <T : Any> useFavorites(
     isFavoritesCategory: Boolean,
@@ -247,33 +214,67 @@ fun <T : Any> useFavorites(
     idSelector: (T) -> Int
 ): FavoritesState<SourcedFavoriteItem<T>> {
     var favoriteItems by remember { mutableStateOf<List<SourcedFavoriteItem<T>>>(emptyList()) }
-    var isLoadingFavorites by remember { mutableStateOf(false) }
+    var ownItems by remember { mutableStateOf<List<T>>(emptyList()) }
+    var friendItems by remember { mutableStateOf<List<Pair<FriendEntry, List<T>>>>(emptyList()) }
+    var isLoadingOwnFavorites by remember { mutableStateOf(false) }
+    var isLoadingFriendFavorites by remember { mutableStateOf(false) }
 
     LaunchedEffect(isFavoritesCategory, favoriteType) {
         if (!isFavoritesCategory) {
+            ownItems = emptyList()
+            friendItems = emptyList()
             favoriteItems = emptyList()
-            isLoadingFavorites = false
+            isLoadingOwnFavorites = false
             return@LaunchedEffect
         }
 
         favoritesRepository.syncIfNeeded()
 
         favoritesRepository.favorites.collect { allFavorites ->
-            isLoadingFavorites = true
-            favoriteItems = loadSourcedFavoriteItems(
-                ownFavorites = filterFavoritesByType(allFavorites, favoriteType),
-                currentUsername = credentialsRepository.getCredentials()?.username,
+            isLoadingOwnFavorites = true
+            ownItems = loadFavoriteItems(
+                favorites = filterFavoritesByType(allFavorites, favoriteType),
+                favoriteType = favoriteType,
+                cacheService = cacheService,
+                idSelector = idSelector
+            )
+            favoriteItems = combineSourcedItems(
+                ownItems = ownItems,
+                friendItems = friendItems
+            )
+            isLoadingOwnFavorites = false
+        }
+    }
+
+    LaunchedEffect(isFavoritesCategory, favoriteType) {
+        if (!isFavoritesCategory) {
+            friendItems = emptyList()
+            isLoadingFriendFavorites = false
+            return@LaunchedEffect
+        }
+
+        val currentUsername = credentialsRepository.getCredentials()?.username
+        isLoadingFriendFavorites = true
+        friendItems = if (currentUsername.isNullOrBlank()) {
+            emptyList()
+        } else {
+            loadFriendFavoriteItems(
+                currentUsername = currentUsername,
                 userRepository = userRepository,
                 cacheService = cacheService,
                 favoriteType = favoriteType,
                 idSelector = idSelector
             )
-            isLoadingFavorites = false
         }
+        favoriteItems = combineSourcedItems(
+            ownItems = ownItems,
+            friendItems = friendItems
+        )
+        isLoadingFriendFavorites = false
     }
 
     return FavoritesState(
         items = favoriteItems,
-        isLoading = isLoadingFavorites
+        isLoading = isLoadingOwnFavorites || isLoadingFriendFavorites
     )
 }
