@@ -4,11 +4,14 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.flintr.tv.data.model.*
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonReader
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import okio.Buffer
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
@@ -68,23 +71,36 @@ class DataCacheService @Inject constructor(
             }
 
             return try {
-                val liveType = Types.newParameterizedType(List::class.java, LiveStream::class.java)
-                val liveAdapter = moshi.adapter<List<LiveStream>>(liveType)
-                val channels = liveAdapter.fromJson(channelsJson)
-                if (channels.isNullOrEmpty()) return false
+                val liveAdapter = moshi.adapter(LiveStream::class.java)
+                if (!isNonEmptyValidArray(channelsJson, liveAdapter)) return false
 
-                val vodType = Types.newParameterizedType(List::class.java, VodStream::class.java)
-                val vodAdapter = moshi.adapter<List<VodStream>>(vodType)
-                val movies = vodAdapter.fromJson(moviesJson)
-                if (movies.isNullOrEmpty()) return false
+                val vodAdapter = moshi.adapter(VodStream::class.java)
+                if (!isNonEmptyValidArray(moviesJson, vodAdapter)) return false
 
-                val seriesType = Types.newParameterizedType(List::class.java, Series::class.java)
-                val seriesAdapter = moshi.adapter<List<Series>>(seriesType)
-                val series = seriesAdapter.fromJson(seriesJson)
-                !series.isNullOrEmpty()
+                val seriesAdapter = moshi.adapter(Series::class.java)
+                isNonEmptyValidArray(seriesJson, seriesAdapter)
             } catch (_: Exception) {
                 false
             }
+        }
+
+        private fun <T> isNonEmptyValidArray(
+            json: String,
+            adapter: JsonAdapter<T>
+        ): Boolean {
+            val reader = JsonReader.of(Buffer().writeUtf8(json))
+            reader.beginArray()
+
+            var foundItem = false
+            while (reader.hasNext()) {
+                if (adapter.fromJson(reader) == null) {
+                    return false
+                }
+                foundItem = true
+            }
+
+            reader.endArray()
+            return foundItem
         }
     }
 

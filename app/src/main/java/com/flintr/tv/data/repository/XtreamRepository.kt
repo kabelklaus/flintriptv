@@ -1,7 +1,6 @@
 package com.flintr.tv.data.repository
 
 import android.util.Log
-import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
@@ -16,7 +15,6 @@ import javax.inject.Singleton
 
 @Singleton
 class XtreamRepository @Inject constructor(
-    private val apiService: XtreamApiService?,
     private val credentialsRepository: CredentialsRepository,
     private val okHttpClient: OkHttpClient,
     private val moshi: Moshi,
@@ -26,33 +24,23 @@ class XtreamRepository @Inject constructor(
         const val ERROR_API_SERVICE_NOT_AVAILABLE = "API service not available. Please log in first."
         const val ERROR_NO_CACHE_AVAILABLE = "No cache available. Please load data first."
     }
-    private var initialApiServiceUsed = false
-
     // Helper function to require API service or throw exception
-    private fun requireApiService(): XtreamApiService {
+    private fun requireApiService(): com.flintr.tv.data.api.XtreamApiService {
         return getApiService() ?: throw Exception(ERROR_API_SERVICE_NOT_AVAILABLE)
     }
     
-    // Lazy initialization of API service if not provided
-    private fun getApiService(): XtreamApiService? {
+    // Lazy initialization of API service based on the current credentials
+    @Synchronized
+    private fun getApiService(): com.flintr.tv.data.api.XtreamApiService? {
         val credentials = credentialsRepository.getCredentials()
         if (credentials == null) {
             // Invalidate cached service if user logs out
             dynamicApiService = null
             dynamicApiServiceBaseUrl = null
-            initialApiServiceUsed = false
             return null
         }
         
         val baseUrl = credentials.serverUrl.let { if (it.endsWith("/")) it else "$it/" }
-
-        // Keep the injected service only for the first matching app start state.
-        if (!initialApiServiceUsed && apiService != null && dynamicApiService == null) {
-            initialApiServiceUsed = true
-            dynamicApiService = apiService
-            dynamicApiServiceBaseUrl = baseUrl
-            return apiService
-        }
 
         // Return cached service if it exists and baseUrl is the same
         if (dynamicApiService != null && dynamicApiServiceBaseUrl == baseUrl) {
@@ -66,7 +54,7 @@ class XtreamRepository @Inject constructor(
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
         
-        dynamicApiService = retrofit.create(XtreamApiService::class.java)
+        dynamicApiService = retrofit.create(com.flintr.tv.data.api.XtreamApiService::class.java)
         dynamicApiServiceBaseUrl = baseUrl
         return dynamicApiService
     }
@@ -79,7 +67,7 @@ class XtreamRepository @Inject constructor(
     // to avoid OutOfMemoryError. They are only loaded from persistent cache when needed.
     
     // Caching for dynamically created API service
-    private var dynamicApiService: XtreamApiService? = null
+    private var dynamicApiService: com.flintr.tv.data.api.XtreamApiService? = null
     private var dynamicApiServiceBaseUrl: String? = null
 
     suspend fun getServerInfo(username: String, password: String): Result<ServerInfo> {

@@ -80,38 +80,9 @@ class DataRefreshUseCase @Inject constructor(
         private const val MAX_PARALLEL_LOADS = 3
         private const val MAX_RETRIES = 3
         private val RETRY_DELAYS_MS = longArrayOf(2000L, 4000L, 8000L)
-        private val CONNECTIVITY_MESSAGE_MARKERS = listOf(
-            "unexpected end of stream",
-            "failed to connect",
-            "unable to resolve host",
-            "timeout",
-            "timed out",
-            "connection reset",
-            "connection refused",
-            "no address associated with hostname"
-        )
 
-        internal fun isConnectivityFallbackEligible(
-            errorMessage: String?,
-            errorCause: Throwable?
-        ): Boolean {
-            if (errorCause != null && errorCause.isConnectivityError()) {
-                return true
-            }
-
-            val message = errorMessage?.lowercase()?.trim().orEmpty()
-            if (message.isBlank()) return false
-            if (message.startsWith("failed to get") && Regex(""".*:\s\d{3}$""").matches(message)) {
-                return false
-            }
-            if (message.contains("401") || message.contains("403")) {
-                return false
-            }
-            if (message.startsWith("keine daten nach")) {
-                return false
-            }
-
-            return CONNECTIVITY_MESSAGE_MARKERS.any { marker -> message.contains(marker) }
+        internal fun isConnectivityFallbackEligible(errorCause: Throwable?): Boolean {
+            return errorCause?.isConnectivityError() == true
         }
 
         private fun Throwable.isConnectivityError(): Boolean {
@@ -373,10 +344,7 @@ class DataRefreshUseCase @Inject constructor(
             }
 
             if (!loadResult.isSuccess) {
-                val shouldUseCacheFallback = isConnectivityFallbackEligible(
-                    errorMessage = loadResult.errorMessage,
-                    errorCause = loadResult.errorCause
-                )
+                val shouldUseCacheFallback = isConnectivityFallbackEligible(loadResult.errorCause)
 
                 if (shouldUseCacheFallback) {
                     handleCacheFallback(reconfigureWhenCacheMissing = true)
