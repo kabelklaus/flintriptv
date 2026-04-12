@@ -598,7 +598,12 @@ fun AppNavigation(
         }
 
         composable(Screen.Login.route) {
+            val activeCredentials = dependencies.credentialsRepository.getCredentials()
+            val loginPrefill = dependencies.credentialsRepository.getLoginPrefill()
             LoginScreen(
+                initialServerUrl = activeCredentials?.serverUrl ?: "",
+                initialUsername = loginPrefill.username,
+                initialPassword = loginPrefill.password,
                 onLoginSuccess = {
                     // Navigate to DataLoadingScreen after successful login
                     navController.navigate(Screen.DataLoading.route) {
@@ -614,6 +619,11 @@ fun AppNavigation(
                     // Refresh MainViewModel data after successful loading
                     mainViewModel.refreshData()
                     navController.navigate(Screen.Main.route) {
+                        popUpTo(Screen.DataLoading.route) { inclusive = true }
+                    }
+                },
+                onReconfigureServer = {
+                    navController.navigate(Screen.Login.route) {
                         popUpTo(Screen.DataLoading.route) { inclusive = true }
                     }
                 }
@@ -2147,4 +2157,3 @@ fun MainContentScreen(
         )
     )
 }
-

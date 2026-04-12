@@ -99,11 +99,16 @@ class MainViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             Log.d("MainViewModel", "Loading initial data...")
 
-            val cachedDataDeferred = async { loadFromCacheIfValid() }
-            val serverInfoJob = async { loadServerInfo(credentials) }
+            val useOfflineBrowsingCache = cacheService.shouldUseCacheForBrowsing()
+            val cachedDataDeferred = async { loadFromCacheIfAvailable() }
+            val serverInfoJob = if (useOfflineBrowsingCache && cacheService.isFallbackCooldownActive()) {
+                null
+            } else {
+                async { loadServerInfo(credentials) }
+            }
 
             val cachedData = cachedDataDeferred.await()
-            serverInfoJob.await()
+            serverInfoJob?.await()
 
             if (cachedData == null) {
                 loadCategoriesFromRepository(credentials)
@@ -131,8 +136,8 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadFromCacheIfValid(): CachedData? {
-        if (!cacheService.isCacheValid()) {
+    private suspend fun loadFromCacheIfAvailable(): CachedData? {
+        if (!cacheService.shouldUseCacheForBrowsing()) {
             Log.d("MainViewModel", "Cache not available, loading from repository")
             return null
         }

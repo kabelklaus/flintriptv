@@ -19,6 +19,11 @@ data class Credentials(
     val password: String
 )
 
+data class LoginPrefill(
+    val username: String = "",
+    val password: String = ""
+)
+
 @Singleton
 class CredentialsRepository @Inject constructor(
     @ApplicationContext private val context: Context
@@ -49,6 +54,8 @@ class CredentialsRepository @Inject constructor(
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_USERNAME = "username"
         private const val KEY_PASSWORD = "password"
+        private const val KEY_PREFILL_USERNAME = "prefill_username"
+        private const val KEY_PREFILL_PASSWORD = "prefill_password"
     }
 
     fun saveCredentials(credentials: Credentials) {
@@ -56,6 +63,8 @@ class CredentialsRepository @Inject constructor(
             putString(KEY_SERVER_URL, credentials.serverUrl)
             putString(KEY_USERNAME, credentials.username)
             putString(KEY_PASSWORD, credentials.password)
+            putString(KEY_PREFILL_USERNAME, credentials.username)
+            putString(KEY_PREFILL_PASSWORD, credentials.password)
         }
     }
 
@@ -72,7 +81,32 @@ class CredentialsRepository @Inject constructor(
     }
 
     fun hasCredentials(): Boolean {
-        return sharedPreferences.contains(KEY_SERVER_URL)
+        val serverUrl = sharedPreferences.getString(KEY_SERVER_URL, null)
+        val username = sharedPreferences.getString(KEY_USERNAME, null)
+        val password = sharedPreferences.getString(KEY_PASSWORD, null)
+        return !serverUrl.isNullOrBlank() && !username.isNullOrBlank() && !password.isNullOrBlank()
+    }
+
+    fun getLoginPrefill(): LoginPrefill {
+        val username = sharedPreferences.getString(KEY_PREFILL_USERNAME, null)
+            ?: sharedPreferences.getString(KEY_USERNAME, "")
+            ?: ""
+        val password = sharedPreferences.getString(KEY_PREFILL_PASSWORD, null)
+            ?: sharedPreferences.getString(KEY_PASSWORD, "")
+            ?: ""
+
+        return LoginPrefill(
+            username = username,
+            password = password
+        )
+    }
+
+    fun clearActiveCredentials() {
+        sharedPreferences.edit {
+            remove(KEY_SERVER_URL)
+            remove(KEY_USERNAME)
+            remove(KEY_PASSWORD)
+        }
     }
 
     fun clearCredentials() {
@@ -81,4 +115,3 @@ class CredentialsRepository @Inject constructor(
 
     fun getCredentialsFlow(): Flow<Credentials?> = credentialsFlow
 }
-

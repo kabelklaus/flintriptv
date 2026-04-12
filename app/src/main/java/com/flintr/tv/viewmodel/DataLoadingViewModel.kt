@@ -17,7 +17,9 @@ import com.flintr.tv.domain.usecase.DataRefreshProgress
 import com.flintr.tv.domain.usecase.DataRefreshUseCase
 import com.flintr.tv.domain.usecase.RefreshStep
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
@@ -66,9 +68,15 @@ class DataLoadingViewModel @Inject constructor(
     private val cacheService: DataCacheService,
     private val dataRefreshUseCase: DataRefreshUseCase
 ) : ViewModel() {
+    sealed class NavigationEvent {
+        object ReconfigureServer : NavigationEvent()
+    }
 
     private val _uiState = MutableStateFlow(DataLoadingUiState())
     val uiState: StateFlow<DataLoadingUiState> = _uiState.asStateFlow()
+
+    private val navigationEventsChannel = Channel<NavigationEvent>(Channel.BUFFERED)
+    val navigationEvents = navigationEventsChannel.receiveAsFlow()
 
     init {
         checkCacheAndLoad()
@@ -158,6 +166,7 @@ class DataLoadingViewModel @Inject constructor(
             .onEach { progress ->
                 when {
                     progress.usedCacheFallback -> handleCacheFallbackProgress(progress)
+                    progress.requiresServerReconfiguration -> handleServerReconfigurationProgress()
                     progress.error != null -> handleErrorProgress(progress)
                     progress.isComplete -> handleCompleteProgress()
                     progress.retryAttempt > 0 -> handleRetryProgress(progress)
@@ -183,6 +192,19 @@ class DataLoadingViewModel @Inject constructor(
             isOfflineMode = true,
             offlineModeMessage = progress.message
         )
+    }
+
+    private fun handleServerReconfigurationProgress() {
+        credentialsRepository.clearActiveCredentials()
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            loadingComplete = false,
+            error = null,
+            overallProgress = 0f
+        )
+        viewModelScope.launch {
+            navigationEventsChannel.send(NavigationEvent.ReconfigureServer)
+        }
     }
 
     private fun handleErrorProgress(progress: DataRefreshProgress) {

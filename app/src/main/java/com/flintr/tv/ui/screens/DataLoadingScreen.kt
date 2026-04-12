@@ -39,6 +39,7 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.viewmodel.DataLoadingViewModel
 import com.flintr.tv.viewmodel.LoadingStatus
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import java.text.NumberFormat
 
 private const val STATUS_ANIMATION_DURATION_MS = 300
@@ -291,6 +292,7 @@ private fun DataLoadingCardContent(
 @Composable
 fun DataLoadingScreen(
     onLoadingComplete: (CachedData) -> Unit,
+    onReconfigureServer: () -> Unit,
     viewModel: DataLoadingViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -309,6 +311,14 @@ fun DataLoadingScreen(
 
     LaunchedEffect(Unit) {
         isVisible = true
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.navigationEvents.collect { event ->
+            when (event) {
+                DataLoadingViewModel.NavigationEvent.ReconfigureServer -> onReconfigureServer()
+            }
+        }
     }
 
     // Show offline mode snackbar

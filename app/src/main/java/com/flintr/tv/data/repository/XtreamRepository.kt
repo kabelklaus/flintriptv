@@ -26,6 +26,8 @@ class XtreamRepository @Inject constructor(
         const val ERROR_API_SERVICE_NOT_AVAILABLE = "API service not available. Please log in first."
         const val ERROR_NO_CACHE_AVAILABLE = "No cache available. Please load data first."
     }
+    private var initialApiServiceUsed = false
+
     // Helper function to require API service or throw exception
     private fun requireApiService(): XtreamApiService {
         return getApiService() ?: throw Exception(ERROR_API_SERVICE_NOT_AVAILABLE)
@@ -33,20 +35,25 @@ class XtreamRepository @Inject constructor(
     
     // Lazy initialization of API service if not provided
     private fun getApiService(): XtreamApiService? {
-        if (apiService != null) {
-            return apiService
-        }
-        
         val credentials = credentialsRepository.getCredentials()
         if (credentials == null) {
             // Invalidate cached service if user logs out
             dynamicApiService = null
             dynamicApiServiceBaseUrl = null
+            initialApiServiceUsed = false
             return null
         }
         
         val baseUrl = credentials.serverUrl.let { if (it.endsWith("/")) it else "$it/" }
-        
+
+        // Keep the injected service only for the first matching app start state.
+        if (!initialApiServiceUsed && apiService != null && dynamicApiService == null) {
+            initialApiServiceUsed = true
+            dynamicApiService = apiService
+            dynamicApiServiceBaseUrl = baseUrl
+            return apiService
+        }
+
         // Return cached service if it exists and baseUrl is the same
         if (dynamicApiService != null && dynamicApiServiceBaseUrl == baseUrl) {
             return dynamicApiService
@@ -125,7 +132,7 @@ class XtreamRepository @Inject constructor(
     ): Result<List<T>> {
         return try {
             // Only use persistent cache (no in-memory cache for large lists)
-            val allData = if (cacheService.isCacheValid()) {
+            val allData = if (cacheService.shouldUseCacheForBrowsing()) {
                 val cachedData = cacheService.loadCachedDataAsync()
                 if (cachedData != null) {
                     getFromCachedData(cachedData)
