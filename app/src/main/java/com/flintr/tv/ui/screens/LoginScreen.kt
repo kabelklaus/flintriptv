@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.shadow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -419,11 +420,14 @@ private fun LoginFormContent(
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
+    initialServerUrl: String = "",
+    initialUsername: String = "",
+    initialPassword: String = "",
     viewModel: LoginViewModel = hiltViewModel()
 ) {
-    var serverUrl by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var serverUrl by rememberSaveable(initialServerUrl) { mutableStateOf(initialServerUrl) }
+    var username by rememberSaveable(initialUsername) { mutableStateOf(initialUsername) }
+    var password by rememberSaveable(initialPassword) { mutableStateOf(initialPassword) }
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = appColors()
@@ -498,4 +502,3 @@ fun LoginScreen(
         }
     }
 }
-

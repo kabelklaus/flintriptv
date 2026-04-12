@@ -2,7 +2,6 @@ package com.flintr.tv.di
 
 import android.content.Context
 import com.flintr.tv.data.api.GitHubApiService
-import com.flintr.tv.data.api.XtreamApiService
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
@@ -69,39 +68,13 @@ object AppModule {
     
     @Provides
     @Singleton
-    @Named("Xtream")
-    fun provideRetrofit(
-        okHttpClient: OkHttpClient,
-        moshi: Moshi,
-        credentialsRepository: CredentialsRepository
-    ): Retrofit? {
-        val baseUrl = credentialsRepository.getCredentials()?.serverUrl
-            ?.let { if (it.endsWith("/")) it else "$it/" }
-            ?: return null
-        
-        return Retrofit.Builder()
-            .baseUrl(baseUrl)
-            .client(okHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-    }
-    
-    @Provides
-    @Singleton
-    fun provideXtreamApiService(@Named("Xtream") retrofit: Retrofit?): XtreamApiService? {
-        return retrofit?.create(XtreamApiService::class.java)
-    }
-    
-    @Provides
-    @Singleton
     fun provideXtreamRepository(
-        apiService: XtreamApiService?,
         credentialsRepository: CredentialsRepository,
         okHttpClient: OkHttpClient,
         moshi: Moshi,
         cacheService: DataCacheService
     ): XtreamRepository {
-        return XtreamRepository(apiService, credentialsRepository, okHttpClient, moshi, cacheService)
+        return XtreamRepository(credentialsRepository, okHttpClient, moshi, cacheService)
     }
     
     // Helper function to create Retrofit dynamically for login validation
@@ -383,4 +356,3 @@ object AppModule {
         return androidResourcesProvider
     }
 }
-

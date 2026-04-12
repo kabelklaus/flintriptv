@@ -4,11 +4,14 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.flintr.tv.data.model.*
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonReader
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import okio.Buffer
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
@@ -49,6 +52,56 @@ class DataCacheService @Inject constructor(
         private const val KEY_FALLBACK_COOLDOWN_TIMESTAMP = "iptv_fallback_cooldown_timestamp"
         private const val CACHE_VALIDITY_DURATION = 24 * 60 * 60 * 1000L // 24 hours in milliseconds
         private val ISO8601_FORMAT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US)
+
+        internal fun hasUsableFallbackCacheData(
+            moshi: Moshi,
+            channelsJson: String?,
+            moviesJson: String?,
+            seriesJson: String?,
+            channelsCount: Int,
+            moviesCount: Int,
+            seriesCount: Int
+        ): Boolean {
+            if (channelsJson.isNullOrBlank() || moviesJson.isNullOrBlank() || seriesJson.isNullOrBlank()) {
+                return false
+            }
+
+            if (channelsCount > 0 && moviesCount > 0 && seriesCount > 0) {
+                return true
+            }
+
+            return try {
+                val liveAdapter = moshi.adapter(LiveStream::class.java)
+                if (!isNonEmptyValidArray(channelsJson, liveAdapter)) return false
+
+                val vodAdapter = moshi.adapter(VodStream::class.java)
+                if (!isNonEmptyValidArray(moviesJson, vodAdapter)) return false
+
+                val seriesAdapter = moshi.adapter(Series::class.java)
+                isNonEmptyValidArray(seriesJson, seriesAdapter)
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        private fun <T> isNonEmptyValidArray(
+            json: String,
+            adapter: JsonAdapter<T>
+        ): Boolean {
+            val reader = JsonReader.of(Buffer().writeUtf8(json))
+            reader.beginArray()
+
+            var foundItem = false
+            while (reader.hasNext()) {
+                if (adapter.fromJson(reader) == null) {
+                    return false
+                }
+                foundItem = true
+            }
+
+            reader.endArray()
+            return foundItem
+        }
     }
 
     fun isCacheValid(): Boolean {
@@ -73,39 +126,19 @@ class DataCacheService @Inject constructor(
         val moviesJson = sharedPreferences.getString(KEY_CACHE_MOVIES, null)
         val seriesJson = sharedPreferences.getString(KEY_CACHE_SERIES, null)
 
-        if (channelsJson.isNullOrBlank() || moviesJson.isNullOrBlank() || seriesJson.isNullOrBlank()) {
-            return false
-        }
-
-        // Check counts instead of parsing entire JSON - much faster
         val channelsCount = sharedPreferences.getInt(KEY_CACHE_CHANNELS_COUNT, -1)
         val moviesCount = sharedPreferences.getInt(KEY_CACHE_MOVIES_COUNT, -1)
         val seriesCount = sharedPreferences.getInt(KEY_CACHE_SERIES_COUNT, -1)
 
-        if (channelsCount <= 0 || moviesCount <= 0 || seriesCount <= 0) {
-            // Fallback: if counts are missing (e.g., from old cache), verify JSON is valid
-            try {
-                val listType = Types.newParameterizedType(List::class.java, LiveStream::class.java)
-                val adapter = moshi.adapter<List<LiveStream>>(listType)
-                val channels = adapter.fromJson(channelsJson)
-                if (channels.isNullOrEmpty()) return false
-
-                val vodListType = Types.newParameterizedType(List::class.java, VodStream::class.java)
-                val vodAdapter = moshi.adapter<List<VodStream>>(vodListType)
-                val movies = vodAdapter.fromJson(moviesJson)
-                if (movies.isNullOrEmpty()) return false
-
-                val seriesListType = Types.newParameterizedType(List::class.java, Series::class.java)
-                val seriesAdapter = moshi.adapter<List<Series>>(seriesListType)
-                val series = seriesAdapter.fromJson(seriesJson)
-                if (series.isNullOrEmpty()) return false
-            } catch (e: Exception) {
-                android.util.Log.e("DataCacheService", "Failed to validate cache JSON", e)
-                return false
-            }
-        }
-
-        return true
+        return hasUsableFallbackCacheData(
+            moshi = moshi,
+            channelsJson = channelsJson,
+            moviesJson = moviesJson,
+            seriesJson = seriesJson,
+            channelsCount = channelsCount,
+            moviesCount = moviesCount,
+            seriesCount = seriesCount
+        )
     }
 
     fun saveCachedData(
@@ -249,6 +282,22 @@ class DataCacheService @Inject constructor(
         return hasJson
     }
 
+    fun hasUsableFallbackCache(): Boolean {
+        return hasUsableFallbackCacheData(
+            moshi = moshi,
+            channelsJson = sharedPreferences.getString(KEY_CACHE_CHANNELS, null),
+            moviesJson = sharedPreferences.getString(KEY_CACHE_MOVIES, null),
+            seriesJson = sharedPreferences.getString(KEY_CACHE_SERIES, null),
+            channelsCount = sharedPreferences.getInt(KEY_CACHE_CHANNELS_COUNT, -1),
+            moviesCount = sharedPreferences.getInt(KEY_CACHE_MOVIES_COUNT, -1),
+            seriesCount = sharedPreferences.getInt(KEY_CACHE_SERIES_COUNT, -1)
+        )
+    }
+
+    fun shouldUseCacheForBrowsing(): Boolean {
+        return isCacheValid() || (isFallbackCooldownActive() && hasUsableFallbackCache())
+    }
+
     fun setFallbackCooldownTimestamp(timestamp: Long) {
         sharedPreferences.edit {
             putLong(KEY_FALLBACK_COOLDOWN_TIMESTAMP, timestamp)
@@ -344,4 +393,3 @@ class DataCacheService @Inject constructor(
     suspend fun loadSeriesByIds(seriesIds: List<Int>): List<Series>? =
         loadItemsByIds(KEY_CACHE_SERIES, seriesIds, Series::class.java) { it.seriesId }
 }
-

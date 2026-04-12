@@ -16,7 +16,6 @@ import javax.inject.Singleton
 
 @Singleton
 class XtreamRepository @Inject constructor(
-    private val apiService: XtreamApiService?,
     private val credentialsRepository: CredentialsRepository,
     private val okHttpClient: OkHttpClient,
     private val moshi: Moshi,
@@ -31,13 +30,10 @@ class XtreamRepository @Inject constructor(
         return getApiService() ?: throw Exception(ERROR_API_SERVICE_NOT_AVAILABLE)
     }
     
-    // Lazy initialization of API service if not provided
+    // Lazy initialization of API service based on the current credentials
+    @Synchronized
     private fun getApiService(): XtreamApiService? {
-        if (apiService != null) {
-            return apiService
-        }
-        
-        val credentials = credentialsRepository.getCredentials()
+        val credentials = credentialsRepository.credentialsFlow.value
         if (credentials == null) {
             // Invalidate cached service if user logs out
             dynamicApiService = null
@@ -46,7 +42,7 @@ class XtreamRepository @Inject constructor(
         }
         
         val baseUrl = credentials.serverUrl.let { if (it.endsWith("/")) it else "$it/" }
-        
+
         // Return cached service if it exists and baseUrl is the same
         if (dynamicApiService != null && dynamicApiServiceBaseUrl == baseUrl) {
             return dynamicApiService
@@ -125,7 +121,7 @@ class XtreamRepository @Inject constructor(
     ): Result<List<T>> {
         return try {
             // Only use persistent cache (no in-memory cache for large lists)
-            val allData = if (cacheService.isCacheValid()) {
+            val allData = if (cacheService.shouldUseCacheForBrowsing()) {
                 val cachedData = cacheService.loadCachedDataAsync()
                 if (cachedData != null) {
                     getFromCachedData(cachedData)

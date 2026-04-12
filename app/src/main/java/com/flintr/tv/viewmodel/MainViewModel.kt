@@ -13,6 +13,7 @@ import com.flintr.tv.data.model.*
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.ui.common.ContentFilterUtils
+import com.flintr.tv.utils.isConnectivityError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -99,11 +100,16 @@ class MainViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             Log.d("MainViewModel", "Loading initial data...")
 
-            val cachedDataDeferred = async { loadFromCacheIfValid() }
-            val serverInfoJob = async { loadServerInfo(credentials) }
+            val useOfflineBrowsingCache = cacheService.shouldUseCacheForBrowsing()
+            val cachedDataDeferred = async { loadFromCacheIfAvailable() }
+            val serverInfoJob = if (useOfflineBrowsingCache && cacheService.isFallbackCooldownActive()) {
+                null
+            } else {
+                async { loadServerInfo(credentials) }
+            }
 
             val cachedData = cachedDataDeferred.await()
-            serverInfoJob.await()
+            serverInfoJob?.await()
 
             if (cachedData == null) {
                 loadCategoriesFromRepository(credentials)
@@ -131,8 +137,8 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadFromCacheIfValid(): CachedData? {
-        if (!cacheService.isCacheValid()) {
+    private suspend fun loadFromCacheIfAvailable(): CachedData? {
+        if (!cacheService.shouldUseCacheForBrowsing()) {
             Log.d("MainViewModel", "Cache not available, loading from repository")
             return null
         }
@@ -158,6 +164,11 @@ class MainViewModel @Inject constructor(
                 Log.d("MainViewModel", "Server info loaded successfully: $serverInfo")
             }
             .onFailure { error ->
+                if (cacheService.shouldUseCacheForBrowsing() && error.isConnectivityError()) {
+                    Log.w("MainViewModel", "Skipping server info error because cached browsing is available", error)
+                    return@onFailure
+                }
+
                 _uiState.value = _uiState.value.copy(error = error.message)
                 Log.e("MainViewModel", "Failed to load server info", error)
             }

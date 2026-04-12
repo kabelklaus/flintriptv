@@ -7,6 +7,7 @@ import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.utils.isConnectivityError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -31,7 +32,8 @@ data class DataRefreshProgress(
     val error: String? = null,
     val retryAttempt: Int = 0,
     val maxRetries: Int = 0,
-    val usedCacheFallback: Boolean = false
+    val usedCacheFallback: Boolean = false,
+    val requiresServerReconfiguration: Boolean = false
 )
 
 /**
@@ -74,6 +76,10 @@ class DataRefreshUseCase @Inject constructor(
         private const val MAX_PARALLEL_LOADS = 3
         private const val MAX_RETRIES = 3
         private val RETRY_DELAYS_MS = longArrayOf(2000L, 4000L, 8000L)
+
+        internal fun isConnectivityFallbackEligible(errorCause: Throwable?): Boolean {
+            return errorCause?.isConnectivityError() == true
+        }
     }
 
     /**
@@ -85,6 +91,7 @@ class DataRefreshUseCase @Inject constructor(
         loadFn: suspend () -> Result<List<T>>
     ): RetryLoadResult<T> {
         val totalAttempts = MAX_RETRIES + 1
+        var lastError: Throwable? = null
 
         for (attempt in 0 until totalAttempts) {
             if (attempt > 0) {
@@ -107,14 +114,15 @@ class DataRefreshUseCase @Inject constructor(
             }
 
             result.onFailure { error ->
+                lastError = error
                 Log.e(TAG, "API error for $step, attempt ${attempt + 1}/$totalAttempts: ${error.message}")
             }
         }
 
         // All retries exhausted
-        val errorMsg = "Keine Daten nach $totalAttempts Versuchen"
+        val errorMsg = lastError?.message ?: "Keine Daten nach $totalAttempts Versuchen"
         Log.w(TAG, "$step: $errorMsg")
-        return RetryLoadResult.failure(errorMsg)
+        return RetryLoadResult.failure(errorMsg, lastError)
     }
 
     private suspend fun <T> loadBundle(
@@ -131,7 +139,8 @@ class DataRefreshUseCase @Inject constructor(
         }
         val streams = streamsResult.data ?: return@withPermit ContentLoadResult.failure(
             step = step,
-            errorMessage = streamsResult.errorMessage ?: UNKNOWN_ERROR_MESSAGE
+            errorMessage = streamsResult.errorMessage ?: UNKNOWN_ERROR_MESSAGE,
+            errorCause = streamsResult.errorCause
         )
 
         val categories = loadCategories(username, password).getOrNull() ?: emptyList()
@@ -238,13 +247,15 @@ class DataRefreshUseCase @Inject constructor(
                     return@supervisorScope RefreshLoadResult.failure(
                         step = RefreshStep.CHANNELS,
                         counts = ItemCounts(),
-                        errorMessage = liveResult.errorMessage
+                        errorMessage = liveResult.errorMessage,
+                        errorCause = liveResult.errorCause
                     )
                 }
                 val liveStreams = liveResult.data ?: return@supervisorScope RefreshLoadResult.failure(
                     step = RefreshStep.CHANNELS,
                     counts = ItemCounts(),
-                    errorMessage = liveResult.errorMessage
+                    errorMessage = liveResult.errorMessage,
+                    errorCause = liveResult.errorCause
                 )
                 val liveCategories = liveResult.categories
 
@@ -266,13 +277,15 @@ class DataRefreshUseCase @Inject constructor(
                     return@supervisorScope RefreshLoadResult.failure(
                         step = RefreshStep.MOVIES,
                         counts = countsAfterChannels,
-                        errorMessage = vodResult.errorMessage
+                        errorMessage = vodResult.errorMessage,
+                        errorCause = vodResult.errorCause
                     )
                 }
                 val vodStreams = vodResult.data ?: return@supervisorScope RefreshLoadResult.failure(
                     step = RefreshStep.MOVIES,
                     counts = countsAfterChannels,
-                    errorMessage = vodResult.errorMessage
+                    errorMessage = vodResult.errorMessage,
+                    errorCause = vodResult.errorCause
                 )
                 val vodCategories = vodResult.categories
 
@@ -295,7 +308,8 @@ class DataRefreshUseCase @Inject constructor(
                     return@supervisorScope RefreshLoadResult.failure(
                         step = RefreshStep.SERIES,
                         counts = countsAfterMovies,
-                        errorMessage = seriesResult.errorMessage
+                        errorMessage = seriesResult.errorMessage,
+                        errorCause = seriesResult.errorCause
                     )
                 }
 
@@ -307,19 +321,25 @@ class DataRefreshUseCase @Inject constructor(
                     series = seriesResult.data ?: return@supervisorScope RefreshLoadResult.failure(
                         step = RefreshStep.SERIES,
                         counts = countsAfterMovies,
-                        errorMessage = seriesResult.errorMessage
+                        errorMessage = seriesResult.errorMessage,
+                        errorCause = seriesResult.errorCause
                     ),
                     seriesCategories = seriesResult.categories
                 )
             }
 
             if (!loadResult.isSuccess) {
-                emitStepFailure(
-                    step = loadResult.failedStep ?: RefreshStep.SAVING,
-                    currentCounts = loadResult.failedCounts ?: ItemCounts(),
-                    errorMessage = loadResult.errorMessage
-                )
-                handleCacheFallback()
+                val shouldUseCacheFallback = isConnectivityFallbackEligible(loadResult.errorCause)
+
+                if (shouldUseCacheFallback) {
+                    handleCacheFallback(reconfigureWhenCacheMissing = true)
+                } else {
+                    emitStepFailure(
+                        step = loadResult.failedStep ?: RefreshStep.SAVING,
+                        currentCounts = loadResult.failedCounts ?: ItemCounts(),
+                        errorMessage = loadResult.errorMessage
+                    )
+                }
                 return@flow
             }
 
@@ -384,8 +404,10 @@ class DataRefreshUseCase @Inject constructor(
      * Attempts to fall back to cached data after all retries are exhausted.
      * Sets a 24h cooldown so the app doesn't immediately retry on next start.
      */
-    private suspend fun FlowCollector<DataRefreshProgress>.handleCacheFallback() {
-        if (cacheService.hasCacheData()) {
+    private suspend fun FlowCollector<DataRefreshProgress>.handleCacheFallback(
+        reconfigureWhenCacheMissing: Boolean = false
+    ) {
+        if (cacheService.hasUsableFallbackCache()) {
             Log.d(TAG, "Falling back to cached data")
             cacheService.setFallbackCooldownTimestamp(System.currentTimeMillis())
             emit(DataRefreshProgress(
@@ -398,20 +420,29 @@ class DataRefreshUseCase @Inject constructor(
             Log.w(TAG, "No cached data available for fallback")
             emit(DataRefreshProgress(
                 step = RefreshStep.SAVING,
-                message = "Keine gespeicherten Daten verfügbar. Bitte später erneut versuchen.",
+                message = if (reconfigureWhenCacheMissing) {
+                    "Server nicht erreichbar. Bitte Serveradresse neu eingeben."
+                } else {
+                    "Keine gespeicherten Daten verfügbar. Bitte später erneut versuchen."
+                },
                 isComplete = false,
-                error = "Keine gespeicherten Daten verfügbar"
+                error = if (reconfigureWhenCacheMissing) null else "Keine gespeicherten Daten verfügbar",
+                requiresServerReconfiguration = reconfigureWhenCacheMissing
             ))
         }
     }
 
     private data class RetryLoadResult<T>(
         val data: List<T>? = null,
-        val errorMessage: String? = null
+        val errorMessage: String? = null,
+        val errorCause: Throwable? = null
     ) {
         companion object {
             fun <T> success(data: List<T>) = RetryLoadResult(data = data)
-            fun <T> failure(errorMessage: String) = RetryLoadResult<T>(errorMessage = errorMessage)
+            fun <T> failure(errorMessage: String, errorCause: Throwable? = null) = RetryLoadResult<T>(
+                errorMessage = errorMessage,
+                errorCause = errorCause
+            )
         }
     }
 
@@ -419,7 +450,8 @@ class DataRefreshUseCase @Inject constructor(
         val step: RefreshStep,
         val data: List<T>? = null,
         val categories: List<Category> = emptyList(),
-        val errorMessage: String? = null
+        val errorMessage: String? = null,
+        val errorCause: Throwable? = null
     ) {
         val isSuccess: Boolean get() = data != null
 
@@ -434,9 +466,14 @@ class DataRefreshUseCase @Inject constructor(
                 categories = categories
             )
 
-            fun <T> failure(step: RefreshStep, errorMessage: String) = ContentLoadResult<T>(
+            fun <T> failure(
+                step: RefreshStep,
+                errorMessage: String,
+                errorCause: Throwable? = null
+            ) = ContentLoadResult<T>(
                 step = step,
-                errorMessage = errorMessage
+                errorMessage = errorMessage,
+                errorCause = errorCause
             )
         }
     }
@@ -450,7 +487,8 @@ class DataRefreshUseCase @Inject constructor(
         val seriesCategories: List<Category> = emptyList(),
         val failedStep: RefreshStep? = null,
         val failedCounts: ItemCounts? = null,
-        val errorMessage: String? = null
+        val errorMessage: String? = null,
+        val errorCause: Throwable? = null
     ) {
         val isSuccess: Boolean get() = failedStep == null
 
@@ -474,11 +512,13 @@ class DataRefreshUseCase @Inject constructor(
             fun failure(
                 step: RefreshStep,
                 counts: ItemCounts,
-                errorMessage: String?
+                errorMessage: String?,
+                errorCause: Throwable? = null
             ) = RefreshLoadResult(
                 failedStep = step,
                 failedCounts = counts,
-                errorMessage = errorMessage
+                errorMessage = errorMessage,
+                errorCause = errorCause
             )
         }
     }
