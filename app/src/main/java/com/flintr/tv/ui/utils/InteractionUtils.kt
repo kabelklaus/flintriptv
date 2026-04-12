@@ -20,6 +20,7 @@ import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.focus.FocusRequester
 import android.util.Log
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -351,17 +352,14 @@ private fun createKeyEventHandler(
 /**
  * Create touch event handler modifier for long press detection
  */
-@Composable
-private fun createTouchEventHandler(
+private fun Modifier.createTouchEventHandler(
     state: LongPressState,
+    coroutineScope: CoroutineScope,
     durationMillis: Long,
     onLongPress: () -> Unit,
     onNormalClick: (() -> Unit)?
 ): Modifier {
-    // Get coroutine scope for launching jobs in the gesture handler
-    val coroutineScope = rememberCoroutineScope()
-    
-    return Modifier.pointerInput(onLongPress, onNormalClick) {
+    return this.pointerInput(onLongPress, onNormalClick) {
         detectTapGestures(
             onPress = { _ ->
                 val now = System.currentTimeMillis()
@@ -406,19 +404,30 @@ private fun createTouchEventHandler(
  * @param onNormalClick Optional callback for normal click when timer is cancelled early
  * @param durationMillis Duration in milliseconds for long press detection
  */
-@Composable
 fun Modifier.onLongPress(
     onLongPress: () -> Unit,
     onNormalClick: (() -> Unit)? = null,
     durationMillis: Long = 300L
-): Modifier {
+): Modifier = composed {
     val state = remember { LongPressState() }
     val coroutineScope = rememberCoroutineScope()
-    
-    val keyEventHandler = createKeyEventHandler(state, coroutineScope, durationMillis, onLongPress, onNormalClick)
-    val touchHandler = createTouchEventHandler(state, durationMillis, onLongPress, onNormalClick)
-    
-    return this
+
+    val keyEventHandler = createKeyEventHandler(
+        state,
+        coroutineScope,
+        durationMillis,
+        onLongPress,
+        onNormalClick
+    )
+    val touchHandler = Modifier.createTouchEventHandler(
+        state = state,
+        coroutineScope = coroutineScope,
+        durationMillis = durationMillis,
+        onLongPress = onLongPress,
+        onNormalClick = onNormalClick
+    )
+
+    this
         .onKeyEvent(keyEventHandler)
         .then(touchHandler)
 }

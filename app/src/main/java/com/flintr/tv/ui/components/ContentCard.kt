@@ -22,7 +22,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -292,30 +291,28 @@ private fun Modifier.buildCardModifier(
     visualState: CardVisualState,
     handlers: CardInteractionHandlers
 ): Modifier {
-    return this.composed {
-        this
-            .width(Dimensions.contentCardMaxCrossAxisExtent)
-            .aspectRatio(Dimensions.contentCardAspectRatio)
-            .shadowModifier(config.isSelected, colors, visualState.shadowElevation)
-            .border(
-                width = ContentCardBorderWidth,
-                color = visualState.borderColor,
-                shape = RoundedCornerShape(ContentCardBorderRadius)
-            )
-            .focusRequesterModifier(config.focusRequester)
-            .onFocusChanged(handlers.onFocusChanged)
-            .focusable()
-            .onDpadDirection(
-                onLeft = buildDpadHandler(config.onNavigateLeft),
-                onRight = null,
-                onUp = null,
-                onDown = null
-            )
-            .onLongPress(
-                onLongPress = handlers.onLongPress,
-                onNormalClick = handlers.onNormalClick
-            )
-    }
+    return this
+        .width(Dimensions.contentCardMaxCrossAxisExtent)
+        .aspectRatio(Dimensions.contentCardAspectRatio)
+        .shadowModifier(config.isSelected, colors, visualState.shadowElevation)
+        .border(
+            width = ContentCardBorderWidth,
+            color = visualState.borderColor,
+            shape = RoundedCornerShape(ContentCardBorderRadius)
+        )
+        .focusRequesterModifier(config.focusRequester)
+        .onFocusChanged(handlers.onFocusChanged)
+        .focusable()
+        .onDpadDirection(
+            onLeft = buildDpadHandler(config.onNavigateLeft),
+            onRight = null,
+            onUp = null,
+            onDown = null
+        )
+        .onLongPress(
+            onLongPress = handlers.onLongPress,
+            onNormalClick = handlers.onNormalClick
+        )
 }
 
 @Composable
