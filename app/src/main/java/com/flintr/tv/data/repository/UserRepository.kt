@@ -433,8 +433,8 @@ class UserRepository @Inject constructor() {
                 @Suppress("UNCHECKED_CAST")
                 val friendsData = snapshot["friends"] as? List<Map<String, Any?>> ?: emptyList()
 
-                if (friendsData.any { (it["username"] as? String) == friendEntry.username }) {
-                    throw IllegalStateException(ERROR_FRIEND_ALREADY_EXISTS)
+                check(!(friendsData.any { (it["username"] as? String) == friendEntry.username })) {
+                    ERROR_FRIEND_ALREADY_EXISTS
                 }
 
                 val updatedFriends = friendsData + friendEntry.toFirestoreMap()

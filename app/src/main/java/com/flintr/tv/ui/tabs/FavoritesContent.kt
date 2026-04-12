@@ -19,6 +19,7 @@ import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.components.CardConfig
 import com.flintr.tv.ui.components.LiveStreamCard
+import com.flintr.tv.ui.components.LiveStreamCardParams
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.ui.sidebars.ContentGridLayout
@@ -196,15 +197,16 @@ private fun renderFavoriteCard(
     when (item) {
         is FavoriteContentItem.Live -> {
             LiveStreamCard(
-                stream = item.stream,
-                onClick = { params.onLiveStreamClick(item.stream) },
-                favoritesRepository = params.favoritesRepository,
-                config = CardConfig(
-                    focusRequester = if (index == 0 && favoriteItems.isNotEmpty()) params.focusRequester else null,
-                    onFocusChanged = onFocusChanged,
-                    onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft)
-                ),
-                focusRequester = cardFocusRequester
+                params = LiveStreamCardParams(
+                    stream = item.stream,
+                    onClick = { params.onLiveStreamClick(item.stream) },
+                    favoritesRepository = params.favoritesRepository,
+                    config = CardConfig(
+                        focusRequester = cardFocusRequester ?: if (index == 0 && favoriteItems.isNotEmpty()) params.focusRequester else null,
+                        onFocusChanged = onFocusChanged,
+                        onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft)
+                    )
+                )
             )
         }
         is FavoriteContentItem.Movie -> {

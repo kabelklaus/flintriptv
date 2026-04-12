@@ -24,6 +24,7 @@ import com.flintr.tv.ui.components.CardConfig
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.components.LiveStreamCard
+import com.flintr.tv.ui.components.LiveStreamCardParams
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
@@ -157,23 +158,23 @@ fun LiveTVContent(params: LiveTVContentParams) {
         ),
         content = { stream, index, columnIndex, onFocusChanged, cardFocusRequester ->
             LiveStreamCard(
-                stream = stream.item,
-                onClick = { params.onChannelClick(stream.item) },
-                favoritesRepository = params.favoritesRepository,
-                config = CardConfig(
-                    focusRequester = if (index == 0 && displayStreams.isNotEmpty()) params.focusRequester else null,
-                    onFocusChanged = onFocusChanged,
-                    onNavigateLeft = if (columnIndex == 0) {
-                        { params.onNavigateLeft() }
-                    } else {
-                        null
-                    }
-                ),
-                focusRequester = cardFocusRequester,
-                sourceBadge = stream.source.badge,
-                allowFavoriteActions = stream.allowFavoriteActions
+                params = LiveStreamCardParams(
+                    stream = stream.item,
+                    onClick = { params.onChannelClick(stream.item) },
+                    favoritesRepository = params.favoritesRepository,
+                    config = CardConfig(
+                        focusRequester = cardFocusRequester ?: if (index == 0 && displayStreams.isNotEmpty()) params.focusRequester else null,
+                        onFocusChanged = onFocusChanged,
+                        onNavigateLeft = if (columnIndex == 0) {
+                            { params.onNavigateLeft() }
+                        } else {
+                            null
+                        }
+                    ),
+                    sourceBadge = stream.source.badge,
+                    allowFavoriteActions = stream.allowFavoriteActions
+                )
             )
         }
     )
 }
-

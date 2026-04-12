@@ -104,6 +104,16 @@ data class VODCardParams(
     val allowFavoriteActions: Boolean = true
 )
 
+data class LiveStreamCardParams(
+    val stream: LiveStream,
+    val onClick: () -> Unit,
+    val favoritesRepository: FavoritesRepository,
+    val modifier: Modifier = Modifier,
+    val config: CardConfig = CardConfig(),
+    val sourceBadge: String? = null,
+    val allowFavoriteActions: Boolean = true
+)
+
 private data class CardVisualState(
     val borderColor: Color,
     val shadowElevation: Float,
@@ -136,6 +146,14 @@ private data class CardOverlayParams(
     val sourceBadge: String?,
     val watchState: WatchState,
     val colors: com.flintr.tv.ui.theme.AppColors
+)
+
+private data class ContentCardData(
+    val contentInfo: ContentInfo,
+    val contentType: ContentType? = null,
+    val watchState: WatchState = WatchState(),
+    val sourceBadge: String? = null,
+    val allowFavoriteActions: Boolean = true
 )
 
 private sealed class ContentType {
@@ -204,7 +222,17 @@ fun VODCard(params: VODCardParams) {
     }
 
     ContentCardInternal(
-        contentInfo = contentInfo,
+        cardData = ContentCardData(
+            contentInfo = contentInfo,
+            contentType = contentType,
+            watchState = WatchState(
+                isWatched = params.isWatched,
+                progressPercent = progressPercent,
+                remainingMinutes = remainingMinutes
+            ),
+            sourceBadge = params.sourceBadge,
+            allowFavoriteActions = params.allowFavoriteActions
+        ),
         onClick = params.onClick,
         modifier = params.modifier,
         config = CardConfig(
@@ -213,15 +241,7 @@ fun VODCard(params: VODCardParams) {
             onNavigateLeft = params.onNavigateLeft,
             focusRequester = params.focusRequester
         ),
-        contentType = contentType,
-        favoritesRepository = params.favoritesRepository,
-        watchState = WatchState(
-            isWatched = params.isWatched,
-            progressPercent = progressPercent,
-            remainingMinutes = remainingMinutes
-        ),
-        sourceBadge = params.sourceBadge,
-        allowFavoriteActions = params.allowFavoriteActions
+        favoritesRepository = params.favoritesRepository
     )
 }
 
@@ -298,24 +318,21 @@ private fun Modifier.buildCardModifier(
 
 @Composable
 private fun ContentCardInternal(
-    contentInfo: ContentInfo,
+    cardData: ContentCardData,
     onClick: () -> Unit,
     favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
-    config: CardConfig = CardConfig(),
-    contentType: ContentType? = null,
-    watchState: WatchState = WatchState(),
-    sourceBadge: String? = null,
-    allowFavoriteActions: Boolean = true
+    config: CardConfig = CardConfig()
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var longPressDetected by remember { mutableStateOf(false) }
     val colors = appColors()
     val coroutineScope = rememberCoroutineScope()
+    val contentInfo = cardData.contentInfo
     
-    val effectiveContentType = remember(contentType, allowFavoriteActions) {
-        if (allowFavoriteActions) contentType else null
+    val effectiveContentType = remember(cardData.contentType, cardData.allowFavoriteActions) {
+        if (cardData.allowFavoriteActions) cardData.contentType else null
     }
 
     val favoriteId = remember(effectiveContentType) {
@@ -376,8 +393,8 @@ private fun ContentCardInternal(
             overlayParams = CardOverlayParams(
                 rating = contentInfo.rating,
                 isFavorite = isFavorite,
-                sourceBadge = sourceBadge,
-                watchState = watchState,
+                sourceBadge = cardData.sourceBadge,
+                watchState = cardData.watchState,
                 colors = colors
             )
         )
@@ -406,28 +423,23 @@ private fun ContentCardInternal(
 
 @Composable
 fun LiveStreamCard(
-    stream: LiveStream,
-    onClick: () -> Unit,
-    favoritesRepository: FavoritesRepository,
-    modifier: Modifier = Modifier,
-    config: CardConfig = CardConfig(),
-    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
-    sourceBadge: String? = null,
-    allowFavoriteActions: Boolean = true
+    params: LiveStreamCardParams
 ) {
     ContentCardInternal(
-        contentInfo = ContentInfo(
-            coverImageUrl = stream.streamIcon,
-            title = stream.name,
-            rating = null
+        cardData = ContentCardData(
+            contentInfo = ContentInfo(
+                coverImageUrl = params.stream.streamIcon,
+                title = params.stream.name,
+                rating = null
+            ),
+            contentType = ContentType.Live(params.stream),
+            sourceBadge = params.sourceBadge,
+            allowFavoriteActions = params.allowFavoriteActions
         ),
-        onClick = onClick,
-        favoritesRepository = favoritesRepository,
-        modifier = modifier,
-        config = config.copy(focusRequester = focusRequester ?: config.focusRequester),
-        contentType = ContentType.Live(stream),
-        sourceBadge = sourceBadge,
-        allowFavoriteActions = allowFavoriteActions
+        onClick = params.onClick,
+        favoritesRepository = params.favoritesRepository,
+        modifier = params.modifier,
+        config = params.config
     )
 }
 

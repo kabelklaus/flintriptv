@@ -14,6 +14,10 @@ import com.flintr.tv.data.model.Favorite
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.FriendEntry
 import com.flintr.tv.data.repository.UserRepository
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.collect
 
 private const val TAG = "FavoritesHook"
 
@@ -153,30 +157,83 @@ private suspend fun <T : Any> loadFriendFavoriteItems(
         return emptyList()
     }
 
-    return friends.mapNotNull { friend ->
-        val favorites = userRepository.loadFavorites(friend.username).getOrElse { error ->
-            Log.e(TAG, "Failed to load favorites for friend: ${friend.username}", error)
-            return@mapNotNull null
-        }
+    return coroutineScope {
+        friends.map { friend ->
+            async {
+                loadSingleFriendFavoriteItems(
+                    friend = friend,
+                    userRepository = userRepository,
+                    cacheService = cacheService,
+                    favoriteType = favoriteType,
+                    idSelector = idSelector
+                )
+            }
+        }.awaitAll().filterNotNull()
+    }
+}
 
-        val filteredFavorites = filterFavoritesByType(favorites, favoriteType)
-        if (filteredFavorites.isEmpty()) {
-            return@mapNotNull null
-        }
+private suspend fun <T : Any> loadSingleFriendFavoriteItems(
+    friend: FriendEntry,
+    userRepository: UserRepository,
+    cacheService: DataCacheService,
+    favoriteType: FavoriteType,
+    idSelector: (T) -> Int
+): Pair<FriendEntry, List<T>>? {
+    val favorites = userRepository.loadFavorites(friend.username).getOrElse { error ->
+        Log.e(TAG, "Failed to load favorites for friend: ${friend.username}", error)
+        return null
+    }
 
-        val items = loadFavoriteItems(
-            favorites = filteredFavorites,
+    val filteredFavorites = filterFavoritesByType(favorites, favoriteType)
+    if (filteredFavorites.isEmpty()) {
+        return null
+    }
+
+    val items = loadFavoriteItems(
+        favorites = filteredFavorites,
+        cacheService = cacheService,
+        favoriteType = favoriteType,
+        idSelector = idSelector
+    )
+
+    if (items.isEmpty()) {
+        return null
+    }
+
+    return friend to items
+}
+
+private suspend fun <T : Any> loadSourcedFavoriteItems(
+    ownFavorites: List<Favorite>,
+    currentUsername: String?,
+    userRepository: UserRepository,
+    cacheService: DataCacheService,
+    favoriteType: FavoriteType,
+    idSelector: (T) -> Int
+): List<SourcedFavoriteItem<T>> {
+    val ownItems = loadFavoriteItems(
+        favorites = ownFavorites,
+        cacheService = cacheService,
+        favoriteType = favoriteType,
+        idSelector = idSelector
+    )
+
+    val friendItems = if (currentUsername.isNullOrBlank()) {
+        emptyList()
+    } else {
+        loadFriendFavoriteItems(
+            currentUsername = currentUsername,
+            userRepository = userRepository,
             cacheService = cacheService,
             favoriteType = favoriteType,
             idSelector = idSelector
         )
-
-        if (items.isEmpty()) {
-            return@mapNotNull null
-        }
-
-        friend to items
     }
+
+    return combineSourcedItems(
+        ownItems = ownItems,
+        friendItems = friendItems
+    )
 }
 
 @Composable
@@ -191,75 +248,27 @@ fun <T : Any> useFavorites(
 ): FavoritesState<SourcedFavoriteItem<T>> {
     var favoriteItems by remember { mutableStateOf<List<SourcedFavoriteItem<T>>>(emptyList()) }
     var isLoadingFavorites by remember { mutableStateOf(false) }
-    var ownFavoritesIdsKey by remember { mutableStateOf<List<String>>(emptyList()) }
 
-    suspend fun reloadFavorites(syncOwnFavorites: Boolean) {
+    LaunchedEffect(isFavoritesCategory, favoriteType) {
         if (!isFavoritesCategory) {
             favoriteItems = emptyList()
-            ownFavoritesIdsKey = emptyList()
             isLoadingFavorites = false
-            return
+            return@LaunchedEffect
         }
 
-        isLoadingFavorites = true
+        favoritesRepository.syncIfNeeded()
 
-        if (syncOwnFavorites) {
-            favoritesRepository.syncIfNeeded()
-        }
-
-        val ownFavorites = favoritesRepository.getFavoritesByType(favoriteType)
-        ownFavoritesIdsKey = ownFavorites.map { it.id }
-
-        val ownItems = loadFavoriteItems(
-            favorites = ownFavorites,
-            cacheService = cacheService,
-            favoriteType = favoriteType,
-            idSelector = idSelector
-        )
-
-        val currentUsername = credentialsRepository.getCredentials()?.username
-        val friendItems = if (!currentUsername.isNullOrBlank()) {
-            loadFriendFavoriteItems(
-                currentUsername = currentUsername,
+        favoritesRepository.favorites.collect { allFavorites ->
+            isLoadingFavorites = true
+            favoriteItems = loadSourcedFavoriteItems(
+                ownFavorites = filterFavoritesByType(allFavorites, favoriteType),
+                currentUsername = credentialsRepository.getCredentials()?.username,
                 userRepository = userRepository,
                 cacheService = cacheService,
                 favoriteType = favoriteType,
                 idSelector = idSelector
             )
-        } else {
-            emptyList()
-        }
-
-        favoriteItems = combineSourcedItems(
-            ownItems = ownItems,
-            friendItems = friendItems
-        )
-        isLoadingFavorites = false
-    }
-
-    LaunchedEffect(isFavoritesCategory, favoriteType) {
-        if (!isFavoritesCategory) {
-            favoriteItems = emptyList()
-            ownFavoritesIdsKey = emptyList()
             isLoadingFavorites = false
-            return@LaunchedEffect
-        }
-
-        reloadFavorites(syncOwnFavorites = true)
-    }
-
-    LaunchedEffect(isFavoritesCategory, favoriteType) {
-        if (!isFavoritesCategory) {
-            return@LaunchedEffect
-        }
-
-        while (isFavoritesCategory) {
-            kotlinx.coroutines.delay(500)
-
-            val currentIds = favoritesRepository.getFavoritesByType(favoriteType).map { it.id }
-            if (currentIds != ownFavoritesIdsKey) {
-                reloadFavorites(syncOwnFavorites = false)
-            }
         }
     }
 
