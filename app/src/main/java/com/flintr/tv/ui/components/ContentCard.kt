@@ -285,7 +285,6 @@ private fun buildDpadHandler(
     }
 }
 
-@Composable
 private fun Modifier.buildCardModifier(
     config: CardConfig,
     colors: com.flintr.tv.ui.theme.AppColors,
