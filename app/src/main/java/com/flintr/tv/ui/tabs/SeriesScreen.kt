@@ -14,11 +14,13 @@ import androidx.compose.ui.focus.FocusRequester
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
+import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.Series
+import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.ui.sidebars.ContentGridLayout
@@ -26,6 +28,7 @@ import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
+import com.flintr.tv.ui.common.asOwnSourcedItems
 import com.flintr.tv.ui.common.useFavorites
 import com.flintr.tv.ui.common.ContentFilterUtils
 
@@ -130,6 +133,8 @@ data class SeriesContentParams(
     val selectedCategoryId: String?,
     val focusRequester: FocusRequester,
     val favoritesRepository: FavoritesRepository,
+    val userRepository: UserRepository,
+    val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
     val categoryVisibilityService: CategoryVisibilityService,
     val ioDispatcher: CoroutineDispatcher,
@@ -158,6 +163,8 @@ fun SeriesContent(
     val favoritesState = useFavorites<Series>(
         isFavoritesCategory = isFavoritesCategory,
         favoritesRepository = params.favoritesRepository,
+        userRepository = params.userRepository,
+        credentialsRepository = params.credentialsRepository,
         cacheService = params.cacheService,
         favoriteType = FavoriteType.SERIES,
         idSelector = { it.seriesId }
@@ -190,8 +197,8 @@ fun SeriesContent(
     
     val displaySeries = when {
         isFavoritesCategory -> favoritesState.items
-        isNewCategory -> newCategorySeries
-        else -> series
+        isNewCategory -> asOwnSourcedItems(newCategorySeries)
+        else -> asOwnSourcedItems(series)
     }
     val isLoading = when {
         isFavoritesCategory -> favoritesState.isLoading
@@ -206,15 +213,15 @@ fun SeriesContent(
             focusRequester = params.focusRequester,
             modifier = modifier,
             lazyGridState = params.lazyGridState,
-            keySelector = { seriesItem -> seriesItem.seriesId },
-            contentIdSelector = { seriesItem -> "series_${seriesItem.seriesId}" },
+            keySelector = { seriesItem -> "${seriesItem.source.key}_${seriesItem.item.seriesId}" },
+            contentIdSelector = { seriesItem -> "series_${seriesItem.source.key}_${seriesItem.item.seriesId}" },
             focusRequesterMap = params.focusRequesterMap
         ),
         content = { seriesItem, _, columnIndex, onFocusChanged, cardFocusRequester ->
             SeriesItem(
-                series = seriesItem,
+                series = seriesItem.item,
                 favoritesRepository = params.favoritesRepository,
-                onSeriesClick = { params.onSeriesClick(seriesItem) },
+                onSeriesClick = { params.onSeriesClick(seriesItem.item) },
                 cardConfig = com.flintr.tv.ui.components.CardConfig(
                     isSelected = false,
                     onFocusChanged = onFocusChanged,
@@ -224,7 +231,9 @@ fun SeriesContent(
                         null
                     },
                     focusRequester = cardFocusRequester
-                )
+                ),
+                sourceBadge = seriesItem.source.badge,
+                allowFavoriteActions = seriesItem.allowFavoriteActions
             )
         }
     )
@@ -235,7 +244,9 @@ fun SeriesItem(
     series: Series,
     favoritesRepository: FavoritesRepository,
     onSeriesClick: () -> Unit,
-    cardConfig: com.flintr.tv.ui.components.CardConfig = com.flintr.tv.ui.components.CardConfig()
+    cardConfig: com.flintr.tv.ui.components.CardConfig = com.flintr.tv.ui.components.CardConfig(),
+    sourceBadge: String? = null,
+    allowFavoriteActions: Boolean = true
 ) {
     VODCard(
         params = VODCardParams(
@@ -245,9 +256,10 @@ fun SeriesItem(
             isSelected = cardConfig.isSelected,
             onFocusChanged = cardConfig.onFocusChanged,
             onNavigateLeft = cardConfig.onNavigateLeft,
-            focusRequester = cardConfig.focusRequester
+            focusRequester = cardConfig.focusRequester,
+            sourceBadge = sourceBadge,
+            allowFavoriteActions = allowFavoriteActions
         )
     )
 }
-
 

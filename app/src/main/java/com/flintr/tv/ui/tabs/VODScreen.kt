@@ -13,12 +13,14 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
+import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.VodStream
+import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.components.VODCard
@@ -26,6 +28,7 @@ import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
+import com.flintr.tv.ui.common.asOwnSourcedItems
 import com.flintr.tv.ui.common.useFavorites
 import com.flintr.tv.ui.common.ContentFilterUtils
 
@@ -80,6 +83,8 @@ data class VODContentParams(
     val selectedCategoryId: String?,
     val focusRequester: FocusRequester,
     val favoritesRepository: FavoritesRepository,
+    val userRepository: UserRepository,
+    val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
     val categoryVisibilityService: CategoryVisibilityService,
     val watchProgressService: WatchProgressService,
@@ -107,6 +112,8 @@ fun VODContent(params: VODContentParams) {
     val favoritesState = useFavorites<VodStream>(
         isFavoritesCategory = isFavoritesCategory,
         favoritesRepository = params.favoritesRepository,
+        userRepository = params.userRepository,
+        credentialsRepository = params.credentialsRepository,
         cacheService = params.cacheService,
         favoriteType = FavoriteType.MOVIE,
         idSelector = { it.streamId }
@@ -158,8 +165,8 @@ fun VODContent(params: VODContentParams) {
     
     val displayStreams = when {
         isFavoritesCategory -> favoritesState.items
-        isNewCategory -> newCategoryStreams
-        else -> streams
+        isNewCategory -> asOwnSourcedItems(newCategoryStreams)
+        else -> asOwnSourcedItems(streams)
     }
     val isLoading = when {
         isFavoritesCategory -> favoritesState.isLoading
@@ -174,15 +181,15 @@ fun VODContent(params: VODContentParams) {
             focusRequester = params.focusRequester,
             modifier = params.modifier,
             lazyGridState = params.lazyGridState,
-            keySelector = { vod -> vod.streamId },
-            contentIdSelector = { vod -> "vod_${vod.streamId}" },
+            keySelector = { vod -> "${vod.source.key}_${vod.item.streamId}" },
+            contentIdSelector = { vod -> "vod_${vod.source.key}_${vod.item.streamId}" },
             focusRequesterMap = params.focusRequesterMap
         ),
         content = { vod, _, columnIndex, onFocusChanged, cardFocusRequester ->
             VODCard(
                 params = VODCardParams(
-                    vod = vod,
-                    onClick = { params.onVodClick(vod) },
+                    vod = vod.item,
+                    onClick = { params.onVodClick(vod.item) },
                     favoritesRepository = params.favoritesRepository,
                     watchProgressService = params.watchProgressService,
                     onFocusChanged = onFocusChanged,
@@ -192,10 +199,11 @@ fun VODContent(params: VODContentParams) {
                         null
                     },
                     focusRequester = cardFocusRequester,
-                    isWatched = vod.streamId in watchedVodIds
+                    isWatched = vod.item.streamId in watchedVodIds,
+                    sourceBadge = vod.source.badge,
+                    allowFavoriteActions = vod.allowFavoriteActions
                 )
             )
         }
     )
 }
-

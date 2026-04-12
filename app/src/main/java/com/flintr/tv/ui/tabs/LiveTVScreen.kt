@@ -13,19 +13,23 @@ import androidx.compose.ui.focus.FocusRequester
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
+import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.LiveStream
+import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.ui.components.CardConfig
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.components.LiveStreamCard
+import com.flintr.tv.ui.components.LiveStreamCardParams
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
+import com.flintr.tv.ui.common.asOwnSourcedItems
 import com.flintr.tv.ui.common.useFavorites
 import com.flintr.tv.ui.common.ContentFilterUtils
 
@@ -65,6 +69,8 @@ data class LiveTVContentParams(
     val selectedCategoryId: String?,
     val focusRequester: FocusRequester,
     val favoritesRepository: FavoritesRepository,
+    val userRepository: UserRepository,
+    val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
     val categoryVisibilityService: CategoryVisibilityService,
     val ioDispatcher: CoroutineDispatcher,
@@ -92,6 +98,8 @@ fun LiveTVContent(params: LiveTVContentParams) {
     val favoritesState = useFavorites<LiveStream>(
         isFavoritesCategory = isFavoritesCategory,
         favoritesRepository = params.favoritesRepository,
+        userRepository = params.userRepository,
+        credentialsRepository = params.credentialsRepository,
         cacheService = params.cacheService,
         favoriteType = FavoriteType.LIVE,
         idSelector = { it.streamId }
@@ -126,9 +134,9 @@ fun LiveTVContent(params: LiveTVContentParams) {
     // Show empty list if in-progress category is selected
     val displayStreams = when {
         isFavoritesCategory -> favoritesState.items
-        isNewCategory -> newCategoryStreams
+        isNewCategory -> asOwnSourcedItems(newCategoryStreams)
         isInProgressCategory -> emptyList() // In-progress category not applicable for LiveTV
-        else -> streams
+        else -> asOwnSourcedItems(streams)
     }
     val isLoading = when {
         isFavoritesCategory -> favoritesState.isLoading
@@ -144,28 +152,29 @@ fun LiveTVContent(params: LiveTVContentParams) {
             focusRequester = params.focusRequester,
             modifier = params.modifier,
             lazyGridState = params.lazyGridState,
-            keySelector = { stream -> stream.streamId },
-            contentIdSelector = { stream -> "live_${stream.streamId}" },
+            keySelector = { stream -> "${stream.source.key}_${stream.item.streamId}" },
+            contentIdSelector = { stream -> "live_${stream.source.key}_${stream.item.streamId}" },
             focusRequesterMap = params.focusRequesterMap
         ),
         content = { stream, index, columnIndex, onFocusChanged, cardFocusRequester ->
             LiveStreamCard(
-                stream = stream,
-                onClick = { params.onChannelClick(stream) },
-                favoritesRepository = params.favoritesRepository,
-                config = CardConfig(
-                    focusRequester = if (index == 0 && displayStreams.isNotEmpty()) params.focusRequester else null,
-                    onFocusChanged = onFocusChanged,
-                    onNavigateLeft = if (columnIndex == 0) {
-                        { params.onNavigateLeft() }
-                    } else {
-                        null
-                    }
-                ),
-                focusRequester = cardFocusRequester
+                params = LiveStreamCardParams(
+                    stream = stream.item,
+                    onClick = { params.onChannelClick(stream.item) },
+                    favoritesRepository = params.favoritesRepository,
+                    config = CardConfig(
+                        focusRequester = cardFocusRequester ?: if (index == 0 && displayStreams.isNotEmpty()) params.focusRequester else null,
+                        onFocusChanged = onFocusChanged,
+                        onNavigateLeft = if (columnIndex == 0) {
+                            { params.onNavigateLeft() }
+                        } else {
+                            null
+                        }
+                    ),
+                    sourceBadge = stream.source.badge,
+                    allowFavoriteActions = stream.allowFavoriteActions
+                )
             )
         }
     )
 }
-
-

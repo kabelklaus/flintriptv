@@ -32,6 +32,7 @@ import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.WatchProgressService
+import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.data.model.CategoryType
@@ -576,6 +577,7 @@ data class AppNavigationDependencies(
     val categoryVisibilityService: CategoryVisibilityService,
     val playbackSettingsRepository: PlaybackSettingsRepository,
     val xtreamRepository: XtreamRepository,
+    val userRepository: UserRepository,
     val ioDispatcher: CoroutineDispatcher
 )
 
@@ -1041,6 +1043,8 @@ private fun LiveTVContentSection(params: MainContentBodyParams) {
             selectedCategoryId = params.selectedCategoryId,
             focusRequester = params.contentListFocusRequester,
             favoritesRepository = params.dependencies.favoritesRepository,
+            userRepository = params.dependencies.userRepository,
+            credentialsRepository = params.dependencies.credentialsRepository,
             cacheService = params.dependencies.cacheService,
             categoryVisibilityService = params.dependencies.categoryVisibilityService,
             ioDispatcher = params.dependencies.ioDispatcher,
@@ -1091,6 +1095,8 @@ private fun VODContentSection(params: MainContentBodyParams) {
                 selectedCategoryId = params.selectedCategoryId,
                 focusRequester = params.contentListFocusRequester,
                 favoritesRepository = params.dependencies.favoritesRepository,
+                userRepository = params.dependencies.userRepository,
+                credentialsRepository = params.dependencies.credentialsRepository,
                 cacheService = params.dependencies.cacheService,
                 categoryVisibilityService = params.dependencies.categoryVisibilityService,
                 watchProgressService = params.dependencies.watchProgressService,
@@ -1118,6 +1124,8 @@ private fun SeriesContentSection(params: MainContentBodyParams) {
                 selectedCategoryId = params.selectedCategoryId,
                 focusRequester = params.contentListFocusRequester,
                 favoritesRepository = params.dependencies.favoritesRepository,
+                userRepository = params.dependencies.userRepository,
+                credentialsRepository = params.dependencies.credentialsRepository,
                 cacheService = params.dependencies.cacheService,
                 categoryVisibilityService = params.dependencies.categoryVisibilityService,
                 ioDispatcher = params.dependencies.ioDispatcher,

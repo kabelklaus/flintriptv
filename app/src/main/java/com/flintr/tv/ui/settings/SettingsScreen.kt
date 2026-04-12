@@ -49,6 +49,7 @@ sealed class SettingsDestination {
     object General : SettingsDestination()
     object Info : SettingsDestination()
     object HiddenCategories : SettingsDestination()
+    object Friends : SettingsDestination()
 }
 
 @Composable
@@ -161,6 +162,16 @@ fun SettingsScreen(
                     }
                 )
             }
+            is SettingsDestination.Friends -> {
+                SettingsFriends(
+                    onBack = {
+                        currentDestination = SettingsDestination.Main
+                    },
+                    onShowSnackbar = { message ->
+                        snackbarMessage = message
+                    }
+                )
+            }
         }
         
         // Snackbar for feedback messages
@@ -246,6 +257,22 @@ private fun SettingsMainScreen(
                 )
         }
         
+        item {
+                SettingsCategoryCard(
+                    title = "Freunde",
+                    subtitle = "Benutzernamen hinzufügen und Favoriten teilen",
+                    icon = Icons.Default.Group,
+                    onClick = {
+                        Log.i("SettingsNav", "➡️ NAVIGATE: SettingsMainScreen -> SettingsFriends")
+                        onCategorySelected(SettingsDestination.Friends)
+                    },
+                    colors = colors,
+                    navigationConfig = NavigationConfig(
+                        onNavigateLeft = onNavigateLeftHandler
+                    )
+                )
+        }
+
         item {
                 SettingsCategoryCard(
                     title = "Info",
@@ -384,4 +411,3 @@ private fun SettingsCategoryCard(
         }
     }
 }
-

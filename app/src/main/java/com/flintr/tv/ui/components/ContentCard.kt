@@ -99,7 +99,19 @@ data class VODCardParams(
     val onFocusChanged: ((Boolean) -> Unit)? = null,
     val onNavigateLeft: (() -> Unit)? = null,
     val focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
-    val isWatched: Boolean = false
+    val isWatched: Boolean = false,
+    val sourceBadge: String? = null,
+    val allowFavoriteActions: Boolean = true
+)
+
+data class LiveStreamCardParams(
+    val stream: LiveStream,
+    val onClick: () -> Unit,
+    val favoritesRepository: FavoritesRepository,
+    val modifier: Modifier = Modifier,
+    val config: CardConfig = CardConfig(),
+    val sourceBadge: String? = null,
+    val allowFavoriteActions: Boolean = true
 )
 
 private data class CardVisualState(
@@ -131,8 +143,17 @@ private data class WatchState(
 private data class CardOverlayParams(
     val rating: String?,
     val isFavorite: Boolean,
+    val sourceBadge: String?,
     val watchState: WatchState,
     val colors: com.flintr.tv.ui.theme.AppColors
+)
+
+private data class ContentCardData(
+    val contentInfo: ContentInfo,
+    val contentType: ContentType? = null,
+    val watchState: WatchState = WatchState(),
+    val sourceBadge: String? = null,
+    val allowFavoriteActions: Boolean = true
 )
 
 private sealed class ContentType {
@@ -201,7 +222,17 @@ fun VODCard(params: VODCardParams) {
     }
 
     ContentCardInternal(
-        contentInfo = contentInfo,
+        cardData = ContentCardData(
+            contentInfo = contentInfo,
+            contentType = contentType,
+            watchState = WatchState(
+                isWatched = params.isWatched,
+                progressPercent = progressPercent,
+                remainingMinutes = remainingMinutes
+            ),
+            sourceBadge = params.sourceBadge,
+            allowFavoriteActions = params.allowFavoriteActions
+        ),
         onClick = params.onClick,
         modifier = params.modifier,
         config = CardConfig(
@@ -210,13 +241,7 @@ fun VODCard(params: VODCardParams) {
             onNavigateLeft = params.onNavigateLeft,
             focusRequester = params.focusRequester
         ),
-        contentType = contentType,
-        favoritesRepository = params.favoritesRepository,
-        watchState = WatchState(
-            isWatched = params.isWatched,
-            progressPercent = progressPercent,
-            remainingMinutes = remainingMinutes
-        )
+        favoritesRepository = params.favoritesRepository
     )
 }
 
@@ -293,22 +318,25 @@ private fun Modifier.buildCardModifier(
 
 @Composable
 private fun ContentCardInternal(
-    contentInfo: ContentInfo,
+    cardData: ContentCardData,
     onClick: () -> Unit,
     favoritesRepository: FavoritesRepository,
     modifier: Modifier = Modifier,
-    config: CardConfig = CardConfig(),
-    contentType: ContentType? = null,
-    watchState: WatchState = WatchState()
+    config: CardConfig = CardConfig()
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var longPressDetected by remember { mutableStateOf(false) }
     val colors = appColors()
     val coroutineScope = rememberCoroutineScope()
+    val contentInfo = cardData.contentInfo
     
-    val favoriteId = remember(contentType) {
-        contentType?.toFavoriteId()
+    val effectiveContentType = remember(cardData.contentType, cardData.allowFavoriteActions) {
+        if (cardData.allowFavoriteActions) cardData.contentType else null
+    }
+
+    val favoriteId = remember(effectiveContentType) {
+        effectiveContentType?.toFavoriteId()
     }
     
     val (isFavorite, setIsFavorite) = useFavoriteState(
@@ -365,13 +393,14 @@ private fun ContentCardInternal(
             overlayParams = CardOverlayParams(
                 rating = contentInfo.rating,
                 isFavorite = isFavorite,
-                watchState = watchState,
+                sourceBadge = cardData.sourceBadge,
+                watchState = cardData.watchState,
                 colors = colors
             )
         )
     }
     
-    val menuOptions = createMenuOptions(contentType, isFavorite)
+    val menuOptions = createMenuOptions(effectiveContentType, isFavorite)
     
     PopupMenu(
         isOpen = showMenu && menuOptions.isNotEmpty(),
@@ -381,7 +410,7 @@ private fun ContentCardInternal(
             setShowMenu = { showMenu = it }
         ),
         onOptionSelected = createMenuOptionSelectedHandler(
-            contentType = contentType,
+            contentType = effectiveContentType,
             favoriteId = favoriteId,
             isFavorite = isFavorite,
             title = contentInfo.title,
@@ -394,24 +423,23 @@ private fun ContentCardInternal(
 
 @Composable
 fun LiveStreamCard(
-    stream: LiveStream,
-    onClick: () -> Unit,
-    favoritesRepository: FavoritesRepository,
-    modifier: Modifier = Modifier,
-    config: CardConfig = CardConfig(),
-    focusRequester: androidx.compose.ui.focus.FocusRequester? = null
+    params: LiveStreamCardParams
 ) {
     ContentCardInternal(
-        contentInfo = ContentInfo(
-            coverImageUrl = stream.streamIcon,
-            title = stream.name,
-            rating = null
+        cardData = ContentCardData(
+            contentInfo = ContentInfo(
+                coverImageUrl = params.stream.streamIcon,
+                title = params.stream.name,
+                rating = null
+            ),
+            contentType = ContentType.Live(params.stream),
+            sourceBadge = params.sourceBadge,
+            allowFavoriteActions = params.allowFavoriteActions
         ),
-        onClick = onClick,
-        favoritesRepository = favoritesRepository,
-        modifier = modifier,
-        config = config.copy(focusRequester = focusRequester ?: config.focusRequester),
-        contentType = ContentType.Live(stream)
+        onClick = params.onClick,
+        favoritesRepository = params.favoritesRepository,
+        modifier = params.modifier,
+        config = params.config
     )
 }
 
@@ -668,6 +696,7 @@ private fun CardImageWithOverlays(
 
             CardBadges(
                 isFavorite = overlayParams.isFavorite,
+                sourceBadge = overlayParams.sourceBadge,
                 rating = overlayParams.rating,
                 isWatched = overlayParams.watchState.isWatched
             )
@@ -693,10 +722,16 @@ private fun CardImageWithOverlays(
 @Composable
 private fun BoxScope.CardBadges(
     isFavorite: Boolean,
+    sourceBadge: String?,
     rating: String?,
     isWatched: Boolean
 ) {
-    if (isFavorite) {
+    if (!sourceBadge.isNullOrBlank()) {
+        SourceBadge(
+            badge = sourceBadge,
+            modifier = Modifier.align(Alignment.TopStart)
+        )
+    } else if (isFavorite) {
         FavoriteBadge(
             modifier = Modifier.align(Alignment.TopStart)
         )
@@ -713,6 +748,40 @@ private fun BoxScope.CardBadges(
         WatchedBadge(
             modifier = Modifier.align(Alignment.Center)
         )
+    }
+}
+
+@Composable
+private fun SourceBadge(
+    badge: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .padding(
+                top = Dimensions.contentCardRatingBadgeTop,
+                start = Dimensions.contentCardRatingBadgeRight
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .background(
+                    color = SharedColors.avatarAccentBg.copy(alpha = Dimensions.contentCardRatingBgAlpha),
+                    shape = RoundedCornerShape(Dimensions.radiusSM)
+                )
+                .padding(
+                    horizontal = Dimensions.contentCardRatingBadgePaddingH,
+                    vertical = Dimensions.contentCardRatingBadgePaddingV
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = badge,
+                fontSize = ContentCardTitleFontSize,
+                color = SharedColors.avatarAccentText,
+                fontWeight = ContentCardTextFontWeight
+            )
+        }
     }
 }
 
@@ -871,6 +940,7 @@ private fun CardFallbackWithOverlays(
         // Badges (Stern, Rating, Watched)
         CardBadges(
             isFavorite = overlayParams.isFavorite,
+            sourceBadge = overlayParams.sourceBadge,
             rating = overlayParams.rating,
             isWatched = overlayParams.watchState.isWatched
         )
