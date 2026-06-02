@@ -169,7 +169,7 @@ class WatchProgressService @Inject constructor(
      * Performs migration from local SharedPreferences to Firestore.
      */
     private suspend fun performMigration(username: String) {
-        Log.d(TAG, "Starting migration from local storage to Firestore for user: $username")
+        Log.d(TAG, "Starting watch progress migration from local storage to Firestore")
         
         try {
             // Load old data from SharedPreferences
@@ -353,15 +353,13 @@ class WatchProgressService @Inject constructor(
         title: String
     ): Boolean = withContext(ioDispatcher) {
         try {
-            val logContext = "contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId"
-            
             when (val validation = validateProgressParams(contentType, position, duration)) {
                 is ProgressValidationResult.Skip -> {
-                    Log.d(TAG, "Skipping progress save: ${validation.reason} for $logContext")
+                    Log.d(TAG, "Skipping progress save: ${validation.reason}")
                     return@withContext false
                 }
                 is ProgressValidationResult.Completed -> {
-                    Log.d(TAG, "Progress >= 90%, marking as watched and deleting progress for $logContext")
+                    Log.d(TAG, "Progress reached completion threshold; marking as watched and deleting progress")
                     // Mark as watched BEFORE deleting progress
                     val (name, genre, categoryName) = getNameGenreAndCategoryFromCache(contentType, streamId, seriesId)
                     watchedHistoryService.markAsWatched(contentType, streamId, seriesId, episodeId, name, genre, categoryName)
@@ -369,16 +367,16 @@ class WatchProgressService @Inject constructor(
                 }
                 is ProgressValidationResult.Valid -> {
                     val key = generateKey(contentType, streamId, seriesId, episodeId)
-                    Log.d(TAG, "Saving progress: key=$key, position=${position}ms, duration=${duration}ms, progress=${(validation.progressPercent * 100).toInt()}%, title=$title")
+                    Log.d(TAG, "Saving watch progress: progress=${(validation.progressPercent * 100).toInt()}%")
                     
                     persistProgress(key, position, duration, title)
                     
-                    Log.d(TAG, "Progress saved successfully: key=$key, position=${position}ms")
+                    Log.d(TAG, "Progress saved successfully")
                     true
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving progress for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
+            Log.e(TAG, "Error saving progress", e)
             false
         }
     }
@@ -423,20 +421,20 @@ class WatchProgressService @Inject constructor(
     ): Long? = withContext(ioDispatcher) {
         try {
             val key = generateKey(contentType, streamId, seriesId, episodeId)
-            Log.d(TAG, "Getting progress: key=$key, contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId")
+            Log.d(TAG, "Getting saved progress")
 
             val progressMap = _watchProgress.value
             val progress = progressMap[key]
 
             if (progress == null) {
-                Log.d(TAG, "No progress found for key: $key")
+                Log.d(TAG, "No progress found")
                 return@withContext null
             }
 
-            Log.d(TAG, "Found progress: key=$key, position=${progress.position}ms (${progress.position / 1000}s), duration=${progress.duration}ms (${progress.duration / 1000}s), lastWatched=${progress.lastWatched}, title=${progress.title}")
+            Log.d(TAG, "Found saved progress")
             progress.position
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting progress for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
+            Log.e(TAG, "Error getting progress", e)
             null
         }
     }
@@ -455,7 +453,7 @@ class WatchProgressService @Inject constructor(
             val key = generateKey(contentType, streamId, seriesId, episodeId)
             _watchProgress.value[key]
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting watch progress for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
+            Log.e(TAG, "Error getting watch progress", e)
             null
         }
     }
@@ -471,7 +469,7 @@ class WatchProgressService @Inject constructor(
     ): Boolean = withContext(ioDispatcher) {
         try {
             val key = generateKey(contentType, streamId, seriesId, episodeId)
-            Log.d(TAG, "Deleting progress: key=$key")
+            Log.d(TAG, "Deleting progress")
 
             val progress = _watchProgress.value[key]
             
@@ -489,10 +487,10 @@ class WatchProgressService @Inject constructor(
                     val result = userRepository.deleteWatchProgress(username, key)
                     result.fold(
                         onSuccess = {
-                            Log.d(TAG, "Successfully deleted watch progress from Firestore: key=$key")
+                            Log.d(TAG, "Successfully deleted watch progress from Firestore")
                         },
                         onFailure = { exception ->
-                            Log.e(TAG, "Failed to delete watch progress from Firestore: key=$key", exception)
+                            Log.e(TAG, "Failed to delete watch progress from Firestore", exception)
                             // StateFlow already updated, so UI will reflect the change
                             // Firestore will sync when connection is restored
                         }
@@ -508,17 +506,17 @@ class WatchProgressService @Inject constructor(
                     val encodedName = URLEncoder.encode(progress.title, "UTF-8")
                     val favoriteId = "$KEY_PREFIX_MOVIE$streamId:$encodedName"
                     favoritesRepository.removeFavorite(favoriteId)
-                    Log.d(TAG, "Automatically removed movie from favorites: streamId=$streamId, favoriteId=$favoriteId")
+                    Log.d(TAG, "Automatically removed completed movie from favorites")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to automatically remove movie from favorites: streamId=$streamId", e)
+                    Log.w(TAG, "Failed to automatically remove completed movie from favorites", e)
                     // Don't fail the progress deletion if favorite removal fails
                 }
             }
 
-            Log.d(TAG, "Progress deleted successfully: key=$key")
+            Log.d(TAG, "Progress deleted successfully")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Error deleting progress for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
+            Log.e(TAG, "Error deleting progress", e)
             false
         }
     }
@@ -719,8 +717,7 @@ class WatchProgressService @Inject constructor(
             }
             
             val progressPercent = (progress.position.toDouble() / progress.duration.toDouble() * 100).toInt()
-            Log.d(TAG, "cleanupCompletedProgress() - checking key=$key, position=${progress.position}ms, duration=${progress.duration}ms, progress=$progressPercent%")
-            Log.d(TAG, "cleanupCompletedProgress() - entry >= 90% found: key=$key, progress=$progressPercent%")
+            Log.d(TAG, "cleanupCompletedProgress() - completed progress entry found: progress=$progressPercent%")
             
             val parsedKey = parseProgressKey(key)
             if (cleanupSingleEntry(parsedKey)) {

@@ -14,9 +14,13 @@ sonar {
     properties {
         val sonarProjectKey = System.getenv("SONAR_PROJECT_KEY") ?: findProperty("sonar.projectKey")?.toString() ?: ""
         val sonarProjectName = System.getenv("SONAR_PROJECT_NAME") ?: findProperty("sonar.projectName")?.toString() ?: ""
+        val sonarOrganization = System.getenv("SONAR_ORGANIZATION") ?: findProperty("sonar.organization")?.toString() ?: ""
 
         property("sonar.projectKey", sonarProjectKey)
         property("sonar.projectName", sonarProjectName)
+        if (sonarOrganization.isNotBlank()) {
+            property("sonar.organization", sonarOrganization)
+        }
         
         // Exclude test directories from analysis
         property("sonar.exclusions", "**/test/**,**/androidTest/**,**/*Test.kt,**/*Tests.kt")
@@ -24,10 +28,12 @@ sonar {
         
         // Android Lint report path
         property("sonar.androidLint.reportPaths", "app/build/reports/lint-results-debug.xml")
+        property("sonar.coverage.jacoco.xmlReportPaths", "app/build/reports/jacoco/jacocoDebugUnitTestReport/jacocoDebugUnitTestReport.xml")
+        property("sonar.qualitygate.wait", "true")
     }
 }
 
 // Ensure lint report is generated before sonar task
 tasks.named("sonar").configure {
-    dependsOn(":app:lintReportDebug")
+    dependsOn(":app:lintReportDebug", ":app:jacocoDebugUnitTestReport")
 }

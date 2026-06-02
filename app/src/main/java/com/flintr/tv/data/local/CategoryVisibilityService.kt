@@ -122,7 +122,7 @@ class CategoryVisibilityService @Inject constructor(
      * Performs migration from local SharedPreferences to Firestore.
      */
     private suspend fun performMigration(username: String) {
-        Log.d(TAG, "Starting migration from local storage to Firestore for user: $username")
+        Log.d(TAG, "Starting hidden categories migration from local storage to Firestore")
         
         try {
             // Load old data from SharedPreferences

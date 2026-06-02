@@ -47,12 +47,15 @@ object Dimensions {
     val listWidth = 360.0.dp
     val headerHeight = 50.0.dp
     val mobileBreakpoint = 768.0.dp
+    val categorySidebarWidth = 256.0.dp
     
     // Navbar dimensions
     val navbarWidth = 76.0.dp
+    val navbarExpandedWidth = 210.0.dp
     val navbarLogoSize = 40.0.dp
-    val navbarIconSize = 15.0.dp
-    val navbarTextSize = 10.0.dp
+    val navbarIconSize = iconSizeMD
+    val navbarTextSize = 16.0.dp
+    val navbarItemHeight = 48.0.dp
     val navbarLabelSpacing = size4.dp
     val navbarItemSpacing = spacingSM
     val navbarVerticalBarWidth = size4.dp
@@ -65,7 +68,6 @@ object Dimensions {
     val navbarListHorizontalPadding = spacingXS
     
     // Category Sidebar dimensions
-    val categorySidebarWidth = 256.0.dp
     val categoryItemHeight = 72.0.dp
     val categoryScrollOffset = 100.0.dp
     val categoryTextSpacing = size2.dp
@@ -81,10 +83,15 @@ object Dimensions {
     
     // Content Card dimensions
     val contentCardMaxCrossAxisExtent = 133.0.dp
+    val contentCardWidth = contentCardMaxCrossAxisExtent
     val contentCardCrossAxisSpacing = size8.dp
-    val contentCardMainAxisSpacing = size8.dp
-    val contentCardAspectRatio = 0.67f
+    val contentCardMainAxisSpacing = size12.dp
+    val contentCardAspectRatio = 0.69f
+    val contentCardHeight = contentCardWidth / contentCardAspectRatio
     val contentCardGridPadding = size8.dp
+    val contentCardFocusReserve = spacingXS
+    val contentCardFocusedScale = 1.03f
+    val contentGridBottomFocusInset = spacingXL
     
     // Content Card Rating Badge
     val contentCardRatingBadgeTop = 3.0.dp
@@ -94,7 +101,7 @@ object Dimensions {
     val contentCardRatingIconSize = size8.dp
     val contentCardRatingSpacing = 1.0.dp
     val contentCardRatingFontSize = size8.dp
-    val contentCardRatingBgAlpha = 0.75f
+    val contentCardRatingBgAlpha = 0.62f
     
     // Content Card Title Overlay
     val contentCardTitleOverlayPadding = 1.0.dp
@@ -110,4 +117,3 @@ object Dimensions {
     val contentCardTextFallbackFontSize = size8.dp
     val contentCardTextFallbackMaxLines = 4
 }
-

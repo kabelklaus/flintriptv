@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,9 +56,6 @@ import androidx.compose.ui.res.stringResource
 import com.flintr.tv.R
 import kotlinx.coroutines.launch
 
-// Content Card dimensions (from Flutter AppTheme)
-// Using Dimensions object for single source of truth
-private val ContentCardHeight = Dimensions.contentCardMaxCrossAxisExtent / Dimensions.contentCardAspectRatio
 private val ContentCardBorderRadius = 8.dp // radiusMD
 private val ContentCardBorderWidth = 2.dp // categoryBorderWidth
 
@@ -67,8 +65,8 @@ private val ContentCardTitleContainerPaddingH = 1.dp
 private val ContentCardTitleContainerPaddingV = 1.dp
 private val ContentCardTitleFontSize = 8.sp
 private val ContentCardTitleMaxLines = 2
-private val ContentCardTitleGradientAlpha = 0.7f
-private val ContentCardTitleBgAlpha = 0.75f
+private val ContentCardTitleGradientAlpha = 0.55f
+private val ContentCardTitleBgAlpha = 0.62f
 
 // Content Card Colors (from Flutter AppTheme)
 private val ContentCardTextColor = Color.White
@@ -117,6 +115,7 @@ data class LiveStreamCardParams(
 private data class CardVisualState(
     val borderColor: Color,
     val shadowElevation: Float,
+    val scale: Float,
     val backgroundColor: Color,
     val isFocused: Boolean
 )
@@ -250,7 +249,7 @@ private fun Modifier.shadowModifier(
     colors: com.flintr.tv.ui.theme.AppColors,
     shadowElevation: Float
 ): Modifier {
-    return if (isSelected) {
+    return if (isSelected || shadowElevation > 0f) {
         this.shadow(
             elevation = shadowElevation.dp,
             shape = RoundedCornerShape(ContentCardBorderRadius),
@@ -292,8 +291,9 @@ private fun Modifier.buildCardModifier(
     handlers: CardInteractionHandlers
 ): Modifier {
     return this
-        .width(Dimensions.contentCardMaxCrossAxisExtent)
+        .width(Dimensions.contentCardWidth)
         .aspectRatio(Dimensions.contentCardAspectRatio)
+        .scale(visualState.scale)
         .shadowModifier(config.isSelected, colors, visualState.shadowElevation)
         .border(
             width = ContentCardBorderWidth,
@@ -637,14 +637,21 @@ private fun useCardVisualState(
     )
     
     val shadowElevation by animateFloatAsState(
-        targetValue = if (config.isSelected) 4f else 0f,
+        targetValue = if (config.isSelected || isFocused) 6f else 0f,
         animationSpec = tween(durationMillis = 200),
         label = "shadowElevation"
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = if (config.isSelected || isFocused) Dimensions.contentCardFocusedScale else 1f,
+        animationSpec = tween(durationMillis = 200),
+        label = "cardScale"
     )
     
     return CardVisualState(
         borderColor = borderColor,
         shadowElevation = shadowElevation,
+        scale = scale,
         backgroundColor = backgroundColor,
         isFocused = isFocused
     )

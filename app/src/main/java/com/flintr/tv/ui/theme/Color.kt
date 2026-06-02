@@ -113,10 +113,10 @@ object LightColors {
  */
 object DarkColors {
     // Background colors
-    val bgSidebar = Color(0xFF151B26)
+    val bgSidebar = Color(0xFF101722)
     val bgSidebarCard = SharedColors.sidebarCard
-    val bgList = Color(0xFF101622)
-    val bgPreview = Color(0xFF101622)
+    val bgList = Color(0xFF0B111A)
+    val bgPreview = Color(0xFF0B111A)
     val bgSelected = Color(0xFF414B5C)
     val bgHover = Color(0xFF2D2E30)
     val bgCard = Color(0xFF1A2230)
@@ -181,4 +181,3 @@ val OnError = Color(0xFFFFFFFF)
 val FocusHighlight = Color(0xFF03DAC6)
 val FocusBackground = Color(0xFF2A2A2A)
 val black = Color(0xFF000000)
-

@@ -50,10 +50,10 @@ class UserRepository @Inject constructor() {
                 .await()
             
             val exists = documentSnapshot.exists()
-            Log.d(TAG, "Username existence check: $username = $exists")
+            Log.d(TAG, "Username existence check completed: exists=$exists")
             Result.success(exists)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to check username existence: $username", e)
+            Log.e(TAG, "Failed to check username existence", e)
             Result.failure(e)
         }
     }
@@ -75,12 +75,12 @@ class UserRepository @Inject constructor() {
         val existsResult = usernameExists(username)
         val exists = existsResult.getOrElse { 
             // If read fails, log warning but continue with write (fallback)
-            Log.w(TAG, "Failed to check username existence, attempting write anyway: $username", it)
+            Log.w(TAG, "Failed to check username existence, attempting write anyway", it)
             false
         }
         
         if (exists) {
-            Log.d(TAG, "Username already exists, skipping write: $username")
+            Log.d(TAG, "Username already exists, skipping write")
             return Result.success(Unit)
         }
         
@@ -96,10 +96,10 @@ class UserRepository @Inject constructor() {
                 .set(userData)
                 .await()
             
-            Log.d(TAG, "Username saved successfully: $username")
+            Log.d(TAG, "Username saved successfully")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save username: $username", e)
+            Log.e(TAG, "Failed to save username", e)
             Result.failure(e)
         }
     }
@@ -141,10 +141,10 @@ class UserRepository @Inject constructor() {
                 .set(firestoreData, SetOptions.merge())
                 .await()
             
-            Log.d(TAG, "Hidden categories saved successfully for user: $username (${hiddenCategories.values.sumOf { it.size }} categories)")
+            Log.d(TAG, "Hidden categories saved successfully (${hiddenCategories.values.sumOf { it.size }} categories)")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save hidden categories for user: $username", e)
+            Log.e(TAG, "Failed to save hidden categories", e)
             Result.failure(e)
         }
     }
@@ -169,7 +169,7 @@ class UserRepository @Inject constructor() {
                 .await()
             
             if (!documentSnapshot.exists()) {
-                Log.d(TAG, "User document does not exist: $username, returning empty map")
+                Log.d(TAG, "User document does not exist, returning empty map")
                 return Result.success(emptyMap())
             }
             
@@ -177,7 +177,7 @@ class UserRepository @Inject constructor() {
             val hiddenCategoriesData = documentSnapshot["hiddenCategories"] as? Map<String, List<*>>
             
             if (hiddenCategoriesData == null) {
-                Log.d(TAG, "No hiddenCategories field found for user: $username")
+                Log.d(TAG, "No hiddenCategories field found")
                 return Result.success(emptyMap())
             }
             
@@ -193,10 +193,10 @@ class UserRepository @Inject constructor() {
                 }
             }.toMap()
             
-            Log.d(TAG, "Hidden categories loaded successfully for user: $username, count: ${result.values.sumOf { it.size }}")
+            Log.d(TAG, "Hidden categories loaded successfully, count: ${result.values.sumOf { it.size }}")
             Result.success(result)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load hidden categories for user: $username", e)
+            Log.e(TAG, "Failed to load hidden categories", e)
             Result.failure(e)
         }
     }
@@ -218,7 +218,7 @@ class UserRepository @Inject constructor() {
         }
         
         if (localData.isEmpty() || localData.values.all { it.isEmpty() }) {
-            Log.d(TAG, "No local data to migrate for user: $username")
+            Log.d(TAG, "No local hidden categories to migrate")
             return Result.success(Unit)
         }
         
@@ -237,11 +237,11 @@ class UserRepository @Inject constructor() {
             // Save merged data
             val saveResult = saveHiddenCategories(username, mergedData)
             if (saveResult.isSuccess) {
-                Log.d(TAG, "Successfully migrated hidden categories from local to Firestore for user: $username")
+                Log.d(TAG, "Successfully migrated hidden categories from local to Firestore")
             }
             saveResult
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to migrate hidden categories from local to Firestore for user: $username", e)
+            Log.e(TAG, "Failed to migrate hidden categories from local to Firestore", e)
             Result.failure(e)
         }
     }
@@ -286,10 +286,10 @@ class UserRepository @Inject constructor() {
                 .set(firestoreData, SetOptions.merge())
                 .await()
             
-            Log.d(TAG, "Favorites saved successfully for user: $username (${favorites.size} favorites)")
+            Log.d(TAG, "Favorites saved successfully (${favorites.size} favorites)")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save favorites for user: $username", e)
+            Log.e(TAG, "Failed to save favorites", e)
             Result.failure(e)
         }
     }
@@ -314,7 +314,7 @@ class UserRepository @Inject constructor() {
                 .await()
             
             if (!documentSnapshot.exists()) {
-                Log.d(TAG, "User document does not exist: $username, returning empty list")
+                Log.d(TAG, "User document does not exist, returning empty list")
                 return Result.success(emptyList())
             }
             
@@ -322,7 +322,7 @@ class UserRepository @Inject constructor() {
             val favoritesData = documentSnapshot["favorites"] as? List<Map<String, Any?>>
             
             if (favoritesData == null) {
-                Log.d(TAG, "No favorites field found for user: $username")
+                Log.d(TAG, "No favorites field found")
                 return Result.success(emptyList())
             }
             
@@ -352,10 +352,10 @@ class UserRepository @Inject constructor() {
                 }
             }
             
-            Log.d(TAG, "Favorites loaded successfully for user: $username, count: ${result.size}")
+            Log.d(TAG, "Favorites loaded successfully, count: ${result.size}")
             Result.success(result)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load favorites for user: $username", e)
+            Log.e(TAG, "Failed to load favorites", e)
             Result.failure(e)
         }
     }
@@ -380,7 +380,7 @@ class UserRepository @Inject constructor() {
                 .await()
 
             if (!documentSnapshot.exists()) {
-                Log.d(TAG, "User document does not exist: $username, returning empty friends list")
+                Log.d(TAG, "User document does not exist, returning empty friends list")
                 return Result.success(emptyList())
             }
 
@@ -388,15 +388,15 @@ class UserRepository @Inject constructor() {
             val friendsData = documentSnapshot["friends"] as? List<Map<String, Any?>>
 
             if (friendsData == null) {
-                Log.d(TAG, "No friends field found for user: $username")
+                Log.d(TAG, "No friends field found")
                 return Result.success(emptyList())
             }
 
             val result = friendsData.mapNotNull(::parseFriendEntry)
-            Log.d(TAG, "Friends loaded successfully for user: $username, count: ${result.size}")
+            Log.d(TAG, "Friends loaded successfully, count: ${result.size}")
             Result.success(result)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load friends for user: $username", e)
+            Log.e(TAG, "Failed to load friends", e)
             Result.failure(e)
         }
     }
@@ -441,10 +441,10 @@ class UserRepository @Inject constructor() {
                 transaction.set(userDocRef, mapOf("friends" to updatedFriends), SetOptions.merge())
             }.await()
 
-            Log.d(TAG, "Friend added atomically for user: $username, friend=${friendEntry.username}")
+            Log.d(TAG, "Friend added atomically")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to add friend atomically for user: $username", e)
+            Log.e(TAG, "Failed to add friend atomically", e)
             Result.failure(e)
         }
     }
@@ -484,10 +484,10 @@ class UserRepository @Inject constructor() {
                 transaction.update(userDocRef, "favorites", newFavoritesList)
             }.await()
             
-            Log.d(TAG, "Favorite added atomically for user: $username, id=${favorite.id}")
+            Log.d(TAG, "Favorite added atomically")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to add favorite atomically for user: $username", e)
+            Log.e(TAG, "Failed to add favorite atomically", e)
             Result.failure(e)
         }
     }
@@ -530,10 +530,10 @@ class UserRepository @Inject constructor() {
                 }
             }.await()
             
-            Log.d(TAG, "Favorite removed atomically for user: $username, id=$favoriteId")
+            Log.d(TAG, "Favorite removed atomically")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to remove favorite atomically for user: $username", e)
+            Log.e(TAG, "Failed to remove favorite atomically", e)
             Result.failure(e)
         }
     }
@@ -555,7 +555,7 @@ class UserRepository @Inject constructor() {
         }
         
         if (localFavorites.isEmpty()) {
-            Log.d(TAG, "No local favorites to migrate for user: $username")
+            Log.d(TAG, "No local favorites to migrate")
             return Result.success(Unit)
         }
         
@@ -608,10 +608,10 @@ class UserRepository @Inject constructor() {
                 transaction.set(userDocRef, mapOf("favorites" to mergedFavoritesData), SetOptions.merge())
             }.await()
             
-            Log.d(TAG, "Successfully migrated favorites from local to Firestore for user: $username")
+            Log.d(TAG, "Successfully migrated favorites from local to Firestore")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to migrate favorites from local to Firestore for user: $username", e)
+            Log.e(TAG, "Failed to migrate favorites from local to Firestore", e)
             Result.failure(e)
         }
     }
@@ -640,10 +640,10 @@ class UserRepository @Inject constructor() {
                 .set(firestoreData, SetOptions.merge())
                 .await()
             
-            Log.d(TAG, "$successLogMessage for user: $username (${data.size} entries)")
+            Log.d(TAG, "$successLogMessage (${data.size} entries)")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save '$fieldName' for user: $username", e)
+            Log.e(TAG, "Failed to save '$fieldName'", e)
             Result.failure(e)
         }
     }
@@ -700,10 +700,10 @@ class UserRepository @Inject constructor() {
                 .update(updateData)
                 .await()
             
-            Log.d(TAG, "Deleted watch progress key '$key' for user: $username")
+            Log.d(TAG, "Deleted watch progress entry")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete watch progress key '$key' for user: $username", e)
+            Log.e(TAG, "Failed to delete watch progress entry", e)
             Result.failure(e)
         }
     }
@@ -727,7 +727,7 @@ class UserRepository @Inject constructor() {
                 .await()
             
             if (!documentSnapshot.exists()) {
-                Log.d(TAG, "User document does not exist: $username, returning empty map for field $fieldName")
+                Log.d(TAG, "User document does not exist, returning empty map for field $fieldName")
                 return Result.success(emptyMap())
             }
             
@@ -735,7 +735,7 @@ class UserRepository @Inject constructor() {
             val data = documentSnapshot[fieldName] as? Map<String, Map<String, Any?>>
             
             if (data == null) {
-                Log.d(TAG, "No '$fieldName' field found for user: $username")
+                Log.d(TAG, "No '$fieldName' field found")
                 return Result.success(emptyMap())
             }
             
@@ -748,10 +748,10 @@ class UserRepository @Inject constructor() {
                 }
             }.toMap()
             
-            Log.d(TAG, "'$fieldName' loaded successfully for user: $username, count: ${result.size}")
+            Log.d(TAG, "'$fieldName' loaded successfully, count: ${result.size}")
             Result.success(result)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load '$fieldName' for user: $username", e)
+            Log.e(TAG, "Failed to load '$fieldName'", e)
             Result.failure(e)
         }
     }
@@ -801,7 +801,7 @@ class UserRepository @Inject constructor() {
         }
         
         if (localData.isEmpty()) {
-            Log.d(TAG, "$emptyDataMessage for user: $username")
+            Log.d(TAG, emptyDataMessage)
             return Result.success(Unit)
         }
         
@@ -836,10 +836,10 @@ class UserRepository @Inject constructor() {
                 transaction.set(userDocRef, mapOf(fieldName to mergedData), SetOptions.merge())
             }.await()
             
-            Log.d(TAG, "$successLogMessage for user: $username")
+            Log.d(TAG, successLogMessage)
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to migrate '$fieldName' from local to Firestore for user: $username", e)
+            Log.e(TAG, "Failed to migrate '$fieldName' from local to Firestore", e)
             Result.failure(e)
         }
     }

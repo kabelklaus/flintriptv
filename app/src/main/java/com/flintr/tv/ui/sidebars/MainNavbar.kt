@@ -1,8 +1,10 @@
 package com.flintr.tv.ui.screens
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
@@ -27,10 +29,13 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import android.util.Log
+import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
@@ -39,6 +44,7 @@ import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.safeRequestFocus
 
 sealed class HomeDestination {
+    object Home : HomeDestination()
     object LiveTV : HomeDestination()
     object VOD : HomeDestination()
     object Series : HomeDestination()
@@ -88,8 +94,8 @@ private fun calculateItemColors(
 ): ItemColors {
     val backgroundColor by animateColorAsState(
         targetValue = when {
-            isSelected -> colors.accentColorHoverBg
-            isFocused -> colors.bgHover
+            isSelected -> colors.accentColor
+            isFocused -> colors.accentColorHoverBg
             else -> Color.Transparent
         },
         animationSpec = tween<Color>(
@@ -100,19 +106,19 @@ private fun calculateItemColors(
     )
     
     val borderColor by animateColorAsState(
-        targetValue = if (isSelected || isFocused) colors.accentColor else Color.Transparent,
+        targetValue = if (isFocused) colors.accentColor else Color.Transparent,
         animationSpec = tween(durationMillis = 200),
         label = "borderColor"
     )
     
     val iconColor = when {
-        isSelected -> colors.accentColor
+        isSelected -> Color.White
         isFocused -> colors.accentColor
         else -> colors.iconColor
     }
     
     val textColor = when {
-        isSelected -> colors.accentColor
+        isSelected -> Color.White
         isFocused -> colors.textPrimary
         else -> colors.textSecondary
     }
@@ -132,10 +138,15 @@ private fun Modifier.createItemModifier(
     return this
         .fillMaxWidth()
         .then(
+            if (focusConfig.focusRequester != null) {
+                Modifier.focusRequester(focusConfig.focusRequester)
+            } else {
+                Modifier
+            }
+        )
+        .then(
             if (focusConfig.externalFocusRequester != null) {
                 Modifier.focusRequester(focusConfig.externalFocusRequester)
-            } else if (focusConfig.focusRequester != null) {
-                Modifier.focusRequester(focusConfig.focusRequester)
             } else {
                 Modifier
             }
@@ -165,6 +176,16 @@ private fun Modifier.createItemModifier(
 }
 
 @Composable
+private fun rememberNavbarWidth(isExpanded: Boolean) = animateDpAsState(
+    targetValue = if (isExpanded) Dimensions.navbarExpandedWidth else Dimensions.navbarWidth,
+    animationSpec = tween(
+        durationMillis = 180,
+        easing = FastOutSlowInEasing
+    ),
+    label = "navbarWidth"
+)
+
+@Composable
 private fun NavItemBackground(
     colors: ItemColors,
     modifier: Modifier = Modifier,
@@ -173,6 +194,7 @@ private fun NavItemBackground(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .height(Dimensions.navbarItemHeight)
             .background(
                 color = colors.backgroundColor,
                 shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
@@ -203,8 +225,35 @@ private fun NavItemContent(
     title: String,
     icon: ImageVector,
     iconColor: Color,
-    textColor: Color
+    textColor: Color,
+    isExpanded: Boolean
 ) {
+    if (isExpanded) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.navbarLabelSpacing),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                modifier = Modifier.size(Dimensions.navbarIconSize),
+                tint = iconColor
+            )
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                fontSize = Dimensions.navbarTextSize.value.sp,
+                fontWeight = FontWeight.W500,
+                color = textColor,
+                textAlign = TextAlign.Start,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        return
+    }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Dimensions.navbarLabelSpacing)
@@ -214,13 +263,6 @@ private fun NavItemContent(
             contentDescription = title,
             modifier = Modifier.size(Dimensions.navbarIconSize),
             tint = iconColor
-        )
-        Text(
-            text = title,
-            fontSize = Dimensions.navbarTextSize.value.sp,
-            fontWeight = FontWeight.W500,
-            color = textColor,
-            textAlign = TextAlign.Center
         )
     }
 }
@@ -239,11 +281,11 @@ fun HomeSidebar(
     
     val navItems = remember {
         listOf(
+            NavItem("Home", Icons.Default.Home, HomeDestination.Home),
             NavItem("Suche", Icons.Default.Search, HomeDestination.Search),
             NavItem("TV", Icons.Default.Tv, HomeDestination.LiveTV),
             NavItem("Movies", Icons.Default.Movie, HomeDestination.VOD),
             NavItem("Series", Icons.Default.PlayArrow, HomeDestination.Series),
-            NavItem("EPG", Icons.Default.Schedule, HomeDestination.EPG),
             NavItem("Settings", Icons.Default.Settings, HomeDestination.Settings)
         )
     }
@@ -253,6 +295,9 @@ fun HomeSidebar(
     }
     
     var pendingFocusDestination by remember { mutableStateOf<HomeDestination?>(null) }
+    var focusedDestination by remember { mutableStateOf<HomeDestination?>(null) }
+    val isExpanded = focusedDestination != null
+    val navbarWidth by rememberNavbarWidth(isExpanded)
     
     LaunchedEffect(selectedDestination) {
         pendingFocusDestination = selectedDestination
@@ -260,7 +305,7 @@ fun HomeSidebar(
     
     Column(
         modifier = modifier
-            .width(Dimensions.navbarWidth)
+            .width(navbarWidth)
             .fillMaxHeight()
             .background(SharedColors.navSidebarBg)
     ) {
@@ -304,7 +349,17 @@ fun HomeSidebar(
                         },
                         onNavigateRight = onNavigateRight
                     ),
-                    colors = colors
+                    colors = colors,
+                    isExpanded = isExpanded,
+                    onFocusChanged = { destination, isFocused ->
+                        focusedDestination = if (isFocused) {
+                            destination
+                        } else if (focusedDestination == destination) {
+                            null
+                        } else {
+                            focusedDestination
+                        }
+                    }
                 )
             }
         }
@@ -322,11 +377,10 @@ private fun NavbarLogo() {
             ),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = Icons.Default.Tv,
-            contentDescription = "Logo",
-            modifier = Modifier.size(Dimensions.navbarLogoSize),
-            tint = Color.White
+        Image(
+            painter = painterResource(id = R.drawable.ic_launcher_foreground),
+            contentDescription = "Flintr TV Logo",
+            modifier = Modifier.size(Dimensions.iconSizeXL)
         )
     }
 }
@@ -337,7 +391,7 @@ private fun getExternalFocusRequester(
     externalFocusRequested: Boolean,
     focusRequester: FocusRequester
 ): FocusRequester? {
-    return if (selectedDestination == destination && externalFocusRequested) {
+    return if (selectedDestination == destination) {
         focusRequester
     } else {
         null
@@ -351,6 +405,8 @@ internal fun HomeSidebarItem(
     focusConfig: NavItemFocusConfig,
     callbacks: NavItemCallbacks,
     colors: com.flintr.tv.ui.theme.AppColors,
+    isExpanded: Boolean,
+    onFocusChanged: (HomeDestination, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isSelected = navItem.destination == state.selectedDestination
@@ -380,6 +436,7 @@ internal fun HomeSidebarItem(
     val handleFocusChanged = { focused: Boolean ->
         val wasFocused = isFocused
         isFocused = focused
+        onFocusChanged(navItem.destination, focused)
         if (isFocused != wasFocused) {
             if (isFocused) {
                 Log.i("TVFocus", "[MainNavbar] ✅ FOCUSED: '${navItem.title}' (Selected: $isSelected)")
@@ -414,9 +471,9 @@ internal fun HomeSidebarItem(
                 title = navItem.title,
                 icon = navItem.icon,
                 iconColor = itemColors.iconColor,
-                textColor = itemColors.textColor
+                textColor = itemColors.textColor,
+                isExpanded = isExpanded
             )
         }
     }
 }
-
