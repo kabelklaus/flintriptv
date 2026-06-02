@@ -74,4 +74,4 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:jacocoDebugUnitTestReport sonar --info
+        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:jacocoDebugUnitTestReport sonar --info -Dsonar.scanner.skipJreProvisioning=true
