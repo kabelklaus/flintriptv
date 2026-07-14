@@ -320,7 +320,9 @@ fun HomeSidebar(
                         pendingFocusDestination = pendingFocusDestination
                     ),
                     focusConfig = NavItemFocusConfig(
-                        focusRequester = focusRequesters[index]
+                        // The shared requester is used by the category sidebar to return
+                        // focus to the currently active navigation destination.
+                        focusRequester = if (navItem.destination == selectedDestination) focusRequester else focusRequesters[index]
                     ),
                     callbacks = NavItemCallbacks(
                         onClick = {
