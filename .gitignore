@@ -112,3 +112,13 @@ Thumbs.db
 examples/
 
 .vscode/
+
+# Firestore recovery artifacts (contain real user data - never commit)
+firestore-recovery-*/
+
+# Reference checkouts of third-party projects
+references/
+
+# Local scratch/working files
+test.txt
+konzept-backup.md
