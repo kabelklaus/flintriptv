@@ -24,7 +24,7 @@ import com.flintr.tv.ui.theme.Dimensions
  */
 private fun calculateGridColumns(gridWidth: androidx.compose.ui.unit.Dp): Int {
     return if (gridWidth > 0.dp) {
-        val cardWidth = Dimensions.contentCardWidth + Dimensions.contentCardCrossAxisSpacing
+        val cardWidth = Dimensions.contentCardMaxCrossAxisExtent + Dimensions.contentCardCrossAxisSpacing
         (gridWidth / cardWidth).toInt().coerceAtLeast(1)
     } else {
         1
@@ -59,7 +59,6 @@ private fun createGridModifier(
 ): Modifier {
     return Modifier
         .fillMaxSize()
-        .padding(bottom = Dimensions.contentGridBottomFocusInset)
         .focusRequester(focusRequester)
         .onGloballyPositioned { coordinates ->
             with(density) {
@@ -105,7 +104,7 @@ fun <T> ContentGridLayout(
         } else {
             LazyVerticalGrid(
                 state = params.lazyGridState,
-                columns = GridCells.Adaptive(minSize = Dimensions.contentCardWidth),
+                columns = GridCells.Adaptive(minSize = Dimensions.contentCardMaxCrossAxisExtent),
                 modifier = createGridModifier(
                     focusRequester = params.focusRequester,
                     density = density,
@@ -120,9 +119,7 @@ fun <T> ContentGridLayout(
                     end = Dimensions.contentCardGridPadding
                 ),
                 horizontalArrangement = Arrangement.spacedBy(Dimensions.contentCardCrossAxisSpacing),
-                verticalArrangement = Arrangement.spacedBy(
-                    Dimensions.contentCardMainAxisSpacing - Dimensions.contentCardFocusReserve
-                )
+                verticalArrangement = Arrangement.spacedBy(Dimensions.contentCardMainAxisSpacing)
             ) {
                 items(
                     count = params.items.size,
@@ -135,24 +132,19 @@ fun <T> ContentGridLayout(
                         contentIdSelector = params.contentIdSelector,
                         focusRequesterMap = params.focusRequesterMap
                     )
-                    Box(
-                        modifier = Modifier.height(
-                            Dimensions.contentCardHeight + Dimensions.contentCardFocusReserve
-                        )
-                    ) {
-                        content(
-                            item,
-                            index,
-                            columnIndex,
-                            { _ ->
-                                // onFocusChanged is passed through to content composable
-                                // No need to track focusedIndex here as it's unused
-                            },
-                            cardFocusRequester
-                        )
-                    }
+                    content(
+                        item,
+                        index,
+                        columnIndex,
+                        { _ ->
+                            // onFocusChanged is passed through to content composable
+                            // No need to track focusedIndex here as it's unused
+                        },
+                        cardFocusRequester
+                    )
                 }
             }
         }
     }
 }
+

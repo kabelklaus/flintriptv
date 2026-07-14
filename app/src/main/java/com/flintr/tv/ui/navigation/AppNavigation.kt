@@ -68,9 +68,6 @@ import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
 import com.flintr.tv.ui.components.SearchOverlay
 import com.flintr.tv.ui.components.SearchResultCallbacks
-import com.flintr.tv.ui.home.HomeContent
-import com.flintr.tv.ui.home.HomeContentCache
-import com.flintr.tv.ui.home.HomeContentParams
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
@@ -269,7 +266,6 @@ private fun com.flintr.tv.data.model.Episode.toContentId(seriesId: Int, seasonNu
  */
 private fun HomeDestination.toDestinationType(): com.flintr.tv.data.model.DestinationType {
     return when (this) {
-        is HomeDestination.Home -> com.flintr.tv.data.model.DestinationType.UNKNOWN
         is HomeDestination.LiveTV -> com.flintr.tv.data.model.DestinationType.LIVE_TV
         is HomeDestination.VOD -> com.flintr.tv.data.model.DestinationType.VOD
         is HomeDestination.Series -> com.flintr.tv.data.model.DestinationType.SERIES
@@ -292,7 +288,6 @@ private fun com.flintr.tv.data.model.DestinationType.toHomeDestination(): HomeDe
 
 private const val LOG_TAG_MAIN_CONTENT_SCREEN = "[MainContentScreen]"
 private const val MIN_LOADING_DURATION_MS = 300L
-private const val DESTINATION_KEY_HOME = "home"
 private const val DESTINATION_KEY_LIVE_TV = "live_tv"
 private const val DESTINATION_KEY_VOD = "vod"
 private const val DESTINATION_KEY_SERIES = "series"
@@ -304,7 +299,6 @@ private const val DESTINATION_KEY_SETTINGS = "settings"
  * Converts HomeDestination to a saveable key for rememberSaveable state restoration.
  */
 private fun HomeDestination.toSaveKey(): String = when (this) {
-    is HomeDestination.Home -> DESTINATION_KEY_HOME
     is HomeDestination.LiveTV -> DESTINATION_KEY_LIVE_TV
     is HomeDestination.VOD -> DESTINATION_KEY_VOD
     is HomeDestination.Series -> DESTINATION_KEY_SERIES
@@ -317,7 +311,6 @@ private fun HomeDestination.toSaveKey(): String = when (this) {
  * Restores HomeDestination from saveable key with LiveTV as fallback.
  */
 private fun String.toHomeDestination(): HomeDestination = when (this) {
-    DESTINATION_KEY_HOME -> HomeDestination.Home
     DESTINATION_KEY_LIVE_TV -> HomeDestination.LiveTV
     DESTINATION_KEY_VOD -> HomeDestination.VOD
     DESTINATION_KEY_SERIES -> HomeDestination.Series
@@ -830,9 +823,6 @@ private fun clearStreamsForDestination(
     viewModel: MainViewModel
 ) {
     when (destination) {
-        is HomeDestination.Home -> {
-            // Home uses cached aggregate data, no tab stream state to clear.
-        }
         is HomeDestination.LiveTV -> viewModel.clearLiveStreams()
         is HomeDestination.VOD -> viewModel.clearVodStreams()
         is HomeDestination.Series -> viewModel.clearSeries()
@@ -848,59 +838,6 @@ private fun clearStreamsForDestination(
     }
 }
 
-private fun createHomeVodClickHandler(
-    params: MainContentBodyParams
-): (VodStream) -> Unit {
-    return { vod ->
-        params.credentials?.let { creds ->
-            val streamUrl = vod.getStreamUrl(
-                creds.serverUrl,
-                creds.username,
-                creds.password
-            )
-            val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
-            params.navController.logAndNavigate(route, "AppNavigation") {
-                "🏠 Home VOD click - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, route: $route"
-            }
-        }
-    }
-}
-
-private fun createHomeSeriesClickHandler(
-    params: MainContentBodyParams
-): (Series) -> Unit {
-    return { series ->
-        val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
-        params.navController.logAndNavigate(route, "AppNavigation") {
-            "🏠 Home Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
-        }
-    }
-}
-
-private fun createHomeLiveStreamClickHandler(
-    params: MainContentBodyParams
-): (LiveStream) -> Unit {
-    return { stream ->
-        params.credentials?.let { creds ->
-            val streamUrl = stream.getStreamUrl(
-                creds.serverUrl,
-                creds.username,
-                creds.password
-            )
-            val route = Screen.Player.createRouteForLive(
-                streamUrl,
-                stream.name,
-                stream.categoryId,
-                stream.categoryName,
-                stream.streamId
-            )
-            params.navController.logAndNavigate(route, "AppNavigation") {
-                "🏠 Home LiveTV click - stream.name: ${stream.name}, streamId: ${stream.streamId}, route: $route"
-            }
-        }
-    }
-}
-
 /**
  * Data class grouping parameters for MainContentBody
  */
@@ -909,7 +846,6 @@ private data class MainContentBodyParams(
     val selectedCategoryId: String?,
     val credentials: Credentials?,
     val mainViewModel: MainViewModel,
-    val homeContentCache: HomeContentCache,
     val contentListFocusRequester: FocusRequester,
     val navController: NavHostController,
     val lazyGridState: LazyGridState,
@@ -1097,29 +1033,6 @@ private fun createInProgressClickHandlers(
 }
 
 /**
- * Renders Home content section.
- */
-@Composable
-private fun HomeContentSection(params: MainContentBodyParams) {
-    val hiddenCategories by params.dependencies.categoryVisibilityService.hiddenCategories.collectAsState()
-    HomeContent(
-        params = HomeContentParams(
-            cacheService = params.dependencies.cacheService,
-            homeContentCache = params.homeContentCache,
-            favoritesRepository = params.dependencies.favoritesRepository,
-            watchProgressService = params.dependencies.watchProgressService,
-            ioDispatcher = params.dependencies.ioDispatcher,
-            hiddenCategories = hiddenCategories,
-            focusRequester = params.contentListFocusRequester,
-            onNavigateLeft = params.onNavigateToNavbar,
-            onVodClick = createHomeVodClickHandler(params),
-            onSeriesClick = createHomeSeriesClickHandler(params),
-            onLiveStreamClick = createHomeLiveStreamClickHandler(params)
-        )
-    )
-}
-
-/**
  * Renders LiveTV content section.
  */
 @Composable
@@ -1263,9 +1176,6 @@ private fun MainContentBody(
     params: MainContentBodyParams
 ) {
     when (params.destination) {
-        is HomeDestination.Home -> {
-            HomeContentSection(params)
-        }
         is HomeDestination.LiveTV -> {
             LiveTVContentSection(params)
         }
@@ -1656,7 +1566,6 @@ private data class MainContentScaffoldParams(
     val mainViewModel: MainViewModel,
     val searchClickHandlers: SearchClickHandlers,
     val credentials: Credentials?,
-    val homeContentCache: HomeContentCache,
     val navController: NavHostController,
     val contentListFocusRequester: FocusRequester,
     val lazyGridState: LazyGridState,
@@ -1723,7 +1632,6 @@ private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params
                             selectedCategoryId = selectedCategoryId,
                             credentials = credentials,
                             mainViewModel = mainViewModel,
-                            homeContentCache = homeContentCache,
                             contentListFocusRequester = contentListFocusRequester,
                             navController = navController,
                             lazyGridState = lazyGridState,
@@ -1958,7 +1866,6 @@ private fun handleDestinationChangeInternal(
         // Smart sync: Only sync if enough time has passed since last sync
         // Only sync for content tabs (LiveTV, VOD, Series, EPG), not for Search/Settings
         if (destination in listOf(
-                HomeDestination.Home,
                 HomeDestination.LiveTV,
                 HomeDestination.VOD,
                 HomeDestination.Series,
@@ -2004,7 +1911,7 @@ fun MainContentScreen(
     // State initialization
     val credentials = dependencies.credentialsRepository.getCredentials()
     val context = LocalContext.current
-    var selectedDestinationKey by rememberSaveable { mutableStateOf(DESTINATION_KEY_HOME) }
+    var selectedDestinationKey by rememberSaveable { mutableStateOf(DESTINATION_KEY_LIVE_TV) }
     val selectedDestination = selectedDestinationKey.toHomeDestination()
     var selectedCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -2014,7 +1921,6 @@ fun MainContentScreen(
     var showSearchOverlay by remember { mutableStateOf(false) }
     val focusState = rememberMainContentFocusState()
     val coroutineScope = rememberCoroutineScope()
-    val homeContentCache = remember { HomeContentCache() }
     
     // ViewModel state collection
     val searchState by mainViewModel.searchState.collectAsState()
@@ -2254,7 +2160,6 @@ fun MainContentScreen(
             mainViewModel = mainViewModel,
             searchClickHandlers = searchClickHandlers,
             credentials = credentials,
-            homeContentCache = homeContentCache,
             navController = navController,
             contentListFocusRequester = contentListFocusRequester,
             lazyGridState = lazyGridState,

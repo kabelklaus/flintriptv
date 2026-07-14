@@ -40,21 +40,13 @@ private fun createPositionedCallback(
  */
 @Composable
 private fun createNavbarOnNavigateRight(
-    selectedDestination: HomeDestination,
     showCategories: Boolean,
-    onNavigateToCategorySidebar: () -> Unit,
-    onNavigateToContentList: () -> Unit
+    onNavigateToCategorySidebar: () -> Unit
 ): (() -> Unit)? {
-    return when {
-        selectedDestination is HomeDestination.Home -> {
-            { onNavigateToContentList() }
-        }
-        showCategories -> {
-            { onNavigateToCategorySidebar() }
-        }
-        else -> {
-            null // Favorites, EPG, Settings haben keine Kategorien
-        }
+    return if (showCategories) {
+        { onNavigateToCategorySidebar() }
+    } else {
+        null // Favorites, EPG, Settings haben keine Kategorien
     }
 }
 
@@ -144,12 +136,7 @@ fun MainLayout(
             },
             focusRequester = params.navbarFocusRequester,
             externalFocusRequested = externalFocusRequested,
-            onNavigateRight = createNavbarOnNavigateRight(
-                selectedDestination = params.selectedDestination,
-                showCategories = params.showCategories,
-                onNavigateToCategorySidebar = params.onNavigateToCategorySidebar,
-                onNavigateToContentList = params.onNavigateToContentList
-            ),
+            onNavigateRight = createNavbarOnNavigateRight(params.showCategories, params.onNavigateToCategorySidebar),
             onSearchClick = params.onSearchClick,
             modifier = Modifier.createNavbarModifier(params.onNavbarReady)
         )
@@ -175,7 +162,7 @@ fun MainLayout(
                 ),
                 modifier = Modifier.createCategorySidebarModifier(params.onCategorySidebarReady)
             )
-        } else if (params.selectedDestination !is HomeDestination.Home) {
+        } else {
             // Empty space for EPG or other screens without categories
             Spacer(
                 modifier = Modifier

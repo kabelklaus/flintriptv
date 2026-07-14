@@ -253,10 +253,6 @@ class DataCacheService @Inject constructor(
         return loadCachedDataInternal()
     }
 
-    fun getCacheTimestamp(): String? {
-        return sharedPreferences.getString(KEY_CACHE_TIMESTAMP, null)
-    }
-
     /**
      * Loads cached data asynchronously on a background thread.
      * Use this instead of loadCachedData() to avoid blocking the main thread.

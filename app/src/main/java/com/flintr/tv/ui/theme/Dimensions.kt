@@ -83,15 +83,10 @@ object Dimensions {
     
     // Content Card dimensions
     val contentCardMaxCrossAxisExtent = 133.0.dp
-    val contentCardWidth = contentCardMaxCrossAxisExtent
     val contentCardCrossAxisSpacing = size8.dp
-    val contentCardMainAxisSpacing = size12.dp
-    val contentCardAspectRatio = 0.69f
-    val contentCardHeight = contentCardWidth / contentCardAspectRatio
+    val contentCardMainAxisSpacing = size8.dp
+    val contentCardAspectRatio = 0.67f
     val contentCardGridPadding = size8.dp
-    val contentCardFocusReserve = spacingXS
-    val contentCardFocusedScale = 1.03f
-    val contentGridBottomFocusInset = spacingXL
     
     // Content Card Rating Badge
     val contentCardRatingBadgeTop = 3.0.dp
@@ -101,7 +96,7 @@ object Dimensions {
     val contentCardRatingIconSize = size8.dp
     val contentCardRatingSpacing = 1.0.dp
     val contentCardRatingFontSize = size8.dp
-    val contentCardRatingBgAlpha = 0.62f
+    val contentCardRatingBgAlpha = 0.75f
     
     // Content Card Title Overlay
     val contentCardTitleOverlayPadding = 1.0.dp

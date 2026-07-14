@@ -44,7 +44,6 @@ import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.safeRequestFocus
 
 sealed class HomeDestination {
-    object Home : HomeDestination()
     object LiveTV : HomeDestination()
     object VOD : HomeDestination()
     object Series : HomeDestination()
@@ -281,7 +280,6 @@ fun HomeSidebar(
     
     val navItems = remember {
         listOf(
-            NavItem("Home", Icons.Default.Home, HomeDestination.Home),
             NavItem("Suche", Icons.Default.Search, HomeDestination.Search),
             NavItem("TV", Icons.Default.Tv, HomeDestination.LiveTV),
             NavItem("Movies", Icons.Default.Movie, HomeDestination.VOD),
