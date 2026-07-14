@@ -322,11 +322,7 @@ fun HomeSidebar(
                     focusConfig = NavItemFocusConfig(
                         // The shared requester is used by the category sidebar to return
                         // focus to the currently active navigation destination.
-                        focusRequester = if (navItem.destination == selectedDestination) {
-                            focusRequester
-                        } else {
-                            focusRequesters[index]
-                        }
+                        focusRequester = if (navItem.destination == selectedDestination) focusRequester else focusRequesters[index]
                     ),
                     callbacks = NavItemCallbacks(
                         onClick = {
