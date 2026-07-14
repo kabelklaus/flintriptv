@@ -47,12 +47,15 @@ object Dimensions {
     val listWidth = 360.0.dp
     val headerHeight = 50.0.dp
     val mobileBreakpoint = 768.0.dp
+    val categorySidebarWidth = 256.0.dp
     
     // Navbar dimensions
     val navbarWidth = 76.0.dp
+    val navbarExpandedWidth = 210.0.dp
     val navbarLogoSize = 40.0.dp
-    val navbarIconSize = 15.0.dp
-    val navbarTextSize = 10.0.dp
+    val navbarIconSize = iconSizeMD
+    val navbarTextSize = 16.0.dp
+    val navbarItemHeight = 48.0.dp
     val navbarLabelSpacing = size4.dp
     val navbarItemSpacing = spacingSM
     val navbarVerticalBarWidth = size4.dp
@@ -65,7 +68,6 @@ object Dimensions {
     val navbarListHorizontalPadding = spacingXS
     
     // Category Sidebar dimensions
-    val categorySidebarWidth = 256.0.dp
     val categoryItemHeight = 72.0.dp
     val categoryScrollOffset = 100.0.dp
     val categoryTextSpacing = size2.dp
@@ -110,4 +112,3 @@ object Dimensions {
     val contentCardTextFallbackFontSize = size8.dp
     val contentCardTextFallbackMaxLines = 4
 }
-

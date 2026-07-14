@@ -149,7 +149,7 @@ class WatchedHistoryService @Inject constructor(
      * Performs migration from local SharedPreferences to Firestore.
      */
     private suspend fun performMigration(username: String) {
-        Log.d(TAG, "Starting migration from local storage to Firestore for user: $username")
+        Log.d(TAG, "Starting watched history migration from local storage to Firestore")
         
         try {
             // Load old data from SharedPreferences
@@ -288,7 +288,7 @@ class WatchedHistoryService @Inject constructor(
     ): Boolean = withContext(ioDispatcher) {
         try {
             val key = generateKey(contentType, streamId, seriesId, episodeId)
-            Log.d(TAG, "Marking as watched: key=$key, contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId, name: $name, genre: $genre, categoryName: $categoryName")
+            Log.d(TAG, "Marking item as watched")
 
             val watchedItem = WatchedItem(
                 contentType = contentType,
@@ -312,10 +312,10 @@ class WatchedHistoryService @Inject constructor(
             // Save to Firestore asynchronously
             saveToFirestore(updatedMap)
             
-            Log.d(TAG, "Marked as watched successfully: key=$key, name: $name, genre: $genre, categoryName: $categoryName")
+            Log.d(TAG, "Marked item as watched successfully")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Error marking as watched for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
+            Log.e(TAG, "Error marking item as watched", e)
             false
         }
     }
@@ -333,10 +333,10 @@ class WatchedHistoryService @Inject constructor(
             val key = generateKey(contentType, streamId, seriesId, episodeId)
             val watchedMap = _watchedHistory.value
             val isWatched = watchedMap.containsKey(key)
-            Log.d(TAG, "isWatched check: key=$key, result=$isWatched")
+            Log.d(TAG, "isWatched check completed: result=$isWatched")
             return@withContext isWatched
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking if watched for contentType: $contentType, streamId: $streamId, seriesId: $seriesId, episodeId: $episodeId", e)
+            Log.e(TAG, "Error checking if item is watched", e)
             false
         }
     }

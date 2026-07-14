@@ -1654,6 +1654,7 @@ private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params
                     searchState = searchState,
                     onQueryChange = { mainViewModel.searchContent(it) },
                     onSearchImmediate = { mainViewModel.searchContentImmediate() },
+                    onSearchScopeToggle = { mainViewModel.toggleSearchScope(it) },
                     onDismiss = {
                         mainViewModel.clearSearch()
                         onSearchOverlayDismiss()

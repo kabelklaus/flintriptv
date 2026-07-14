@@ -1,4 +1,7 @@
 import org.gradle.api.GradleException
+import org.gradle.api.tasks.testing.Test
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
+import org.gradle.testing.jacoco.tasks.JacocoReport
 import java.util.Properties
 
 plugins {
@@ -11,6 +14,7 @@ plugins {
     alias(libs.plugins.googleGmsServices)
     alias(libs.plugins.firebase.perf)
     alias(libs.plugins.firebase.crashlytics)
+    id("jacoco")
 }
 
 android {
@@ -23,8 +27,8 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 97
-        versionName = "2.39"
+        versionCode = 98
+        versionName = "2.40"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -98,6 +102,52 @@ android {
         disable += "AutoboxingStateCreation"  // Bug in Lint mit Kotlin 2.x + Compose
         abortOnError = false  // Lint-Fehler brechen Build nicht ab
     }
+}
+
+tasks.withType<Test>().configureEach {
+    extensions.configure<JacocoTaskExtension> {
+        isIncludeNoLocationClasses = true
+        excludes = listOf("jdk.internal.*")
+    }
+}
+
+tasks.register<JacocoReport>("jacocoDebugUnitTestReport") {
+    dependsOn("testDebugUnitTest")
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+
+    val buildDirectory = layout.buildDirectory.get().asFile
+    val coverageExclusions = listOf(
+        "**/R.class",
+        "**/R$*.class",
+        "**/BuildConfig.*",
+        "**/Manifest*.*",
+        "**/*Test*.*",
+        "**/*_Factory.*",
+        "**/*_MembersInjector.*",
+        "**/*Hilt*.*",
+        "**/*Dagger*.*"
+    )
+
+    classDirectories.setFrom(
+        files(
+            fileTree("$buildDirectory/intermediates/classes/debug/transformDebugClassesWithAsm/dirs") {
+                exclude(coverageExclusions)
+            }
+        )
+    )
+    sourceDirectories.setFrom(files("src/main/java", "src/main/kotlin"))
+    executionData.setFrom(
+        fileTree(buildDirectory) {
+            include(
+                "jacoco/testDebugUnitTest.exec",
+                "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec"
+            )
+        }
+    )
 }
 
 dependencies {

@@ -54,12 +54,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient {
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-        
         return OkHttpClient.Builder()
-            .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
@@ -115,6 +110,7 @@ object AppModule {
         // Add logging only in debug builds
         if (com.flintr.tv.BuildConfig.DEBUG) {
             val loggingInterceptor = HttpLoggingInterceptor().apply {
+                redactHeader("Authorization")
                 level = HttpLoggingInterceptor.Level.BODY
             }
             builder.addInterceptor(loggingInterceptor)
@@ -182,6 +178,7 @@ object AppModule {
         // Add logging only in debug builds
         if (com.flintr.tv.BuildConfig.DEBUG) {
             val loggingInterceptor = HttpLoggingInterceptor().apply {
+                redactHeader("Authorization")
                 level = HttpLoggingInterceptor.Level.BODY
             }
             builder.addInterceptor(loggingInterceptor)

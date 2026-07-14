@@ -26,7 +26,7 @@
         android:banner="@drawable/tv_banner"
         android:supportsRtl="true"
         android:theme="@style/Theme.Flintrtv"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
             android:exported="true">

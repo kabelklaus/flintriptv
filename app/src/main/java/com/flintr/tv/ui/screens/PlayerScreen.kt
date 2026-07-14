@@ -676,7 +676,7 @@ private fun HideSystemUIEffect(view: android.view.View) {
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         
         onDispose {
-            windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+            // System bars stay hidden app-wide.
         }
     }
 }

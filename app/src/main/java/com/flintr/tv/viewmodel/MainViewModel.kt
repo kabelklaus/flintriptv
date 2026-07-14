@@ -127,10 +127,10 @@ class MainViewModel @Inject constructor(
                 userRepository.saveUsername(credentials.username).fold(
                     onSuccess = {
                         savedStateHandle[KEY_USERNAME_WRITTEN_THIS_SESSION] = true
-                        Log.d("MainViewModel", "Username saved to Firestore on app start: ${credentials.username}")
+                        Log.d("MainViewModel", "Username saved to Firestore on app start")
                     },
                     onFailure = { exception ->
-                        Log.w("MainViewModel", "Failed to save username to Firestore on app start: ${credentials.username}", exception)
+                        Log.w("MainViewModel", "Failed to save username to Firestore on app start", exception)
                     }
                 )
             }
@@ -161,7 +161,7 @@ class MainViewModel @Inject constructor(
         repository.getServerInfo(credentials.username, credentials.password)
             .onSuccess { serverInfo ->
                 _uiState.value = _uiState.value.copy(serverInfo = serverInfo)
-                Log.d("MainViewModel", "Server info loaded successfully: $serverInfo")
+                Log.d("MainViewModel", "Server info loaded successfully")
             }
             .onFailure { error ->
                 if (cacheService.shouldUseCacheForBrowsing() && error.isConnectivityError()) {
@@ -338,18 +338,24 @@ class MainViewModel @Inject constructor(
     fun searchContent(query: String) {
         // Store original query for TextField display, use trimmed for search logic
         val trimmedQuery = query.trim()
-        _searchState.value = _searchState.value.copy(
-            query = query, // Keep original for TextField display
-            showMinLengthHint = trimmedQuery.isNotEmpty() && trimmedQuery.length < MIN_QUERY_LENGTH
-        )
-        
-        // Clear results if query is too short
-        if (trimmedQuery.length < MIN_QUERY_LENGTH) {
-            _searchState.value = _searchState.value.copy(
-                results = SearchResults(),
-                isSearching = false
-            )
+        val currentState = _searchState.value
+        val queryChanged = query != currentState.query
+
+        if (queryChanged) {
+            searchJob?.cancel()
         }
+
+        _searchState.value = currentState.copy(
+            query = query, // Keep original for TextField display
+            results = if (queryChanged) SearchResults() else currentState.results,
+            isSearching = if (queryChanged || trimmedQuery.length < MIN_QUERY_LENGTH) {
+                false
+            } else {
+                currentState.isSearching
+            },
+            showMinLengthHint = trimmedQuery.isNotEmpty() && trimmedQuery.length < MIN_QUERY_LENGTH,
+            hasSearched = if (queryChanged) false else currentState.hasSearched
+        )
     }
     
     /**
@@ -362,7 +368,8 @@ class MainViewModel @Inject constructor(
         if (trimmedQuery.length < MIN_QUERY_LENGTH) {
             _searchState.value = _searchState.value.copy(
                 results = SearchResults(),
-                isSearching = false
+                isSearching = false,
+                hasSearched = false
             )
             return
         }
@@ -371,21 +378,47 @@ class MainViewModel @Inject constructor(
             performSearch(trimmedQuery)
         }
     }
+
+    fun toggleSearchScope(scope: SearchScope) {
+        val currentState = _searchState.value
+        val updatedState = currentState.toggledScope(scope)
+        val shouldRefreshSearch = currentState.hasSearched &&
+            currentState.query.trim().length >= MIN_QUERY_LENGTH
+
+        if (updatedState != currentState) {
+            searchJob?.cancel()
+            _searchState.value = updatedState
+            if (shouldRefreshSearch) {
+                searchJob = viewModelScope.launch {
+                    performSearch(updatedState.query.trim())
+                }
+            }
+        }
+    }
     
     /**
      * Performs the actual search operation
      * Note: cachedData is loaded locally and not stored in ViewModel to prevent OutOfMemoryError
      */
     private suspend fun performSearch(trimmedQuery: String) {
-        _searchState.value = _searchState.value.copy(isSearching = true)
+        val selectedScopes = _searchState.value.selectedScopes
+        _searchState.value = _searchState.value.copy(
+            isSearching = true,
+            hasSearched = true
+        )
         
         // Load cached data temporarily (not stored in ViewModel)
-        val cachedData = cacheService.loadCachedData()
+        val cachedData = cacheService.loadCachedDataAsync()
+        if (!isCurrentSearch(trimmedQuery, selectedScopes)) {
+            return
+        }
+
         if (cachedData == null) {
             Log.w("MainViewModel", "No cached data available for search")
             _searchState.value = _searchState.value.copy(
                 results = SearchResults(),
-                isSearching = false
+                isSearching = false,
+                hasSearched = true
             )
             return
         }
@@ -398,26 +431,38 @@ class MainViewModel @Inject constructor(
         val hiddenVodCategories = categoryVisibilityService.getHiddenCategories(CategoryType.VOD)
         val hiddenSeriesCategories = categoryVisibilityService.getHiddenCategories(CategoryType.SERIES)
         
-        val liveTVResults = ContentFilterUtils.filterLiveStreamsByHiddenCategories(
-            cachedData.channels,
-            hiddenLiveCategories
-        )
-            .filter { it.name.lowercase().contains(queryLower) }
-            .take(MAX_RESULTS_PER_CATEGORY)
+        val liveTVResults = if (SearchScope.LIVE_TV in selectedScopes) {
+            ContentFilterUtils.filterLiveStreamsByHiddenCategories(
+                cachedData.channels,
+                hiddenLiveCategories
+            )
+                .filter { it.name.lowercase().contains(queryLower) }
+                .take(MAX_RESULTS_PER_CATEGORY)
+        } else {
+            emptyList()
+        }
         
-        val vodResults = ContentFilterUtils.filterVodStreamsByHiddenCategories(
-            cachedData.movies,
-            hiddenVodCategories
-        )
-            .filter { it.name.lowercase().contains(queryLower) }
-            .take(MAX_RESULTS_PER_CATEGORY)
+        val vodResults = if (SearchScope.MOVIES in selectedScopes) {
+            ContentFilterUtils.filterVodStreamsByHiddenCategories(
+                cachedData.movies,
+                hiddenVodCategories
+            )
+                .filter { it.name.lowercase().contains(queryLower) }
+                .take(MAX_RESULTS_PER_CATEGORY)
+        } else {
+            emptyList()
+        }
         
-        val seriesResults = ContentFilterUtils.filterSeriesByHiddenCategories(
-            cachedData.series,
-            hiddenSeriesCategories
-        )
-            .filter { it.name.lowercase().contains(queryLower) }
-            .take(MAX_RESULTS_PER_CATEGORY)
+        val seriesResults = if (SearchScope.SERIES in selectedScopes) {
+            ContentFilterUtils.filterSeriesByHiddenCategories(
+                cachedData.series,
+                hiddenSeriesCategories
+            )
+                .filter { it.name.lowercase().contains(queryLower) }
+                .take(MAX_RESULTS_PER_CATEGORY)
+        } else {
+            emptyList()
+        }
         
         val results = SearchResults(
             liveTV = liveTVResults,
@@ -429,11 +474,21 @@ class MainViewModel @Inject constructor(
         // Results are stored in searchState, not the full cachedData
         
         Log.d("MainViewModel", "Search completed: query='$trimmedQuery', results=${results.totalCount} (LiveTV: ${results.liveTV.size}, VOD: ${results.vod.size}, Series: ${results.series.size})")
+
+        if (!isCurrentSearch(trimmedQuery, selectedScopes)) {
+            return
+        }
         
         _searchState.value = _searchState.value.copy(
             results = results,
-            isSearching = false
+            isSearching = false,
+            hasSearched = true
         )
+    }
+
+    private fun isCurrentSearch(trimmedQuery: String, selectedScopes: Set<SearchScope>): Boolean {
+        val state = _searchState.value
+        return state.query.trim() == trimmedQuery && state.selectedScopes == selectedScopes
     }
 
     /**
