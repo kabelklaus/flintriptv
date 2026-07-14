@@ -22,16 +22,12 @@ class SecurityGuardrailsTest {
     }
 
     @Test
-    fun appDoesNotAllowGlobalCleartextTraffic() {
+    fun appAllowsCleartextTrafficForHttpOnlyProviders() {
         val manifest = readSource("src/main/AndroidManifest.xml")
 
-        assertFalse(
-            "Global cleartext traffic must not be enabled for an app that sends credentials over network requests.",
-            manifest.contains("""android:usesCleartextTraffic="true"""")
-        )
         assertTrue(
-            "Cleartext traffic should be explicitly disabled unless a host-specific exception is added intentionally.",
-            manifest.contains("""android:usesCleartextTraffic="false"""")
+            "Cleartext traffic must stay enabled to support providers that only offer HTTP.",
+            manifest.contains("""android:usesCleartextTraffic="true"""")
         )
     }
 
