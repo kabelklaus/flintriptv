@@ -408,7 +408,7 @@ class MainViewModel @Inject constructor(
         )
         
         // Load cached data temporarily (not stored in ViewModel)
-        val cachedData = cacheService.loadCachedData()
+        val cachedData = cacheService.loadCachedDataAsync()
         if (!isCurrentSearch(trimmedQuery, selectedScopes)) {
             return
         }

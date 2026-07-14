@@ -4,10 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -113,15 +109,6 @@ fun MainLayout(
     content: @Composable () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Track if external focus was requested (from CategoryRow back to Navbar)
-    var externalFocusRequested by remember { mutableStateOf(false) }
-    
-    // Wrap onNavigateToNavbar to set externalFocusRequested flag
-    val wrappedOnNavigateToNavbar: () -> Unit = {
-        externalFocusRequested = true
-        params.onNavigateToNavbar()
-    }
-    
     Row(
         modifier = modifier
             .fillMaxSize()
@@ -130,12 +117,8 @@ fun MainLayout(
         // Left Sidebar: Navigation
         HomeSidebar(
             selectedDestination = params.selectedDestination,
-            onNavigate = { destination ->
-                externalFocusRequested = false // Reset when destination changes via click
-                params.onDestinationChange(destination)
-            },
+            onNavigate = params.onDestinationChange,
             focusRequester = params.navbarFocusRequester,
-            externalFocusRequested = externalFocusRequested,
             onNavigateRight = createNavbarOnNavigateRight(params.showCategories, params.onNavigateToCategorySidebar),
             onSearchClick = params.onSearchClick,
             modifier = Modifier.createNavbarModifier(params.onNavbarReady)
@@ -150,7 +133,7 @@ fun MainLayout(
                     onCategorySelected = params.onCategorySelected,
                     itemCounts = params.itemCounts,
                     focusRequester = params.categorySidebarFocusRequester,
-                    onNavigateLeft = { wrappedOnNavigateToNavbar() },
+                    onNavigateLeft = params.onNavigateToNavbar,
                     onNavigateRight = { params.onNavigateToContentList() },
                     onCategoryHidden = { category ->
                         // Don't allow hiding favorites category

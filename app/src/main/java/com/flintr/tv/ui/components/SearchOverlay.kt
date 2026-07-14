@@ -232,7 +232,7 @@ private fun handleSearchOverlayPreviewKeyEvent(
         Key.DirectionLeft -> when (currentFocusTarget) {
             SearchOverlayFocusTarget.SearchField,
             SearchOverlayFocusTarget.Results,
-            null -> true
+            null -> false
             is SearchOverlayFocusTarget.ScopeFilter -> {
                 val previousIndex = currentFocusTarget.index - 1
                 if (previousIndex >= 0) {
@@ -245,7 +245,7 @@ private fun handleSearchOverlayPreviewKeyEvent(
         Key.DirectionRight -> when (currentFocusTarget) {
             SearchOverlayFocusTarget.SearchField,
             SearchOverlayFocusTarget.Results,
-            null -> true
+            null -> false
             is SearchOverlayFocusTarget.ScopeFilter -> {
                 val nextIndex = currentFocusTarget.index + 1
                 if (nextIndex < scopeCount) {

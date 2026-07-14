@@ -64,8 +64,7 @@ internal data class NavItemState(
 )
 
 internal data class NavItemFocusConfig(
-    val focusRequester: FocusRequester? = null,
-    val externalFocusRequester: FocusRequester? = null
+    val focusRequester: FocusRequester? = null
 )
 
 internal data class NavItemCallbacks(
@@ -139,13 +138,6 @@ private fun Modifier.createItemModifier(
         .then(
             if (focusConfig.focusRequester != null) {
                 Modifier.focusRequester(focusConfig.focusRequester)
-            } else {
-                Modifier
-            }
-        )
-        .then(
-            if (focusConfig.externalFocusRequester != null) {
-                Modifier.focusRequester(focusConfig.externalFocusRequester)
             } else {
                 Modifier
             }
@@ -271,7 +263,6 @@ fun HomeSidebar(
     selectedDestination: HomeDestination,
     onNavigate: (HomeDestination) -> Unit,
     focusRequester: FocusRequester,
-    externalFocusRequested: Boolean = false,
     onNavigateRight: (() -> Unit)? = null,
     onSearchClick: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -329,13 +320,7 @@ fun HomeSidebar(
                         pendingFocusDestination = pendingFocusDestination
                     ),
                     focusConfig = NavItemFocusConfig(
-                        focusRequester = focusRequesters[index],
-                        externalFocusRequester = getExternalFocusRequester(
-                            selectedDestination = selectedDestination,
-                            destination = navItem.destination,
-                            externalFocusRequested = externalFocusRequested,
-                            focusRequester = focusRequester
-                        )
+                        focusRequester = focusRequesters[index]
                     ),
                     callbacks = NavItemCallbacks(
                         onClick = {
@@ -380,19 +365,6 @@ private fun NavbarLogo() {
             contentDescription = "Flintr TV Logo",
             modifier = Modifier.size(Dimensions.iconSizeXL)
         )
-    }
-}
-
-private fun getExternalFocusRequester(
-    selectedDestination: HomeDestination,
-    destination: HomeDestination,
-    externalFocusRequested: Boolean,
-    focusRequester: FocusRequester
-): FocusRequester? {
-    return if (selectedDestination == destination) {
-        focusRequester
-    } else {
-        null
     }
 }
 
