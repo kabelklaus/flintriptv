@@ -73,27 +73,30 @@ class UserRepository @Inject constructor() {
         
         // Check if username already exists
         val existsResult = usernameExists(username)
-        val exists = existsResult.getOrElse { 
-            // If read fails, log warning but continue with write (fallback)
-            Log.w(TAG, "Failed to check username existence, attempting write anyway", it)
-            false
+        val exists = existsResult.getOrElse {
+            // Never write blindly: a set() on an existing document would replace it
+            // and wipe watchedHistory/watchProgress/favorites of that user.
+            Log.e(TAG, "Failed to check username existence, aborting write to protect existing data", it)
+            return Result.failure(it)
         }
-        
+
         if (exists) {
             Log.d(TAG, "Username already exists, skipping write")
             return Result.success(Unit)
         }
-        
-        // User doesn't exist, create new document
+
+        // User doesn't exist, create new document.
+        // merge() as safety net: even if the existence check was wrong,
+        // existing fields can never be wiped by this write.
         return try {
             val userData = hashMapOf(
                 "username" to username,
                 "createdAt" to FieldValue.serverTimestamp()
             )
-            
+
             firestore.collection(collectionName)
                 .document(username)
-                .set(userData)
+                .set(userData, SetOptions.merge())
                 .await()
             
             Log.d(TAG, "Username saved successfully")
