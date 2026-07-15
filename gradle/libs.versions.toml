@@ -25,6 +25,7 @@ leanback = "1.0.0"
 securityCrypto = "1.1.0-alpha06"
 desugarJdkLibs = "2.0.4"
 sonarqube = "7.3.0.8198"
+robolectric = "4.16"
 firebaseBom = "34.8.0"
 googleGmsServices = "4.4.4"
 firebasePerfPlugin = "2.0.2"
@@ -46,6 +47,8 @@ compose-ui = { group = "androidx.compose.ui", name = "ui" }
 compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 compose-activity = { group = "androidx.activity", name = "activity-compose", version.ref = "composeActivity" }
@@ -83,6 +86,9 @@ security-crypto = { group = "androidx.security", name = "security-crypto", versi
 
 # Desugaring
 desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
+
+# Local UI Testing (Robolectric)
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 # Firebase
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }

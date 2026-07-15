@@ -102,6 +102,13 @@ android {
         disable += "AutoboxingStateCreation"  // Bug in Lint mit Kotlin 2.x + Compose
         abortOnError = false  // Lint-Fehler brechen Build nicht ab
     }
+    testOptions {
+        unitTests {
+            // Robolectric: Compose-UI-Tests (Klick-/Fokus-Verhalten) als lokale Unit-Tests,
+            // damit sie in den Jacoco-Report einfließen, den Sonar konsumiert
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 tasks.withType<Test>().configureEach {
@@ -112,6 +119,8 @@ tasks.withType<Test>().configureEach {
 }
 
 tasks.register<JacocoReport>("jacocoDebugUnitTestReport") {
+    group = "verification"
+    description = "Generates a Jacoco coverage report for debug unit tests (consumed by SonarQube)."
     dependsOn("testDebugUnitTest")
 
     reports {
@@ -170,6 +179,7 @@ dependencies {
     implementation(libs.compose.lifecycle.runtime)
     implementation(libs.compose.navigation)
     debugImplementation(libs.compose.ui.tooling)
+    debugImplementation(libs.compose.ui.test.manifest)
     
     // Hilt
     implementation(libs.hilt.android)
@@ -211,6 +221,14 @@ dependencies {
     
     // Testing
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.androidx.espresso.core)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.compose.ui.test.manifest)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
 }
