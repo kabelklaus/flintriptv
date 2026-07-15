@@ -122,3 +122,5 @@ references/
 # Local scratch/working files
 test.txt
 konzept-backup.md
+# SonarQube local credentials (never commit)
+.env.sonar.local

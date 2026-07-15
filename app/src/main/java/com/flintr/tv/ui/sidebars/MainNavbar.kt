@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.testTag
 import android.util.Log
 import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
@@ -320,8 +321,9 @@ fun HomeSidebar(
                         pendingFocusDestination = pendingFocusDestination
                     ),
                     focusConfig = NavItemFocusConfig(
-                        // The shared requester is used by the category sidebar to return
-                        // focus to the currently active navigation destination.
+                        // IMPORTANT: This shared requester is the only return path from the
+                        // category sidebar to the active navbar item. Do not replace it with
+                        // the local requester without updating the focus-navigation test.
                         focusRequester = if (navItem.destination == selectedDestination) focusRequester else focusRequesters[index]
                     ),
                     callbacks = NavItemCallbacks(
@@ -425,7 +427,9 @@ internal fun HomeSidebarItem(
     }
     
     Box(
-        modifier = modifier.createItemModifier(
+        modifier = modifier
+            .testTag("navbar-item-${navItem.title}")
+            .createItemModifier(
             focusConfig = focusConfig,
             pendingFocusDestination = state.pendingFocusDestination,
             destination = navItem.destination,
