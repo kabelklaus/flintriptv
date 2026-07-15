@@ -600,9 +600,7 @@ fun AppNavigation(
         }
 
         composable(Screen.Login.route) {
-            val activeCredentials by dependencies.credentialsRepository.credentialsFlow.collectAsState(
-                initial = dependencies.credentialsRepository.credentialsFlow.value
-            )
+            val activeCredentials by dependencies.credentialsRepository.credentialsFlow.collectAsState()
             val loginPrefill = remember { dependencies.credentialsRepository.getLoginPrefill() }
             LoginScreen(
                 initialServerUrl = activeCredentials?.serverUrl ?: "",
@@ -1143,29 +1141,7 @@ private fun SeriesContentSection(params: MainContentBodyParams) {
  */
 @Composable
 private fun EPGContentSection(params: MainContentBodyParams) {
-    EPGContent(
-        viewModel = params.mainViewModel,
-        onProgramClick = { _, stream ->
-            val creds = params.credentials ?: return@EPGContent
-            // EPG doesn't have a grid, so we don't save navigation state here
-            // EPG navigation is out of scope for this story
-            val streamUrl = stream.getStreamUrl(
-                creds.serverUrl,
-                creds.username,
-                creds.password
-            )
-            val route = Screen.Player.createRouteForLive(
-                streamUrl, 
-                stream.name,
-                stream.categoryId,
-                stream.categoryName,
-                stream.streamId
-            )
-            params.navController.logAndNavigate(route, "AppNavigation") {
-                "📅 EPG onClick - stream.name: ${stream.name}, streamUrl: $streamUrl, route: $route"
-            }
-        }
-    )
+    EPGContent(viewModel = params.mainViewModel)
 }
 
 /**

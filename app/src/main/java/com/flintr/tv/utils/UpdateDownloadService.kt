@@ -32,7 +32,7 @@ class UpdateDownloadService @Inject constructor(
     private val context: Context
 ) {
     
-    suspend fun downloadApk(
+    fun downloadApk(
         downloadUrl: String,
         version: String
     ): Flow<DownloadProgress> = flow {

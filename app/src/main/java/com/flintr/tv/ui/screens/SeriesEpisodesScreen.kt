@@ -553,12 +553,12 @@ private fun SeriesHeader(
 @Composable
 private fun OptionalMetadataText(
     content: String?,
-    prefix: String = "",
     style: androidx.compose.ui.text.TextStyle,
     color: Color,
+    modifier: Modifier = Modifier,
+    prefix: String = "",
     maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Clip,
-    modifier: Modifier = Modifier
+    overflow: TextOverflow = TextOverflow.Clip
 ) {
     if (!content.isNullOrEmpty()) {
         Text(
@@ -869,8 +869,8 @@ private fun EpisodeDetailCard(
     config: EpisodeCardConfig,
     callbacks: EpisodeCardCallbacks,
     isFocused: Boolean,
-    focusRequester: FocusRequester? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null
 ) {
     var isFocusedState by remember { mutableStateOf(false) }
     val colors = appColors()

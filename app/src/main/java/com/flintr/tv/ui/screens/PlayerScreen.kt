@@ -945,8 +945,8 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     streamInfo: StreamInfo,
     watchProgressService: WatchProgressService,
     onBack: () -> Unit,
-    onNextEpisode: ((com.flintr.tv.viewmodel.NextEpisodeInfo) -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onNextEpisode: ((com.flintr.tv.viewmodel.NextEpisodeInfo) -> Unit)? = null
 ) {
     val streamUrl = streamInfo.streamUrl
     val contentType = streamInfo.contentType

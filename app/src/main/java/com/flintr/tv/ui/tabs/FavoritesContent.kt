@@ -185,7 +185,7 @@ private suspend fun matchFavoritesToItems(
  * Renders a favorite content item as a card.
  */
 @Composable
-private fun renderFavoriteCard(
+private fun FavoriteCard(
     item: FavoriteContentItem,
     index: Int,
     columnIndex: Int,
@@ -300,7 +300,7 @@ fun FavoritesContent(
             }
         ),
         content = { item, index, columnIndex, onFocusChanged, cardFocusRequester ->
-            renderFavoriteCard(
+            FavoriteCard(
                 item = item,
                 index = index,
                 columnIndex = columnIndex,
