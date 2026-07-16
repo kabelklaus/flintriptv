@@ -19,7 +19,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -32,18 +35,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
+import com.flintr.tv.R
+import com.flintr.tv.data.local.SmartResumeTarget
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
-import com.flintr.tv.ui.components.InProgressIndicator
+import com.flintr.tv.ui.components.PopupMenu
 import com.flintr.tv.ui.components.WatchedBadge
-import com.flintr.tv.ui.theme.AppColors
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onBackButton
+import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.ui.utils.InteractionUtils.tvFocusable
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.utils.ContentParser
@@ -67,14 +72,16 @@ private data class EpisodeCardConfig(
     val season: Season,
     val series: Series,
     val watchProgressService: WatchProgressService,
-    val watchedEpisodeIds: Set<Int>
+    val watchedEpisodeIds: Set<Int>,
+    val fallbackImageUrl: String? = null
 )
 
 private data class EpisodeCardCallbacks(
     val onClick: () -> Unit,
     val onFocusChanged: (Boolean) -> Unit,
     val onNavigateLeft: () -> Unit,
-    val onNavigateRight: () -> Unit
+    val onNavigateRight: () -> Unit,
+    val onWatchedStateChanged: () -> Unit
 )
 
 private data class SeasonNavigationParams(
@@ -85,7 +92,8 @@ private data class SeasonNavigationParams(
     val watchProgressService: WatchProgressService,
     val watchedEpisodeIds: Set<Int>,
     val initialEpisodeIndex: Int?,
-    val smartResumeSeasonIndex: Int?
+    val smartResumeSeasonIndex: Int?,
+    val fallbackImageUrl: String? = null
 )
 
 private data class EpisodesListParams(
@@ -94,7 +102,8 @@ private data class EpisodesListParams(
     val series: Series,
     val watchProgressService: WatchProgressService,
     val watchedEpisodeIds: Set<Int>,
-    val initialEpisodeIndex: Int?
+    val initialEpisodeIndex: Int?,
+    val fallbackImageUrl: String? = null
 )
 
 private data class EpisodeFocusState(
@@ -213,12 +222,14 @@ private fun HandleSmartResume(
     watchProgressService: WatchProgressService,
     onSeasonSelected: (Int) -> Unit,
     onEpisodeIndexSet: (Int?) -> Unit,
-    onSmartResumeSeasonIndexSet: (Int?) -> Unit
+    onSmartResumeSeasonIndexSet: (Int?) -> Unit,
+    onResumeTargetLoaded: (SmartResumeTarget?) -> Unit = {}
 ) {
     LaunchedEffect(displaySeries.seasons) {
         if (displaySeries.seasons != null && sortedSeasons.isNotEmpty()) {
             val target = watchProgressService.getSmartResumeTarget(displaySeries.seriesId, displaySeries)
-            
+            onResumeTargetLoaded(target)
+
             if (target != null) {
                 navigateToTargetSeason(
                     sortedSeasons = sortedSeasons,
@@ -235,24 +246,106 @@ private fun HandleSmartResume(
 }
 
 /**
+ * Daten für den Weiterschauen-Button: UI-Zustand plus aufgelöste Ziel-Episode.
+ */
+private data class ResumeButtonData(
+    val uiState: ResumeButtonUiState,
+    val targetInfo: ResumeTargetInfo
+)
+
+/**
+ * Löst die Ziel-Episode für den Weiterschauen-Button auf und baut Label plus Fortschritt.
+ */
+@Composable
+private fun rememberResumeButtonData(
+    sortedSeasons: List<Season>,
+    resumeTarget: SmartResumeTarget?,
+    resumeTargetLoaded: Boolean,
+    series: Series,
+    watchProgressService: WatchProgressService,
+    watchedEpisodeIds: Set<Int>
+): ResumeButtonData? {
+    if (!resumeTargetLoaded) return null
+
+    val targetInfo = remember(sortedSeasons, resumeTarget) {
+        SeriesResumeLogic.resolveResumeEpisode(sortedSeasons, resumeTarget)
+    } ?: return null
+
+    var progressMs by remember(targetInfo.episode.id) { mutableStateOf<Long?>(null) }
+    LaunchedEffect(targetInfo.episode.id, watchedEpisodeIds) {
+        progressMs = watchProgressService.getProgress(
+            contentType = "series",
+            streamId = null,
+            seriesId = series.seriesId,
+            episodeId = targetInfo.episode.id
+        )
+    }
+
+    val hasProgress = (progressMs ?: 0L) > 0L
+    val durationMs = targetInfo.episode.info?.duration?.let { durationStr ->
+        durationStr.toLongOrNull()?.times(1000) ?: parseDurationString(durationStr)?.times(1000)
+    }
+    val progressPercent = if (hasProgress && durationMs != null && durationMs > 0) {
+        ((progressMs ?: 0L).toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    val labelType = SeriesResumeLogic.determineResumeLabelType(
+        hasProgressOnTarget = hasProgress,
+        hasAnyWatchHistory = watchedEpisodeIds.isNotEmpty()
+    )
+    val label = SeriesResumeLogic.buildResumeButtonLabel(
+        type = labelType,
+        seasonNumber = targetInfo.seasonNumber,
+        episodeNumber = targetInfo.episodeNumber
+    )
+
+    return ResumeButtonData(
+        uiState = ResumeButtonUiState(label = label, progressPercent = progressPercent),
+        targetInfo = targetInfo
+    )
+}
+
+/**
+ * Merkt sich den aktuell ladbaren Bild-Kandidaten und schaltet bei
+ * Ladefehlern auf den nächsten weiter.
+ */
+@Composable
+private fun rememberImageCandidatePainter(
+    imageCandidates: List<String>
+): coil.compose.AsyncImagePainter? {
+    var candidateIndex by remember(imageCandidates) { mutableStateOf(0) }
+    val currentUrl = imageCandidates.getOrNull(candidateIndex) ?: return null
+
+    val painter = rememberAsyncImagePainter(model = currentUrl)
+    val imageState = painter.state
+
+    LaunchedEffect(imageState) {
+        if (imageState is AsyncImagePainter.State.Error && candidateIndex < imageCandidates.size - 1) {
+            candidateIndex++
+        }
+    }
+
+    return painter
+}
+
+/**
  * Renders the background image with overlay for the series screen
  */
 @Composable
-private fun SeriesBackground(backdropImageUrl: String?) {
-    if (!backdropImageUrl.isNullOrEmpty()) {
-        val painter = rememberAsyncImagePainter(model = backdropImageUrl)
-        val imageState = painter.state
-        
-        if (imageState !is AsyncImagePainter.State.Error) {
-            Image(
-                painter = painter,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .alpha(0.4f),
-                contentScale = ContentScale.Crop
-            )
-        }
+private fun SeriesBackground(imageCandidates: List<String>) {
+    val painter = rememberImageCandidatePainter(imageCandidates)
+
+    if (painter != null && painter.state !is AsyncImagePainter.State.Error) {
+        Image(
+            painter = painter,
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(0.4f),
+            contentScale = ContentScale.Crop
+        )
     } else {
         // Fallback background
         Box(
@@ -261,7 +354,7 @@ private fun SeriesBackground(backdropImageUrl: String?) {
                 .background(Color.Black)
         )
     }
-    
+
     // Semi-transparent overlay for better readability
     Box(
         modifier = Modifier
@@ -307,11 +400,25 @@ fun SeriesEpisodesScreen(
     // Smart Resume: Get target episode for navigation
     var initialEpisodeIndex by remember { mutableStateOf<Int?>(null) }
     var smartResumeSeasonIndex by remember { mutableStateOf<Int?>(null) }
-    
-    LaunchedEffect(series.seriesId) {
+
+    // Resume-Button: target episode for one-click resume
+    var resumeTarget by remember { mutableStateOf<SmartResumeTarget?>(null) }
+    var resumeTargetLoaded by remember { mutableStateOf(false) }
+
+    // Increments after long-press menu actions to reload watched state
+    var watchedRefreshTrigger by remember { mutableStateOf(0) }
+
+    LaunchedEffect(series.seriesId, watchedRefreshTrigger) {
         watchedEpisodeIds = watchProgressService.getWatchedEpisodeIds(series.seriesId)
     }
-    
+
+    // Re-resolve the resume target after menu actions (without focus navigation)
+    LaunchedEffect(watchedRefreshTrigger) {
+        if (watchedRefreshTrigger > 0) {
+            resumeTarget = watchProgressService.getSmartResumeTarget(displaySeries.seriesId, displaySeries)
+        }
+    }
+
     // Load smart resume target when series info is available
     HandleSmartResume(
         displaySeries = displaySeries,
@@ -319,11 +426,25 @@ fun SeriesEpisodesScreen(
         watchProgressService = watchProgressService,
         onSeasonSelected = { selectedSeasonIndex = it },
         onEpisodeIndexSet = { initialEpisodeIndex = it },
-        onSmartResumeSeasonIndexSet = { smartResumeSeasonIndex = it }
+        onSmartResumeSeasonIndexSet = { smartResumeSeasonIndex = it },
+        onResumeTargetLoaded = { target ->
+            resumeTarget = target
+            resumeTargetLoaded = true
+        }
+    )
+
+    val resumeButtonData = rememberResumeButtonData(
+        sortedSeasons = sortedSeasons,
+        resumeTarget = resumeTarget,
+        resumeTargetLoaded = resumeTargetLoaded,
+        series = displaySeries,
+        watchProgressService = watchProgressService,
+        watchedEpisodeIds = watchedEpisodeIds
     )
     
-    // Background image
-    val backdropImageUrl = displaySeries.backdropPath?.firstOrNull()
+    // Background image candidates: backdrops -> first episode image -> cover
+    val backdropCandidates = ContentParser.seriesBackdropCandidates(displaySeries)
+    val backdropImageUrl = backdropCandidates.firstOrNull()
     
     // Scroll state for auto-scrolling to selected season
     val scrollState = rememberScrollState()
@@ -344,15 +465,18 @@ fun SeriesEpisodesScreen(
     
     // FocusRequester for header to enable navigation from season buttons
     val headerFocusRequester = remember { FocusRequester() }
+    // FocusRequester for the resume button (between header and season buttons)
+    val resumeButtonFocusRequester = remember { FocusRequester() }
     // Callback to navigate to selected season button
     var navigateToSeasonButton by remember { mutableStateOf<(() -> Unit)?>(null) }
-    
+    val coroutineScope = rememberCoroutineScope()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .onBackButton(onBack)
     ) {
-        SeriesBackground(backdropImageUrl = backdropImageUrl)
+        SeriesBackground(imageCandidates = backdropCandidates)
         
         // Content - Scrollable
         Column(
@@ -366,8 +490,14 @@ fun SeriesEpisodesScreen(
                 series = displaySeries,
                 headerFocusRequester = headerFocusRequester,
                 onNavigateDown = {
-                    // Navigate to selected season button
-                    navigateToSeasonButton?.invoke()
+                    if (resumeButtonData != null) {
+                        coroutineScope.launch {
+                            resumeButtonFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "RESUME_BUTTON")
+                        }
+                    } else {
+                        // Navigate to selected season button
+                        navigateToSeasonButton?.invoke()
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -375,9 +505,33 @@ fun SeriesEpisodesScreen(
                         headerHeight = coordinates.size.height
                     }
             )
-            
+
+            if (resumeButtonData != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                SeriesResumeButton(
+                    state = resumeButtonData.uiState,
+                    onClick = { onEpisodeClick(resumeButtonData.targetInfo.episode) },
+                    focusRequester = resumeButtonFocusRequester,
+                    onNavigateUp = {
+                        coroutineScope.launch {
+                            headerFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "HEADER")
+                        }
+                        true
+                    },
+                    onNavigateDown = {
+                        if (sortedSeasons.size > 1) {
+                            navigateToSeasonButton?.invoke()
+                            true
+                        } else {
+                            // Nur eine Staffel: Standard-Fokusnavigation zur Episodenliste durchlassen
+                            false
+                        }
+                    }
+                )
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
-            
+
             // Season Navigation
             SeasonNavigation(
                 params = SeasonNavigationParams(
@@ -388,9 +542,10 @@ fun SeriesEpisodesScreen(
                     watchProgressService = watchProgressService,
                     watchedEpisodeIds = watchedEpisodeIds,
                     initialEpisodeIndex = initialEpisodeIndex,
-                    smartResumeSeasonIndex = smartResumeSeasonIndex
+                    smartResumeSeasonIndex = smartResumeSeasonIndex,
+                    fallbackImageUrl = backdropImageUrl
                 ),
-                headerFocusRequester = headerFocusRequester,
+                upFocusRequester = if (resumeButtonData != null) resumeButtonFocusRequester else headerFocusRequester,
                 onNavigateToSeasonButton = { callback ->
                     navigateToSeasonButton = callback
                 },
@@ -402,6 +557,7 @@ fun SeriesEpisodesScreen(
                     }
                 },
                 onEpisodeClick = onEpisodeClick,
+                onWatchedStateChanged = { watchedRefreshTrigger++ },
                 modifier = Modifier
                     .fillMaxWidth()
                     .onGloballyPositioned { coordinates ->
@@ -575,10 +731,11 @@ private fun OptionalMetadataText(
 @Composable
 private fun SeasonNavigation(
     params: SeasonNavigationParams,
-    headerFocusRequester: FocusRequester,
+    upFocusRequester: FocusRequester,
     onNavigateToSeasonButton: ((() -> Unit)) -> Unit,
     onSeasonSelected: (Int) -> Unit,
     onEpisodeClick: (Episode) -> Unit,
+    onWatchedStateChanged: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -616,9 +773,9 @@ private fun SeasonNavigation(
                     .padding(bottom = 16.dp)
                     .onDpadDirection(
                         onUp = {
-                            // Navigate to header when pressing up from season buttons
+                            // Navigate to resume button or header when pressing up from season buttons
                             coroutineScope.launch {
-                                headerFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "HEADER")
+                                upFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "ABOVE_SEASONS")
                             }
                             true
                         }
@@ -658,9 +815,11 @@ private fun SeasonNavigation(
                     series = params.series,
                     watchProgressService = params.watchProgressService,
                     watchedEpisodeIds = params.watchedEpisodeIds,
-                    initialEpisodeIndex = if (params.selectedSeasonIndex == params.smartResumeSeasonIndex) params.initialEpisodeIndex else null
+                    initialEpisodeIndex = if (params.selectedSeasonIndex == params.smartResumeSeasonIndex) params.initialEpisodeIndex else null,
+                    fallbackImageUrl = params.fallbackImageUrl
                 ),
                 onEpisodeClick = onEpisodeClick,
+                onWatchedStateChanged = onWatchedStateChanged,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -752,6 +911,7 @@ private fun SeasonButton(
 private fun EpisodesList(
     params: EpisodesListParams,
     onEpisodeClick: (Episode) -> Unit,
+    onWatchedStateChanged: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val focusState = rememberEpisodeFocus(
@@ -794,7 +954,8 @@ private fun EpisodesList(
                         season = params.season,
                         series = params.series,
                         watchProgressService = params.watchProgressService,
-                        watchedEpisodeIds = params.watchedEpisodeIds
+                        watchedEpisodeIds = params.watchedEpisodeIds,
+                        fallbackImageUrl = params.fallbackImageUrl
                     ),
                     callbacks = EpisodeCardCallbacks(
                         onClick = { onEpisodeClick(episode) },
@@ -816,7 +977,8 @@ private fun EpisodesList(
                                 maxIndex = params.episodes.size - 1,
                                 direction = NavigationDirection.RIGHT
                             )
-                        }
+                        },
+                        onWatchedStateChanged = onWatchedStateChanged
                     ),
                     isFocused = episodeIndex == focusedEpisodeIndex,
                     focusRequester = focusState.focusRequesters.getOrNull(episodeIndex)
@@ -873,9 +1035,11 @@ private fun EpisodeDetailCard(
     focusRequester: FocusRequester? = null
 ) {
     var isFocusedState by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    val menuCoroutineScope = rememberCoroutineScope()
     val colors = appColors()
     val cardFocusRequester = focusRequester ?: remember { FocusRequester() }
-    
+
     val progressState = rememberEpisodeProgress(
         episode = config.episode,
         series = config.series,
@@ -959,21 +1123,32 @@ private fun EpisodeDetailCard(
                     true
                 }
             )
-            .onClick(callbacks.onClick)
+            .onLongPress(
+                onLongPress = { showMenu = true },
+                onNormalClick = callbacks.onClick
+            )
             .padding(12.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Thumbnail with badge overlay
+            // Thumbnail with badge and progress overlay; falls back to the series
+            // backdrop when the episode image is missing or fails to load
             EpisodeThumbnail(
-                imageUrl = config.episode.info?.movieImage,
-                showWatchedBadge = progressState.isWatched
+                imageCandidates = ContentParser.imageCandidates(
+                    config.episode.info?.movieImage,
+                    config.fallbackImageUrl
+                ),
+                showWatchedBadge = progressState.isWatched,
+                progressPercent = if (progressState.isCompleted) 0f else progressState.progressPercent,
+                remainingMinutes = progressState.remainingMinutes
             )
             
-            // Episode number and title
+            // Episode number and cleaned title (without redundant series prefix)
             val episodeNum = config.episode.episodeNum ?: config.episode.id
-            val episodeTitle = "S${config.season.seasonNumber}E$episodeNum - ${config.episode.title}"
+            val episodeCode = "S${config.season.seasonNumber}E$episodeNum"
+            val episodeName = ContentParser.extractEpisodeName(config.episode.title, config.series.name)
+            val episodeTitle = episodeName?.let { "$episodeCode - $it" } ?: episodeCode
             
             Text(
                 text = episodeTitle,
@@ -1000,15 +1175,56 @@ private fun EpisodeDetailCard(
                 Text(
                     text = formatDuration(durationStr),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
-            
-            // Progress bar (badge is now on thumbnail)
-            EpisodeProgressIndicator(
-                progressState = progressState,
-                colors = colors
+        }
+    }
+
+    PopupMenu(
+        isOpen = showMenu,
+        menuOptions = SeriesEpisodeMenuLogic.buildEpisodeMenuOptions(progressState.isWatched),
+        onDismiss = { showMenu = false },
+        onOptionSelected = { index ->
+            val action = SeriesEpisodeMenuLogic.menuActionForOption(index, progressState.isWatched)
+            if (action != null) {
+                menuCoroutineScope.launch {
+                    executeEpisodeMenuAction(action, config)
+                    callbacks.onWatchedStateChanged()
+                }
+            }
+        }
+    )
+}
+
+/**
+ * Führt eine Aktion des Episoden-Long-Press-Menüs aus.
+ */
+private suspend fun executeEpisodeMenuAction(
+    action: EpisodeMenuAction,
+    config: EpisodeCardConfig
+) {
+    when (action) {
+        EpisodeMenuAction.MARK_WATCHED -> config.watchProgressService.setSeriesEpisodeWatched(
+            seriesId = config.series.seriesId,
+            episodeId = config.episode.id,
+            watched = true
+        )
+        EpisodeMenuAction.MARK_UNWATCHED -> config.watchProgressService.setSeriesEpisodeWatched(
+            seriesId = config.series.seriesId,
+            episodeId = config.episode.id,
+            watched = false
+        )
+        EpisodeMenuAction.MARK_PREVIOUS_WATCHED -> {
+            val previousIds = SeriesEpisodeMenuLogic.previousEpisodeIds(
+                seasons = config.series.seasons ?: emptyList(),
+                targetSeasonNumber = config.season.seasonNumber,
+                targetEpisodeId = config.episode.id,
+                alreadyWatchedIds = config.watchedEpisodeIds
+            )
+            config.watchProgressService.markSeriesEpisodesAsWatched(
+                seriesId = config.series.seriesId,
+                episodeIds = previousIds
             )
         }
     }
@@ -1023,8 +1239,8 @@ private fun rememberEpisodeProgress(
 ): EpisodeCardState {
     var progress by remember { mutableStateOf<Long?>(null) }
     var duration by remember { mutableStateOf<Long?>(null) }
-    
-    LaunchedEffect(episode.id) {
+
+    LaunchedEffect(episode.id, watchedEpisodeIds) {
         progress = watchProgressService.getProgress(
             contentType = "series",
             streamId = null,
@@ -1071,9 +1287,11 @@ private fun rememberEpisodeProgress(
 }
 
 @Composable
-private fun EpisodeThumbnail(
-    imageUrl: String?,
-    showWatchedBadge: Boolean = false
+internal fun EpisodeThumbnail(
+    imageCandidates: List<String>,
+    showWatchedBadge: Boolean = false,
+    progressPercent: Float = 0f,
+    remainingMinutes: Int? = null
 ) {
     Box(
         modifier = Modifier
@@ -1081,21 +1299,15 @@ private fun EpisodeThumbnail(
             .height(180.dp)
             .padding(bottom = 8.dp)
     ) {
-        imageUrl?.let { url ->
-            if (url.isNotEmpty()) {
-                val painter = rememberAsyncImagePainter(model = url)
-                val imageState = painter.state
-                
-                if (imageState !is AsyncImagePainter.State.Error) {
-                    Image(
-                        painter = painter,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-            }
+        val painter = rememberImageCandidatePainter(imageCandidates)
+        if (painter != null && painter.state !is AsyncImagePainter.State.Error) {
+            Image(
+                painter = painter,
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
         }
         
         // Watched badge overlay - centered on image
@@ -1108,21 +1320,54 @@ private fun EpisodeThumbnail(
                 WatchedBadge()
             }
         }
-    }
-}
 
-@Composable
-private fun EpisodeProgressIndicator(
-    progressState: EpisodeCardState,
-    colors: AppColors
-) {
-    // Only show progress bar for in-progress episodes (badge is now on thumbnail)
-    if (!progressState.isCompleted) {
-        InProgressIndicator(
-            progressPercent = progressState.progressPercent,
-            remainingMinutes = progressState.remainingMinutes,
-            colors = colors
-        )
+        // Progress overlay at the bottom of the image (Netflix-style)
+        if (progressPercent > 0f) {
+            val colors = appColors()
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 8.dp)
+                    .testTag("episode-thumbnail-progress"),
+                horizontalAlignment = Alignment.End
+            ) {
+                remainingMinutes?.let { minutes ->
+                    Box(
+                        modifier = Modifier
+                            .testTag("episode-thumbnail-remaining")
+                            .padding(bottom = 4.dp)
+                            .background(
+                                color = Color.Black.copy(alpha = 0.7f),
+                                shape = RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.remaining_minutes, minutes),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.9f)
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.White.copy(alpha = 0.3f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progressPercent.coerceIn(0f, 1f))
+                            .height(4.dp)
+                            .background(colors.accentColor)
+                    )
+                }
+            }
+        }
     }
 }
 
