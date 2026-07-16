@@ -190,7 +190,6 @@ private fun FavoriteCard(
     index: Int,
     columnIndex: Int,
     params: FavoritesContentParams,
-    favoriteItems: List<FavoriteContentItem>,
     onFocusChanged: ((Boolean) -> Unit)?,
     cardFocusRequester: androidx.compose.ui.focus.FocusRequester?
 ) {
@@ -202,7 +201,7 @@ private fun FavoriteCard(
                     onClick = { params.onLiveStreamClick(item.stream) },
                     favoritesRepository = params.favoritesRepository,
                     config = CardConfig(
-                        focusRequester = cardFocusRequester ?: if (index == 0 && favoriteItems.isNotEmpty()) params.focusRequester else null,
+                        focusRequester = cardFocusRequester ?: if (index == 0) params.focusRequester else null,
                         onFocusChanged = onFocusChanged,
                         onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft)
                     )
@@ -305,7 +304,6 @@ fun FavoritesContent(
                 index = index,
                 columnIndex = columnIndex,
                 params = params,
-                favoriteItems = favoriteItems,
                 onFocusChanged = onFocusChanged,
                 cardFocusRequester = cardFocusRequester
             )

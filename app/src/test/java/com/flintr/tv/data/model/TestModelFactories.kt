@@ -44,7 +44,9 @@ internal fun testSeries(
     rating5Based: Double? = null,
     lastModified: String? = null,
     categoryId: String? = null,
-    cover: String? = null
+    cover: String? = null,
+    backdropPath: List<String>? = null,
+    seasons: List<Season>? = null
 ) = Series(
     num = null,
     name = name,
@@ -61,8 +63,8 @@ internal fun testSeries(
     categoryId = categoryId,
     categoryName = null,
     youtubeTrailer = null,
-    backdropPath = null,
-    seasons = null
+    backdropPath = backdropPath,
+    seasons = seasons
 )
 
 internal fun testLiveStream(
@@ -91,13 +93,15 @@ internal fun testEpisode(
     id: Int = 500,
     title: String = "Folge 1",
     containerExtension: String? = null,
-    season: Int? = 1
+    season: Int? = 1,
+    episodeNum: Int? = null,
+    info: EpisodeInfo? = null
 ) = Episode(
     id = id,
-    episodeNum = null,
+    episodeNum = episodeNum,
     title = title,
     containerExtension = containerExtension,
-    info = null,
+    info = info,
     subtitles = null,
     added = null,
     season = season,

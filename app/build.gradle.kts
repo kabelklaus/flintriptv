@@ -27,8 +27,8 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 100
-        versionName = "2.42"
+        versionCode = 101
+        versionName = "2.43"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         

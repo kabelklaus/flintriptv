@@ -46,6 +46,32 @@ class WatchedHistoryService @Inject constructor(
         private const val TAG = "WatchedHistoryService"
         private const val KEY_PREFIX_MOVIE = "movie:"
         private const val KEY_PREFIX_SERIES = "series:"
+
+        internal fun seriesEpisodeKey(seriesId: Int, episodeId: Int): String {
+            return "$KEY_PREFIX_SERIES$seriesId:$episodeId"
+        }
+
+        internal fun buildSeriesWatchedEntries(
+            seriesId: Int,
+            episodeIds: Collection<Int>,
+            name: String?,
+            genre: String?,
+            categoryName: String?,
+            watchedAt: String
+        ): Map<String, WatchedItem> {
+            return episodeIds.associate { episodeId ->
+                seriesEpisodeKey(seriesId, episodeId) to WatchedItem(
+                    contentType = "series",
+                    streamId = null,
+                    seriesId = seriesId,
+                    episodeId = episodeId,
+                    name = name,
+                    genre = genre,
+                    categoryName = categoryName,
+                    watchedAt = watchedAt
+                )
+            }
+        }
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -316,6 +342,79 @@ class WatchedHistoryService @Inject constructor(
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error marking item as watched", e)
+            false
+        }
+    }
+
+    /**
+     * Removes an item from the watched history (optimistic update).
+     */
+    suspend fun markAsUnwatched(
+        contentType: String,
+        streamId: Int?,
+        seriesId: Int?,
+        episodeId: Int?
+    ): Boolean = withContext(ioDispatcher) {
+        try {
+            val key = generateKey(contentType, streamId, seriesId, episodeId)
+            Log.d(TAG, "Marking item as unwatched")
+
+            val updatedMap = updateMutex.withLock {
+                val currentMap = _watchedHistory.value
+                if (!currentMap.containsKey(key)) {
+                    return@withContext true
+                }
+                val updated = currentMap - key
+                _watchedHistory.value = updated
+                updated
+            }
+
+            saveToFirestore(updatedMap)
+
+            Log.d(TAG, "Marked item as unwatched successfully")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking item as unwatched", e)
+            false
+        }
+    }
+
+    /**
+     * Marks multiple episodes of a series as watched with a single Firestore save
+     * (optimistic update).
+     */
+    suspend fun markSeriesEpisodesAsWatched(
+        seriesId: Int,
+        episodeIds: Collection<Int>,
+        name: String? = null,
+        genre: String? = null,
+        categoryName: String? = null
+    ): Boolean = withContext(ioDispatcher) {
+        if (episodeIds.isEmpty()) {
+            return@withContext true
+        }
+        try {
+            val entries = buildSeriesWatchedEntries(
+                seriesId = seriesId,
+                episodeIds = episodeIds,
+                name = name,
+                genre = genre,
+                categoryName = categoryName,
+                watchedAt = Instant.now().toString()
+            )
+
+            val updatedMap = updateMutex.withLock {
+                val updated = _watchedHistory.value + entries
+                _watchedHistory.value = updated
+                updated
+            }
+
+            saveToFirestore(updatedMap)
+
+            Log.d(TAG, "Marked ${episodeIds.size} episodes as watched")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking episodes as watched", e)
             false
         }
     }

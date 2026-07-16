@@ -372,6 +372,16 @@ private fun NavbarLogo() {
     }
 }
 
+// Stable tag names: KClass.simpleName would change under R8 obfuscation in release builds.
+private fun HomeDestination.testTagName(): String = when (this) {
+    HomeDestination.LiveTV -> "LiveTV"
+    HomeDestination.VOD -> "VOD"
+    HomeDestination.Series -> "Series"
+    HomeDestination.EPG -> "EPG"
+    HomeDestination.Search -> "Search"
+    HomeDestination.Settings -> "Settings"
+}
+
 @Composable
 internal fun HomeSidebarItem(
     navItem: NavItem,
@@ -428,7 +438,7 @@ internal fun HomeSidebarItem(
     
     Box(
         modifier = modifier
-            .testTag("navbar-item-${navItem.destination::class.simpleName}")
+            .testTag("navbar-item-${navItem.destination.testTagName()}")
             .createItemModifier(
             focusConfig = focusConfig,
             pendingFocusDestination = state.pendingFocusDestination,

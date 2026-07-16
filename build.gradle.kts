@@ -26,9 +26,11 @@ sonar {
         property("sonar.exclusions", "**/test/**,**/androidTest/**,**/*Test.kt,**/*Tests.kt")
         property("sonar.test.exclusions", "**/*")
         
-        // Android Lint report path
-        property("sonar.androidLint.reportPaths", "app/build/reports/lint-results-debug.xml")
-        property("sonar.coverage.jacoco.xmlReportPaths", "app/build/reports/jacoco/jacocoDebugUnitTestReport/jacocoDebugUnitTestReport.xml")
+        // Report paths must be absolute: the Sonar sensors resolve relative paths
+        // against each module's base dir, so ':app' would look in app/app/... and
+        // silently import no coverage ("No coverage report can be found").
+        property("sonar.androidLint.reportPaths", "${rootProject.projectDir}/app/build/reports/lint-results-debug.xml")
+        property("sonar.coverage.jacoco.xmlReportPaths", "${rootProject.projectDir}/app/build/reports/jacoco/jacocoDebugUnitTestReport/jacocoDebugUnitTestReport.xml")
         property("sonar.qualitygate.wait", "true")
     }
 }

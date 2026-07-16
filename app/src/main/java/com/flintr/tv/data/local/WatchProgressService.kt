@@ -1051,4 +1051,55 @@ class WatchProgressService @Inject constructor(
             null
         }
     }
+
+    /**
+     * Manually sets the watched state of a series episode and removes any
+     * leftover in-progress state so the UI does not show a stale progress bar.
+     */
+    suspend fun setSeriesEpisodeWatched(
+        seriesId: Int,
+        episodeId: Int,
+        watched: Boolean
+    ): Boolean = withContext(ioDispatcher) {
+        val success = if (watched) {
+            val (name, genre, categoryName) = getNameGenreAndCategoryFromCache("series", null, seriesId)
+            watchedHistoryService.markAsWatched("series", null, seriesId, episodeId, name, genre, categoryName)
+        } else {
+            watchedHistoryService.markAsUnwatched("series", null, seriesId, episodeId)
+        }
+        deleteProgressIfPresent(seriesId, episodeId)
+        success
+    }
+
+    /**
+     * Marks multiple episodes of a series as watched (single Firestore save)
+     * and removes leftover in-progress states of those episodes.
+     */
+    suspend fun markSeriesEpisodesAsWatched(
+        seriesId: Int,
+        episodeIds: List<Int>
+    ): Boolean = withContext(ioDispatcher) {
+        if (episodeIds.isEmpty()) {
+            return@withContext true
+        }
+        val (name, genre, categoryName) = getNameGenreAndCategoryFromCache("series", null, seriesId)
+        val success = watchedHistoryService.markSeriesEpisodesAsWatched(
+            seriesId = seriesId,
+            episodeIds = episodeIds,
+            name = name,
+            genre = genre,
+            categoryName = categoryName
+        )
+        episodeIds.forEach { episodeId ->
+            deleteProgressIfPresent(seriesId, episodeId)
+        }
+        success
+    }
+
+    private suspend fun deleteProgressIfPresent(seriesId: Int, episodeId: Int) {
+        val key = generateKey("series", null, seriesId, episodeId)
+        if (_watchProgress.value.containsKey(key)) {
+            deleteProgress("series", null, seriesId, episodeId)
+        }
+    }
 }
