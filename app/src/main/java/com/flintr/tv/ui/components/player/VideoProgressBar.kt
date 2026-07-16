@@ -121,20 +121,20 @@ private suspend fun AwaitPointerEventScope.handleDragGesture(
 /**
  * Custom video progress bar with drag interaction and scrubber dot
  * @param progress Progress value between 0.0 and 1.0 (current position - dark red)
+ * @param onSeek Callback when user taps to seek to a new position (0.0 to 1.0)
+ * @param modifier Modifier for the progress bar
  * @param bufferedProgress Buffered progress value between 0.0 and 1.0 (light red)
  * @param isDragging Whether the user is currently dragging the scrubber
- * @param onSeek Callback when user taps to seek to a new position (0.0 to 1.0)
  * @param dragCallbacks Callbacks for drag gestures (start, progress, end)
- * @param modifier Modifier for the progress bar
  */
 @Composable
 fun VideoProgressBar(
     progress: Float,
+    onSeek: (Float) -> Unit,
+    modifier: Modifier = Modifier,
     bufferedProgress: Float = 0f,
     isDragging: Boolean = false,
-    onSeek: (Float) -> Unit,
-    dragCallbacks: DragCallbacks = DragCallbacks(),
-    modifier: Modifier = Modifier
+    dragCallbacks: DragCallbacks = DragCallbacks()
 ) {
     val progressHeight = 4.dp
     val scrubberSize by animateDpAsState(

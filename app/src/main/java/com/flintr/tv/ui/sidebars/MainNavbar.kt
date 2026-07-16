@@ -264,9 +264,9 @@ fun HomeSidebar(
     selectedDestination: HomeDestination,
     onNavigate: (HomeDestination) -> Unit,
     focusRequester: FocusRequester,
+    modifier: Modifier = Modifier,
     onNavigateRight: (() -> Unit)? = null,
-    onSearchClick: () -> Unit = {},
-    modifier: Modifier = Modifier
+    onSearchClick: () -> Unit = {}
 ) {
     val colors = appColors()
     
@@ -428,7 +428,7 @@ internal fun HomeSidebarItem(
     
     Box(
         modifier = modifier
-            .testTag("navbar-item-${navItem.title}")
+            .testTag("navbar-item-${navItem.destination::class.simpleName}")
             .createItemModifier(
             focusConfig = focusConfig,
             pendingFocusDestination = state.pendingFocusDestination,

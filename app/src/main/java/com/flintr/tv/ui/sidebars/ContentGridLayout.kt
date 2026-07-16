@@ -50,14 +50,14 @@ private fun <T> getOrCreateFocusRequester(
 /**
  * Creates the modifier for the LazyVerticalGrid with positioning callback
  */
-private fun createGridModifier(
+private fun Modifier.createGridModifier(
     focusRequester: FocusRequester,
     density: androidx.compose.ui.unit.Density,
     items: List<*>,
     onGridWidthChanged: (androidx.compose.ui.unit.Dp) -> Unit,
     onItemsRendered: (() -> Unit)?
 ): Modifier {
-    return Modifier
+    return this
         .fillMaxSize()
         .focusRequester(focusRequester)
         .onGloballyPositioned { coordinates ->
@@ -105,7 +105,7 @@ fun <T> ContentGridLayout(
             LazyVerticalGrid(
                 state = params.lazyGridState,
                 columns = GridCells.Adaptive(minSize = Dimensions.contentCardMaxCrossAxisExtent),
-                modifier = createGridModifier(
+                modifier = Modifier.createGridModifier(
                     focusRequester = params.focusRequester,
                     density = density,
                     items = params.items,

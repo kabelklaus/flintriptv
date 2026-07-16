@@ -68,9 +68,11 @@ class LongPressInteractionTest {
     fun keyHeldLongerThanDurationFiresLongPressAndSuppressesClick() {
         setLongPressTarget()
 
-        composeTestRule.onNodeWithTag(tag).performKeyInput { keyDown(Key.DirectionCenter) }
-        composeTestRule.mainClock.advanceTimeBy(longPressDuration + 100)
-        composeTestRule.onNodeWithTag(tag).performKeyInput { keyUp(Key.DirectionCenter) }
+        composeTestRule.onNodeWithTag(tag).performKeyInput {
+            keyDown(Key.DirectionCenter)
+            advanceEventTime(longPressDuration + 100)
+            keyUp(Key.DirectionCenter)
+        }
 
         composeTestRule.runOnIdle {
             assertEquals(1, longPresses)
@@ -82,10 +84,10 @@ class LongPressInteractionTest {
     fun keyReleasedEarlyCancelsTimerAndFiresNormalClick() {
         setLongPressTarget()
 
-        composeTestRule.mainClock.autoAdvance = false
-        composeTestRule.onNodeWithTag(tag).performKeyInput { keyDown(Key.Enter) }
-        composeTestRule.onNodeWithTag(tag).performKeyInput { keyUp(Key.Enter) }
-        composeTestRule.mainClock.autoAdvance = true
+        composeTestRule.onNodeWithTag(tag).performKeyInput {
+            keyDown(Key.Enter)
+            keyUp(Key.Enter)
+        }
 
         composeTestRule.runOnIdle {
             assertEquals(0, longPresses)
@@ -97,9 +99,11 @@ class LongPressInteractionTest {
     fun touchHeldLongerThanDurationFiresLongPressAndSuppressesClick() {
         setLongPressTarget()
 
-        composeTestRule.onNodeWithTag(tag).performTouchInput { down(center) }
-        composeTestRule.mainClock.advanceTimeBy(longPressDuration + 100)
-        composeTestRule.onNodeWithTag(tag).performTouchInput { up() }
+        composeTestRule.onNodeWithTag(tag).performTouchInput {
+            down(center)
+            advanceEventTime(longPressDuration + 100)
+            up()
+        }
 
         composeTestRule.runOnIdle {
             assertEquals(1, longPresses)
@@ -111,9 +115,7 @@ class LongPressInteractionTest {
     fun touchShortTapFiresNormalClick() {
         setLongPressTarget()
 
-        composeTestRule.mainClock.autoAdvance = false
         composeTestRule.onNodeWithTag(tag).performClick()
-        composeTestRule.mainClock.autoAdvance = true
 
         composeTestRule.runOnIdle {
             assertEquals(0, longPresses)

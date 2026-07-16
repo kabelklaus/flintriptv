@@ -98,15 +98,15 @@ private fun buildAudioTrackLabel(codecs: String?, channels: Int, sampleRate: Int
 /**
  * Video settings dialog with playback settings and audio track selection.
  * @param onDismiss Callback when dialog is dismissed
- * @param exoPlayer Current ExoPlayer instance for audio track list and switching; null if no player
  * @param modifier Modifier for the dialog
+ * @param exoPlayer Current ExoPlayer instance for audio track list and switching; null if no player
  */
 @OptIn(UnstableApi::class)
 @Composable
 fun VideoSettingsDialog(
     onDismiss: () -> Unit,
-    exoPlayer: ExoPlayer? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    exoPlayer: ExoPlayer? = null
 ) {
     val colors = appColors()
     

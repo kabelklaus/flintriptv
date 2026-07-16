@@ -57,8 +57,8 @@ class HomeSidebarClickTest {
         val navigated = mutableListOf<HomeDestination>()
         setSidebarContent(onNavigate = { navigated.add(it) })
 
-        composeTestRule.onNodeWithTag("navbar-item-TV").performClick()
-        composeTestRule.onNodeWithTag("navbar-item-Movies").performClick()
+        composeTestRule.onNodeWithTag("navbar-item-LiveTV").performClick()
+        composeTestRule.onNodeWithTag("navbar-item-VOD").performClick()
         composeTestRule.onNodeWithTag("navbar-item-Series").performClick()
         composeTestRule.onNodeWithTag("navbar-item-Settings").performClick()
 
@@ -82,7 +82,7 @@ class HomeSidebarClickTest {
             onSearchClick = { searchClicks++ }
         )
 
-        composeTestRule.onNodeWithTag("navbar-item-Suche").performClick()
+        composeTestRule.onNodeWithTag("navbar-item-Search").performClick()
 
         assertEquals(1, searchClicks)
         assertTrue("Suche darf nicht über onNavigate laufen", navigated.isEmpty())
@@ -119,9 +119,9 @@ class HomeSidebarClickTest {
         composeTestRule.runOnIdle {
             sharedFocusRequester.requestFocus()
         }
-        composeTestRule.onNodeWithTag("navbar-item-TV").assertIsFocused()
+        composeTestRule.onNodeWithTag("navbar-item-LiveTV").assertIsFocused()
 
-        composeTestRule.onNodeWithTag("navbar-item-TV").performKeyInput {
+        composeTestRule.onNodeWithTag("navbar-item-LiveTV").performKeyInput {
             pressKey(Key.DirectionRight)
         }
 

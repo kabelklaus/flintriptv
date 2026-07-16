@@ -354,7 +354,7 @@ class MainViewModel @Inject constructor(
                 currentState.isSearching
             },
             showMinLengthHint = trimmedQuery.isNotEmpty() && trimmedQuery.length < MIN_QUERY_LENGTH,
-            hasSearched = if (queryChanged) false else currentState.hasSearched
+            hasSearched = !queryChanged && currentState.hasSearched
         )
     }
     
