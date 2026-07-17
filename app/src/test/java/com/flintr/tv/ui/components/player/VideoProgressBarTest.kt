@@ -88,7 +88,9 @@ class VideoProgressBarTest {
         }
 
         composeTestRule.onRoot().performTouchInput {
-            click(Offset(centerX, 10f))
+            down(Offset(centerX, 10f))
+            moveBy(Offset(50f, 0f))
+            up()
         }
         composeTestRule.mainClock.advanceTimeBy(1_000L)
         composeTestRule.waitForIdle()

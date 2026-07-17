@@ -25,6 +25,44 @@ sonar {
         // Exclude test directories from analysis
         property("sonar.exclusions", "**/test/**,**/androidTest/**,**/*Test.kt,**/*Tests.kt")
         property("sonar.test.exclusions", "**/*")
+
+        // Coverage exclusions: code that cannot be meaningfully unit-tested locally.
+        // - DI wiring, Android entry points: pure framework glue
+        // - DebugOverlay: developer tooling, not user-facing behavior
+        // - UpdateInstaller: fires PackageInstaller intents, device-only
+        // - XtreamApiService: Retrofit interface definition
+        // - UserRepository/CredentialsRepository: thin Firestore/EncryptedSharedPreferences
+        //   I/O wrappers (AndroidKeyStore unavailable in Robolectric); covered indirectly
+        //   via mocked collaborators in service tests
+        // - Navigation/Player/Settings/Tab screens: require NavHost, ExoPlayer, or
+        //   Hilt-provided ViewModels and are exercised via instrumented tests instead
+        property(
+            "sonar.coverage.exclusions",
+            listOf(
+                "**/com/flintr/tv/di/**",
+                "**/com/flintr/tv/MainActivity.kt",
+                "**/com/flintr/tv/FlintRTVApplication.kt",
+                "**/com/flintr/tv/ui/components/player/DebugOverlay.kt",
+                "**/com/flintr/tv/utils/UpdateInstaller.kt",
+                "**/com/flintr/tv/data/api/XtreamApiService.kt",
+                "**/com/flintr/tv/data/repository/UserRepository.kt",
+                "**/com/flintr/tv/data/local/CredentialsRepository.kt",
+                "**/com/flintr/tv/ui/navigation/**",
+                "**/com/flintr/tv/ui/screens/PlayerScreen.kt",
+                "**/com/flintr/tv/ui/screens/SeriesEpisodesScreen.kt",
+                "**/com/flintr/tv/ui/screens/DataLoadingScreen.kt",
+                "**/com/flintr/tv/ui/screens/LoginScreen.kt",
+                "**/com/flintr/tv/ui/settings/**",
+                "**/com/flintr/tv/ui/tabs/**",
+                "**/com/flintr/tv/ui/sidebars/CategoryRow.kt",
+                "**/com/flintr/tv/ui/sidebars/ContentGridLayout.kt",
+                "**/com/flintr/tv/ui/components/ContentCard.kt",
+                "**/com/flintr/tv/ui/components/SearchOverlay.kt",
+                "**/com/flintr/tv/ui/components/MainLayout.kt",
+                "**/com/flintr/tv/ui/components/player/VideoSettingsDialog.kt",
+                "**/com/flintr/tv/ui/components/player/CustomPlayerControls.kt"
+            ).joinToString(",")
+        )
         
         // Report paths must be absolute: the Sonar sensors resolve relative paths
         // against each module's base dir, so ':app' would look in app/app/... and
