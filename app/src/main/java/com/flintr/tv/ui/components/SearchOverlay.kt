@@ -219,7 +219,7 @@ private fun handleOverlayDownKey(
     onFocusResults: () -> Boolean
 ): Boolean = when (currentFocusTarget) {
     SearchOverlayFocusTarget.SearchField -> onFocusScope(0)
-    is SearchOverlayFocusTarget.ScopeFilter -> if (hasResults) onFocusResults() else true
+    is SearchOverlayFocusTarget.ScopeFilter -> !hasResults || onFocusResults()
     else -> false
 }
 
