@@ -61,8 +61,37 @@ internal data class NavItem(
 
 internal data class NavItemState(
     val selectedDestination: HomeDestination,
-    val pendingFocusDestination: HomeDestination?
+    val pendingFocusDestination: HomeDestination?,
+    val isExpanded: Boolean = false
 )
+
+/**
+ * Hält den fokussierten Eintrag fest, bis der Fokus tatsächlich woanders landet.
+ */
+private fun resolveFocusedDestination(
+    current: HomeDestination?,
+    destination: HomeDestination,
+    isFocused: Boolean
+): HomeDestination? = when {
+    isFocused -> destination
+    current == destination -> null
+    else -> current
+}
+
+/**
+ * Suche öffnet das Overlay statt zu navigieren.
+ */
+private fun dispatchNavItemClick(
+    destination: HomeDestination,
+    onNavigate: (HomeDestination) -> Unit,
+    onSearchClick: () -> Unit
+) {
+    if (destination == HomeDestination.Search) {
+        onSearchClick()
+    } else {
+        onNavigate(destination)
+    }
+}
 
 internal data class NavItemFocusConfig(
     val focusRequester: FocusRequester? = null
@@ -318,7 +347,8 @@ fun HomeSidebar(
                     navItem = navItem,
                     state = NavItemState(
                         selectedDestination = selectedDestination,
-                        pendingFocusDestination = pendingFocusDestination
+                        pendingFocusDestination = pendingFocusDestination,
+                        isExpanded = isExpanded
                     ),
                     focusConfig = NavItemFocusConfig(
                         // IMPORTANT: This shared requester is the only return path from the
@@ -328,24 +358,13 @@ fun HomeSidebar(
                     ),
                     callbacks = NavItemCallbacks(
                         onClick = {
-                            if (navItem.destination == HomeDestination.Search) {
-                                onSearchClick()
-                            } else {
-                                onNavigate(navItem.destination)
-                            }
+                            dispatchNavItemClick(navItem.destination, onNavigate, onSearchClick)
                         },
                         onNavigateRight = onNavigateRight
                     ),
                     colors = colors,
-                    isExpanded = isExpanded,
                     onFocusChanged = { destination, isFocused ->
-                        focusedDestination = if (isFocused) {
-                            destination
-                        } else if (focusedDestination == destination) {
-                            null
-                        } else {
-                            focusedDestination
-                        }
+                        focusedDestination = resolveFocusedDestination(focusedDestination, destination, isFocused)
                     }
                 )
             }
@@ -389,7 +408,6 @@ internal fun HomeSidebarItem(
     focusConfig: NavItemFocusConfig,
     callbacks: NavItemCallbacks,
     colors: com.flintr.tv.ui.theme.AppColors,
-    isExpanded: Boolean,
     onFocusChanged: (HomeDestination, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -458,7 +476,7 @@ internal fun HomeSidebarItem(
                 icon = navItem.icon,
                 iconColor = itemColors.iconColor,
                 textColor = itemColors.textColor,
-                isExpanded = isExpanded
+                isExpanded = state.isExpanded
             )
         }
     }

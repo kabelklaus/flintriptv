@@ -15,6 +15,10 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
+    <!-- usesCleartextTraffic: bewusst aktiviert (Sonar xml:S5332 als Won't-Fix markieren).
+         IPTV-Provider liefern Streams häufig nur über HTTP; die Server-URL wird vom
+         Nutzer zur Laufzeit konfiguriert, eine statische Domain-Allowlist per
+         networkSecurityConfig ist daher nicht möglich. -->
     <application
         android:name=".FlintRTVApplication"
         android:allowBackup="true"

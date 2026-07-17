@@ -585,6 +585,17 @@ private suspend fun prepareMediaItem(
 }
 
 /**
+ * Callbacks for player setup state changes
+ */
+private data class PlayerSetupCallbacks(
+    val onError: (String) -> Unit,
+    val onStreamPreparingChanged: (Boolean) -> Unit,
+    val onPlaybackStateChanged: (Int) -> Unit,
+    val onIsPlayingChanged: (Boolean) -> Unit,
+    val onPlayWhenReadyChanged: (Boolean) -> Unit
+)
+
+/**
  * Sets up ExoPlayer and manages its lifecycle
  */
 @Suppress("InjectDispatcher")
@@ -592,11 +603,7 @@ private suspend fun prepareMediaItem(
 private fun rememberPlayerSetup(
     context: Context,
     streamUrl: String,
-    onError: (String) -> Unit,
-    onStreamPreparingChanged: (Boolean) -> Unit,
-    onPlaybackStateChanged: (Int) -> Unit,
-    onIsPlayingChanged: (Boolean) -> Unit,
-    onPlayWhenReadyChanged: (Boolean) -> Unit,
+    callbacks: PlayerSetupCallbacks,
     coroutineScope: CoroutineScope
 ): ExoPlayer {
     val credentials = rememberCredentials(context)
@@ -616,12 +623,10 @@ private fun rememberPlayerSetup(
     DisposableEffect(exoPlayer) {
         val listener = createPlayerListener(
             context = context,
-            onError = onError,
-            onPlaybackStateChanged = { state ->
-                onPlaybackStateChanged(state)
-            },
-            onIsPlayingChanged = onIsPlayingChanged,
-            onPlayWhenReadyChanged = onPlayWhenReadyChanged
+            onError = callbacks.onError,
+            onPlaybackStateChanged = callbacks.onPlaybackStateChanged,
+            onIsPlayingChanged = callbacks.onIsPlayingChanged,
+            onPlayWhenReadyChanged = callbacks.onPlayWhenReadyChanged
         )
         
         exoPlayer.addListener(listener)
@@ -634,20 +639,20 @@ private fun rememberPlayerSetup(
     // Handle stream URL changes (for channel switching)
     DisposableEffect(streamUrl) {
         if (BuildConfig.DEBUG) Log.d("PlayerScreen", "DisposableEffect triggered for streamUrl: $streamUrl")
-        onStreamPreparingChanged(true)
+        callbacks.onStreamPreparingChanged(true)
         val prepareJob = coroutineScope.launch(Dispatchers.IO) { // NOSONAR - UI component, hardcoded dispatcher acceptable
             try {
-                prepareMediaItem(exoPlayer, streamUrl, onError)
+                prepareMediaItem(exoPlayer, streamUrl, callbacks.onError)
             } finally {
                 withContext(Dispatchers.Main) { // NOSONAR - Compose state update must run on main
-                    onStreamPreparingChanged(false)
+                    callbacks.onStreamPreparingChanged(false)
                 }
             }
         }
 
         onDispose {
             prepareJob.cancel()
-            onStreamPreparingChanged(false)
+            callbacks.onStreamPreparingChanged(false)
         }
     }
     
@@ -1143,22 +1148,25 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     val exoPlayer = rememberPlayerSetup(
         context = context,
         streamUrl = currentStreamUrl,
-        onError = { message -> state.errorMessage = message },
-        onStreamPreparingChanged = { preparing -> state.isPreparingStream = preparing },
-        onPlaybackStateChanged = { playbackStateValue ->
-            state.playbackState = playbackStateValue
-            if (playbackStateValue == Player.STATE_READY) {
-                state.errorMessage = null
-            }
-        },
-        onIsPlayingChanged = { playing -> state.isPlaying = playing },
-        onPlayWhenReadyChanged = { ready -> state.playWhenReady = ready },
+        callbacks = PlayerSetupCallbacks(
+            onError = { message -> state.errorMessage = message },
+            onStreamPreparingChanged = { preparing -> state.isPreparingStream = preparing },
+            onPlaybackStateChanged = { playbackStateValue ->
+                state.playbackState = playbackStateValue
+                if (playbackStateValue == Player.STATE_READY) {
+                    state.errorMessage = null
+                }
+            },
+            onIsPlayingChanged = { playing -> state.isPlaying = playing },
+            onPlayWhenReadyChanged = { ready -> state.playWhenReady = ready }
+        ),
         coroutineScope = coroutineScope
     )
-    
-    // Lifecycle observer: pause player when app goes to background
-    // TODO: isMinimizerActive will be set to true when picture-in-picture / minimizer mode is implemented,
-    //  so that the player continues playing in the background instead of pausing.
+
+    // Lifecycle observer: pause player when app goes to background.
+    // isMinimizerActive stays false until a picture-in-picture / minimizer mode exists;
+    // once such a mode sets it to true, the player keeps playing in the background
+    // instead of pausing.
     var isMinimizerActive by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, exoPlayer) {

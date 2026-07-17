@@ -127,6 +127,10 @@ private suspend fun AwaitPointerEventScope.handleDragGesture(
  * @param isDragging Whether the user is currently dragging the scrubber
  * @param dragCallbacks Callbacks for drag gestures (start, progress, end)
  */
+// Lint false positive: awaitPointerEventScope is entered exactly once and loops
+// forever (while(true) inside the scope), so no pointer events can be dropped
+// between scope invocations.
+@Suppress("ReturnFromAwaitPointerEventScope")
 @Composable
 fun VideoProgressBar(
     progress: Float,
