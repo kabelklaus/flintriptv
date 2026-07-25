@@ -543,7 +543,7 @@ private fun rememberCredentials(context: Context): com.flintr.tv.data.local.Cred
             CredentialsRepositoryEntryPoint::class.java
         ).credentialsRepository()
     }
-    return credentialsRepository.getCredentialsFlow()
+    return credentialsRepository.credentialsFlow
         .collectAsState(initial = credentialsRepository.getCredentials()).value
 }
 
@@ -1025,7 +1025,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             CredentialsRepositoryEntryPoint::class.java
         ).credentialsRepository()
     }
-    val credentials by credentialsRepository.getCredentialsFlow()
+    val credentials by credentialsRepository.credentialsFlow
         .collectAsState(initial = credentialsRepository.getCredentials())
     
     // State for current stream URL (can be changed when switching channels)

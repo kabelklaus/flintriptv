@@ -6,7 +6,6 @@ import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -111,6 +110,4 @@ class CredentialsRepository @Inject constructor(
     fun clearCredentials() {
         sharedPreferences.edit { clear() }
     }
-
-    fun getCredentialsFlow(): Flow<Credentials?> = credentialsFlow
 }
