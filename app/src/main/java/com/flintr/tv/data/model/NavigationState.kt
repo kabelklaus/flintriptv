@@ -2,6 +2,7 @@ package com.flintr.tv.data.model
 
 import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
+import com.flintr.tv.utils.error.reportHandled
 
 /**
  * Destination type for navigation state
@@ -26,6 +27,7 @@ enum class DestinationType {
             return try {
                 valueOf(value)
             } catch (e: IllegalArgumentException) {
+                reportHandled("NavigationState.fromSerializedString", e)
                 UNKNOWN
             }
         }

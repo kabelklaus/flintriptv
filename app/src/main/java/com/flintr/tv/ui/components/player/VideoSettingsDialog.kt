@@ -29,6 +29,7 @@ import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadCenter
+import com.flintr.tv.utils.error.reportWarning
 
 /**
  * Info for a single audio track for display and selection.
@@ -310,7 +311,7 @@ private fun selectAudioTrack(exoPlayer: ExoPlayer, track: AudioTrackInfo) {
             .build()
         exoPlayer.trackSelectionParameters = newParams
     } catch (e: Exception) {
-        android.util.Log.w("AudioTrackSelector", "Failed to set audio track", e)
+        reportWarning("AudioTrackSelector", "Failed to set audio track", e)
     }
 }
 

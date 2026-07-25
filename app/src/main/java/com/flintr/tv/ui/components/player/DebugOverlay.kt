@@ -39,6 +39,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.utils.formatTime
+import com.flintr.tv.utils.error.reportControlFlow
 
 // Constants for debug overlay
 private const val DECODER_INITIALIZING = "Initializing..."
@@ -637,6 +638,7 @@ private fun getTransferFunction(exoPlayer: ExoPlayer?): String {
                     else -> "Unknown"
                 }
             } catch (e: Exception) {
+                reportControlFlow("DebugOverlay.getTransferFunction", e)
                 "Unknown"
             }
         }
@@ -659,10 +661,12 @@ private fun getColorSpace(exoPlayer: ExoPlayer?): String {
         colorSpaceField.isAccessible = true
         colorSpaceField.getInt(colorInfo)
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getColorSpace", e)
         try {
             val colorSpaceMethod = colorInfo.javaClass.getMethod("getColorSpace")
             colorSpaceMethod.invoke(colorInfo) as? Int ?: Format.NO_VALUE
         } catch (e2: Exception) {
+            reportControlFlow("DebugOverlay.getColorSpace", e2)
             Format.NO_VALUE
         }
     }
@@ -679,6 +683,7 @@ private fun getColorSpace(exoPlayer: ExoPlayer?): String {
             else -> "Unknown($colorSpace)"
         }
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getColorSpace", e)
         // Fallback to numeric values if constants don't exist
         when (colorSpace) {
             1 -> "BT.709"
@@ -708,10 +713,12 @@ private fun getDroppedRenderedFrames(exoPlayer: ExoPlayer?): String {
             droppedField.isAccessible = true
             droppedField.getInt(videoDecoderCounters)
         } catch (e: Exception) {
+            reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e)
             try {
                 val droppedMethod = videoDecoderCounters.javaClass.getMethod("getDroppedFrameCount")
                 droppedMethod.invoke(videoDecoderCounters) as? Int ?: 0
             } catch (e2: Exception) {
+                reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e2)
                 0
             }
         }
@@ -721,16 +728,19 @@ private fun getDroppedRenderedFrames(exoPlayer: ExoPlayer?): String {
             renderedField.isAccessible = true
             renderedField.getInt(videoDecoderCounters)
         } catch (e: Exception) {
+            reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e)
             try {
                 val renderedMethod = videoDecoderCounters.javaClass.getMethod("getRenderedFrameCount")
                 renderedMethod.invoke(videoDecoderCounters) as? Int ?: 0
             } catch (e2: Exception) {
+                reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e2)
                 0
             }
         }
         
         "$droppedFrames/$renderedFrames"
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e)
         "N/A"
     }
 }
@@ -797,6 +807,7 @@ private fun getUIResolution(context: android.content.Context): String {
             "N/A"
         }
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getUIResolution", e)
         "N/A"
     }
 }
@@ -818,6 +829,7 @@ private fun getDisplayModeID(context: android.content.Context): String {
         val modeId = mode?.modeId ?: return "N/A"
         modeId.toString()
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getDisplayModeID", e)
         "N/A"
     }
 }
@@ -839,6 +851,7 @@ private fun getDisplayModesLength(context: android.content.Context): String {
         val supportedModes = display?.supportedModes ?: return "N/A"
         supportedModes.size.toString()
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getDisplayModesLength", e)
         "N/A"
     }
 }
@@ -854,9 +867,11 @@ private fun getExoPlayerVersion(): String {
         versionField.isAccessible = true
         versionField[null] as? String ?: "N/A"
     } catch (e: ClassNotFoundException) {
+        reportControlFlow("DebugOverlay.getExoPlayerVersion", e)
         // Fallback: use Media3 version from gradle
         "1.3.1"
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getExoPlayerVersion", e)
         "N/A"
     }
 }
@@ -879,8 +894,10 @@ private fun getCronetVersion(): String {
         // Cronet version is typically not directly accessible
         "Available"
     } catch (e: ClassNotFoundException) {
+        reportControlFlow("DebugOverlay.getCronetVersion", e)
         "N/A"
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getCronetVersion", e)
         "N/A"
     }
 }
@@ -895,8 +912,10 @@ private fun getHLSVersion(): String {
         // If class exists, HLS is supported
         "Available"
     } catch (e: ClassNotFoundException) {
+        reportControlFlow("DebugOverlay.getHLSVersion", e)
         "N/A"
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getHLSVersion", e)
         "N/A"
     }
 }
@@ -918,8 +937,10 @@ private fun getOkHttpVersion(): String {
             "4.12.0"
         }
     } catch (e: ClassNotFoundException) {
+        reportControlFlow("DebugOverlay.getOkHttpVersion", e)
         "N/A"
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getOkHttpVersion", e)
         "N/A"
     }
 }
@@ -939,6 +960,7 @@ private fun getFlintrIPTVVersion(context: android.content.Context): String {
         }
         packageInfo.versionName ?: "N/A"
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getFlintrIPTVVersion", e)
         "N/A"
     }
 }
@@ -978,12 +1000,14 @@ private fun getDiskCacheSize(exoPlayer: ExoPlayer?): String {
                 val sizeMB = sizeBytes / (1024 * 1024)
                 "$sizeMB"
             } catch (e: Exception) {
+                reportControlFlow("DebugOverlay.getDiskCacheSize", e)
                 "N/A"
             }
         } else {
             "N/A"
         }
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getDiskCacheSize", e)
         "N/A"
     }
 }
@@ -997,6 +1021,7 @@ private fun getMaxHeapMemory(): String {
         val maxMemoryMB = maxMemory / (1024 * 1024)
         "$maxMemoryMB"
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getMaxHeapMemory", e)
         "N/A"
     }
 }
@@ -1010,6 +1035,7 @@ private fun getAllocatedHeapMemory(): String {
         val allocatedMemoryMB = totalMemory / (1024 * 1024)
         "$allocatedMemoryMB"
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getAllocatedHeapMemory", e)
         "N/A"
     }
 }
@@ -1031,6 +1057,7 @@ private fun getTotalUsedRAM(context: android.content.Context): String {
         
         "$totalMemMB/$usedMemMB"
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getTotalUsedRAM", e)
         "N/A"
     }
 }
@@ -1055,6 +1082,7 @@ private fun getRAMUsedPercent(context: android.content.Context): String {
         val usedPercent = (usedMem * 100.0 / totalMem).toInt()
         "${usedPercent}%"
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getRAMUsedPercent", e)
         "N/A"
     }
 }
@@ -1067,6 +1095,7 @@ private fun getCPUCores(): String {
         val cores = Runtime.getRuntime().availableProcessors()
         cores.toString()
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getCPUCores", e)
         "N/A"
     }
 }
@@ -1093,6 +1122,7 @@ private fun getCPUUsage(): String {
             "${usagePercent}%"
         }
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getCPUUsage", e)
         "N/A"
     }
 }
@@ -1106,6 +1136,7 @@ private fun getPiPSupported(context: android.content.Context): String {
         val pipSupported = packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
         pipSupported.toString()
     } catch (e: Exception) {
+        reportControlFlow("DebugOverlay.getPiPSupported", e)
         "N/A"
     }
 }

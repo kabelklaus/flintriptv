@@ -19,6 +19,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
+import com.flintr.tv.utils.error.reportError
 
 private const val TAG = "FavoritesHook"
 
@@ -154,7 +155,7 @@ private suspend fun <T : Any> loadFriendFavoriteItems(
     idSelector: (T) -> Int
 ): List<Pair<FriendEntry, List<T>>> {
     val friends = userRepository.loadFriends(currentUsername).getOrElse { error ->
-        Log.e(TAG, "Failed to load friends for favorites", error)
+        reportError(TAG, "Failed to load friends for favorites", error)
         return emptyList()
     }
 
@@ -181,7 +182,7 @@ private suspend fun <T : Any> loadSingleFriendFavoriteItems(
     idSelector: (T) -> Int
 ): Pair<FriendEntry, List<T>>? {
     val favorites = userRepository.loadFavorites(friend.username).getOrElse { error ->
-        Log.e(TAG, "Failed to load favorites for friend: ${friend.username}", error)
+        reportError(TAG, "Failed to load favorites for friend: ${friend.username}", error)
         return null
     }
 

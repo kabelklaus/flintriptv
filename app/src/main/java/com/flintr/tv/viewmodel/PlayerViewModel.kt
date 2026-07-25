@@ -20,6 +20,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.flintr.tv.utils.error.reportError
 
 /**
  * Information about the next episode to play
@@ -439,7 +440,7 @@ class PlayerViewModel @Inject constructor(
                     // Note: findCurrentChannelIndex should be called from PlayerScreen after channels are loaded
                 }
                 .onFailure { error ->
-                    android.util.Log.e("PlayerViewModel", "Failed to load channels for category $categoryId", error)
+                    reportError("PlayerViewModel", "Failed to load channels for category $categoryId", error)
                     _currentCategoryChannels.value = emptyList()
                     _currentChannelIndex.value = -1
                 }

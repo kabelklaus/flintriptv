@@ -7,6 +7,7 @@ import androidx.core.content.FileProvider
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.flintr.tv.utils.error.reportError
 
 @Singleton
 class UpdateInstaller @Inject constructor(
@@ -40,7 +41,7 @@ class UpdateInstaller @Inject constructor(
             context.startActivity(intent)
             true
         } catch (e: Exception) {
-            Log.e("UpdateInstaller", "Failed to install APK", e)
+            reportError("UpdateInstaller", "Failed to install APK", e)
             false
         }
     }

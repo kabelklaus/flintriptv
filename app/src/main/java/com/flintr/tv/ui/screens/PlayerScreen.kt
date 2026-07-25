@@ -84,6 +84,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.flintr.tv.R
+import com.flintr.tv.utils.error.reportError
 
 // Constants
 private const val DECODER_INITIALIZING = "Initializing..."
@@ -269,7 +270,7 @@ private fun createPlayerListener(
 ): Player.Listener {
     return object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
-            Log.e("PlayerScreen", "Player Error:", error)
+            reportError("PlayerScreen", "Player Error:", error)
             if (error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
                 error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED) {
                 Log.w("PlayerScreen", "Decoder error: code=${error.errorCode}, message=${error.message}")
@@ -577,7 +578,7 @@ private suspend fun prepareMediaItem(
             if (BuildConfig.DEBUG) Log.d("PlayerScreen", "New media item prepared and playback started")
         }
     } catch (e: Exception) {
-        Log.e("PlayerScreen", "Error preparing media item", e)
+        reportError("PlayerScreen", "Error preparing media item", e)
         withContext(Dispatchers.Main) { // NOSONAR - UI thread required for error callback
             onError("Fehler beim Laden des Streams: ${e.message}")
         }

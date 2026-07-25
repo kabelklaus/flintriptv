@@ -31,6 +31,7 @@ import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.asOwnSourcedItems
 import com.flintr.tv.ui.common.useFavorites
 import com.flintr.tv.ui.common.ContentFilterUtils
+import com.flintr.tv.utils.error.reportError
 
 private const val TAG = "SeriesContent"
 
@@ -117,7 +118,7 @@ private suspend fun loadNewCategorySeries(
                 android.util.Log.w(TAG, "Cached data is null")
             }
         } catch (e: Exception) {
-            android.util.Log.e(TAG, "Error loading new category series", e)
+            reportError(TAG, "Error loading new category series", e)
         } finally {
             onLoadingChanged(false)
         }

@@ -26,6 +26,7 @@ import com.flintr.tv.ui.screens.HomeDestination
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.common.UiConstants
+import com.flintr.tv.utils.error.reportWarning
 
 // Constants for in-progress content loading
 private const val API_CALL_DELAY_MS = 100L
@@ -241,7 +242,7 @@ private suspend fun loadAndProcessSeries(
         val minimalSeries = createMinimalSeries(series)
         items.addAll(processEpisodesForSeries(series, episodesForSeries, minimalSeries, seriesId))
     }.onFailure { e ->
-        Log.w("InProgressContent", "Failed to load series info for seriesId=$seriesId", e)
+        reportWarning("InProgressContent", "Failed to load series info for seriesId=$seriesId", e)
     }
     
     return items

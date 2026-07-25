@@ -7,6 +7,7 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.flintr.tv.utils.error.reportError
 
 /**
  * Data class for package information
@@ -52,7 +53,7 @@ suspend fun loadPackageInfo(
             }
         )
     } catch (e: Exception) {
-        Log.e("PackageInfoUtils", "Failed to load package info", e)
+        reportError("PackageInfoUtils", "Failed to load package info", e)
         null
     }
 }

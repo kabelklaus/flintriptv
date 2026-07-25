@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import javax.inject.Inject
+import com.flintr.tv.utils.error.reportError
+import com.flintr.tv.utils.error.reportWarning
 
 data class LoginUiState(
     val isLoading: Boolean = false,
@@ -67,7 +69,7 @@ class LoginViewModel @Inject constructor(
                             Log.d("LoginViewModel", "Username saved to Firestore: $username")
                         },
                         onFailure = { exception ->
-                            Log.w("LoginViewModel", "Failed to save username to Firestore: $username", exception)
+                            reportWarning("LoginViewModel", "Failed to save username to Firestore: $username", exception)
                         }
                     )
                     
@@ -88,7 +90,7 @@ class LoginViewModel @Inject constructor(
                     isLoading = false,
                     error = "Verbindungsfehler: ${e.message}"
                 )
-                Log.e("LoginViewModel", "Login error", e)
+                reportError("LoginViewModel", "Login error", e)
             }
         }
     }

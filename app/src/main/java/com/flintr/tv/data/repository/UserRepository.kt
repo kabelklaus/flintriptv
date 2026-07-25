@@ -18,6 +18,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import com.flintr.tv.utils.error.reportError
+import com.flintr.tv.utils.error.reportWarning
 
 @Singleton
 class UserRepository @Inject constructor() {
@@ -53,7 +55,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Username existence check completed: exists=$exists")
             Result.success(exists)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to check username existence", e)
+            reportError(TAG, "Failed to check username existence", e)
             Result.failure(e)
         }
     }
@@ -76,7 +78,7 @@ class UserRepository @Inject constructor() {
         val exists = existsResult.getOrElse {
             // Never write blindly: a set() on an existing document would replace it
             // and wipe watchedHistory/watchProgress/favorites of that user.
-            Log.e(TAG, "Failed to check username existence, aborting write to protect existing data", it)
+            reportError(TAG, "Failed to check username existence, aborting write to protect existing data", it)
             return Result.failure(it)
         }
 
@@ -102,7 +104,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Username saved successfully")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save username", e)
+            reportError(TAG, "Failed to save username", e)
             Result.failure(e)
         }
     }
@@ -147,7 +149,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Hidden categories saved successfully (${hiddenCategories.values.sumOf { it.size }} categories)")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save hidden categories", e)
+            reportError(TAG, "Failed to save hidden categories", e)
             Result.failure(e)
         }
     }
@@ -191,7 +193,7 @@ class UserRepository @Inject constructor() {
                     val categoryIds = value.mapNotNull { it as? String }.toSet()
                     categoryType to categoryIds
                 } catch (e: IllegalArgumentException) {
-                    Log.w(TAG, "Unknown category type in Firestore: $key", e)
+                    reportWarning(TAG, "Unknown category type in Firestore: $key", e)
                     null
                 }
             }.toMap()
@@ -199,7 +201,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Hidden categories loaded successfully, count: ${result.values.sumOf { it.size }}")
             Result.success(result)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load hidden categories", e)
+            reportError(TAG, "Failed to load hidden categories", e)
             Result.failure(e)
         }
     }
@@ -244,7 +246,7 @@ class UserRepository @Inject constructor() {
             }
             saveResult
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to migrate hidden categories from local to Firestore", e)
+            reportError(TAG, "Failed to migrate hidden categories from local to Firestore", e)
             Result.failure(e)
         }
     }
@@ -292,7 +294,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Favorites saved successfully (${favorites.size} favorites)")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save favorites", e)
+            reportError(TAG, "Failed to save favorites", e)
             Result.failure(e)
         }
     }
@@ -350,7 +352,7 @@ class UserRepository @Inject constructor() {
                         addedAt = addedAt
                     )
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error parsing favorite from Firestore", e)
+                    reportWarning(TAG, "Error parsing favorite from Firestore", e)
                     null
                 }
             }
@@ -358,7 +360,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Favorites loaded successfully, count: ${result.size}")
             Result.success(result)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load favorites", e)
+            reportError(TAG, "Failed to load favorites", e)
             Result.failure(e)
         }
     }
@@ -399,7 +401,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Friends loaded successfully, count: ${result.size}")
             Result.success(result)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load friends", e)
+            reportError(TAG, "Failed to load friends", e)
             Result.failure(e)
         }
     }
@@ -447,7 +449,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Friend added atomically")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to add friend atomically", e)
+            reportError(TAG, "Failed to add friend atomically", e)
             Result.failure(e)
         }
     }
@@ -490,7 +492,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Favorite added atomically")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to add favorite atomically", e)
+            reportError(TAG, "Failed to add favorite atomically", e)
             Result.failure(e)
         }
     }
@@ -536,7 +538,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Favorite removed atomically")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to remove favorite atomically", e)
+            reportError(TAG, "Failed to remove favorite atomically", e)
             Result.failure(e)
         }
     }
@@ -592,7 +594,7 @@ class UserRepository @Inject constructor() {
                             addedAt = addedAt
                         )
                     } catch (e: Exception) {
-                        Log.w(TAG, "Error parsing favorite from Firestore during migration", e)
+                        reportWarning(TAG, "Error parsing favorite from Firestore during migration", e)
                         null
                     }
                 }
@@ -614,7 +616,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Successfully migrated favorites from local to Firestore")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to migrate favorites from local to Firestore", e)
+            reportError(TAG, "Failed to migrate favorites from local to Firestore", e)
             Result.failure(e)
         }
     }
@@ -646,7 +648,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "$successLogMessage (${data.size} entries)")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save '$fieldName'", e)
+            reportError(TAG, "Failed to save '$fieldName'", e)
             Result.failure(e)
         }
     }
@@ -706,7 +708,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "Deleted watch progress entry")
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete watch progress entry", e)
+            reportError(TAG, "Failed to delete watch progress entry", e)
             Result.failure(e)
         }
     }
@@ -746,7 +748,7 @@ class UserRepository @Inject constructor() {
                 try {
                     parser(key, itemMap)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error parsing item from Firestore for field '$fieldName' with key: $key", e)
+                    reportWarning(TAG, "Error parsing item from Firestore for field '$fieldName' with key: $key", e)
                     null
                 }
             }.toMap()
@@ -754,7 +756,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, "'$fieldName' loaded successfully, count: ${result.size}")
             Result.success(result)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load '$fieldName'", e)
+            reportError(TAG, "Failed to load '$fieldName'", e)
             Result.failure(e)
         }
     }
@@ -822,7 +824,7 @@ class UserRepository @Inject constructor() {
                     try {
                         parser(key, itemMap)
                     } catch (e: Exception) {
-                        Log.w(TAG, "Error parsing item from Firestore during migration for field '$fieldName' with key: $key", e)
+                        reportWarning(TAG, "Error parsing item from Firestore during migration for field '$fieldName' with key: $key", e)
                         null
                     }
                 }.toMap()
@@ -842,7 +844,7 @@ class UserRepository @Inject constructor() {
             Log.d(TAG, successLogMessage)
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to migrate '$fieldName' from local to Firestore", e)
+            reportError(TAG, "Failed to migrate '$fieldName' from local to Firestore", e)
             Result.failure(e)
         }
     }
@@ -1040,7 +1042,7 @@ class UserRepository @Inject constructor() {
                 addedAt = addedAt
             )
         } catch (e: Exception) {
-            Log.w(TAG, "Error parsing friend from Firestore", e)
+            reportWarning(TAG, "Error parsing friend from Firestore", e)
             null
         }
     }

@@ -22,6 +22,7 @@ import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
+import com.flintr.tv.utils.error.reportError
 
 @Singleton
 class FavoritesRepository @Inject constructor(
@@ -101,7 +102,7 @@ class FavoritesRepository @Inject constructor(
                     Log.d(TAG, "Loaded favorites from Firestore: ${favorites.size} total")
                 },
                 onFailure = { exception ->
-                    Log.e(TAG, "Failed to load favorites from Firestore", exception)
+                    reportError(TAG, "Failed to load favorites from Firestore", exception)
                     // Keep current state or use empty list
                     if (_favorites.value.isEmpty()) {
                         Log.e(TAG, "State is empty after failed Firestore load - user data may be unavailable")
@@ -151,7 +152,7 @@ class FavoritesRepository @Inject constructor(
                         Log.d(TAG, "Migration completed successfully")
                     },
                     onFailure = { exception ->
-                        Log.e(TAG, "Migration failed, will retry on next app start", exception)
+                        reportError(TAG, "Migration failed, will retry on next app start", exception)
                         // Don't mark as complete, so it will retry
                     }
                 )
@@ -163,7 +164,7 @@ class FavoritesRepository @Inject constructor(
                 Log.d(TAG, "No local data to migrate")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error during migration", e)
+            reportError(TAG, "Error during migration", e)
             // Don't mark as complete, so it will retry
         }
     }
@@ -180,7 +181,7 @@ class FavoritesRepository @Inject constructor(
                 listAdapter.fromJson(json) ?: emptyList()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading local data for migration", e)
+            reportError(TAG, "Error loading local data for migration", e)
             emptyList()
         }
     }
@@ -195,7 +196,7 @@ class FavoritesRepository @Inject constructor(
             }
             Log.d(TAG, "Cleared old local data after migration")
         } catch (e: Exception) {
-            Log.e(TAG, "Error clearing local data", e)
+            reportError(TAG, "Error clearing local data", e)
         }
     }
 
@@ -216,7 +217,7 @@ class FavoritesRepository @Inject constructor(
                     Log.d(TAG, "Successfully saved favorites to Firestore")
                 },
                 onFailure = { exception ->
-                    Log.e(TAG, "Failed to save favorites to Firestore", exception)
+                    reportError(TAG, "Failed to save favorites to Firestore", exception)
                     // StateFlow already updated, so UI will reflect the change
                     // Firestore will sync when connection is restored
                 }
@@ -308,7 +309,7 @@ class FavoritesRepository @Inject constructor(
         try {
             loadFromFirestore()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load from Firestore before clearing favorites", e)
+            reportError(TAG, "Failed to load from Firestore before clearing favorites", e)
             return
         }
         

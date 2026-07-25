@@ -20,6 +20,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.flintr.tv.utils.error.reportError
+import com.flintr.tv.utils.error.reportHandled
 
 /**
  * Progress information for data refresh operations.
@@ -101,8 +103,10 @@ class DataRefreshUseCase @Inject constructor(
             val result = try {
                 loadFn()
             } catch (cancelled: CancellationException) {
+                reportHandled("DataRefreshUseCase.isConnectivityFallbackEligible", cancelled)
                 throw cancelled
             } catch (e: Exception) {
+                reportHandled("DataRefreshUseCase.isConnectivityFallbackEligible", e)
                 Result.failure(e)
             }
 
@@ -297,7 +301,7 @@ class DataRefreshUseCase @Inject constructor(
 
             Log.d(TAG, "Data refresh completed successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "Error refreshing data", e)
+            reportError(TAG, "Error refreshing data", e)
             emit(DataRefreshProgress(
                 step = RefreshStep.SAVING,
                 message = "Fehler beim Cache-Update: ${e.message}",

@@ -8,6 +8,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.*
+import com.flintr.tv.utils.error.reportWarning
+import com.flintr.tv.utils.error.reportControlFlow
 
 /**
  * Formats an expiration date string into a human-readable format with status.
@@ -95,7 +97,7 @@ private fun parseExpirationDate(expDate: String): LocalDate? {
             }
             return date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
         } catch (e: Exception) {
-            Log.w("DateUtils", "Failed to parse timestamp: $expDate", e)
+            reportWarning("DateUtils", "Failed to parse timestamp: $expDate", e)
         }
     }
     
@@ -121,6 +123,7 @@ private fun parseExpirationDate(expDate: String): LocalDate? {
             }
         } catch (e: Exception) {
             // Try next format
+            reportControlFlow("DateUtils.parseFlexibleDate", e)
         }
     }
     

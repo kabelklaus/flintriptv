@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.flintr.tv.utils.error.reportHandled
 
 @HiltViewModel
 class UpdateViewModel @Inject constructor(
@@ -49,6 +50,7 @@ class UpdateViewModel @Inject constructor(
                 val info = updateRepository.checkForUpdates(currentVersion)
                 _updateInfo.value = info
             } catch (e: Exception) {
+                reportHandled("UpdateViewModel.checkForUpdates", e)
                 _errorMessage.value = resourcesProvider.getString(
                     R.string.error_checking_updates,
                     e.message ?: resourcesProvider.getString(R.string.unknown_error)

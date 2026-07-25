@@ -14,8 +14,10 @@ import org.junit.Test
  */
 class SeriesInfoResponseAdapterTest {
 
+    // Spiegelt die Moshi-Konfiguration aus AppModule.provideMoshi().
     private val moshi: Moshi = Moshi.Builder()
         .add(SeriesInfoResponseAdapterFactory())
+        .add(EmptyArrayAsObjectAdapterFactory(setOf(EpisodeInfo::class.java, SeriesInfo::class.java)))
         .build()
 
     private val adapter = moshi.adapter(SeriesInfoResponse::class.java)
@@ -53,6 +55,47 @@ class SeriesInfoResponseAdapterTest {
         assertEquals(4.5, result?.info?.rating5Based)
         assertEquals(1, result?.episodes?.get("1")?.size)
         assertEquals("Geheimnisse", result?.episodes?.get("1")?.first()?.title)
+    }
+
+    @Test
+    fun episodeInfoEmptyArrayIsTolerated() {
+        // Manche Xtream-Panels liefern pro Episode "info": [] statt eines Objekts.
+        // Das darf nicht die ganze Serie killen (Crash-Pfad: $.episodes.21[133].info).
+        val json = """
+            {
+              "episodes": {
+                "21": [
+                  {"id": 500, "title": "Mit Info", "info": {"plot": "Spannend", "duration": "00:42:00"}},
+                  {"id": 501, "title": "Ohne Info", "info": []}
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val result = adapter.fromJson(json)
+
+        val episodes = result?.episodes?.get("21")
+        assertEquals(2, episodes?.size)
+        assertEquals("Spannend", episodes?.get(0)?.info?.plot)
+        assertNull(episodes?.get(1)?.info)
+        assertEquals("Ohne Info", episodes?.get(1)?.title)
+    }
+
+    @Test
+    fun topLevelInfoEmptyArrayIsTolerated() {
+        // Auch das Serien-Level "info" kann als leeres Array kommen.
+        val json = """
+            {
+              "info": [],
+              "episodes": {"1": [{"id": 1, "title": "Pilot"}]}
+            }
+        """.trimIndent()
+
+        val result = adapter.fromJson(json)
+
+        assertNotNull(result)
+        assertNull(result?.info)
+        assertEquals("Pilot", result?.episodes?.get("1")?.first()?.title)
     }
 
     @Test

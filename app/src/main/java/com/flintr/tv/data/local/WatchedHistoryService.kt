@@ -24,6 +24,8 @@ import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
+import com.flintr.tv.utils.error.reportError
+import com.flintr.tv.utils.error.reportWarning
 
 @Singleton
 class WatchedHistoryService @Inject constructor(
@@ -148,7 +150,7 @@ class WatchedHistoryService @Inject constructor(
                     }
                 },
                 onFailure = { exception ->
-                    Log.e(TAG, "Failed to load watched history from Firestore", exception)
+                    reportError(TAG, "Failed to load watched history from Firestore", exception)
                     // Keep current state or use empty map
                     if (_watchedHistory.value.isEmpty()) {
                         Log.e(TAG, "State is empty after failed Firestore load - user data may be unavailable")
@@ -198,7 +200,7 @@ class WatchedHistoryService @Inject constructor(
                         Log.d(TAG, "Migration completed successfully")
                     },
                     onFailure = { exception ->
-                        Log.e(TAG, "Migration failed, will retry on next app start", exception)
+                        reportError(TAG, "Migration failed, will retry on next app start", exception)
                         // Don't mark as complete, so it will retry
                     }
                 )
@@ -210,7 +212,7 @@ class WatchedHistoryService @Inject constructor(
                 Log.d(TAG, "No local data to migrate")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error during migration", e)
+            reportError(TAG, "Error during migration", e)
             // Don't mark as complete, so it will retry
         }
     }
@@ -227,7 +229,7 @@ class WatchedHistoryService @Inject constructor(
                 mapAdapter.fromJson(json) ?: emptyMap()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading local data for migration", e)
+            reportError(TAG, "Error loading local data for migration", e)
             emptyMap()
         }
     }
@@ -242,7 +244,7 @@ class WatchedHistoryService @Inject constructor(
             }
             Log.d(TAG, "Cleared old local data after migration")
         } catch (e: Exception) {
-            Log.e(TAG, "Error clearing local data", e)
+            reportError(TAG, "Error clearing local data", e)
         }
     }
 
@@ -269,7 +271,7 @@ class WatchedHistoryService @Inject constructor(
                     }
                 },
                 onFailure = { exception ->
-                    Log.e(TAG, "Failed to save watched history to Firestore", exception)
+                    reportError(TAG, "Failed to save watched history to Firestore", exception)
                     // StateFlow already updated, so UI will reflect the change
                     // Firestore will sync when connection is restored
                 }
@@ -341,7 +343,7 @@ class WatchedHistoryService @Inject constructor(
             Log.d(TAG, "Marked item as watched successfully")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Error marking item as watched", e)
+            reportError(TAG, "Error marking item as watched", e)
             false
         }
     }
@@ -374,7 +376,7 @@ class WatchedHistoryService @Inject constructor(
             Log.d(TAG, "Marked item as unwatched successfully")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Error marking item as unwatched", e)
+            reportError(TAG, "Error marking item as unwatched", e)
             false
         }
     }
@@ -414,7 +416,7 @@ class WatchedHistoryService @Inject constructor(
             Log.d(TAG, "Marked ${episodeIds.size} episodes as watched")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Error marking episodes as watched", e)
+            reportError(TAG, "Error marking episodes as watched", e)
             false
         }
     }
@@ -435,7 +437,7 @@ class WatchedHistoryService @Inject constructor(
             Log.d(TAG, "isWatched check completed: result=$isWatched")
             return@withContext isWatched
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking if item is watched", e)
+            reportError(TAG, "Error checking if item is watched", e)
             false
         }
     }
@@ -457,7 +459,7 @@ class WatchedHistoryService @Inject constructor(
             Log.d(TAG, "getWatchedEpisodeIds: seriesId=$seriesId, found ${episodeIds.size} watched episodes")
             return@withContext episodeIds
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting watched episode IDs for seriesId: $seriesId", e)
+            reportError(TAG, "Error getting watched episode IDs for seriesId: $seriesId", e)
             emptySet()
         }
     }
@@ -481,7 +483,7 @@ class WatchedHistoryService @Inject constructor(
             // The calling code can filter by category if needed
             return@withContext vodIds
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting watched VOD IDs", e)
+            reportError(TAG, "Error getting watched VOD IDs", e)
             emptySet()
         }
     }
@@ -502,7 +504,7 @@ class WatchedHistoryService @Inject constructor(
                     val timestamp = try {
                         Instant.parse(item.watchedAt).toEpochMilli()
                     } catch (e: Exception) {
-                        Log.w(TAG, "Error parsing watchedAt timestamp for episode $episodeId: ${item.watchedAt}", e)
+                        reportWarning(TAG, "Error parsing watchedAt timestamp for episode $episodeId: ${item.watchedAt}", e)
                         return@mapNotNull null
                     }
                     episodeId to timestamp
@@ -516,7 +518,7 @@ class WatchedHistoryService @Inject constructor(
             }
             return@withContext latest
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting latest watched episode for seriesId: $seriesId", e)
+            reportError(TAG, "Error getting latest watched episode for seriesId: $seriesId", e)
             null
         }
     }

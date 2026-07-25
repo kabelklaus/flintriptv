@@ -53,6 +53,8 @@ import com.flintr.tv.ui.utils.InteractionUtils.tvFocusable
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.utils.ContentParser
 import kotlinx.coroutines.launch
+import com.flintr.tv.utils.error.reportHandled
+import com.flintr.tv.utils.error.reportControlFlow
 
 // Navigation direction enum
 private enum class NavigationDirection {
@@ -143,11 +145,13 @@ private fun rememberEpisodeFocus(
         try {
             focusRequesters.getOrNull(targetIndex)?.requestFocus()
         } catch (e: IllegalStateException) {
+            reportHandled("SeriesEpisodesScreen.rememberEpisodeFocus", e)
             // FocusRequester might not be ready yet, retry after delay
             kotlinx.coroutines.delay(100)
             try {
                 focusRequesters.getOrNull(targetIndex)?.requestFocus()
             } catch (e2: IllegalStateException) {
+                reportHandled("SeriesEpisodesScreen.rememberEpisodeFocus", e2)
                 // Ignore if still not ready
             }
         }
@@ -938,6 +942,7 @@ private fun SeasonButton(
             try {
                 actualFocusRequester.requestFocus()
             } catch (e: IllegalStateException) {
+                reportHandled("SeriesEpisodesScreen.SeasonButton", e)
                 // FocusRequester might not be ready yet
             }
         }
@@ -1099,12 +1104,14 @@ private fun Modifier.conditionalBorder(
 private suspend fun requestFocusWithRetry(focusRequester: FocusRequester) {
     try {
         focusRequester.requestFocus()
-    } catch (_: IllegalStateException) {
+    } catch (e: IllegalStateException) {
+        reportControlFlow("requestFocusWithRetry.firstAttempt", e)
         // FocusRequester might not be ready yet, retry after short delay
         kotlinx.coroutines.delay(50)
         try {
             focusRequester.requestFocus()
-        } catch (_: IllegalStateException) {
+        } catch (e: IllegalStateException) {
+            reportControlFlow("requestFocusWithRetry.retry", e)
             // Ignore if still not ready
         }
     }
@@ -1329,6 +1336,7 @@ private fun rememberEpisodeProgress(
                 durationStr.toLongOrNull()?.times(1000) // Convert seconds to milliseconds
                     ?: parseDurationString(durationStr)?.times(1000)
             } catch (e: Exception) {
+                reportHandled("SeriesEpisodesScreen.rememberEpisodeProgress", e)
                 null
             }
         }
@@ -1480,6 +1488,7 @@ private fun parseDurationString(durationStr: String): Long? {
             else -> durationStr.toLongOrNull()
         }
     } catch (e: Exception) {
+        reportHandled("SeriesEpisodesScreen.parseDurationString", e)
         null
     }
 }

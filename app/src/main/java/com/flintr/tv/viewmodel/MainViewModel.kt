@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.flintr.tv.utils.error.reportError
+import com.flintr.tv.utils.error.reportWarning
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
@@ -130,7 +132,7 @@ class MainViewModel @Inject constructor(
                         Log.d("MainViewModel", "Username saved to Firestore on app start")
                     },
                     onFailure = { exception ->
-                        Log.w("MainViewModel", "Failed to save username to Firestore on app start", exception)
+                        reportWarning("MainViewModel", "Failed to save username to Firestore on app start", exception)
                     }
                 )
             }
@@ -165,12 +167,12 @@ class MainViewModel @Inject constructor(
             }
             .onFailure { error ->
                 if (cacheService.shouldUseCacheForBrowsing() && error.isConnectivityError()) {
-                    Log.w("MainViewModel", "Skipping server info error because cached browsing is available", error)
+                    reportWarning("MainViewModel", "Skipping server info error because cached browsing is available", error)
                     return@onFailure
                 }
 
                 _uiState.value = _uiState.value.copy(error = error.message)
-                Log.e("MainViewModel", "Failed to load server info", error)
+                reportError("MainViewModel", "Failed to load server info", error)
             }
     }
 
@@ -196,7 +198,7 @@ class MainViewModel @Inject constructor(
                     Log.d("MainViewModel", "Live categories loaded successfully: ${it.size} categories")
                 }
                 .onFailure {
-                    Log.e("MainViewModel", "Failed to load live categories", it)
+                    reportError("MainViewModel", "Failed to load live categories", it)
                     if (categoryLoadError == null) categoryLoadError = it.message
                 }
 
@@ -206,7 +208,7 @@ class MainViewModel @Inject constructor(
                     Log.d("MainViewModel", "VOD categories loaded successfully: ${it.size} categories")
                 }
                 .onFailure {
-                    Log.e("MainViewModel", "Failed to load VOD categories", it)
+                    reportError("MainViewModel", "Failed to load VOD categories", it)
                     if (categoryLoadError == null) categoryLoadError = it.message
                 }
 
@@ -216,7 +218,7 @@ class MainViewModel @Inject constructor(
                     Log.d("MainViewModel", "Series categories loaded successfully: ${it.size} categories")
                 }
                 .onFailure {
-                    Log.e("MainViewModel", "Failed to load series categories", it)
+                    reportError("MainViewModel", "Failed to load series categories", it)
                     if (categoryLoadError == null) categoryLoadError = it.message
                 }
         }
@@ -245,7 +247,7 @@ class MainViewModel @Inject constructor(
                 }
                 .onFailure { error ->
                     _uiState.value = _uiState.value.copy(error = error.message)
-                    Log.e("MainViewModel", "Failed to load $logName", error)
+                    reportError("MainViewModel", "Failed to load $logName", error)
                 }
         }
     }
@@ -285,7 +287,7 @@ class MainViewModel @Inject constructor(
                 }
                 .onFailure { error ->
                     _uiState.value = _uiState.value.copy(error = error.message)
-                    Log.e("MainViewModel", "Failed to load series info for series ID: $seriesId", error)
+                    reportError("MainViewModel", "Failed to load series info for series ID: $seriesId", error)
                 }
         }
     }
