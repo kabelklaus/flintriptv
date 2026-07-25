@@ -1060,7 +1060,7 @@ class WatchProgressService @Inject constructor(
         seriesId: Int,
         episodeId: Int,
         watched: Boolean
-    ): Boolean = withContext(ioDispatcher) {
+    ): Boolean {
         val success = if (watched) {
             val (name, genre, categoryName) = getNameGenreAndCategoryFromCache("series", null, seriesId)
             watchedHistoryService.markAsWatched("series", null, seriesId, episodeId, name, genre, categoryName)
@@ -1068,7 +1068,7 @@ class WatchProgressService @Inject constructor(
             watchedHistoryService.markAsUnwatched("series", null, seriesId, episodeId)
         }
         deleteProgressIfPresent(seriesId, episodeId)
-        success
+        return success
     }
 
     /**

@@ -370,6 +370,98 @@ private fun SeriesBackground(imageCandidates: List<String>) {
     )
 }
 
+/**
+ * Scrollt die Ansicht automatisch zur ausgewählten Staffel, sobald die Maße bekannt sind.
+ */
+@Composable
+private fun AutoScrollToSeason(
+    scrollState: androidx.compose.foundation.ScrollState,
+    selectedSeasonIndex: Int,
+    headerHeight: Int,
+    seasonHeight: Int
+) {
+    LaunchedEffect(selectedSeasonIndex, headerHeight, seasonHeight) {
+        if (headerHeight > 0 && seasonHeight > 0) {
+            // Scroll to show the selected season
+            kotlinx.coroutines.delay(100)
+            val targetPosition = headerHeight + (selectedSeasonIndex * seasonHeight)
+            scrollState.animateScrollTo(targetPosition.coerceAtMost(scrollState.maxValue))
+        }
+    }
+}
+
+/**
+ * Serien-Header mit Fokus-Navigation nach unten (Resume-Button oder Staffel-Leiste).
+ */
+@Composable
+private fun SeriesHeaderWithNav(
+    series: Series,
+    headerFocusRequester: FocusRequester,
+    resumeButtonFocusRequester: FocusRequester,
+    hasResumeButton: Boolean,
+    onNavigateToSeasonButton: () -> Unit,
+    onHeaderHeightChanged: (Int) -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    SeriesHeader(
+        series = series,
+        headerFocusRequester = headerFocusRequester,
+        onNavigateDown = {
+            if (hasResumeButton) {
+                coroutineScope.launch {
+                    resumeButtonFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "RESUME_BUTTON")
+                }
+            } else {
+                // Navigate to selected season button
+                onNavigateToSeasonButton()
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { coordinates ->
+                onHeaderHeightChanged(coordinates.size.height)
+            }
+    )
+}
+
+/**
+ * Weiterschauen-Button samt Fokus-Navigation; rendert nichts ohne Button-Daten.
+ */
+@Composable
+private fun SeriesResumeSection(
+    resumeButtonData: ResumeButtonData?,
+    resumeButtonFocusRequester: FocusRequester,
+    headerFocusRequester: FocusRequester,
+    hasMultipleSeasons: Boolean,
+    onEpisodeClick: (Episode) -> Unit,
+    onNavigateToSeasonButton: () -> Unit
+) {
+    if (resumeButtonData == null) return
+    val coroutineScope = rememberCoroutineScope()
+
+    Spacer(modifier = Modifier.height(16.dp))
+    SeriesResumeButton(
+        state = resumeButtonData.uiState,
+        onClick = { onEpisodeClick(resumeButtonData.targetInfo.episode) },
+        focusRequester = resumeButtonFocusRequester,
+        onNavigateUp = {
+            coroutineScope.launch {
+                headerFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "HEADER")
+            }
+            true
+        },
+        onNavigateDown = {
+            if (hasMultipleSeasons) {
+                onNavigateToSeasonButton()
+                true
+            } else {
+                // Nur eine Staffel: Standard-Fokusnavigation zur Episodenliste durchlassen
+                false
+            }
+        }
+    )
+}
+
 @Composable
 fun SeriesEpisodesScreen(
     series: Series,
@@ -448,28 +540,40 @@ fun SeriesEpisodesScreen(
     
     // Scroll state for auto-scrolling to selected season
     val scrollState = rememberScrollState()
-    
+
     // Dynamic measurements for header and season heights
     var headerHeight by remember { mutableStateOf(0) }
     var seasonHeight by remember { mutableStateOf(0) }
-    
+
     // Auto-scroll when season changes
-    LaunchedEffect(selectedSeasonIndex, headerHeight, seasonHeight) {
-        if (headerHeight > 0 && seasonHeight > 0) {
-            // Scroll to show the selected season
-            kotlinx.coroutines.delay(100)
-            val targetPosition = headerHeight + (selectedSeasonIndex * seasonHeight)
-            scrollState.animateScrollTo(targetPosition.coerceAtMost(scrollState.maxValue))
-        }
-    }
-    
+    AutoScrollToSeason(
+        scrollState = scrollState,
+        selectedSeasonIndex = selectedSeasonIndex,
+        headerHeight = headerHeight,
+        seasonHeight = seasonHeight
+    )
+
     // FocusRequester for header to enable navigation from season buttons
     val headerFocusRequester = remember { FocusRequester() }
     // FocusRequester for the resume button (between header and season buttons)
     val resumeButtonFocusRequester = remember { FocusRequester() }
     // Callback to navigate to selected season button
     var navigateToSeasonButton by remember { mutableStateOf<(() -> Unit)?>(null) }
-    val coroutineScope = rememberCoroutineScope()
+
+    val upFocusRequester = if (resumeButtonData != null) resumeButtonFocusRequester else headerFocusRequester
+    val handleSeasonSelected = { index: Int ->
+        selectedSeasonIndex = index
+        // Reset initialEpisodeIndex when season changes manually (not via smart resume)
+        if (index != smartResumeSeasonIndex) {
+            initialEpisodeIndex = null
+        }
+    }
+    val handleSeasonPositioned = { coordinates: androidx.compose.ui.layout.LayoutCoordinates ->
+        if (seasonHeight == 0) {
+            // Only set once, use first season as reference
+            seasonHeight = coordinates.size.height
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -477,7 +581,7 @@ fun SeriesEpisodesScreen(
             .onBackButton(onBack)
     ) {
         SeriesBackground(imageCandidates = backdropCandidates)
-        
+
         // Content - Scrollable
         Column(
             modifier = Modifier
@@ -486,49 +590,23 @@ fun SeriesEpisodesScreen(
                 .padding(24.dp)
         ) {
             // Series Header
-            SeriesHeader(
+            SeriesHeaderWithNav(
                 series = displaySeries,
                 headerFocusRequester = headerFocusRequester,
-                onNavigateDown = {
-                    if (resumeButtonData != null) {
-                        coroutineScope.launch {
-                            resumeButtonFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "RESUME_BUTTON")
-                        }
-                    } else {
-                        // Navigate to selected season button
-                        navigateToSeasonButton?.invoke()
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onGloballyPositioned { coordinates ->
-                        headerHeight = coordinates.size.height
-                    }
+                resumeButtonFocusRequester = resumeButtonFocusRequester,
+                hasResumeButton = resumeButtonData != null,
+                onNavigateToSeasonButton = { navigateToSeasonButton?.invoke() },
+                onHeaderHeightChanged = { headerHeight = it }
             )
 
-            if (resumeButtonData != null) {
-                Spacer(modifier = Modifier.height(16.dp))
-                SeriesResumeButton(
-                    state = resumeButtonData.uiState,
-                    onClick = { onEpisodeClick(resumeButtonData.targetInfo.episode) },
-                    focusRequester = resumeButtonFocusRequester,
-                    onNavigateUp = {
-                        coroutineScope.launch {
-                            headerFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "HEADER")
-                        }
-                        true
-                    },
-                    onNavigateDown = {
-                        if (sortedSeasons.size > 1) {
-                            navigateToSeasonButton?.invoke()
-                            true
-                        } else {
-                            // Nur eine Staffel: Standard-Fokusnavigation zur Episodenliste durchlassen
-                            false
-                        }
-                    }
-                )
-            }
+            SeriesResumeSection(
+                resumeButtonData = resumeButtonData,
+                resumeButtonFocusRequester = resumeButtonFocusRequester,
+                headerFocusRequester = headerFocusRequester,
+                hasMultipleSeasons = sortedSeasons.size > 1,
+                onEpisodeClick = onEpisodeClick,
+                onNavigateToSeasonButton = { navigateToSeasonButton?.invoke() }
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -545,27 +623,16 @@ fun SeriesEpisodesScreen(
                     smartResumeSeasonIndex = smartResumeSeasonIndex,
                     fallbackImageUrl = backdropImageUrl
                 ),
-                upFocusRequester = if (resumeButtonData != null) resumeButtonFocusRequester else headerFocusRequester,
+                upFocusRequester = upFocusRequester,
                 onNavigateToSeasonButton = { callback ->
                     navigateToSeasonButton = callback
                 },
-                onSeasonSelected = { index ->
-                    selectedSeasonIndex = index
-                    // Reset initialEpisodeIndex when season changes manually (not via smart resume)
-                    if (index != smartResumeSeasonIndex) {
-                        initialEpisodeIndex = null
-                    }
-                },
+                onSeasonSelected = handleSeasonSelected,
                 onEpisodeClick = onEpisodeClick,
                 onWatchedStateChanged = { watchedRefreshTrigger++ },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onGloballyPositioned { coordinates ->
-                        if (seasonHeight == 0) {
-                            // Only set once, use first season as reference
-                            seasonHeight = coordinates.size.height
-                        }
-                    }
+                    .onGloballyPositioned(handleSeasonPositioned)
             )
         }
     }
@@ -1026,6 +1093,23 @@ private fun Modifier.conditionalBorder(
     }
 }
 
+/**
+ * Requests focus and retries once because the FocusRequester may not be attached yet.
+ */
+private suspend fun requestFocusWithRetry(focusRequester: FocusRequester) {
+    try {
+        focusRequester.requestFocus()
+    } catch (_: IllegalStateException) {
+        // FocusRequester might not be ready yet, retry after short delay
+        kotlinx.coroutines.delay(50)
+        try {
+            focusRequester.requestFocus()
+        } catch (_: IllegalStateException) {
+            // Ignore if still not ready
+        }
+    }
+}
+
 @Composable
 private fun EpisodeDetailCard(
     config: EpisodeCardConfig,
@@ -1075,17 +1159,7 @@ private fun EpisodeDetailCard(
     // Request focus when isFocused changes
     LaunchedEffect(isFocused) {
         if (isFocused) {
-            try {
-                cardFocusRequester.requestFocus()
-            } catch (e: IllegalStateException) {
-                // FocusRequester might not be ready yet, retry after short delay
-                kotlinx.coroutines.delay(50)
-                try {
-                    cardFocusRequester.requestFocus()
-                } catch (e2: IllegalStateException) {
-                    // Ignore if still not ready
-                }
-            }
+            requestFocusWithRetry(cardFocusRequester)
         }
     }
     

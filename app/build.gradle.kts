@@ -27,8 +27,8 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 101
-        versionName = "2.43"
+        versionCode = 102
+        versionName = "2.44"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -107,8 +107,26 @@ android {
             // Robolectric: Compose-UI-Tests (Klick-/Fokus-Verhalten) als lokale Unit-Tests,
             // damit sie in den Jacoco-Report einfließen, den Sonar konsumiert
             isIncludeAndroidResources = true
+
+            all { test ->
+                // mockk-Inline-Instrumentierung: Agent beim JVM-Start laden statt
+                // per Self-Attach mitten im Lauf. Ohne dies schlagen Property-Stubs
+                // auf finalen Klassen in kalten Test-Workern (u.a. CI) sporadisch
+                // mit "Missing mocked calls" fehl.
+                val byteBuddyAgent = configurations.getByName("byteBuddyAgent")
+                test.jvmArgumentProviders.add(
+                    CommandLineArgumentProvider {
+                        listOf("-javaagent:${byteBuddyAgent.singleFile.absolutePath}")
+                    }
+                )
+            }
         }
     }
+}
+
+val byteBuddyAgent: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
 }
 
 tasks.withType<Test>().configureEach {
@@ -222,6 +240,10 @@ dependencies {
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)
+    byteBuddyAgent(libs.byte.buddy.agent)
     testImplementation(libs.androidx.junit)
     testImplementation(libs.androidx.espresso.core)
     testImplementation(platform(libs.compose.bom))

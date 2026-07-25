@@ -102,6 +102,7 @@ class UpdateDialogTest {
 
     @Test
     fun abgeschlossenerDownloadZeigtInstallationUndSchliesstAutomatisch() {
+        composeTestRule.mainClock.autoAdvance = false
         var laterCalled = false
         setDialog(
             downloadProgress = DownloadProgress(bytesDownloaded = 100, totalBytes = 100, isComplete = true),
@@ -109,7 +110,10 @@ class UpdateDialogTest {
             onLater = { laterCalled = true }
         )
 
+        composeTestRule.mainClock.advanceTimeByFrame()
         composeTestRule.onNodeWithText("Installation startet…").assertIsDisplayed()
+        // Auto-Close darf erst nach der 500ms-Verzögerung ausgelöst werden
+        assertFalse(laterCalled)
 
         composeTestRule.mainClock.advanceTimeBy(600L)
         composeTestRule.waitForIdle()

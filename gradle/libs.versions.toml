@@ -1,7 +1,7 @@
 [versions]
-agp = "8.13.2"
+agp = "9.2.1"
 kotlin = "2.0.21"
-ksp = "2.0.21-1.0.28"
+ksp = "2.3.10"
 coreKtx = "1.10.1"
 junit = "4.13.2"
 junitVersion = "1.1.5"
@@ -13,7 +13,7 @@ constraintlayout = "2.1.4"
 compose = "2023.10.01"
 composeActivity = "1.8.2"
 lifecycle = "2.7.0"
-hilt = "2.51.1"
+hilt = "2.60.1"
 hiltNavigationCompose = "1.2.0"
 retrofit = "2.9.0"
 okhttp = "4.12.0"
@@ -26,6 +26,8 @@ securityCrypto = "1.1.0-alpha06"
 desugarJdkLibs = "2.0.4"
 sonarqube = "7.3.0.8198"
 robolectric = "4.16"
+mockk = "1.14.2"
+coroutinesTest = "1.9.0"
 firebaseBom = "34.8.0"
 googleGmsServices = "4.4.4"
 firebasePerfPlugin = "2.0.2"
@@ -89,6 +91,12 @@ desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", ver
 
 # Local UI Testing (Robolectric)
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+
+# Unit Testing (Mocking + Coroutines)
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+byte-buddy-agent = { group = "net.bytebuddy", name = "byte-buddy-agent", version = "1.15.11" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
 
 # Firebase
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }

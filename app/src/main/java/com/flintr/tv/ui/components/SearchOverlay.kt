@@ -89,6 +89,25 @@ private sealed class SearchOverlayFocusTarget {
 }
 
 /**
+ * Navigation callbacks shared by the scope filter row and its chips
+ */
+private data class ScopeRowNavigation(
+    val onNavigateUp: () -> Boolean,
+    val onNavigateDown: () -> Boolean,
+    val hasResults: Boolean
+)
+
+/**
+ * Focus handling configuration for a single search result row
+ */
+private data class SearchResultFocus(
+    val focusRequester: FocusRequester?,
+    val onNavigateUp: (() -> Unit)?,
+    val isLastResult: Boolean,
+    val onFocused: () -> Unit
+)
+
+/**
  * Handles key events for the search field
  */
 private fun handleSearchFieldKeyEvent(
@@ -158,10 +177,8 @@ private fun SearchScopeFilters(
     onScopeToggle: (SearchScope) -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors,
     scopeFocusRequesters: List<FocusRequester>,
-    onNavigateUp: () -> Boolean,
-    onNavigateDown: () -> Boolean,
-    onScopeFocused: (Int) -> Unit,
-    hasResults: Boolean
+    navigation: ScopeRowNavigation,
+    onScopeFocused: (Int) -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -173,9 +190,7 @@ private fun SearchScopeFilters(
                 scope = scope,
                 selected = scope in selectedScopes,
                 onClick = { onScopeToggle(scope) },
-                onNavigateUp = onNavigateUp,
-                onNavigateDown = onNavigateDown,
-                hasResults = hasResults,
+                navigation = navigation,
                 modifier = Modifier
                     .focusRequester(scopeFocusRequesters[index]),
                 onFocused = { onScopeFocused(index) },
@@ -187,15 +202,50 @@ private fun SearchScopeFilters(
 
 private fun handleSearchScopeKeyEvent(
     event: androidx.compose.ui.input.key.KeyEvent,
-    onNavigateUp: () -> Boolean,
-    onNavigateDown: () -> Boolean,
-    hasResults: Boolean
+    navigation: ScopeRowNavigation
 ): Boolean {
     return when {
-        event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp -> onNavigateUp()
-        event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown && hasResults -> onNavigateDown()
+        event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp -> navigation.onNavigateUp()
+        event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown && navigation.hasResults -> navigation.onNavigateDown()
         event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown -> true
         else -> false
+    }
+}
+
+private fun handleOverlayDownKey(
+    currentFocusTarget: SearchOverlayFocusTarget?,
+    hasResults: Boolean,
+    onFocusScope: (Int) -> Boolean,
+    onFocusResults: () -> Boolean
+): Boolean = when (currentFocusTarget) {
+    SearchOverlayFocusTarget.SearchField -> onFocusScope(0)
+    is SearchOverlayFocusTarget.ScopeFilter -> !hasResults || onFocusResults()
+    else -> false
+}
+
+private fun handleOverlayUpKey(
+    currentFocusTarget: SearchOverlayFocusTarget?,
+    onFocusSearchField: () -> Boolean
+): Boolean = when (currentFocusTarget) {
+    SearchOverlayFocusTarget.SearchField -> true
+    is SearchOverlayFocusTarget.ScopeFilter -> onFocusSearchField()
+    else -> false
+}
+
+private fun handleOverlayHorizontalKey(
+    currentFocusTarget: SearchOverlayFocusTarget?,
+    delta: Int,
+    scopeCount: Int,
+    onFocusScope: (Int) -> Boolean
+): Boolean {
+    if (currentFocusTarget !is SearchOverlayFocusTarget.ScopeFilter) {
+        return false
+    }
+    val targetIndex = currentFocusTarget.index + delta
+    return if (targetIndex in 0 until scopeCount) {
+        onFocusScope(targetIndex)
+    } else {
+        true
     }
 }
 
@@ -213,48 +263,10 @@ private fun handleSearchOverlayPreviewKeyEvent(
     }
 
     return when (event.key) {
-        Key.DirectionDown -> when (currentFocusTarget) {
-            SearchOverlayFocusTarget.SearchField -> onFocusScope(0)
-            is SearchOverlayFocusTarget.ScopeFilter -> {
-                if (hasResults) {
-                    onFocusResults()
-                } else {
-                    true
-                }
-            }
-            else -> false
-        }
-        Key.DirectionUp -> when (currentFocusTarget) {
-            SearchOverlayFocusTarget.SearchField -> true
-            is SearchOverlayFocusTarget.ScopeFilter -> onFocusSearchField()
-            else -> false
-        }
-        Key.DirectionLeft -> when (currentFocusTarget) {
-            SearchOverlayFocusTarget.SearchField,
-            SearchOverlayFocusTarget.Results,
-            null -> false
-            is SearchOverlayFocusTarget.ScopeFilter -> {
-                val previousIndex = currentFocusTarget.index - 1
-                if (previousIndex >= 0) {
-                    onFocusScope(previousIndex)
-                } else {
-                    true
-                }
-            }
-        }
-        Key.DirectionRight -> when (currentFocusTarget) {
-            SearchOverlayFocusTarget.SearchField,
-            SearchOverlayFocusTarget.Results,
-            null -> false
-            is SearchOverlayFocusTarget.ScopeFilter -> {
-                val nextIndex = currentFocusTarget.index + 1
-                if (nextIndex < scopeCount) {
-                    onFocusScope(nextIndex)
-                } else {
-                    true
-                }
-            }
-        }
+        Key.DirectionDown -> handleOverlayDownKey(currentFocusTarget, hasResults, onFocusScope, onFocusResults)
+        Key.DirectionUp -> handleOverlayUpKey(currentFocusTarget, onFocusSearchField)
+        Key.DirectionLeft -> handleOverlayHorizontalKey(currentFocusTarget, -1, scopeCount, onFocusScope)
+        Key.DirectionRight -> handleOverlayHorizontalKey(currentFocusTarget, 1, scopeCount, onFocusScope)
         else -> false
     }
 }
@@ -264,9 +276,7 @@ private fun SearchScopeFilterChip(
     scope: SearchScope,
     selected: Boolean,
     onClick: () -> Unit,
-    onNavigateUp: () -> Boolean,
-    onNavigateDown: () -> Boolean,
-    hasResults: Boolean,
+    navigation: ScopeRowNavigation,
     onFocused: () -> Unit,
     modifier: Modifier = Modifier,
     colors: com.flintr.tv.ui.theme.AppColors
@@ -300,9 +310,7 @@ private fun SearchScopeFilterChip(
             .onKeyEvent {
                 handleSearchScopeKeyEvent(
                     event = it,
-                    onNavigateUp = onNavigateUp,
-                    onNavigateDown = onNavigateDown,
-                    hasResults = hasResults
+                    navigation = navigation
                 )
             }
             .onClick(onClick)
@@ -319,6 +327,53 @@ private fun SearchScopeFilterChip(
             color = textColor
         )
     }
+}
+
+/**
+ * Resolves a pending focus request. Returns true when the request was handled
+ * so the caller can clear it; a Results request stays pending until results exist.
+ */
+private suspend fun resolvePendingFocus(
+    target: SearchOverlayFocusTarget,
+    searchFieldFocusRequester: FocusRequester,
+    scopeFocusRequesters: List<FocusRequester>,
+    resultsListFocusRequester: FocusRequester,
+    resultCount: Int
+): Boolean = when (target) {
+    SearchOverlayFocusTarget.SearchField -> {
+        searchFieldFocusRequester.safeRequestFocus("SearchOverlay", "SearchField")
+        true
+    }
+    is SearchOverlayFocusTarget.ScopeFilter -> {
+        scopeFocusRequesters
+            .getOrNull(target.index)
+            ?.safeRequestFocus("SearchOverlay", "SearchScope ${target.index}")
+        true
+    }
+    SearchOverlayFocusTarget.Results -> {
+        if (resultCount > 0) {
+            resultsListFocusRequester.safeRequestFocus("SearchOverlay", "SearchResults")
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/**
+ * Handles key events for the search input field (confirm keys trigger immediate search)
+ */
+private fun handleSearchFieldInputKeyEvent(
+    event: androidx.compose.ui.input.key.KeyEvent,
+    onSearchImmediate: () -> Unit,
+    onNavigateDown: () -> Boolean
+): Boolean {
+    val isConfirmKey = event.key == Key.Enter || event.key == Key.DirectionCenter
+    if (event.type == KeyEventType.KeyDown && isConfirmKey) {
+        onSearchImmediate()
+        return true
+    }
+    return handleSearchFieldKeyEvent(event = event, onNavigateDown = onNavigateDown)
 }
 
 /**
@@ -364,23 +419,15 @@ fun SearchOverlay(
 
     LaunchedEffect(pendingFocusTarget, searchState.results.totalCount) {
         val target = pendingFocusTarget ?: return@LaunchedEffect
-        when (target) {
-            SearchOverlayFocusTarget.SearchField -> {
-                searchFieldFocusRequester.safeRequestFocus("SearchOverlay", "SearchField")
-                pendingFocusTarget = null
-            }
-            is SearchOverlayFocusTarget.ScopeFilter -> {
-                scopeFocusRequesters
-                    .getOrNull(target.index)
-                    ?.safeRequestFocus("SearchOverlay", "SearchScope ${target.index}")
-                pendingFocusTarget = null
-            }
-            SearchOverlayFocusTarget.Results -> {
-                if (searchState.results.totalCount > 0) {
-                    resultsListFocusRequester.safeRequestFocus("SearchOverlay", "SearchResults")
-                    pendingFocusTarget = null
-                }
-            }
+        val handled = resolvePendingFocus(
+            target = target,
+            searchFieldFocusRequester = searchFieldFocusRequester,
+            scopeFocusRequesters = scopeFocusRequesters,
+            resultsListFocusRequester = resultsListFocusRequester,
+            resultCount = searchState.results.totalCount
+        )
+        if (handled) {
+            pendingFocusTarget = null
         }
     }
     
@@ -460,19 +507,13 @@ fun SearchOverlay(
                         }
                     }
                     .onKeyEvent { event ->
-                        when {
-                            event.type == KeyEventType.KeyDown && 
-                            (event.key == Key.Enter || event.key == Key.DirectionCenter) -> {
-                                onSearchImmediate()
-                                true
+                        handleSearchFieldInputKeyEvent(
+                            event = event,
+                            onSearchImmediate = onSearchImmediate,
+                            onNavigateDown = {
+                                requestOverlayFocus(SearchOverlayFocusTarget.ScopeFilter(0))
                             }
-                            else -> handleSearchFieldKeyEvent(
-                                event = event,
-                                onNavigateDown = {
-                                    requestOverlayFocus(SearchOverlayFocusTarget.ScopeFilter(0))
-                                }
-                            )
-                        }
+                        )
                     },
                 singleLine = true,
                 shape = RoundedCornerShape(Dimensions.radiusMD),
@@ -509,16 +550,18 @@ fun SearchOverlay(
                 onScopeToggle = onSearchScopeToggle,
                 colors = colors,
                 scopeFocusRequesters = scopeFocusRequesters,
-                onNavigateUp = {
-                    requestOverlayFocus(SearchOverlayFocusTarget.SearchField)
-                },
-                onNavigateDown = {
-                    requestOverlayFocus(SearchOverlayFocusTarget.Results)
-                },
+                navigation = ScopeRowNavigation(
+                    onNavigateUp = {
+                        requestOverlayFocus(SearchOverlayFocusTarget.SearchField)
+                    },
+                    onNavigateDown = {
+                        requestOverlayFocus(SearchOverlayFocusTarget.Results)
+                    },
+                    hasResults = searchState.results.totalCount > 0
+                ),
                 onScopeFocused = {
                     currentFocusTarget = SearchOverlayFocusTarget.ScopeFilter(it)
-                },
-                hasResults = searchState.results.totalCount > 0
+                }
             )
 
             Spacer(modifier = Modifier.height(Dimensions.spacingMD))
@@ -655,10 +698,12 @@ private fun <T> LazyListScope.searchSection(
             contentType = section.toContentType(item),
             onClick = { section.onClick(item) },
             colors = colors,
-            focusRequester = if (isFirstItem) focusConfig.firstItemFocusRequester else null,
-            onNavigateUp = if (isFirstItem) focusConfig.onNavigateUp else null,
-            isLastResult = resultIndex == totalItems - 1,
-            onFocused = focusConfig.onResultFocused,
+            focus = SearchResultFocus(
+                focusRequester = if (isFirstItem) focusConfig.firstItemFocusRequester else null,
+                onNavigateUp = if (isFirstItem) focusConfig.onNavigateUp else null,
+                isLastResult = resultIndex == totalItems - 1,
+                onFocused = focusConfig.onResultFocused
+            ),
             favoritesRepository = favoritesRepository
         )
     }
@@ -758,10 +803,7 @@ private fun SearchResultItem(
     contentType: SearchContentType,
     onClick: () -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors,
-    focusRequester: FocusRequester? = null,
-    onNavigateUp: (() -> Unit)? = null,
-    isLastResult: Boolean,
-    onFocused: () -> Unit,
+    focus: SearchResultFocus,
     favoritesRepository: FavoritesRepository
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -775,8 +817,8 @@ private fun SearchResultItem(
         isFavorite = favoritesRepository.isFavorite(favoriteId)
     }
 
-    LaunchedEffect(focusRequester) {
-        focusRequester?.safeRequestFocus("SearchOverlay", "SearchResultItem: $title")
+    LaunchedEffect(focus.focusRequester) {
+        focus.focusRequester?.safeRequestFocus("SearchOverlay", "SearchResultItem: $title")
     }
 
     val backgroundColor by androidx.compose.animation.animateColorAsState(
@@ -804,15 +846,15 @@ private fun SearchResultItem(
             .fillMaxWidth()
             .background(color = backgroundColor, shape = itemShape)
             .conditionalBorder(borderColor, itemShape)
-            .conditionalFocusRequester(focusRequester)
+            .conditionalFocusRequester(focus.focusRequester)
             .onFocusChanged {
                 isFocused = it.isFocused
                 if (it.isFocused) {
-                    onFocused()
+                    focus.onFocused()
                 }
             }
             .focusable()
-            .onKeyEvent { handleSearchResultKeyEvent(it, onNavigateUp, isLastResult) }
+            .onKeyEvent { handleSearchResultKeyEvent(it, focus.onNavigateUp, focus.isLastResult) }
             .onLongPress(
                 onLongPress = { showMenu = true },
                 onNormalClick = onClick
