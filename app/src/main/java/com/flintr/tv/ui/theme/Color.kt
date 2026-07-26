@@ -52,63 +52,6 @@ object SharedColors {
 }
 
 /**
- * Light mode color definitions
- */
-object LightColors {
-    // Background colors
-    val bgSidebar = Color(0xFFF5F5F5)
-    val bgSidebarCard = SharedColors.sidebarCard
-    val bgList = Color(0xFFF6F6F8)
-    val bgPreview = Color(0xFFF6F6F8)
-    val bgSelected = Color(0xFFE8F0FE)
-    val bgHover = Color(0xFFF1F3F4)
-    val bgCard = Color(0xFFF8F9FA)
-    
-    // Border colors
-    val cardBorder = Color(0xFFE0E0E0)
-    
-    // Text colors
-    val textPrimary = Color(0xFF202124)
-    val textSecondary = Color(0xFF4A4F54)
-    
-    // Accent colors
-    val accentColor = SharedColors.primary
-    val accentColorHoverBg = SharedColors.primaryHoverBg
-    val accentColorBorderLight = SharedColors.primaryBorderLight
-    
-    // Navigation colors
-    val navActiveBg = Color(0xFFC2E7FF)
-    val navActiveText = Color(0xFF001D35)
-    
-    // Badge colors
-    val badgeBg = Color(0xFF0B57D0)
-    val badgeText = Color(0xFFFFFFFF)
-    
-    // Semantic colors
-    val dangerBg = Color(0xFFFEE2E2)
-    val dangerBorder = Color(0xFFFECACA)
-    val dangerText = Color(0xFF7F1D1D)
-    val successColor = SharedColors.success
-    val errorColor = SharedColors.error
-    val successGreen = SharedColors.successGreen
-    
-    // Button colors
-    val buttonPrimary = SharedColors.primary
-    val buttonPrimaryHover = SharedColors.primaryHover
-    
-    // Badge colors
-    val proBadgeBg = SharedColors.proBadge
-    
-    // Icon colors
-    val iconColor = Color(0xFF5F6368)
-    val iconColorHover = textPrimary
-    
-    // Category Sidebar colors
-    val categoryHoverBg = Color(0xFFE2E8F0)
-    val categoryDefaultText = Color(0xFF475569)
-}
-
-/**
  * Dark mode color definitions
  */
 object DarkColors {

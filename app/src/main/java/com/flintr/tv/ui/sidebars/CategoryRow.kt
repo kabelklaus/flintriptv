@@ -29,7 +29,6 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.theme.isDark
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import androidx.compose.ui.focus.focusRequester
@@ -240,17 +239,13 @@ fun CategoryRow(
 ) {
     // Categories are already filtered and sorted in AppNavigation.kt
     val colors = appColors()
-    val colorScheme = MaterialTheme.colorScheme
-    val isDark = colorScheme.isDark
 
     LazyColumn(
         state = params.listState,
         modifier = modifier
             .fillMaxHeight()
             .width(Dimensions.categorySidebarWidth)
-            .background(
-                if (isDark) SharedColors.sidebarCard else colors.bgList
-            ),
+            .background(SharedColors.sidebarCard),
         contentPadding = PaddingValues(all = Dimensions.spacingMD),
         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
     ) {
