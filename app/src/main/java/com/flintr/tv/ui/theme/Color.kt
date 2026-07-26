@@ -7,9 +7,16 @@ import androidx.compose.ui.graphics.Color
  */
 object SharedColors {
     // Brand/Accent colors
-    val primary = Color(0xFF1152D4)
+    //
+    // accent trägt die Marke und den Fokus: 8,7:1 gegen den Hintergrund.
+    // selectionFill füllt ausgewählte Elemente — dort liegt weißer Text
+    // darauf, weshalb der schwächere Kontrast gegen Schwarz keine Rolle
+    // spielt. Als Akzentfarbe käme selectionFill nur auf 4,9:1.
+    val accent = Color(0xFF1B84FF)
+    val accentBright = Color(0xFF38BDF8)
+    val selectionFill = Color(0xFF1152D4)
     val primaryHover = Color(0xFF0E42A8)
-    val primaryHoverBg = Color(0x1A1152D4)
+    val accentHoverBg = Color(0x241B84FF)
     
     // Semantic colors
     val blocked = Color(0xFFEF4444)
@@ -34,8 +41,8 @@ object SharedColors {
     
     // Video/Surface colors
     val videoPlayerBg = Color(0xFF000000)
-    val sidebarCard = Color(0xFF1A2230)
-    val navSidebarBg = Color(0xFF151B26)
+    val sidebarCard = Color(0xFF1C1D1F)
+    val navSidebarBg = Color(0xFF141518)
     
     // Overlay colors
     val overlayBlack = Color(0xFF000000)
@@ -46,7 +53,9 @@ object SharedColors {
     
     // Content Card colors
     val contentCardRatingIconColor = Color(0xFFFFC107)
-    val contentCardBgColor = Color(0xFF000000) // Black
+    // Karten liegen als Fläche über dem Hintergrund, nicht auf reinem Schwarz —
+    // sonst verschwinden sie, solange kein Artwork geladen ist.
+    val contentCardBgColor = Color(0xFF1C1D1F)
 }
 
 /**
@@ -54,23 +63,25 @@ object SharedColors {
  */
 object DarkColors {
     // Background colors
-    val bgSidebar = Color(0xFF101722)
+    val bgSidebar = Color(0xFF141518)
     val bgSidebarCard = SharedColors.sidebarCard
-    val bgList = Color(0xFF0B111A)
-    val bgPreview = Color(0xFF0B111A)
-    val bgHover = Color(0xFF2D2E30)
-    val bgCard = Color(0xFF1A2230)
-    
+    val bgList = Color(0xFF0D0D0F)
+    val bgPreview = Color(0xFF0D0D0F)
+    val bgHover = Color(0xFF2A2C2F)
+    val bgCard = Color(0xFF1C1D1F)
+
     // Border colors
-    val cardBorder = Color(0xFF3C4043)
-    
+    val cardBorder = Color(0xFF2E3033)
+
     // Text colors
-    val textPrimary = Color(0xFFE8EAED)
-    val textSecondary = Color(0xFF9AA0A6)
-    
+    val textPrimary = Color(0xFFF2F3F5)
+    val textSecondary = Color(0xFF8B9096)
+
     // Accent colors
-    val accentColor = SharedColors.primary
-    val accentColorHoverBg = SharedColors.primaryHoverBg
+    val accentColor = SharedColors.accent
+    val accentColorHoverBg = SharedColors.accentHoverBg
+    val selectionFill = SharedColors.selectionFill
+    val accentBright = SharedColors.accentBright
     
     // Semantic colors
     val dangerBg = Color(0xFF3B0A0A)
@@ -80,7 +91,7 @@ object DarkColors {
     val successGreen = SharedColors.successGreen
     
     // Button colors
-    val buttonPrimary = SharedColors.primary
+    val buttonPrimary = SharedColors.selectionFill
     val buttonPrimaryHover = SharedColors.primaryHover
     
     // Icon colors

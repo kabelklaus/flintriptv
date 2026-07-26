@@ -122,7 +122,7 @@ private fun calculateItemColors(
 ): ItemColors {
     val backgroundColor by animateColorAsState(
         targetValue = when {
-            isSelected -> colors.accentColor
+            isSelected -> colors.selectionFill
             isFocused -> colors.accentColorHoverBg
             else -> Color.Transparent
         },

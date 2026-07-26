@@ -79,7 +79,7 @@ private fun calculateChipColors(
     val isHoveredOrFocused = hasFocus && !isSelected
 
     val background = when {
-        isSelected -> colors.accentColor
+        isSelected -> colors.selectionFill
         isHoveredOrFocused -> colors.categoryHoverBg
         else -> Color.Transparent
     }
