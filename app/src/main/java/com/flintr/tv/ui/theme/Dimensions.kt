@@ -12,6 +12,7 @@ object Dimensions {
     
     // Base primitive values
     private const val size2 = 2.0
+    private const val size3 = 3.0
     private const val size4 = 4.0
     private const val size8 = 8.0
     private const val size12 = 12.0
@@ -76,7 +77,9 @@ object Dimensions {
     // List Item Hover Style
     val listItemHoverPadding = spacingSM
     val listItemHoverBorderRadius = radiusMD
-    val listItemHoverBorderWidth = categoryBorderWidth
+    // 3dp statt 2dp — aus Sitzabstand sind 2dp zu dünn.
+    val focusBorderWidth = size3.dp
+    val listItemHoverBorderWidth = focusBorderWidth
     
     // Content Card dimensions
     val contentCardMaxCrossAxisExtent = 133.0.dp
