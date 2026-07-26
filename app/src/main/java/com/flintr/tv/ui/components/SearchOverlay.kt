@@ -39,7 +39,9 @@ import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
+import com.flintr.tv.ui.theme.FocusRing
 import com.flintr.tv.ui.theme.appColors
+import com.flintr.tv.ui.theme.focusRingColor
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.ui.utils.safeRequestFocus
@@ -284,16 +286,15 @@ private fun SearchScopeFilterChip(
     var isFocused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(Dimensions.radiusSM)
     val backgroundColor = when {
-        selected -> colors.accentColor
+        selected -> colors.selectionFill
         isFocused -> colors.accentColorHoverBg
         else -> Color.Transparent
     }
-    val borderColor = when {
-        isFocused -> Color.White
-        selected -> colors.accentColor
-        else -> colors.cardBorder
-    }
-    val borderWidth = if (isFocused) 3.dp else 1.dp
+    // Der Fokusrahmen ersetzt die dekorative Umrandung, solange der Fokus hier
+    // steht. Die Selektion allein zeichnet keinen Rahmen.
+    val focusRing = focusRingColor(isFocused = isFocused, onSelectionFill = selected)
+    val borderColor = if (focusRing == Color.Transparent) colors.cardBorder else focusRing
+    val borderWidth = if (isFocused) FocusRing.width else 1.dp
     val textColor = if (selected) Color.White else colors.textSecondary
 
     Box(
