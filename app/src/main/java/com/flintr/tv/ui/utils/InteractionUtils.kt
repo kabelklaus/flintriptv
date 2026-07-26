@@ -23,6 +23,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.flintr.tv.utils.error.reportControlFlow
 
 /**
  * Utility functions for TV and touch interaction handling
@@ -119,6 +120,7 @@ suspend fun FocusRequester.safeRequestFocus(
         Log.i(logTag, "🎯 Focus set to $targetName")
     } catch (e: IllegalStateException) {
         Log.w(logTag, "⚠️ $targetName FocusRequester not initialized yet")
+        reportControlFlow("InteractionUtils.$targetName", e)
     }
 }
 

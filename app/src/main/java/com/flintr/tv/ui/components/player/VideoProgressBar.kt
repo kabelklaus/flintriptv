@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.ui.theme.SharedColors
 import kotlinx.coroutines.withTimeout
+import com.flintr.tv.utils.error.reportControlFlow
 
 /**
  * Data class containing drag gesture callbacks
@@ -82,7 +83,8 @@ private suspend fun AwaitPointerEventScope.awaitDragGestureOrNull(
         withTimeout(timeoutMillis) {
             awaitHorizontalDragOrCancellation(downEvent.id)
         }
-    } catch (_: PointerEventTimeoutCancellationException) {
+    } catch (e: PointerEventTimeoutCancellationException) {
+        reportControlFlow("VideoProgressBar.gestureTimeout", e)
         null
     }
 }

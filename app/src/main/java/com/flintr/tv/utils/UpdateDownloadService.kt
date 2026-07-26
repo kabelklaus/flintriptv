@@ -15,6 +15,7 @@ import java.io.File
 import java.io.FileOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.flintr.tv.utils.error.reportHandled
 
 data class DownloadProgress(
     val bytesDownloaded: Long,
@@ -73,6 +74,7 @@ class UpdateDownloadService @Inject constructor(
             emit(DownloadProgress(totalBytes, totalBytes, true))
             
         } catch (e: Exception) {
+            reportHandled("UpdateDownloadService.downloadApk", e)
             deleteFileSafely(outputFile)
             emit(DownloadProgress(0, 0, false, e))
         }
@@ -136,6 +138,7 @@ class UpdateDownloadService @Inject constructor(
             (bytes[2] == 0x03.toByte() || bytes[2] == 0x05.toByte() || bytes[2] == 0x07.toByte()) &&
             (bytes[3] == 0x04.toByte() || bytes[3] == 0x06.toByte() || bytes[3] == 0x08.toByte())
         } catch (e: Exception) {
+            reportHandled("UpdateDownloadService.isValidApk", e)
             false
         }
     }

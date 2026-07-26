@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.flintr.tv.utils.error.reportError
 
 enum class LoadingStatus {
     Pending,
@@ -308,7 +309,7 @@ class DataLoadingViewModel @Inject constructor(
             isLoading = false,
             error = error.message ?: "Unbekannter Fehler"
         )
-        Log.e("DataLoadingViewModel", "Error in step $stepIndex", error)
+        reportError("DataLoadingViewModel", "Error in step $stepIndex", error)
     }
 
     private fun updateProgress(completed: Int, total: Int) {
@@ -379,7 +380,7 @@ class DataLoadingViewModel @Inject constructor(
                     saveAllDataToCacheAndFinalize()
                 }
             } catch (e: Exception) {
-                Log.e("DataLoadingViewModel", "Error retrying step $stepIndex", e)
+                reportError("DataLoadingViewModel", "Error retrying step $stepIndex", e)
                 handleStepError(stepIndex, e)
             }
         }

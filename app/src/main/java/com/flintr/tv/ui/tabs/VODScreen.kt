@@ -31,6 +31,7 @@ import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.asOwnSourcedItems
 import com.flintr.tv.ui.common.useFavorites
 import com.flintr.tv.ui.common.ContentFilterUtils
+import com.flintr.tv.utils.error.reportError
 
 private const val TAG = "VODContent"
 
@@ -60,7 +61,7 @@ private suspend fun loadNewCategoryStreams(
                 onWatchedIdsLoaded(watchProgressService.getWatchedVodIds(null))
             }
         } catch (e: Exception) {
-            android.util.Log.e(TAG, "Error loading new category streams", e)
+            reportError(TAG, "Error loading new category streams", e)
         } finally {
             onLoadingChanged(false)
         }

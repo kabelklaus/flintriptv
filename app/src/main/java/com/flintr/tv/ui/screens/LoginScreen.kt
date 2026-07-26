@@ -33,6 +33,7 @@ import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.viewmodel.LoginViewModel
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.flintr.tv.utils.error.reportControlFlow
 
 /**
  * Returns standardized text field colors for login form
@@ -299,7 +300,8 @@ private fun requestInitialFocus(
     try {
         focusRequester.requestFocus()
         onInitialFocusSet()
-    } catch (_: IllegalStateException) {
+    } catch (e: IllegalStateException) {
+        reportControlFlow("LoginScreen.initialFocus", e)
         // Component not ready for focus yet
     }
 }

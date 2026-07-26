@@ -85,6 +85,7 @@ import androidx.compose.ui.res.stringResource
 import com.flintr.tv.R
 import com.flintr.tv.utils.loadPackageInfo
 import kotlinx.coroutines.CoroutineDispatcher
+import com.flintr.tv.utils.error.reportWarning
 
 sealed class Screen(val route: String) {
     object InitialRouting : Screen("initial_routing")
@@ -423,7 +424,7 @@ private suspend fun restoreScrollPosition(
             kotlinx.coroutines.delay(50)
         }
     } catch (e: Exception) {
-        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Failed to restore scroll position: ${e.message}")
+        reportWarning(LOG_TAG_MAIN_CONTENT_SCREEN, "Failed to restore scroll position", e)
     }
 }
 
@@ -452,7 +453,7 @@ private suspend fun restoreFocus(
             focusRequester.requestFocus()
             Log.d(LOG_TAG_MAIN_CONTENT_SCREEN, "Focus restored on content card: ${state.contentId}")
         } catch (e: Exception) {
-            Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Failed to restore focus: ${e.message}")
+            reportWarning(LOG_TAG_MAIN_CONTENT_SCREEN, "Failed to restore focus", e)
             requestFallbackFocus(focusRequesterMap)
         }
     } else {
@@ -468,7 +469,7 @@ private fun requestFallbackFocus(focusRequesterMap: MutableMap<String, FocusRequ
     try {
         focusRequesterMap.values.firstOrNull()?.requestFocus()
     } catch (e: Exception) {
-        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Fallback focus failed: ${e.message}")
+        reportWarning(LOG_TAG_MAIN_CONTENT_SCREEN, "Fallback focus failed", e)
     }
 }
 
@@ -1712,7 +1713,7 @@ private class FocusManager(
                         categorySidebarListState.animateScrollToItem(categoryIndex)
                         Log.d("TVFocus", "$logTag 📜 Scrolled to category at index $categoryIndex")
                     } catch (e: Exception) {
-                        Log.w("TVFocus", "$logTag ⚠️ Failed to scroll to category: ${e.message}")
+                        reportWarning("TVFocus", "$logTag ⚠️ Failed to scroll to category", e)
                     }
                 }
             }

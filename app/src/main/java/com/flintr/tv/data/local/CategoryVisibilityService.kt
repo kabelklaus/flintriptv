@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
+import com.flintr.tv.utils.error.reportError
 
 @Singleton
 class CategoryVisibilityService @Inject constructor(
@@ -95,7 +96,7 @@ class CategoryVisibilityService @Inject constructor(
                     Log.d(TAG, "Loaded hidden categories from Firestore: ${categories.values.sumOf { it.size }} total")
                 },
                 onFailure = { exception ->
-                    Log.e(TAG, "Failed to load hidden categories from Firestore", exception)
+                    reportError(TAG, "Failed to load hidden categories from Firestore", exception)
                     // Keep current state or use empty map
                     if (_hiddenCategories.value.isEmpty()) {
                         Log.e(TAG, "State is empty after failed Firestore load - user data may be unavailable")
@@ -145,7 +146,7 @@ class CategoryVisibilityService @Inject constructor(
                         Log.d(TAG, "Migration completed successfully")
                     },
                     onFailure = { exception ->
-                        Log.e(TAG, "Migration failed, will retry on next app start", exception)
+                        reportError(TAG, "Migration failed, will retry on next app start", exception)
                         // Don't mark as complete, so it will retry
                     }
                 )
@@ -157,7 +158,7 @@ class CategoryVisibilityService @Inject constructor(
                 Log.d(TAG, "No local data to migrate")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error during migration", e)
+            reportError(TAG, "Error during migration", e)
             // Don't mark as complete, so it will retry
         }
     }
@@ -177,7 +178,7 @@ class CategoryVisibilityService @Inject constructor(
                 CategoryType.SERIES to seriesCategories
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading local data for migration", e)
+            reportError(TAG, "Error loading local data for migration", e)
             emptyMap()
         }
     }
@@ -209,7 +210,7 @@ class CategoryVisibilityService @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing local categories for key: $key", e)
+            reportError(TAG, "Error parsing local categories for key: $key", e)
             emptySet()
         }
     }
@@ -226,7 +227,7 @@ class CategoryVisibilityService @Inject constructor(
             }
             Log.d(TAG, "Cleared old local data after migration")
         } catch (e: Exception) {
-            Log.e(TAG, "Error clearing local data", e)
+            reportError(TAG, "Error clearing local data", e)
         }
     }
 
@@ -240,7 +241,7 @@ class CategoryVisibilityService @Inject constructor(
         try {
             loadFromFirestore()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load from Firestore before hiding category", e)
+            reportError(TAG, "Failed to load from Firestore before hiding category", e)
             return false // Critical operation should not proceed with stale data
         }
         
@@ -267,7 +268,7 @@ class CategoryVisibilityService @Inject constructor(
         try {
             loadFromFirestore()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load from Firestore before showing category", e)
+            reportError(TAG, "Failed to load from Firestore before showing category", e)
             return false // Critical operation should not proceed with stale data
         }
         
@@ -301,7 +302,7 @@ class CategoryVisibilityService @Inject constructor(
                     Log.d(TAG, "Successfully saved hidden categories to Firestore")
                 },
                 onFailure = { exception ->
-                    Log.e(TAG, "Failed to save hidden categories to Firestore", exception)
+                    reportError(TAG, "Failed to save hidden categories to Firestore", exception)
                     // StateFlow already updated, so UI will reflect the change
                     // Firestore will sync when connection is restored
                 }

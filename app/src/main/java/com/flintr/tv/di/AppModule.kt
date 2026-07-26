@@ -10,12 +10,18 @@ import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.FirestoreSyncManager
 import com.flintr.tv.data.local.WatchedHistoryService
 import com.flintr.tv.data.local.WatchProgressService
+import com.flintr.tv.data.model.EmptyArrayAsObjectAdapterFactory
+import com.flintr.tv.data.model.EpisodeInfo
+import com.flintr.tv.data.model.SeriesInfo
 import com.flintr.tv.data.model.SeriesInfoResponseAdapterFactory
 import com.flintr.tv.data.repository.UpdateRepository
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.utils.UpdateDownloadService
 import com.flintr.tv.utils.UpdateInstaller
+import com.flintr.tv.utils.error.CrashlyticsErrorReporter
+import com.flintr.tv.utils.error.ErrorReporter
+import com.flintr.tv.utils.error.FirebaseCrashlyticsSink
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Module
@@ -44,9 +50,15 @@ object AppModule {
     
     @Provides
     @Singleton
+    fun provideErrorReporter(): ErrorReporter =
+        CrashlyticsErrorReporter(FirebaseCrashlyticsSink())
+
+    @Provides
+    @Singleton
     fun provideMoshi(): Moshi {
         return Moshi.Builder()
             .add(SeriesInfoResponseAdapterFactory())
+            .add(EmptyArrayAsObjectAdapterFactory(setOf(EpisodeInfo::class.java, SeriesInfo::class.java)))
             .addLast(KotlinJsonAdapterFactory())
             .build()
     }

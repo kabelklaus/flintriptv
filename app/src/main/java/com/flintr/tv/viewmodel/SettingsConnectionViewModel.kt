@@ -20,6 +20,8 @@ import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import com.squareup.moshi.Moshi
 import javax.inject.Inject
+import com.flintr.tv.utils.error.reportError
+import com.flintr.tv.utils.error.reportWarning
 
 data class ConnectionTestState(
     val isLoading: Boolean = false,
@@ -65,11 +67,11 @@ class SettingsConnectionViewModel @Inject constructor(
                         Log.d("SettingsConnectionViewModel", "Server info loaded automatically")
                     }
                     .onFailure { error ->
-                        Log.w("SettingsConnectionViewModel", "Failed to load server info automatically", error)
+                        reportWarning("SettingsConnectionViewModel", "Failed to load server info automatically", error)
                         // Don't set error state here, just log it - user can test connection manually
                     }
             } catch (e: Exception) {
-                Log.w("SettingsConnectionViewModel", "Error loading server info automatically", e)
+                reportWarning("SettingsConnectionViewModel", "Error loading server info automatically", e)
             }
         }
     }
@@ -107,7 +109,7 @@ class SettingsConnectionViewModel @Inject constructor(
                             isLoading = false,
                             error = "Fehler beim Neuladen: ${error.message}"
                         )
-                        Log.w("SettingsConnectionViewModel", "Failed to reload server info", error)
+                        reportWarning("SettingsConnectionViewModel", "Failed to reload server info", error)
                     }
                 
                 // Reload and refill cache in background
@@ -118,7 +120,7 @@ class SettingsConnectionViewModel @Inject constructor(
                     isLoading = false,
                     error = "Fehler beim Neuladen: ${e.message}"
                 )
-                Log.e("SettingsConnectionViewModel", "Error reloading server info", e)
+                reportError("SettingsConnectionViewModel", "Error reloading server info", e)
             }
         }
     }
@@ -180,7 +182,7 @@ class SettingsConnectionViewModel @Inject constructor(
                     isLoading = false,
                     error = "Verbindungsfehler: ${e.message}"
                 )
-                Log.e("SettingsConnectionViewModel", "Connection test error", e)
+                reportError("SettingsConnectionViewModel", "Connection test error", e)
             }
         }
     }

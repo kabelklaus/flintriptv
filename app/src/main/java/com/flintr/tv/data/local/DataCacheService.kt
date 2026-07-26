@@ -17,6 +17,9 @@ import java.util.*
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
+import com.flintr.tv.utils.error.reportError
+import com.flintr.tv.utils.error.reportHandled
+import com.flintr.tv.utils.error.reportControlFlow
 
 data class CachedData(
     val channels: List<LiveStream>,
@@ -79,7 +82,8 @@ class DataCacheService @Inject constructor(
 
                 val seriesAdapter = moshi.adapter(Series::class.java)
                 isNonEmptyValidArray(seriesJson, seriesAdapter)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                reportControlFlow("DataCacheService.isNonEmptyValidSeriesArray", e)
                 false
             }
         }
@@ -111,6 +115,7 @@ class DataCacheService @Inject constructor(
         val timestamp = try {
             ISO8601_FORMAT.parse(timestampString)?.time ?: return false
         } catch (e: Exception) {
+            reportHandled("DataCacheService.isCacheValid", e)
             return false
         }
 
@@ -195,7 +200,7 @@ class DataCacheService @Inject constructor(
             return true
         } catch (e: Exception) {
             // Log error but don't crash
-            android.util.Log.e("DataCacheService", "Failed to save cache", e)
+            reportError("DataCacheService", "Failed to save cache", e)
             return false
         }
     }
@@ -244,7 +249,7 @@ class DataCacheService @Inject constructor(
                 seriesCategories = seriesCategories
             )
         } catch (e: Exception) {
-            android.util.Log.e("DataCacheService", "Failed to load cache", e)
+            reportError("DataCacheService", "Failed to load cache", e)
             return null
         }
     }
@@ -358,7 +363,7 @@ class DataCacheService @Inject constructor(
             android.util.Log.d("DataCacheService", "Loaded ${filteredItems.size} ${itemClass.simpleName}s from ${allItems.size} total (requested ${ids.size} IDs)")
             return@withContext filteredItems
         } catch (e: Exception) {
-            android.util.Log.e("DataCacheService", "Failed to load ${itemClass.simpleName}s by IDs for key $cacheKey", e)
+            reportError("DataCacheService", "Failed to load ${itemClass.simpleName}s by IDs for key $cacheKey", e)
             return@withContext null
         }
     }

@@ -28,6 +28,8 @@ import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
+import com.flintr.tv.utils.error.reportError
+import com.flintr.tv.utils.error.reportWarning
 
 /**
  * Represents the last interaction with an episode (either in-progress or completed)
@@ -142,7 +144,7 @@ class WatchProgressService @Inject constructor(
                     Log.d(TAG, "Loaded watch progress from Firestore: ${progress.size} total")
                 },
                 onFailure = { exception ->
-                    Log.e(TAG, "Failed to load watch progress from Firestore", exception)
+                    reportError(TAG, "Failed to load watch progress from Firestore", exception)
                     // Keep current state or use empty map
                     if (_watchProgress.value.isEmpty()) {
                         Log.e(TAG, "State is empty after failed Firestore load - user data may be unavailable")
@@ -192,7 +194,7 @@ class WatchProgressService @Inject constructor(
                         Log.d(TAG, "Migration completed successfully")
                     },
                     onFailure = { exception ->
-                        Log.e(TAG, "Migration failed, will retry on next app start", exception)
+                        reportError(TAG, "Migration failed, will retry on next app start", exception)
                         // Don't mark as complete, so it will retry
                     }
                 )
@@ -204,7 +206,7 @@ class WatchProgressService @Inject constructor(
                 Log.d(TAG, "No local data to migrate")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error during migration", e)
+            reportError(TAG, "Error during migration", e)
             // Don't mark as complete, so it will retry
         }
     }
@@ -221,7 +223,7 @@ class WatchProgressService @Inject constructor(
                 mapAdapter.fromJson(json) ?: emptyMap()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading local data for migration", e)
+            reportError(TAG, "Error loading local data for migration", e)
             emptyMap()
         }
     }
@@ -236,7 +238,7 @@ class WatchProgressService @Inject constructor(
             }
             Log.d(TAG, "Cleared old local data after migration")
         } catch (e: Exception) {
-            Log.e(TAG, "Error clearing local data", e)
+            reportError(TAG, "Error clearing local data", e)
         }
     }
 
@@ -257,7 +259,7 @@ class WatchProgressService @Inject constructor(
                     Log.d(TAG, "Successfully saved watch progress to Firestore")
                 },
                 onFailure = { exception ->
-                    Log.e(TAG, "Failed to save watch progress to Firestore", exception)
+                    reportError(TAG, "Failed to save watch progress to Firestore", exception)
                     // StateFlow already updated, so UI will reflect the change
                     // Firestore will sync when connection is restored
                 }
@@ -376,7 +378,7 @@ class WatchProgressService @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving progress", e)
+            reportError(TAG, "Error saving progress", e)
             false
         }
     }
@@ -434,7 +436,7 @@ class WatchProgressService @Inject constructor(
             Log.d(TAG, "Found saved progress")
             progress.position
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting progress", e)
+            reportError(TAG, "Error getting progress", e)
             null
         }
     }
@@ -453,7 +455,7 @@ class WatchProgressService @Inject constructor(
             val key = generateKey(contentType, streamId, seriesId, episodeId)
             _watchProgress.value[key]
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting watch progress", e)
+            reportError(TAG, "Error getting watch progress", e)
             null
         }
     }
@@ -490,7 +492,7 @@ class WatchProgressService @Inject constructor(
                             Log.d(TAG, "Successfully deleted watch progress from Firestore")
                         },
                         onFailure = { exception ->
-                            Log.e(TAG, "Failed to delete watch progress from Firestore", exception)
+                            reportError(TAG, "Failed to delete watch progress from Firestore", exception)
                             // StateFlow already updated, so UI will reflect the change
                             // Firestore will sync when connection is restored
                         }
@@ -508,7 +510,7 @@ class WatchProgressService @Inject constructor(
                     favoritesRepository.removeFavorite(favoriteId)
                     Log.d(TAG, "Automatically removed completed movie from favorites")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to automatically remove completed movie from favorites", e)
+                    reportWarning(TAG, "Failed to automatically remove completed movie from favorites", e)
                     // Don't fail the progress deletion if favorite removal fails
                 }
             }
@@ -516,7 +518,7 @@ class WatchProgressService @Inject constructor(
             Log.d(TAG, "Progress deleted successfully")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Error deleting progress", e)
+            reportError(TAG, "Error deleting progress", e)
             false
         }
     }
@@ -665,7 +667,7 @@ class WatchProgressService @Inject constructor(
                 else -> Triple(null, null, null)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to get name/genre/categoryName from cache for contentType: $contentType, streamId: $streamId, seriesId: $seriesId", e)
+            reportWarning(TAG, "Failed to get name/genre/categoryName from cache for contentType: $contentType, streamId: $streamId, seriesId: $seriesId", e)
             Triple(null, null, null)
         }
     }
@@ -835,7 +837,7 @@ class WatchProgressService @Inject constructor(
         val timestamp = try {
             Instant.parse(progress.lastWatched).toEpochMilli()
         } catch (e: Exception) {
-            Log.w(TAG, "Error parsing lastWatched timestamp: ${progress.lastWatched}", e)
+            reportWarning(TAG, "Error parsing lastWatched timestamp: ${progress.lastWatched}", e)
             return null
         }
         
@@ -926,7 +928,7 @@ class WatchProgressService @Inject constructor(
             // Return the most recent interaction
             listOfNotNull(latestProgress, latestWatchedInteraction).maxByOrNull { it.timestamp }
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting last interaction for seriesId: $seriesId", e)
+            reportError(TAG, "Error getting last interaction for seriesId: $seriesId", e)
             null
         }
     }
@@ -1047,7 +1049,7 @@ class WatchProgressService @Inject constructor(
             Log.d(TAG, "getSmartResumeTarget: Case C - Fallback to S${fallbackTarget.seasonNumber}E${fallbackTarget.episodeNumber}")
             return@withContext fallbackTarget
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting smart resume target for seriesId: $seriesId", e)
+            reportError(TAG, "Error getting smart resume target for seriesId: $seriesId", e)
             null
         }
     }

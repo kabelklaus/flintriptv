@@ -13,6 +13,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.flintr.tv.utils.error.reportHandled
 
 @Singleton
 class XtreamRepository @Inject constructor(
@@ -82,6 +83,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get server info: ${response.code()}"))
             }
         } catch (e: Exception) {
+            reportHandled("XtreamRepository.getServerInfo", e)
             Result.failure(e)
         }
     }
@@ -102,6 +104,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get live categories: ${response.code()}"))
             }
         } catch (e: Exception) {
+            reportHandled("XtreamRepository.getLiveCategories", e)
             Result.failure(e)
         }
     }
@@ -145,6 +148,7 @@ class XtreamRepository @Inject constructor(
             // No cache available - return error (no API calls allowed)
             Result.failure(Exception(ERROR_NO_CACHE_AVAILABLE))
         } catch (e: Exception) {
+            reportHandled("XtreamRepository.getLiveCategories", e)
             Result.failure(e)
         }
     }
@@ -169,6 +173,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get live streams: ${response.code()}"))
             }
         } catch (e: Exception) {
+            reportHandled("XtreamRepository.loadLiveStreamsFromApi", e)
             Result.failure(e)
         }
     }
@@ -189,6 +194,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get VOD categories: ${response.code()}"))
             }
         } catch (e: Exception) {
+            reportHandled("XtreamRepository.getVodCategories", e)
             Result.failure(e)
         }
     }
@@ -213,6 +219,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get VOD streams: ${response.code()}"))
             }
         } catch (e: Exception) {
+            reportHandled("XtreamRepository.loadVodStreamsFromApi", e)
             Result.failure(e)
         }
     }
@@ -233,6 +240,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get series categories: ${response.code()}"))
             }
         } catch (e: Exception) {
+            reportHandled("XtreamRepository.getSeriesCategories", e)
             Result.failure(e)
         }
     }
@@ -257,6 +265,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get series: ${response.code()}"))
             }
         } catch (e: Exception) {
+            reportHandled("XtreamRepository.loadSeriesFromApi", e)
             Result.failure(e)
         }
     }
@@ -323,6 +332,11 @@ class XtreamRepository @Inject constructor(
 
             return Result.success(series)
         } catch (e: Exception) {
+            reportHandled(
+                "XtreamRepository.executeSeriesInfoCall",
+                e,
+                mapOf("seriesId" to seriesId.toString(), "attempt" to attempt.toString())
+            )
             // Network errors are retryable, other exceptions are not
             when (e) {
                 is java.net.SocketTimeoutException,
@@ -379,6 +393,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get EPG: ${response.code()}"))
             }
         } catch (e: Exception) {
+            reportHandled("XtreamRepository.getEpg", e)
             Result.failure(e)
         }
     }
@@ -395,6 +410,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get EPG list: ${response.code()}"))
             }
         } catch (e: Exception) {
+            reportHandled("XtreamRepository.getEpgList", e)
             Result.failure(e)
         }
     }
