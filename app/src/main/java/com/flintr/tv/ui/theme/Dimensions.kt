@@ -58,9 +58,6 @@ object Dimensions {
     val navbarItemHeight = 48.0.dp
     val navbarLabelSpacing = size4.dp
     val navbarItemSpacing = spacingSM
-    val navbarVerticalBarWidth = size4.dp
-    val navbarVerticalBarHeight = 32.0.dp
-    val navbarVerticalBarRadius = size2.dp
     val navbarItemPadding = spacingXS
     val navbarItemVerticalPadding = spacingXS
     val navbarLogoTopPadding = spacingLG
