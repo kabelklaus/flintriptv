@@ -100,6 +100,11 @@ private val AppColorsDark = AppColors(
 fun appColors(): AppColors = AppColorsDark
 
 /**
+ * Die Palette ohne Compose-Kontext, für Unit-Tests reiner Farbfunktionen.
+ */
+fun appColorsForTest(): AppColors = AppColorsDark
+
+/**
  * Data class für app-spezifische Farben.
  */
 data class AppColors(

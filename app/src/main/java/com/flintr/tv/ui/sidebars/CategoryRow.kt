@@ -29,6 +29,7 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
+import com.flintr.tv.ui.theme.focusRingColor
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import androidx.compose.ui.focus.focusRequester
@@ -60,7 +61,7 @@ data class CategoryChipParams(
 /**
  * Data class holding computed colors for CategoryChip
  */
-private data class CategoryChipColors(
+internal data class CategoryChipColors(
     val background: Color,
     val title: Color,
     val count: Color,
@@ -71,7 +72,7 @@ private data class CategoryChipColors(
 /**
  * Calculate colors based on selection and focus state
  */
-private fun calculateChipColors(
+internal fun calculateChipColors(
     isSelected: Boolean,
     hasFocus: Boolean,
     colors: com.flintr.tv.ui.theme.AppColors
@@ -86,7 +87,7 @@ private fun calculateChipColors(
 
     val title = if (isSelected || isHoveredOrFocused) Color.White else colors.categoryDefaultText
     val count = if (isSelected || isHoveredOrFocused) Color.White else colors.categoryChannelCountText
-    val border = if (isSelected || hasFocus) colors.accentColor else Color.Transparent
+    val border = focusRingColor(isFocused = hasFocus, onSelectionFill = isSelected)
     val shadowElevation = if (isSelected) 4.dp else 0.dp
 
     return CategoryChipColors(background, title, count, border, shadowElevation)
