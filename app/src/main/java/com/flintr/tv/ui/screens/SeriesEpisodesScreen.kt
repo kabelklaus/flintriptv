@@ -45,6 +45,7 @@ import com.flintr.tv.ui.components.PopupMenu
 import com.flintr.tv.ui.components.WatchedBadge
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
+import com.flintr.tv.ui.theme.focusRingColor
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onBackButton
@@ -908,23 +909,23 @@ private fun SeasonButton(
     var isFocused by remember { mutableStateOf(false) }
     
     // Background color with animation (like CategoryRow)
-    // Selected: completely filled with accentColor
+    // Selected: completely filled with selectionFill
     // Focused (but not selected): hover background
     val isHoveredOrFocused = isFocused && !isSelected
     val backgroundColor by animateColorAsState(
         targetValue = when {
-            isSelected -> colors.accentColor
+            isSelected -> colors.selectionFill
             isHoveredOrFocused -> colors.categoryHoverBg
             else -> Color.Transparent
         },
         animationSpec = tween(durationMillis = 200),
         label = "backgroundColor"
     )
-    
+
     // Border color with animation
-    // Selected OR focused: show border
+    // Der Rahmen markiert ausschließlich den Fokus, nie die Selektion.
     val borderColor by animateColorAsState(
-        targetValue = if (isSelected || isFocused) colors.accentColor else Color.Transparent,
+        targetValue = focusRingColor(isFocused = isFocused, onSelectionFill = isSelected),
         animationSpec = tween(durationMillis = 200),
         label = "borderColor"
     )
@@ -1139,8 +1140,14 @@ private fun EpisodeDetailCard(
     )
     
     // Border color with animation
+    // isFocused und isFocusedState sind zwei Fokusquellen desselben Elements:
+    // die vom Aufrufer durchgereichte und die lokal beobachtete. Die Verodung
+    // ist deshalb korrekt und zeichnet keine zwei Rahmen.
     val borderColor by animateColorAsState(
-        targetValue = if (isFocused || isFocusedState) colors.accentColor else Color.Transparent,
+        targetValue = focusRingColor(
+            isFocused = isFocused || isFocusedState,
+            onSelectionFill = false
+        ),
         animationSpec = tween(durationMillis = 200),
         label = "borderColor"
     )

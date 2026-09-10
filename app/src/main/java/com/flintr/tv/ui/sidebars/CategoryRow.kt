@@ -29,7 +29,7 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.theme.isDark
+import com.flintr.tv.ui.theme.focusRingColor
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import androidx.compose.ui.focus.focusRequester
@@ -61,7 +61,7 @@ data class CategoryChipParams(
 /**
  * Data class holding computed colors for CategoryChip
  */
-private data class CategoryChipColors(
+internal data class CategoryChipColors(
     val background: Color,
     val title: Color,
     val count: Color,
@@ -72,7 +72,7 @@ private data class CategoryChipColors(
 /**
  * Calculate colors based on selection and focus state
  */
-private fun calculateChipColors(
+internal fun calculateChipColors(
     isSelected: Boolean,
     hasFocus: Boolean,
     colors: com.flintr.tv.ui.theme.AppColors
@@ -80,14 +80,14 @@ private fun calculateChipColors(
     val isHoveredOrFocused = hasFocus && !isSelected
 
     val background = when {
-        isSelected -> colors.accentColor
+        isSelected -> colors.selectionFill
         isHoveredOrFocused -> colors.categoryHoverBg
         else -> Color.Transparent
     }
 
     val title = if (isSelected || isHoveredOrFocused) Color.White else colors.categoryDefaultText
     val count = if (isSelected || isHoveredOrFocused) Color.White else colors.categoryChannelCountText
-    val border = if (isSelected || hasFocus) colors.accentColor else Color.Transparent
+    val border = focusRingColor(isFocused = hasFocus, onSelectionFill = isSelected)
     val shadowElevation = if (isSelected) 4.dp else 0.dp
 
     return CategoryChipColors(background, title, count, border, shadowElevation)
@@ -240,17 +240,13 @@ fun CategoryRow(
 ) {
     // Categories are already filtered and sorted in AppNavigation.kt
     val colors = appColors()
-    val colorScheme = MaterialTheme.colorScheme
-    val isDark = colorScheme.isDark
 
     LazyColumn(
         state = params.listState,
         modifier = modifier
             .fillMaxHeight()
             .width(Dimensions.categorySidebarWidth)
-            .background(
-                if (isDark) SharedColors.sidebarCard else colors.bgList
-            ),
+            .background(SharedColors.sidebarCard),
         contentPadding = PaddingValues(all = Dimensions.spacingMD),
         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
     ) {

@@ -3,19 +3,24 @@ package com.flintr.tv.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Shared colors used across both light and dark themes
+ * Farben, die unabhängig vom Flächenkontext gelten.
  */
 object SharedColors {
     // Brand/Accent colors
-    val primary = Color(0xFF1152D4)
+    //
+    // accent trägt die Marke und den Fokus: 8,7:1 gegen den Hintergrund.
+    // selectionFill füllt ausgewählte Elemente — dort liegt weißer Text
+    // darauf, weshalb der schwächere Kontrast gegen Schwarz keine Rolle
+    // spielt. Als Akzentfarbe käme selectionFill nur auf 4,9:1.
+    val accent = Color(0xFF1B84FF)
+    val accentBright = Color(0xFF38BDF8)
+    val selectionFill = Color(0xFF1152D4)
     val primaryHover = Color(0xFF0E42A8)
-    val primaryHoverBg = Color(0x1A1152D4)
-    val primaryBorderLight = Color(0x331152D4)
+    val accentHoverBg = Color(0x241B84FF)
     
     // Semantic colors
     val blocked = Color(0xFFEF4444)
     val error = Color(0xFFEF4444)
-    val proBadge = Color(0xFF9334E6)
     val success = Color(0xFF4CAF50)
     val successGreen = Color(0xFF10B981)
     
@@ -36,8 +41,8 @@ object SharedColors {
     
     // Video/Surface colors
     val videoPlayerBg = Color(0xFF000000)
-    val sidebarCard = Color(0xFF1A2230)
-    val navSidebarBg = Color(0xFF151B26)
+    val sidebarCard = Color(0xFF1C1D1F)
+    val navSidebarBg = Color(0xFF141518)
     
     // Overlay colors
     val overlayBlack = Color(0xFF000000)
@@ -48,64 +53,9 @@ object SharedColors {
     
     // Content Card colors
     val contentCardRatingIconColor = Color(0xFFFFC107)
-    val contentCardBgColor = Color(0xFF000000) // Black
-}
-
-/**
- * Light mode color definitions
- */
-object LightColors {
-    // Background colors
-    val bgSidebar = Color(0xFFF5F5F5)
-    val bgSidebarCard = SharedColors.sidebarCard
-    val bgList = Color(0xFFF6F6F8)
-    val bgPreview = Color(0xFFF6F6F8)
-    val bgSelected = Color(0xFFE8F0FE)
-    val bgHover = Color(0xFFF1F3F4)
-    val bgCard = Color(0xFFF8F9FA)
-    
-    // Border colors
-    val cardBorder = Color(0xFFE0E0E0)
-    
-    // Text colors
-    val textPrimary = Color(0xFF202124)
-    val textSecondary = Color(0xFF4A4F54)
-    
-    // Accent colors
-    val accentColor = SharedColors.primary
-    val accentColorHoverBg = SharedColors.primaryHoverBg
-    val accentColorBorderLight = SharedColors.primaryBorderLight
-    
-    // Navigation colors
-    val navActiveBg = Color(0xFFC2E7FF)
-    val navActiveText = Color(0xFF001D35)
-    
-    // Badge colors
-    val badgeBg = Color(0xFF0B57D0)
-    val badgeText = Color(0xFFFFFFFF)
-    
-    // Semantic colors
-    val dangerBg = Color(0xFFFEE2E2)
-    val dangerBorder = Color(0xFFFECACA)
-    val dangerText = Color(0xFF7F1D1D)
-    val successColor = SharedColors.success
-    val errorColor = SharedColors.error
-    val successGreen = SharedColors.successGreen
-    
-    // Button colors
-    val buttonPrimary = SharedColors.primary
-    val buttonPrimaryHover = SharedColors.primaryHover
-    
-    // Badge colors
-    val proBadgeBg = SharedColors.proBadge
-    
-    // Icon colors
-    val iconColor = Color(0xFF5F6368)
-    val iconColorHover = textPrimary
-    
-    // Category Sidebar colors
-    val categoryHoverBg = Color(0xFFE2E8F0)
-    val categoryDefaultText = Color(0xFF475569)
+    // Karten liegen als Fläche über dem Hintergrund, nicht auf reinem Schwarz —
+    // sonst verschwinden sie, solange kein Artwork geladen ist.
+    val contentCardBgColor = Color(0xFF1C1D1F)
 }
 
 /**
@@ -113,48 +63,36 @@ object LightColors {
  */
 object DarkColors {
     // Background colors
-    val bgSidebar = Color(0xFF101722)
+    val bgSidebar = Color(0xFF141518)
     val bgSidebarCard = SharedColors.sidebarCard
-    val bgList = Color(0xFF0B111A)
-    val bgPreview = Color(0xFF0B111A)
-    val bgSelected = Color(0xFF414B5C)
-    val bgHover = Color(0xFF2D2E30)
-    val bgCard = Color(0xFF1A2230)
-    
+    val bgList = Color(0xFF0D0D0F)
+    val bgPreview = Color(0xFF0D0D0F)
+    val bgHover = Color(0xFF2A2C2F)
+    val bgCard = Color(0xFF1C1D1F)
+
     // Border colors
-    val cardBorder = Color(0xFF3C4043)
-    
+    val cardBorder = Color(0xFF2E3033)
+
     // Text colors
-    val textPrimary = Color(0xFFE8EAED)
-    val textSecondary = Color(0xFF9AA0A6)
-    
+    val textPrimary = Color(0xFFF2F3F5)
+    val textSecondary = Color(0xFF8B9096)
+
     // Accent colors
-    val accentColor = SharedColors.primary
-    val accentColorHoverBg = SharedColors.primaryHoverBg
-    val accentColorBorderLight = SharedColors.primaryBorderLight
-    
-    // Navigation colors
-    val navActiveBg = Color(0xFF004A77)
-    val navActiveText = Color(0xFFC2E7FF)
-    
-    // Badge colors
-    val badgeBg = Color(0xFFA8C7FA)
-    val badgeText = Color(0xFF0B57D0)
+    val accentColor = SharedColors.accent
+    val accentColorHoverBg = SharedColors.accentHoverBg
+    val selectionFill = SharedColors.selectionFill
+    val accentBright = SharedColors.accentBright
     
     // Semantic colors
     val dangerBg = Color(0xFF3B0A0A)
-    val dangerBorder = Color(0x73F87171)
     val dangerText = Color(0xFFFECACA)
     val successColor = SharedColors.success
     val errorColor = SharedColors.error
     val successGreen = SharedColors.successGreen
     
     // Button colors
-    val buttonPrimary = SharedColors.primary
+    val buttonPrimary = SharedColors.selectionFill
     val buttonPrimaryHover = SharedColors.primaryHover
-    
-    // Badge colors
-    val proBadgeBg = SharedColors.proBadge
     
     // Icon colors
     val iconColor = Color(0xFFBDC1C6)
@@ -164,20 +102,3 @@ object DarkColors {
     val categoryHoverBg = Color(0x0DFFFFFF)
     val categoryDefaultText = Color(0xFFCBD5E1)
 }
-
-// Legacy compatibility - keep for existing code
-val Primary = SharedColors.primary
-val Secondary = SharedColors.primary
-val Background = DarkColors.bgPreview
-val Surface = DarkColors.bgCard
-val Error = DarkColors.dangerText
-val OnPrimary = Color(0xFFFFFFFF)
-val OnSecondary = Color(0xFFFFFFFF)
-val OnBackground = DarkColors.textPrimary
-val OnSurface = DarkColors.textPrimary
-val OnError = Color(0xFFFFFFFF)
-
-// TV Focus Colors (legacy compatibility)
-val FocusHighlight = Color(0xFF03DAC6)
-val FocusBackground = Color(0xFF2A2A2A)
-val black = Color(0xFF000000)

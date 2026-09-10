@@ -46,7 +46,9 @@ import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
+import com.flintr.tv.ui.theme.FocusRing
 import com.flintr.tv.ui.theme.appColors
+import com.flintr.tv.ui.theme.focusRingColor
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.utils.ContentParser
@@ -59,7 +61,7 @@ import kotlinx.coroutines.launch
 // Using Dimensions object for single source of truth
 private val ContentCardHeight = Dimensions.contentCardMaxCrossAxisExtent / Dimensions.contentCardAspectRatio
 private val ContentCardBorderRadius = 8.dp // radiusMD
-private val ContentCardBorderWidth = 2.dp // categoryBorderWidth
+private val ContentCardBorderWidth = FocusRing.width
 
 // Content Card Title Overlay (from Flutter AppTheme)
 private val ContentCardTitleOverlayPadding = 1.dp
@@ -621,7 +623,7 @@ private fun useCardVisualState(
     colors: com.flintr.tv.ui.theme.AppColors
 ): CardVisualState {
     val borderColor by animateColorAsState(
-        targetValue = if (config.isSelected || isFocused) colors.accentColor else Color.Transparent,
+        targetValue = focusRingColor(isFocused = isFocused, onSelectionFill = config.isSelected),
         animationSpec = tween(durationMillis = 200),
         label = "borderColor"
     )

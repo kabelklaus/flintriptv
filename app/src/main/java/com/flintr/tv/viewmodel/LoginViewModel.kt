@@ -69,7 +69,10 @@ class LoginViewModel @Inject constructor(
                             Log.d("LoginViewModel", "Username saved to Firestore: $username")
                         },
                         onFailure = { exception ->
-                            reportWarning("LoginViewModel", "Failed to save username to Firestore: $username", exception)
+                            // Kein $username in der Meldung: sie geht an Crashlytics und
+                            // damit vom Gerät. CredentialRedactor greift hier nicht, weil
+                            // sein Muster ein Gleichheitszeichen erwartet.
+                            reportWarning("LoginViewModel", "Failed to save username to Firestore", exception)
                         }
                     )
                     

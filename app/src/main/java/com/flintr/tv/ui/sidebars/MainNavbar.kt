@@ -40,6 +40,7 @@ import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
+import com.flintr.tv.ui.theme.focusRingColor
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.safeRequestFocus
@@ -122,7 +123,7 @@ private fun calculateItemColors(
 ): ItemColors {
     val backgroundColor by animateColorAsState(
         targetValue = when {
-            isSelected -> colors.accentColor
+            isSelected -> colors.selectionFill
             isFocused -> colors.accentColorHoverBg
             else -> Color.Transparent
         },
@@ -134,7 +135,9 @@ private fun calculateItemColors(
     )
     
     val borderColor by animateColorAsState(
-        targetValue = if (isFocused) colors.accentColor else Color.Transparent,
+        // Das ausgewählte Item ist mit selectionFill gefüllt — dort muss der
+        // Rahmen auf Weiß wechseln, sonst liegt Azur auf Blau bei 1,76:1.
+        targetValue = focusRingColor(isFocused = isFocused, onSelectionFill = isSelected),
         animationSpec = tween(durationMillis = 200),
         label = "borderColor"
     )
