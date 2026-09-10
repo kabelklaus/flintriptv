@@ -80,9 +80,12 @@ jobs:
           elif [ "$CURRENT_MAJOR" -eq "$LAST_MAJOR" ] && [ "$CURRENT_MINOR" -gt "$LAST_MINOR" ]; then
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "✅ Minor version update detected ($LAST_VERSION → $CURRENT_VERSION)"
-          else
+          elif [ "$CURRENT_MAJOR" -eq "$LAST_MAJOR" ] && [ "$CURRENT_MINOR" -eq "$LAST_MINOR" ] && [ "$CURRENT_PATCH" -gt "$LAST_PATCH" ]; then
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "✅ Patch version update detected ($LAST_VERSION → $CURRENT_VERSION), creating release"
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "⏭️ No version change detected ($LAST_VERSION = $CURRENT_VERSION), skipping release"
           fi
       - name: Prepare release filenames
         if: steps.should_release.outputs.should_release == 'true'
