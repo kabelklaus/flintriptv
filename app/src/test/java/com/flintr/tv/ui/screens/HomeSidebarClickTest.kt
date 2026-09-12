@@ -128,6 +128,26 @@ class HomeSidebarClickTest {
         assertEquals(1, navigateRightCalls)
     }
 
+    @Test
+    fun tapOnAlreadySelectedItemStillFocusesItAfterFocusMovedAway() {
+        // Order 2 / Bug 1 regression: selectedDestination doesn't change on this tap, so the
+        // LaunchedEffect(selectedDestination) auto-focus never re-fires - the click itself must
+        // request focus. Repro: focus moved to some other item (e.g. tapped away, or previously
+        // over on the CategorySidebar), then the user taps the already-active nav item again.
+        setSidebarContent(selectedDestination = HomeDestination.VOD)
+
+        composeTestRule.onNodeWithTag("navbar-item-Series").performClick()
+        composeTestRule.mainClock.advanceTimeBy(500L)
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("navbar-item-Series").assertIsFocused()
+
+        composeTestRule.onNodeWithTag("navbar-item-VOD").performClick()
+        composeTestRule.mainClock.advanceTimeBy(500L)
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("navbar-item-VOD").assertIsFocused()
+    }
+
     @OptIn(ExperimentalTestApi::class)
     @Test
     fun dpadCenterOnFocusedItemNavigates() {

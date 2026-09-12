@@ -102,26 +102,43 @@ object InteractionUtils {
 }
 
 private const val FOCUS_REQUEST_DELAY_MS = 50L
+private const val FOCUS_REQUEST_MAX_ATTEMPTS = 6
+private const val FOCUS_REQUEST_RETRY_DELAY_MS = 50L
 
 /**
  * Safely request focus on a FocusRequester with a delay to ensure it's fully initialized.
  * This prevents IllegalStateException when requesting focus before the FocusRequester is ready.
- * 
+ *
+ * Retries up to [FOCUS_REQUEST_MAX_ATTEMPTS] times (50ms apart) before giving up, since the
+ * target node commonly attaches a frame or two after the caller schedules the request - only
+ * exhausting the retries is a real problem worth surfacing to Crashlytics.
+ *
  * @param logTag Tag for logging (default: "TVFocus")
  * @param targetName Name of the target component for logging purposes
+ * @return true if focus was successfully requested, false if every attempt failed (e.g. the
+ * target node never attached - callers that must not leave the screen without any focused
+ * element should fall back to a different, known-composed target when this returns false).
  */
 suspend fun FocusRequester.safeRequestFocus(
     logTag: String = "TVFocus",
     targetName: String
-) {
+): Boolean {
     delay(FOCUS_REQUEST_DELAY_MS)
-    try {
-        requestFocus()
-        Log.i(logTag, "🎯 Focus set to $targetName")
-    } catch (e: IllegalStateException) {
-        Log.w(logTag, "⚠️ $targetName FocusRequester not initialized yet")
-        reportControlFlow("InteractionUtils.$targetName", e)
+    repeat(FOCUS_REQUEST_MAX_ATTEMPTS) { attempt ->
+        try {
+            requestFocus()
+            Log.i(logTag, "🎯 Focus set to $targetName (attempt ${attempt + 1})")
+            return true
+        } catch (e: IllegalStateException) {
+            if (attempt < FOCUS_REQUEST_MAX_ATTEMPTS - 1) {
+                delay(FOCUS_REQUEST_RETRY_DELAY_MS)
+            } else {
+                Log.w(logTag, "⚠️ $targetName FocusRequester not initialized after $FOCUS_REQUEST_MAX_ATTEMPTS attempts")
+                reportControlFlow("InteractionUtils.$targetName", e)
+            }
+        }
     }
+    return false
 }
 
 /**

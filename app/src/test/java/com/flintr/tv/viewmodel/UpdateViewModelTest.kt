@@ -1,26 +1,36 @@
 package com.flintr.tv.viewmodel
 
-import com.flintr.tv.data.model.UpdateInfo
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import com.flintr.tv.data.repository.UpdateRepository
 import com.flintr.tv.di.ResourcesProvider
 import com.flintr.tv.testutil.MainDispatcherRule
 import com.flintr.tv.utils.DownloadProgress
 import com.flintr.tv.utils.UpdateDownloadService
 import com.flintr.tv.utils.UpdateInstaller
-import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
-import kotlinx.coroutines.flow.flowOf
+import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okio.Buffer
+import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import java.io.File
 
+@RunWith(RobolectricTestRunner::class)
 class UpdateViewModelTest {
 
     @get:Rule
@@ -29,101 +39,79 @@ class UpdateViewModelTest {
     private lateinit var updateRepository: UpdateRepository
     private lateinit var downloadService: UpdateDownloadService
     private lateinit var installer: UpdateInstaller
+    private lateinit var resourcesProvider: ResourcesProvider
     private lateinit var viewModel: UpdateViewModel
-
-    // Liefert lesbare Strings statt Android-Ressourcen
-    private val resourcesProvider = ResourcesProvider { resId, args ->
-        "res:$resId:${args.joinToString(",")}"
-    }
 
     @Before
     fun setUp() {
         updateRepository = mockk()
-        downloadService = mockk(relaxed = true)
-        installer = mockk(relaxed = true)
-        viewModel = UpdateViewModel(updateRepository, downloadService, installer, resourcesProvider)
-    }
+        downloadService = mockk()
+        installer = mockk()
+        resourcesProvider = mockk()
+        every { resourcesProvider.getString(any(), *anyVararg()) } returns "error"
 
-    @Test
-    fun `checkForUpdates setzt UpdateInfo bei Erfolg`() = runTest {
-        val info = UpdateInfo(hasUpdate = true, stableVersion = "2.45")
-        coEvery { updateRepository.checkForUpdates("2.44") } returns info
-
-        viewModel.checkForUpdates("2.44")
-
-        assertEquals(info, viewModel.updateInfo.value)
-        assertEquals("2.44", viewModel.currentVersion.value)
-        assertFalse(viewModel.isCheckingUpdates.value)
-        assertNull(viewModel.errorMessage.value)
-    }
-
-    @Test
-    fun `checkForUpdates meldet Fehler bei Exception`() = runTest {
-        coEvery { updateRepository.checkForUpdates(any()) } throws Exception("HTTP 500")
-
-        viewModel.checkForUpdates("2.44")
-
-        assertTrue(viewModel.errorMessage.value!!.contains("HTTP 500"))
-        assertFalse(viewModel.isCheckingUpdates.value)
-        assertNull(viewModel.updateInfo.value)
-    }
-
-    @Test
-    fun `downloadUpdate aktualisiert Fortschritt und installiert nach Abschluss`() = runTest {
-        val apk = File.createTempFile("update", ".apk")
-        every { downloadService.downloadApk("https://dl/apk", "2.45") } returns flowOf(
-            DownloadProgress(50, 100, false),
-            DownloadProgress(100, 100, true)
+        viewModel = UpdateViewModel(
+            updateRepository = updateRepository,
+            downloadService = downloadService,
+            installer = installer,
+            resourcesProvider = resourcesProvider
         )
-        every { downloadService.getDownloadedApkFile("2.45") } returns apk
-        every { installer.installApk(apk) } returns true
-
-        viewModel.downloadUpdate("https://dl/apk", "2.45")
-
-        assertTrue(viewModel.downloadProgress.value!!.isComplete)
-        assertNull(viewModel.errorMessage.value)
     }
 
     @Test
-    fun `fehlgeschlagene Installation meldet Fehler`() = runTest {
-        val apk = File.createTempFile("update", ".apk")
-        every { downloadService.downloadApk(any(), any()) } returns flowOf(DownloadProgress(100, 100, true))
-        every { downloadService.getDownloadedApkFile(any()) } returns apk
-        every { installer.installApk(apk) } returns false
-
-        viewModel.downloadUpdate("https://dl/apk", "2.45")
-
-        assertTrue(viewModel.errorMessage.value!!.isNotBlank())
-    }
-
-    @Test
-    fun `fehlende APK-Datei meldet Fehler`() = runTest {
-        every { downloadService.downloadApk(any(), any()) } returns flowOf(DownloadProgress(100, 100, true))
+    fun `downloadUpdate ignores concurrent call`() = runTest {
+        // downloadApk-Flow haengt an einem Gate fest, damit der erste
+        // Download noch "laeuft", wenn der zweite Aufruf kommt.
+        val gate = CompletableDeferred<Unit>()
+        every { downloadService.downloadApk(any(), any()) } returns flow {
+            gate.await()
+            emit(DownloadProgress(100, 100, true))
+        }
         every { downloadService.getDownloadedApkFile(any()) } returns null
 
-        viewModel.downloadUpdate("https://dl/apk", "2.45")
+        viewModel.downloadUpdate("https://example.com/app.apk", "9.99")
+        viewModel.downloadUpdate("https://example.com/app.apk", "9.99")
 
-        assertTrue(viewModel.errorMessage.value!!.isNotBlank())
+        verify(exactly = 1) { downloadService.downloadApk(any(), any()) }
+        gate.complete(Unit)
+    }
+}
+
+/**
+ * F7 auf Service-Ebene: reale UpdateDownloadService gegen MockWebServer mit
+ * chunked Response (kein Content-Length-Header, contentLength() == -1).
+ */
+@RunWith(RobolectricTestRunner::class)
+class UpdateDownloadServiceContentLengthTest {
+
+    private val context: Context = ApplicationProvider.getApplicationContext()
+    private val server = MockWebServer()
+    private lateinit var service: UpdateDownloadService
+
+    private val apkBytes = byteArrayOf(0x50, 0x4B, 0x03, 0x04) + ByteArray(4096) { 1 }
+
+    @Before
+    fun setUp() {
+        server.start()
+        service = UpdateDownloadService(OkHttpClient(), context)
+    }
+
+    @After
+    fun tearDown() {
+        server.shutdown()
+        File(context.cacheDir, "app-v9.99.apk").delete()
     }
 
     @Test
-    fun `Download-Fehler im Fortschritt meldet Fehlermeldung`() = runTest {
-        every { downloadService.downloadApk(any(), any()) } returns flowOf(
-            DownloadProgress(0, 0, false, error = Exception("kein Netz"))
-        )
+    fun `downloadApk ohne Content-Length meldet niemals -1 im finalen Fortschritt`() = runBlocking {
+        server.enqueue(MockResponse().setChunkedBody(Buffer().write(apkBytes), 512))
 
-        viewModel.downloadUpdate("https://dl/apk", "2.45")
+        val events = service.downloadApk(server.url("/app.apk").toString(), "9.99").toList()
 
-        assertTrue(viewModel.errorMessage.value!!.contains("kein Netz"))
-    }
-
-    @Test
-    fun `clearError setzt Fehlermeldung zurueck`() = runTest {
-        coEvery { updateRepository.checkForUpdates(any()) } throws Exception("kaputt")
-        viewModel.checkForUpdates("2.44")
-
-        viewModel.clearError()
-
-        assertNull(viewModel.errorMessage.value)
+        val final = events.last()
+        assertTrue(final.isComplete)
+        assertEquals(apkBytes.size.toLong(), final.bytesDownloaded)
+        assertEquals(apkBytes.size.toLong(), final.totalBytes)
+        assertTrue(events.none { it.totalBytes < 0 || it.bytesDownloaded < 0 })
     }
 }

@@ -529,7 +529,7 @@ private fun PlayerControlButton(
             )
             .then(
                 if (config.isFocused) {
-                    Modifier.border(2.dp, SharedColors.red, RoundedCornerShape(Dimensions.radiusSM))
+                    Modifier.border(2.dp, SharedColors.accent, RoundedCornerShape(Dimensions.radiusSM))
                 } else {
                     Modifier
                 }
@@ -540,7 +540,7 @@ private fun PlayerControlButton(
             imageVector = config.icon,
             contentDescription = config.contentDescription,
             modifier = Modifier.size(config.iconSize),
-            tint = if (config.isFocused) SharedColors.red else Color.White
+            tint = if (config.isFocused) SharedColors.accent else Color.White
         )
     }
 }

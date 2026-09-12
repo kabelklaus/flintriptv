@@ -51,6 +51,12 @@ class CategoryVisibilityService @Inject constructor(
     // Mutex to prevent concurrent loadFromFirestore() calls
     private val loadMutex = Mutex()
 
+    // Mutex to prevent lost updates from concurrent hideCategory()/showCategory() calls.
+    // Spans the whole load+modify+write flow (not just loadFromFirestore()), since both
+    // steps must be atomic together to avoid two calls basing their change on the same
+    // stale snapshot.
+    private val writeMutex = Mutex()
+
     init {
         // React to credential changes (e.g., user login/logout or user switch)
         // This also handles the initial load since credentialsFlow emits the current value on collection
@@ -236,15 +242,15 @@ class CategoryVisibilityService @Inject constructor(
      * Synchronizes with Firestore before applying the change to ensure data consistency.
      * @return true if category was hidden, false if it was already hidden
      */
-    suspend fun hideCategory(categoryId: String, categoryType: CategoryType): Boolean {
+    suspend fun hideCategory(categoryId: String, categoryType: CategoryType): Boolean = writeMutex.withLock {
         // 1. First synchronize to get latest data from Firestore (ignore cooldown for critical operations)
         try {
             loadFromFirestore()
         } catch (e: Exception) {
             reportError(TAG, "Failed to load from Firestore before hiding category", e)
-            return false // Critical operation should not proceed with stale data
+            return@withLock false // Critical operation should not proceed with stale data
         }
-        
+
         // 2. Apply change to synchronized data
         val currentState = _hiddenCategories.value.toMutableMap()
         val hiddenCategories = currentState.getOrDefault(categoryType, emptySet()).toMutableSet()
@@ -255,7 +261,7 @@ class CategoryVisibilityService @Inject constructor(
             saveToFirestore(currentState)
             Log.d(TAG, "Category hidden: categoryId=$categoryId, type=$categoryType")
         }
-        return wasAdded
+        wasAdded
     }
 
     /**
@@ -263,15 +269,15 @@ class CategoryVisibilityService @Inject constructor(
      * Synchronizes with Firestore before applying the change to ensure data consistency.
      * @return true if category was shown, false if it was not hidden
      */
-    suspend fun showCategory(categoryId: String, categoryType: CategoryType): Boolean {
+    suspend fun showCategory(categoryId: String, categoryType: CategoryType): Boolean = writeMutex.withLock {
         // 1. First synchronize to get latest data from Firestore (ignore cooldown for critical operations)
         try {
             loadFromFirestore()
         } catch (e: Exception) {
             reportError(TAG, "Failed to load from Firestore before showing category", e)
-            return false // Critical operation should not proceed with stale data
+            return@withLock false // Critical operation should not proceed with stale data
         }
-        
+
         // 2. Apply change to synchronized data
         val currentState = _hiddenCategories.value.toMutableMap()
         val hiddenCategories = currentState.getOrDefault(categoryType, emptySet()).toMutableSet()
@@ -282,7 +288,7 @@ class CategoryVisibilityService @Inject constructor(
             saveToFirestore(currentState)
             Log.d(TAG, "Category shown: categoryId=$categoryId, type=$categoryType")
         }
-        return wasRemoved
+        wasRemoved
     }
 
     /**

@@ -13,7 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -23,6 +25,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import com.flintr.tv.R
 import com.flintr.tv.ui.settings.*
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
@@ -175,49 +178,55 @@ fun VideoSettingsDialog(
                     Column(
                         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
                     ) {
-                        // Video Quality Selection
-                        VideoQualitySelector(
-                            selectedQuality = videoQuality,
-                            onQualitySelected = { videoQuality = it },
-                            colors = colors,
-                            focusRequester = remember { androidx.compose.ui.focus.FocusRequester() },
-                            onBack = {}
-                        )
-                        
-                        // Hardware Decoder (read-only)
-                        ReadOnlySetting(
-                            label = "Hardware-Decoder",
-                            value = hardwareDecoder,
-                            colors = colors
-                        )
-                        
-                        // Output Format (read-only)
-                        ReadOnlySetting(
-                            label = "Output-Format",
-                            value = outputFormat,
-                            colors = colors
-                        )
-                        
-                        // Auto Play Switch
-                        SwitchSetting(
-                            label = "Automatisch abspielen",
-                            checked = autoPlay,
-                            onCheckedChange = { autoPlay = it },
-                            colors = colors
-                        )
-                        
-                        // Remember Position Switch
-                        SwitchSetting(
-                            label = "Position merken",
-                            checked = rememberPosition,
-                            onCheckedChange = { rememberPosition = it },
-                            colors = colors
-                        )
+                        // Video Quality Selection — not yet wired to a settings repository
+                        MockControlSection(colors = colors) {
+                            ReadOnlySetting(
+                                label = "Videoqualität",
+                                value = videoQuality.displayName,
+                                colors = colors
+                            )
+                        }
+
+                        // Hardware Decoder — not yet wired
+                        MockControlSection(colors = colors) {
+                            ReadOnlySetting(
+                                label = "Hardware-Decoder",
+                                value = hardwareDecoder,
+                                colors = colors
+                            )
+                        }
+
+                        // Output Format — not yet wired
+                        MockControlSection(colors = colors) {
+                            ReadOnlySetting(
+                                label = "Output-Format",
+                                value = outputFormat,
+                                colors = colors
+                            )
+                        }
+
+                        // Auto Play Switch — not yet wired
+                        MockControlSection(colors = colors) {
+                            DisabledMockSwitch(
+                                label = "Automatisch abspielen",
+                                checked = autoPlay,
+                                colors = colors
+                            )
+                        }
+
+                        // Remember Position Switch — not yet wired
+                        MockControlSection(colors = colors) {
+                            DisabledMockSwitch(
+                                label = "Position merken",
+                                checked = rememberPosition,
+                                colors = colors
+                            )
+                        }
                     }
                 }
-                
+
                 Spacer(modifier = Modifier.height(Dimensions.spacingMD))
-                
+
                 // Subtitles Section
                 SettingsCard(
                     title = "Untertitel",
@@ -227,27 +236,29 @@ fun VideoSettingsDialog(
                     Column(
                         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
                     ) {
-                        // Subtitles Enabled Switch
-                        SwitchSetting(
-                            label = "Untertitel aktivieren",
-                            checked = subtitlesEnabled,
-                            onCheckedChange = { subtitlesEnabled = it },
-                            colors = colors
-                        )
-                        
-                        // Subtitle Language Selection
-                        if (subtitlesEnabled) {
-                            SubtitleLanguageSelector(
-                                selectedLanguage = subtitleLanguage,
-                                onLanguageSelected = { subtitleLanguage = it },
+                        // Subtitles Enabled Switch — not yet wired
+                        MockControlSection(colors = colors) {
+                            DisabledMockSwitch(
+                                label = "Untertitel aktivieren",
+                                checked = subtitlesEnabled,
+                                colors = colors
+                            )
+                        }
+
+                        // Subtitle Language — not yet wired. Always shown (the disabled
+                        // toggle above can no longer gate it) so it isn't just hidden.
+                        MockControlSection(colors = colors) {
+                            ReadOnlySetting(
+                                label = "Untertitel-Sprache",
+                                value = subtitleLanguage.displayName,
                                 colors = colors
                             )
                         }
                     }
                 }
-                
+
                 Spacer(modifier = Modifier.height(Dimensions.spacingMD))
-                
+
                 // Audio Section
                 SettingsCard(
                     title = "Audio",
@@ -257,12 +268,15 @@ fun VideoSettingsDialog(
                     Column(
                         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
                     ) {
-                        AudioLanguageSelector(
-                            selectedLanguage = audioLanguage,
-                            onLanguageSelected = { audioLanguage = it },
-                            colors = colors
-                        )
-                        // Audio track selection (current stream)
+                        // Audio Language — not yet wired
+                        MockControlSection(colors = colors) {
+                            ReadOnlySetting(
+                                label = "Audio-Sprache",
+                                value = audioLanguage.displayName,
+                                colors = colors
+                            )
+                        }
+                        // Audio track selection (current stream) — the one real, wired control
                         AudioTrackSelector(
                             exoPlayer = exoPlayer,
                             colors = colors
@@ -271,6 +285,69 @@ fun VideoSettingsDialog(
                 }
             }
         }
+    }
+}
+
+/**
+ * Wraps a not-yet-wired settings control: muted (alpha 0.5) and tagged with a
+ * "coming soon" badge so it reads as disabled rather than broken.
+ */
+@Composable
+private fun MockControlSection(
+    colors: com.flintr.tv.ui.theme.AppColors,
+    content: @Composable () -> Unit
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXXS)
+    ) {
+        Box(modifier = Modifier.alpha(0.5f)) {
+            content()
+        }
+        ComingSoonBadge(colors = colors)
+    }
+}
+
+@Composable
+private fun ComingSoonBadge(colors: com.flintr.tv.ui.theme.AppColors) {
+    Text(
+        text = stringResource(R.string.video_settings_coming_soon),
+        fontSize = FontSizes.fontSizeXS,
+        color = colors.textSecondary,
+        modifier = Modifier
+            .background(colors.bgPreview, RoundedCornerShape(Dimensions.radiusSM))
+            .border(1.dp, colors.cardBorder, RoundedCornerShape(Dimensions.radiusSM))
+            .padding(horizontal = Dimensions.spacingXS, vertical = 2.dp)
+    )
+}
+
+/**
+ * Non-interactive stand-in for [SwitchSetting]: shows the mock value but is
+ * disabled and not focusable, so the D-Pad never lands on a control that does
+ * nothing.
+ */
+@Composable
+private fun DisabledMockSwitch(
+    label: String,
+    checked: Boolean,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = Dimensions.spacingXS),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            fontSize = FontSizes.fontSizeXL,
+            color = colors.textPrimary
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            enabled = false
+        )
     }
 }
 

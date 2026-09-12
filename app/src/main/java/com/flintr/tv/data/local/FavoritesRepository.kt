@@ -53,6 +53,9 @@ class FavoritesRepository @Inject constructor(
     // Mutex to prevent concurrent loadFromFirestore() calls
     private val loadMutex = Mutex()
 
+    // Mutex to prevent lost updates from concurrent addFavorite()/removeFavorite() calls
+    private val updateMutex = Mutex()
+
     // Moshi adapter for local data migration
     private val listType = Types.newParameterizedType(List::class.java, Favorite::class.java)
     private val listAdapter = moshi.adapter<List<Favorite>>(listType)
@@ -239,31 +242,35 @@ class FavoritesRepository @Inject constructor(
      * @return true if favorite was added, false if it already exists
      */
     suspend fun addFavorite(favorite: Favorite): Boolean {
-        // Optimistic update: Update local state immediately
-        val currentFavorites = _favorites.value.toMutableList()
-        
-        // Check if favorite already exists locally
-        if (currentFavorites.any { it.id == favorite.id }) {
-            Log.d(TAG, "Favorite with id ${favorite.id} already exists locally")
-            return false
-        }
-        
-        // Update local state optimistically
-        currentFavorites.add(favorite)
-        _favorites.value = currentFavorites
-        
-        // Try to sync atomically with Firestore (works offline with Firestore persistence)
-        val username = credentialsRepository.getCredentials()?.username
-        if (!username.isNullOrBlank()) {
-            val result = userRepository.addFavoriteAtomically(username, favorite)
-            if (result.isFailure) {
-                Log.w(TAG, "Failed to sync favorite to Firestore, will retry on next sync: ${result.exceptionOrNull()}")
-                // Don't revert local change - Firestore offline persistence will handle it
+        // Optimistic update: Update local state immediately (locked to prevent lost updates)
+        val added = updateMutex.withLock {
+            val currentFavorites = _favorites.value.toMutableList()
+
+            // Check if favorite already exists locally
+            if (currentFavorites.any { it.id == favorite.id }) {
+                Log.d(TAG, "Favorite with id ${favorite.id} already exists locally")
+                false
+            } else {
+                currentFavorites.add(favorite)
+                _favorites.value = currentFavorites
+                true
             }
         }
-        
-        Log.d(TAG, "Favorite added: id=${favorite.id}, type=${favorite.type}")
-        return true
+
+        if (added) {
+            // Try to sync atomically with Firestore (works offline with Firestore persistence)
+            val username = credentialsRepository.getCredentials()?.username
+            if (!username.isNullOrBlank()) {
+                val result = userRepository.addFavoriteAtomically(username, favorite)
+                if (result.isFailure) {
+                    Log.w(TAG, "Failed to sync favorite to Firestore, will retry on next sync: ${result.exceptionOrNull()}")
+                    // Don't revert local change - Firestore offline persistence will handle it
+                }
+            }
+
+            Log.d(TAG, "Favorite added: id=${favorite.id}, type=${favorite.type}")
+        }
+        return added
     }
 
     /**
@@ -273,13 +280,17 @@ class FavoritesRepository @Inject constructor(
      * @return true if favorite was removed, false if it was not found
      */
     suspend fun removeFavorite(favoriteId: String): Boolean {
-        // Optimistic update
-        val currentFavorites = _favorites.value.toMutableList()
-        val removed = currentFavorites.removeAll { it.id == favoriteId }
-        
+        // Optimistic update (locked to prevent lost updates)
+        val removed = updateMutex.withLock {
+            val currentFavorites = _favorites.value.toMutableList()
+            val didRemove = currentFavorites.removeAll { it.id == favoriteId }
+            if (didRemove) {
+                _favorites.value = currentFavorites
+            }
+            didRemove
+        }
+
         if (removed) {
-            _favorites.value = currentFavorites
-            
             // Try to sync atomically
             val username = credentialsRepository.getCredentials()?.username
             if (!username.isNullOrBlank()) {

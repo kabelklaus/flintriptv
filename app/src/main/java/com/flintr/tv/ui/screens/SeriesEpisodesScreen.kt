@@ -109,17 +109,58 @@ private data class EpisodesListParams(
     val fallbackImageUrl: String? = null
 )
 
-private data class EpisodeFocusState(
+// internal (not private): exercised directly by SeriesEpisodesFocusRecoveryTest, which needs
+// EpisodeFocusState.focusRequesters to verify the Order 3 initial-focus-deadlock fix.
+internal data class EpisodeFocusState(
     val focusedEpisodeIndex: androidx.compose.runtime.MutableState<Int>,
     val listState: androidx.compose.foundation.lazy.LazyListState,
     val focusRequesters: List<FocusRequester>
 )
 
 /**
+ * Order 3 root-fix, extracted so it can be tested in isolation from the "scroll to currently
+ * focused episode" LaunchedEffect below - that effect targets the same LazyListState and, given
+ * enough time, can mask a regression here by scrolling the target into view on its own.
+ *
+ * Chris' non-fatal report ("FocusRequester is not initialized" at this call site) followed by a
+ * fully unresponsive screen (no D-Pad, no Back) traced back to: a LazyRow only composes items
+ * near the viewport, so requesting focus on a far-off initialEpisodeIndex (resuming deep into a
+ * season) targeted a FocusRequester that was never attached, exhausting every safeRequestFocus()
+ * retry and leaving the screen with NOTHING focused - which stops all key-event dispatch, since
+ * key events route to the focused node and there wasn't one.
+ *
+ * scrollToItem (instant, not animate) guarantees the target is composed - and its FocusRequester
+ * attached - before it's ever used; the fallback guarantees some element ends up focused even if
+ * that somehow still fails.
+ */
+internal suspend fun requestInitialEpisodeFocus(
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    focusRequesters: List<FocusRequester>,
+    targetIndex: Int
+) {
+    listState.scrollToItem(targetIndex)
+
+    // safeRequestFocus already retries internally until the target node attaches;
+    // stacking another manual retry here would just double the wait on failure.
+    val focused = focusRequesters.getOrNull(targetIndex)?.safeRequestFocus(
+        "SeriesEpisodesScreen",
+        "EPISODE_$targetIndex"
+    ) ?: false
+
+    // Fallback: never leave the screen with no focused element at all. If the target somehow
+    // still couldn't be focused, fall back to the first episode - re-scrolling to it first
+    // since scrollToItem(targetIndex) may have decomposed it in the meantime.
+    if (!focused && targetIndex != 0) {
+        listState.scrollToItem(0)
+        focusRequesters.getOrNull(0)?.safeRequestFocus("SeriesEpisodesScreen", "EPISODE_0_FALLBACK")
+    }
+}
+
+/**
  * Manages episode focus state and handles initial focus setup
  */
 @Composable
-private fun rememberEpisodeFocus(
+internal fun rememberEpisodeFocus(
     episodes: List<Episode>,
     initialEpisodeIndex: Int?
 ): EpisodeFocusState {
@@ -139,25 +180,11 @@ private fun rememberEpisodeFocus(
     // Set initial focus on target episode when list is displayed
     LaunchedEffect(episodes.size, initialEpisodeIndex) {
         if (episodes.isEmpty()) return@LaunchedEffect
-        
+
         val targetIndex = initialEpisodeIndex?.coerceIn(0, episodes.size - 1) ?: 0
-        kotlinx.coroutines.delay(150) // Small delay to ensure layout is ready
-        
-        try {
-            focusRequesters.getOrNull(targetIndex)?.requestFocus()
-        } catch (e: IllegalStateException) {
-            reportHandled("SeriesEpisodesScreen.rememberEpisodeFocus", e)
-            // FocusRequester might not be ready yet, retry after delay
-            kotlinx.coroutines.delay(100)
-            try {
-                focusRequesters.getOrNull(targetIndex)?.requestFocus()
-            } catch (e2: IllegalStateException) {
-                reportHandled("SeriesEpisodesScreen.rememberEpisodeFocus", e2)
-                // Ignore if still not ready
-            }
-        }
+        requestInitialEpisodeFocus(listState, focusRequesters, targetIndex)
     }
-    
+
     // Scroll to focused episode
     LaunchedEffect(focusedEpisodeIndex.value) {
         if (focusedEpisodeIndex.value in 0 until episodes.size) {

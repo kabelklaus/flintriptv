@@ -357,15 +357,25 @@ class DataLoadingViewModel @Inject constructor(
             try {
                 updateStepStatus(stepIndex, LoadingStatus.Loading, errorMessage = null)
 
-                val result = when (stepIndex) {
+                var freshLive: List<LiveStream>? = null
+                var freshVod: List<VodStream>? = null
+                var freshSeries: List<Series>? = null
+
+                val result: Result<Int> = when (stepIndex) {
                     0 -> repository.loadLiveStreamsFromApi(credentials.username, credentials.password)
+                        .onSuccess { freshLive = it }
+                        .map { it.size }
                     1 -> repository.loadVodStreamsFromApi(credentials.username, credentials.password)
+                        .onSuccess { freshVod = it }
+                        .map { it.size }
                     2 -> repository.loadSeriesFromApi(credentials.username, credentials.password)
+                        .onSuccess { freshSeries = it }
+                        .map { it.size }
                     else -> Result.failure(IllegalArgumentException("Invalid step index: $stepIndex"))
                 }
 
-                result.onSuccess { data ->
-                    updateStepStatus(stepIndex, LoadingStatus.Success, data.size)
+                result.onSuccess { size ->
+                    updateStepStatus(stepIndex, LoadingStatus.Success, size)
                 }.onFailure { error ->
                     handleStepError(stepIndex, error)
                     return@launch
@@ -377,7 +387,7 @@ class DataLoadingViewModel @Inject constructor(
 
                 // If all steps are now complete, gather all data and save to cache
                 if (_uiState.value.steps.all { it.status == LoadingStatus.Success }) {
-                    saveAllDataToCacheAndFinalize()
+                    saveAllDataToCacheAndFinalize(freshLive = freshLive, freshVod = freshVod, freshSeries = freshSeries)
                 }
             } catch (e: Exception) {
                 reportError("DataLoadingViewModel", "Error retrying step $stepIndex", e)
@@ -391,15 +401,23 @@ class DataLoadingViewModel @Inject constructor(
      * This should only be called when all loading steps are confirmed to be successful.
      * It gathers all data from the repository's in-memory cache and writes the complete dataset to storage.
      */
-    private suspend fun saveAllDataToCacheAndFinalize() {
+    private suspend fun saveAllDataToCacheAndFinalize(
+        freshLive: List<LiveStream>? = null,
+        freshVod: List<VodStream>? = null,
+        freshSeries: List<Series>? = null,
+    ) {
         val credentials = credentialsRepository.getCredentials() ?: return
 
         // Since all steps are successful, their data is in the repository's in-memory cache
-        val liveStreams = repository.getLiveStreams(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        // (or was just freshly loaded via retryStep and passed in directly)
+        val liveStreams = freshLive
+            ?: repository.getLiveStreams(credentials.username, credentials.password).getOrNull() ?: emptyList()
         val liveCategories = repository.getLiveCategories(credentials.username, credentials.password).getOrNull() ?: emptyList()
-        val vodStreams = repository.getVodStreams(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val vodStreams = freshVod
+            ?: repository.getVodStreams(credentials.username, credentials.password).getOrNull() ?: emptyList()
         val vodCategories = repository.getVodCategories(credentials.username, credentials.password).getOrNull() ?: emptyList()
-        val series = repository.getSeries(credentials.username, credentials.password).getOrNull() ?: emptyList()
+        val series = freshSeries
+            ?: repository.getSeries(credentials.username, credentials.password).getOrNull() ?: emptyList()
         val seriesCategories = repository.getSeriesCategories(credentials.username, credentials.password).getOrNull() ?: emptyList()
 
         val cachedData = CachedData(

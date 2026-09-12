@@ -4,7 +4,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.BoxScope
@@ -46,9 +45,8 @@ import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
-import com.flintr.tv.ui.theme.FocusRing
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.theme.focusRingColor
+import com.flintr.tv.ui.theme.tvFocusRing
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.utils.ContentParser
@@ -61,13 +59,12 @@ import kotlinx.coroutines.launch
 // Using Dimensions object for single source of truth
 private val ContentCardHeight = Dimensions.contentCardMaxCrossAxisExtent / Dimensions.contentCardAspectRatio
 private val ContentCardBorderRadius = 8.dp // radiusMD
-private val ContentCardBorderWidth = FocusRing.width
 
 // Content Card Title Overlay (from Flutter AppTheme)
 private val ContentCardTitleOverlayPadding = 1.dp
 private val ContentCardTitleContainerPaddingH = 1.dp
 private val ContentCardTitleContainerPaddingV = 1.dp
-private val ContentCardTitleFontSize = 8.sp
+private val ContentCardTitleFontSize = 14.sp
 private val ContentCardTitleMaxLines = 2
 private val ContentCardTitleGradientAlpha = 0.7f
 private val ContentCardTitleBgAlpha = 0.75f
@@ -117,7 +114,6 @@ data class LiveStreamCardParams(
 )
 
 private data class CardVisualState(
-    val borderColor: Color,
     val shadowElevation: Float,
     val backgroundColor: Color,
     val isFocused: Boolean
@@ -287,6 +283,7 @@ private fun buildDpadHandler(
     }
 }
 
+@Composable
 private fun Modifier.buildCardModifier(
     config: CardConfig,
     colors: com.flintr.tv.ui.theme.AppColors,
@@ -297,9 +294,9 @@ private fun Modifier.buildCardModifier(
         .width(Dimensions.contentCardMaxCrossAxisExtent)
         .aspectRatio(Dimensions.contentCardAspectRatio)
         .shadowModifier(config.isSelected, colors, visualState.shadowElevation)
-        .border(
-            width = ContentCardBorderWidth,
-            color = visualState.borderColor,
+        .tvFocusRing(
+            isFocused = visualState.isFocused,
+            onSelectionFill = config.isSelected,
             shape = RoundedCornerShape(ContentCardBorderRadius)
         )
         .focusRequesterModifier(config.focusRequester)
@@ -622,12 +619,6 @@ private fun useCardVisualState(
     isFocused: Boolean,
     colors: com.flintr.tv.ui.theme.AppColors
 ): CardVisualState {
-    val borderColor by animateColorAsState(
-        targetValue = focusRingColor(isFocused = isFocused, onSelectionFill = config.isSelected),
-        animationSpec = tween(durationMillis = 200),
-        label = "borderColor"
-    )
-    
     val backgroundColor by animateColorAsState(
         targetValue = when {
             config.isSelected -> colors.accentColorHoverBg
@@ -645,7 +636,6 @@ private fun useCardVisualState(
     )
     
     return CardVisualState(
-        borderColor = borderColor,
         shadowElevation = shadowElevation,
         backgroundColor = backgroundColor,
         isFocused = isFocused

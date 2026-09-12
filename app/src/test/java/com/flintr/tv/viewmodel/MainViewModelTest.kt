@@ -21,6 +21,8 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -184,6 +186,34 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `loadLiveStreams setzt isLoading sofort auf true und nach Erfolg wieder auf false`() = runTest {
+        val pendingResult = CompletableDeferred<Result<List<com.flintr.tv.data.model.LiveStream>>>()
+        coEvery { repository.getLiveStreams("chris", "pw", "1") } coAnswers { pendingResult.await() }
+        val vm = viewModel()
+
+        vm.loadLiveStreams("1")
+
+        assertTrue(vm.uiState.value.isLoading)
+
+        pendingResult.complete(Result.success(listOf(testLiveStream(name = "ARD HD", streamId = 100))))
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.isLoading)
+        assertEquals(listOf("ARD HD"), vm.liveStreams.value.map { it.name })
+    }
+
+    @Test
+    fun `loadLiveStreams setzt isLoading nach Fehler wieder auf false`() = runTest {
+        coEvery { repository.getLiveStreams("chris", "pw", "1") } coAnswers { Result.failure(Exception("500")) }
+        val vm = viewModel()
+
+        vm.loadLiveStreams("1")
+
+        assertFalse(vm.uiState.value.isLoading)
+        assertEquals("500", vm.uiState.value.error)
+    }
+
+    @Test
     fun `loadSeriesInfo setzt ausgewaehlte Serie`() = runTest {
         val serie = testSeries(name = "Die Serie", seriesId = 10)
         coEvery { repository.getSeriesInfo("chris", "pw", 10) } coAnswers { Result.success(serie) }
@@ -325,5 +355,70 @@ class MainViewModelTest {
         // Erneutes Konsumieren ohne gespeicherten Zustand aendert nichts
         vm.consumeNavigationState()
         assertNull(vm.pendingNavigationRestore.value)
+    }
+
+    @Test
+    fun `refreshData cancels previous initial load`() = runTest {
+        every { cacheService.shouldUseCacheForBrowsing() } returns false
+        every { cacheService.isFallbackCooldownActive() } returns false
+        coEvery { cacheService.loadCachedDataAsync() } returns null
+        coEvery { repository.getServerInfo(any(), any()) } coAnswers { Result.success(mockk<ServerInfo>(relaxed = true)) }
+
+        val staleCategory = Category(categoryId = "old", categoryName = "Alt")
+        val freshCategory = Category(categoryId = "new", categoryName = "Neu")
+
+        // Blockiert den ersten loadInitialData-Aufruf mitten im Laden, bis der Test ihn gezielt freigibt -
+        // simuliert eine langsame API-Antwort, die erst nach dem zweiten Aufruf zurueckkommt.
+        val firstCallGate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var liveCategoriesCallCount = 0
+        coEvery { repository.getLiveCategories("chris", "pw") } coAnswers {
+            liveCategoriesCallCount++
+            if (liveCategoriesCallCount == 1) {
+                firstCallGate.await()
+                Result.success(listOf(staleCategory))
+            } else {
+                Result.success(listOf(freshCategory))
+            }
+        }
+        coEvery { repository.getVodCategories("chris", "pw") } coAnswers { Result.success(listOf(vodCategory)) }
+        coEvery { repository.getSeriesCategories("chris", "pw") } coAnswers { Result.success(listOf(seriesCategory)) }
+
+        // init{} startet den ersten Load, der in getLiveCategories haengen bleibt
+        val vm = viewModel()
+
+        // refreshData() stoesst einen zweiten, parallelen Load derselben Funktion an
+        vm.refreshData()
+
+        // Der zweite (neuere) Load laeuft ohne Verzoegerung durch, danach wird der erste freigegeben
+        firstCallGate.complete(Unit)
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.isLoading)
+        assertEquals(listOf("new"), vm.liveCategories.value.map { it.categoryId })
+        coVerify(exactly = 2) { repository.getLiveCategories("chris", "pw") }
+    }
+
+    @Test
+    fun `schneller Kategoriewechsel cancelt den alten Load ohne Fehler zu setzen`() = runTest {
+        // Simuliert schnelles A-zu-B-Wechseln: der Load fuer Kategorie "1" haengt noch,
+        // waehrend bereits Kategorie "2" ausgewaehlt wird und ihn per dataLoadingJob.cancel() ablöst.
+        val staleCallGate = CompletableDeferred<Unit>()
+        coEvery { repository.getVodStreams("chris", "pw", "1") } coAnswers {
+            staleCallGate.await()
+            Result.success(listOf(testVodStream(name = "Alt", streamId = 1, categoryId = "1")))
+        }
+        coEvery { repository.getVodStreams("chris", "pw", "2") } coAnswers {
+            Result.success(listOf(testVodStream(name = "Neu", streamId = 2, categoryId = "2")))
+        }
+        val vm = viewModel()
+
+        vm.loadVodStreams("1")
+        vm.loadVodStreams("2")
+        staleCallGate.complete(Unit)
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.error)
+        assertFalse(vm.uiState.value.isLoading)
+        assertEquals(listOf("Neu"), vm.vodStreams.value.map { it.name })
     }
 }

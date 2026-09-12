@@ -12,6 +12,10 @@ import io.mockk.coVerify
 import io.mockk.every
 import com.flintr.tv.testutil.silentCredentialsFlow
 import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -88,6 +92,38 @@ class FavoritesRepositoryTest {
 
         assertTrue(repository.addFavorite(favorite()))
         assertTrue(repository.isFavorite("movie_1"))
+    }
+
+    @Test
+    fun `concurrent favorite mutations do not lose updates`() {
+        // addFavorite hat vor der letzten write-Anweisung keinen Suspension-Point,
+        // daher reicht ein virtueller TestDispatcher nicht aus, um die Race zu
+        // provozieren (der zweite Coroutine-Block würde nie mit dem ersten
+        // interleaven). Ein CyclicBarrier(2) + echter Dispatchers.Default-Pool
+        // erzwingt einen moeglichst gleichzeitigen Start beider addFavorite-Aufrufe;
+        // ueber mehrere Runden erhoeht das die Trefferwahrscheinlichkeit fuer die Race.
+        repeat(15) { round ->
+            val startGate = java.util.concurrent.CyclicBarrier(2)
+            val favA = favorite(id = "movie_a$round", streamId = round * 2)
+            val favB = favorite(id = "movie_b$round", streamId = round * 2 + 1)
+
+            runBlocking {
+                coroutineScope {
+                    val jobA = async(Dispatchers.Default) {
+                        startGate.await()
+                        repository.addFavorite(favA)
+                    }
+                    val jobB = async(Dispatchers.Default) {
+                        startGate.await()
+                        repository.addFavorite(favB)
+                    }
+                    awaitAll(jobA, jobB)
+                }
+            }
+
+            assertTrue("Runde $round: ${favA.id} fehlt", repository.isFavorite(favA.id))
+            assertTrue("Runde $round: ${favB.id} fehlt", repository.isFavorite(favB.id))
+        }
     }
 
     @Test

@@ -13,8 +13,26 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Icon
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import com.flintr.tv.ui.theme.Dimensions
+import com.flintr.tv.ui.theme.tvFocusRing
+import com.flintr.tv.ui.utils.onClick
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import android.net.Uri
 import android.util.Log
@@ -393,16 +411,17 @@ private suspend fun restoreCategory(context: CategoryRestoreContext) {
 }
 
 /**
- * Waits for content to be loaded with timeout.
+ * Waits for content to be loaded with timeout. [isLoading] is polled live (not a
+ * one-time snapshot) so the loop actually observes the load finishing.
  */
-private suspend fun waitForContentLoaded(isLoading: Boolean) {
+private suspend fun waitForContentLoaded(isLoading: () -> Boolean) {
     var retryCount = 0
     val maxRetries = 20
-    while (isLoading && retryCount < maxRetries) {
+    while (isLoading() && retryCount < maxRetries) {
         kotlinx.coroutines.delay(100)
         retryCount++
     }
-    if (retryCount >= maxRetries && isLoading) {
+    if (retryCount >= maxRetries && isLoading()) {
         Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Timeout waiting for content to load, proceeding anyway")
     }
 }
@@ -464,12 +483,15 @@ private suspend fun restoreFocus(
 
 /**
  * Attempts to focus the first available card as fallback.
+ * Only acts on a requester that is actually present in the map; a not-yet-attached
+ * FocusRequester is a normal timing race, not a crash-worthy condition.
  */
 private fun requestFallbackFocus(focusRequesterMap: MutableMap<String, FocusRequester>) {
+    val fallbackFocusRequester = focusRequesterMap.values.firstOrNull() ?: return
     try {
-        focusRequesterMap.values.firstOrNull()?.requestFocus()
-    } catch (e: Exception) {
-        reportWarning(LOG_TAG_MAIN_CONTENT_SCREEN, "Fallback focus failed", e)
+        fallbackFocusRequester.requestFocus()
+    } catch (e: IllegalStateException) {
+        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Fallback focus failed: FocusRequester not initialized yet", e)
     }
 }
 
@@ -486,7 +508,6 @@ private data class NavigationRestoreContext(
     val vodCategories: List<Category>,
     val seriesCategories: List<Category>,
     val sortedCategories: List<Category>,
-    val isLoading: Boolean,
     val lazyGridState: androidx.compose.foundation.lazy.grid.LazyGridState,
     val focusRequesterMap: MutableMap<String, FocusRequester>,
     val mainViewModel: com.flintr.tv.viewmodel.MainViewModel
@@ -516,8 +537,8 @@ private suspend fun restoreNavigationState(context: NavigationRestoreContext) {
         )
     )
     
-    // 3. Wait for content to be loaded (state-based check instead of fixed delay)
-    waitForContentLoaded(context.isLoading)
+    // 3. Wait for content to be loaded (polls live state instead of a fixed delay)
+    waitForContentLoaded { context.mainViewModel.uiState.value.isLoading }
     
     // 4. Restore scroll position
     restoreScrollPosition(context.state, context.lazyGridState)
@@ -1555,28 +1576,49 @@ private data class MainContentScaffoldParams(
  */
 @Composable
 private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params) {
-    if (showLoading) {
+    // Full-screen error only when there is nothing else to show (no categories loaded at
+    // all yet). Once content is mounted, a later error must not unmount MainLayout/
+    // MainContentBody - that would retrigger the tab screens' LaunchedEffects, the same
+    // failure mode as yesterday's loop fix (see F3). Those errors are surfaced via snackbar
+    // instead (see MainContentScreen).
+    if (uiState.error != null && !uiState.isLoading && !showLoading && categoryManagement.sortedCategories.isEmpty()) {
         val colors = appColors()
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(48.dp),
-                strokeWidth = 2.dp,
-                color = colors.accentColor
-            )
-        }
-    } else if (uiState.error != null && !uiState.isLoading) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
+        var retryFocused by remember { mutableStateOf(false) }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(Dimensions.spacingXL),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = uiState.error,
-                color = appColors().dangerText,
-                style = MaterialTheme.typography.bodyLarge
+                color = colors.dangerText,
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center
             )
+            Spacer(modifier = Modifier.height(Dimensions.spacingLG))
+            Row(
+                modifier = Modifier
+                    .onFocusChanged { retryFocused = it.isFocused }
+                    .focusable()
+                    .tvFocusRing(isFocused = retryFocused, shape = RoundedCornerShape(Dimensions.radiusMD))
+                    .background(colors.buttonPrimary, RoundedCornerShape(Dimensions.radiusMD))
+                    .onClick(onClick = { mainViewModel.refreshData() })
+                    .padding(horizontal = Dimensions.spacingLG, vertical = Dimensions.spacingSM),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                    tint = Color.White
+                )
+                Text(
+                    text = "Erneut versuchen",
+                    color = Color.White
+                )
+            }
         }
     } else {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -1645,6 +1687,11 @@ private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params
                     favoritesRepository = dependencies.favoritesRepository
                 )
             }
+
+            // No app-wide overlay spinner here: VOD/LiveTV/Series screens already render
+            // their own ContentGridLayout spinner from uiState.isLoading. An overlay on top
+            // of that produced two simultaneous spinners during a category load (B2).
+            // showLoading is still used above to gate the full-screen error branch.
         }
     }
 }
@@ -1982,6 +2029,16 @@ fun MainContentScreen(
         snackbarHostState = snackbarHostState,
         onMessageShown = { snackbarMessage = null }
     )
+
+    // Once categories are already loaded, route content-load errors to a snackbar instead
+    // of letting MainContentScaffold's full-screen error branch unmount Main content (F3).
+    LaunchedEffect(uiState.error) {
+        val error = uiState.error
+        if (error != null && categoryManagement.sortedCategories.isNotEmpty()) {
+            snackbarMessage = error
+            mainViewModel.clearError()
+        }
+    }
     
     DestinationChangeEffect(
         selectedDestination = selectedDestination,
@@ -2020,7 +2077,6 @@ fun MainContentScreen(
                 vodCategories = vodCategories,
                 seriesCategories = seriesCategories,
                 sortedCategories = categoryManagement.sortedCategories,
-                isLoading = uiState.isLoading,
                 lazyGridState = lazyGridState,
                 focusRequesterMap = focusRequesterMap,
                 mainViewModel = mainViewModel
