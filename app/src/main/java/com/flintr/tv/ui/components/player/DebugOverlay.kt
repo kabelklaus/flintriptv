@@ -107,7 +107,7 @@ data class SystemHardwareDebugParams(
 /**
  * Formats decoder name, returning DECODER_INITIALIZING if decoder is unknown or initializing
  */
-private fun formatDecoderName(decoderName: String): String {
+internal fun formatDecoderName(decoderName: String): String {
     return if (decoderName != "unknown" && decoderName != DECODER_INITIALIZING) {
         decoderName
     } else {
@@ -118,7 +118,7 @@ private fun formatDecoderName(decoderName: String): String {
 /**
  * Creates player status debug information
  */
-private fun createPlayerStatusDebugInfo(
+internal fun createPlayerStatusDebugInfo(
     playerState: Int,
     currentPosition: Long,
     duration: Long,
@@ -143,7 +143,7 @@ private fun createPlayerStatusDebugInfo(
 /**
  * Creates video/media debug information
  */
-private fun createVideoMediaDebugInfo(
+internal fun createVideoMediaDebugInfo(
     params: VideoMediaDebugParams
 ): List<DebugInfo> {
     return listOf(
@@ -166,7 +166,7 @@ private fun createVideoMediaDebugInfo(
 /**
  * Creates system/hardware debug information
  */
-private fun createSystemHardwareDebugInfo(
+internal fun createSystemHardwareDebugInfo(
     params: SystemHardwareDebugParams
 ): List<DebugInfo> {
     return listOf(
@@ -185,7 +185,7 @@ private fun createSystemHardwareDebugInfo(
 /**
  * Creates memory debug information
  */
-private fun createMemoryDebugInfo(
+internal fun createMemoryDebugInfo(
     maxHeapMemory: String,
     allocatedHeapMemory: String,
     totalUsedRAM: String,
@@ -204,7 +204,7 @@ private fun createMemoryDebugInfo(
 /**
  * Creates app version debug information
  */
-private fun createAppVersionDebugInfo(
+internal fun createAppVersionDebugInfo(
     flintrIPTVVersion: String,
     exoPlayerVersion: String,
     exoPlayerEngine: String,
@@ -421,7 +421,7 @@ fun DebugOverlay(
 /**
  * Get readable string for player state
  */
-private fun getPlayerStateString(state: Int): String {
+internal fun getPlayerStateString(state: Int): String {
     return when (state) {
         Player.STATE_IDLE -> "IDLE"
         Player.STATE_BUFFERING -> "BUFFERING"
@@ -567,7 +567,7 @@ private fun getVideoAudioBitrate(exoPlayer: ExoPlayer?): String {
 /**
  * Format measured bitrate from bandwidth estimate
  */
-private fun formatMeasuredBitrate(bitrateEstimate: Long): String {
+internal fun formatMeasuredBitrate(bitrateEstimate: Long): String {
     return if (bitrateEstimate > 0) {
         String.format(Locale.US, "%.2f Mbps", bitrateEstimate / 1_000_000.0)
     } else {
@@ -578,7 +578,7 @@ private fun formatMeasuredBitrate(bitrateEstimate: Long): String {
 /**
  * Check if hardware acceleration is enabled based on decoder name
  */
-private fun isHardwareAccelerated(decoderName: String): String {
+internal fun isHardwareAccelerated(decoderName: String): String {
     if (decoderName == "N/A" || decoderName.isEmpty() || decoderName == DECODER_INITIALIZING) {
         return DECODER_INITIALIZING
     }
@@ -750,7 +750,7 @@ private fun getDroppedRenderedFrames(exoPlayer: ExoPlayer?): String {
 /**
  * Calculate buffer size in seconds
  */
-private fun getBufferSizeSeconds(bufferedPosition: Long): String {
+internal fun getBufferSizeSeconds(bufferedPosition: Long): String {
     if (bufferedPosition <= 0) return "0"
     
     val seconds = bufferedPosition / 1000
