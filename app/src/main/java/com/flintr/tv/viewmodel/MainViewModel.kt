@@ -543,6 +543,16 @@ class MainViewModel @Inject constructor(
     }
 
     /**
+     * Reads the currently pending navigation-restore state without consuming it.
+     * Used to carry the originating sidebar category (which may be a synthetic
+     * pseudo-category like "Neu"/Favorites that never matches any Series.categoryId)
+     * across a deeper navigation step (episode -> Player) within the same series,
+     * instead of falling back to the series' own backend category.
+     */
+    fun peekPendingNavigationState(): NavigationStateBeforePlayer? =
+        savedStateHandle.get(KEY_NAVIGATION_STATE)
+
+    /**
      * Clear the pending navigation restore state.
      * Called after successful restoration to prevent re-triggering.
      */

@@ -58,7 +58,7 @@ fun EPGContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(streams) { stream ->
+                items(streams, key = { it.streamId }) { stream ->
                     EPGChannelItem(stream = stream)
                 }
             }

@@ -126,7 +126,7 @@ class DataLoadingViewModel @Inject constructor(
         if (!cacheService.isFallbackCooldownActive() || !cacheService.hasCacheData()) return false
 
         Log.d("DataLoadingViewModel", "Fallback cooldown active, using cached data")
-        val cachedData = cacheService.loadCachedData() ?: return false
+        val cachedData = cacheService.loadCachedDataAsync() ?: return false
 
         finishWithCachedData(
             cachedData,
@@ -140,7 +140,7 @@ class DataLoadingViewModel @Inject constructor(
         if (!cacheService.isCacheValid()) return false
 
         Log.d("DataLoadingViewModel", "Using cached data")
-        val cachedData = cacheService.loadCachedData() ?: return false
+        val cachedData = cacheService.loadCachedDataAsync() ?: return false
 
         finishWithCachedData(cachedData)
         // cachedData is not stored in StateFlow to prevent OutOfMemoryError
@@ -177,8 +177,8 @@ class DataLoadingViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
-    private fun handleCacheFallbackProgress(progress: DataRefreshProgress) {
-        val cachedData = cacheService.loadCachedData()
+    private suspend fun handleCacheFallbackProgress(progress: DataRefreshProgress) {
+        val cachedData = cacheService.loadCachedDataAsync()
         val updatedSteps = if (cachedData != null) {
             stepsFromCachedData(cachedData)
         } else {

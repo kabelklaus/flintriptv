@@ -196,7 +196,7 @@ class DataLoadingViewModelTest {
         )
         every { cacheService.isFallbackCooldownActive() } returns true
         every { cacheService.hasCacheData() } returns true
-        every { cacheService.loadCachedData() } returns cachedData
+        coEvery { cacheService.loadCachedDataAsync() } returns cachedData
 
         val vm = viewModel()
         advanceUntilIdle()
@@ -224,7 +224,7 @@ class DataLoadingViewModelTest {
         // Faellt durch zu loadData() -> isLoading bleibt true, kein Abschluss
         assertTrue(vm.uiState.value.isLoading)
         assertFalse(vm.uiState.value.loadingComplete)
-        verify(exactly = 0) { cacheService.loadCachedData() }
+        coVerify(exactly = 0) { cacheService.loadCachedDataAsync() }
     }
 
     @Test
@@ -232,7 +232,7 @@ class DataLoadingViewModelTest {
         every { cacheService.isFallbackCooldownActive() } returns true
         every { cacheService.hasCacheData() } returns true
         every { cacheService.isCacheValid() } returns false
-        every { cacheService.loadCachedData() } returns null
+        coEvery { cacheService.loadCachedDataAsync() } returns null
 
         val vm = viewModel()
         advanceUntilIdle()
@@ -253,7 +253,7 @@ class DataLoadingViewModelTest {
             seriesCategories = emptyList()
         )
         every { cacheService.isCacheValid() } returns true
-        every { cacheService.loadCachedData() } returns cachedData
+        coEvery { cacheService.loadCachedDataAsync() } returns cachedData
 
         val vm = viewModel()
         advanceUntilIdle()
@@ -270,7 +270,7 @@ class DataLoadingViewModelTest {
     @Test
     fun `checkCacheAndLoad faellt durch wenn gueltiger Cache leer zurueckgegeben wird`() = runTest {
         every { cacheService.isCacheValid() } returns true
-        every { cacheService.loadCachedData() } returns null
+        coEvery { cacheService.loadCachedDataAsync() } returns null
 
         val vm = viewModel()
         advanceUntilIdle()
@@ -374,7 +374,7 @@ class DataLoadingViewModelTest {
             vodCategories = emptyList(),
             seriesCategories = emptyList()
         )
-        every { cacheService.loadCachedData() } returns cachedData
+        coEvery { cacheService.loadCachedDataAsync() } returns cachedData
         val progressFlow = flowOf(
             DataRefreshProgress(
                 step = RefreshStep.SAVING,
@@ -399,7 +399,7 @@ class DataLoadingViewModelTest {
 
     @Test
     fun `loadData Cache-Fallback ohne gecachte Daten behaelt bestehende Steps`() = runTest {
-        every { cacheService.loadCachedData() } returns null
+        coEvery { cacheService.loadCachedDataAsync() } returns null
         val progressFlow = flowOf(
             DataRefreshProgress(
                 step = RefreshStep.SAVING,

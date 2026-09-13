@@ -360,6 +360,35 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `peekPendingNavigationState liest den Zustand ohne ihn zu konsumieren`() = runTest {
+        val vm = viewModel()
+        val state = NavigationStateBeforePlayer(
+            destinationType = DestinationType.SERIES,
+            categoryId = "new",
+            contentId = "series_1",
+            scrollIndex = 0,
+            scrollOffset = 0
+        )
+
+        vm.saveNavigationStateBeforePlayer(state)
+
+        // Mehrfaches Peeken liefert denselben Zustand, ohne ihn zu entfernen
+        assertEquals(state, vm.peekPendingNavigationState())
+        assertEquals(state, vm.peekPendingNavigationState())
+
+        // consumeNavigationState funktioniert danach weiterhin normal
+        vm.consumeNavigationState()
+        assertEquals(state, vm.pendingNavigationRestore.value)
+    }
+
+    @Test
+    fun `peekPendingNavigationState liefert null ohne gespeicherten Zustand`() = runTest {
+        val vm = viewModel()
+
+        assertNull(vm.peekPendingNavigationState())
+    }
+
+    @Test
     fun `refreshData cancels previous initial load`() = runTest {
         every { cacheService.shouldUseCacheForBrowsing() } returns false
         every { cacheService.isFallbackCooldownActive() } returns false

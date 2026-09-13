@@ -174,6 +174,51 @@ class DataCacheServicePersistenceTest {
     }
 
     @Test
+    fun `loadCachedDataAsync memoizes parsed data - second call returns same instance`() = runBlocking {
+        assertTrue(saveDefaults())
+
+        val first = service.loadCachedDataAsync()
+        val second = service.loadCachedDataAsync()
+
+        assertTrue(first != null)
+        assertTrue(first === second)
+    }
+
+    @Test
+    fun `saveCachedData invalidates memoized cache`() = runBlocking {
+        assertTrue(saveDefaults())
+        val first = service.loadCachedDataAsync()
+
+        val extraChannel = testLiveStream(name = "Sender 2", streamId = 200)
+        assertTrue(
+            service.saveCachedData(
+                channels = channels + extraChannel,
+                movies = movies,
+                series = series,
+                liveCategories = categories,
+                vodCategories = emptyList(),
+                seriesCategories = emptyList()
+            )
+        )
+        val second = service.loadCachedDataAsync()
+
+        assertTrue(first !== second)
+        assertEquals(channels.size + 1, second?.channels?.size)
+    }
+
+    @Test
+    fun `clearCache invalidates memoized cache`() = runBlocking {
+        assertTrue(saveDefaults())
+        val first = service.loadCachedDataAsync()
+
+        service.clearCache()
+        val second = service.loadCachedDataAsync()
+
+        assertTrue(first != null)
+        assertNull(second)
+    }
+
+    @Test
     fun `loadItemsByIds filtert nach angefragten IDs`() = runBlocking {
         val moreMovies = listOf(
             testVodStream(name = "Film 1", streamId = 1),
