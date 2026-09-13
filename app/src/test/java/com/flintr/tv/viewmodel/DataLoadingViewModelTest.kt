@@ -2,6 +2,7 @@ package com.flintr.tv.viewmodel
 
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.Credentials
+import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.data.model.Series
@@ -9,18 +10,27 @@ import com.flintr.tv.data.model.testLiveStream
 import com.flintr.tv.data.model.testSeries
 import com.flintr.tv.data.model.testVodStream
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.domain.usecase.DataRefreshProgress
 import com.flintr.tv.domain.usecase.DataRefreshUseCase
+import com.flintr.tv.domain.usecase.ItemCounts
+import com.flintr.tv.domain.usecase.RefreshStep
 import com.flintr.tv.testutil.MainDispatcherRule
+import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -172,5 +182,294 @@ class DataLoadingViewModelTest {
 
         assertEquals(LoadingStatus.Error, vm.uiState.value.steps[2].status)
         assertEquals("Boom", vm.uiState.value.error)
+    }
+
+    @Test
+    fun `checkCacheAndLoad nutzt gecachte Daten wenn Fallback-Cooldown aktiv ist`() = runTest {
+        val cachedData = CachedData(
+            channels = listOf(testLiveStream(streamId = 1)),
+            movies = listOf(testVodStream(streamId = 1), testVodStream(streamId = 2)),
+            series = listOf(testSeries(seriesId = 1)),
+            liveCategories = listOf(liveCategory),
+            vodCategories = listOf(vodCategory),
+            seriesCategories = listOf(seriesCategory)
+        )
+        every { cacheService.isFallbackCooldownActive() } returns true
+        every { cacheService.hasCacheData() } returns true
+        every { cacheService.loadCachedData() } returns cachedData
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertTrue(state.isOfflineMode)
+        assertEquals("Server nicht erreichbar. Verwende gespeicherte Daten.", state.offlineModeMessage)
+        assertTrue(state.loadingComplete)
+        assertFalse(state.isLoading)
+        assertEquals(1f, state.overallProgress)
+        assertEquals(LoadingStatus.Success, state.steps[0].status)
+        assertEquals(1, state.steps[0].itemCount)
+        assertEquals(2, state.steps[1].itemCount)
+        assertEquals(1, state.steps[2].itemCount)
+    }
+
+    @Test
+    fun `checkCacheAndLoad ignoriert Fallback-Cooldown wenn kein Cache vorhanden`() = runTest {
+        every { cacheService.isFallbackCooldownActive() } returns true
+        every { cacheService.hasCacheData() } returns false
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        // Faellt durch zu loadData() -> isLoading bleibt true, kein Abschluss
+        assertTrue(vm.uiState.value.isLoading)
+        assertFalse(vm.uiState.value.loadingComplete)
+        verify(exactly = 0) { cacheService.loadCachedData() }
+    }
+
+    @Test
+    fun `checkCacheAndLoad faellt durch wenn Fallback-Cache leer zurueckgegeben wird`() = runTest {
+        every { cacheService.isFallbackCooldownActive() } returns true
+        every { cacheService.hasCacheData() } returns true
+        every { cacheService.isCacheValid() } returns false
+        every { cacheService.loadCachedData() } returns null
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.isLoading)
+        assertFalse(vm.uiState.value.loadingComplete)
+        assertFalse(vm.uiState.value.isOfflineMode)
+    }
+
+    @Test
+    fun `checkCacheAndLoad nutzt gueltigen Cache ohne Offline-Hinweis`() = runTest {
+        val cachedData = CachedData(
+            channels = listOf(testLiveStream(streamId = 5)),
+            movies = emptyList(),
+            series = listOf(testSeries(seriesId = 9)),
+            liveCategories = emptyList(),
+            vodCategories = emptyList(),
+            seriesCategories = emptyList()
+        )
+        every { cacheService.isCacheValid() } returns true
+        every { cacheService.loadCachedData() } returns cachedData
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertTrue(state.loadingComplete)
+        assertFalse(state.isOfflineMode)
+        assertNull(state.offlineModeMessage)
+        assertEquals(1, state.steps[0].itemCount)
+        assertEquals(0, state.steps[1].itemCount)
+        assertEquals(1, state.steps[2].itemCount)
+    }
+
+    @Test
+    fun `checkCacheAndLoad faellt durch wenn gueltiger Cache leer zurueckgegeben wird`() = runTest {
+        every { cacheService.isCacheValid() } returns true
+        every { cacheService.loadCachedData() } returns null
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.isLoading)
+        assertFalse(vm.uiState.value.loadingComplete)
+    }
+
+    @Test
+    fun `loadData verarbeitet vollstaendigen Fortschritt ueber alle Schritte`() = runTest {
+        val progressFlow = flowOf(
+            DataRefreshProgress(step = RefreshStep.CHANNELS, message = "Lade Kanaele..."),
+            DataRefreshProgress(
+                step = RefreshStep.MOVIES,
+                message = "Lade Filme...",
+                itemCounts = ItemCounts(channels = 4)
+            ),
+            DataRefreshProgress(
+                step = RefreshStep.SERIES,
+                message = "Lade Serien...",
+                itemCounts = ItemCounts(channels = 4, movies = 6)
+            ),
+            DataRefreshProgress(
+                step = RefreshStep.SAVING,
+                message = "Speichere Cache...",
+                itemCounts = ItemCounts(channels = 4, movies = 6, series = 8)
+            ),
+            DataRefreshProgress(
+                step = RefreshStep.SAVING,
+                message = "Cache erfolgreich aktualisiert",
+                itemCounts = ItemCounts(channels = 4, movies = 6, series = 8),
+                isComplete = true
+            )
+        )
+        every { dataRefreshUseCase.refreshData("chris", "pw") } returns progressFlow
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(LoadingStatus.Success, state.steps[0].status)
+        assertEquals(4, state.steps[0].itemCount)
+        assertEquals(LoadingStatus.Success, state.steps[1].status)
+        assertEquals(6, state.steps[1].itemCount)
+        assertEquals(LoadingStatus.Success, state.steps[2].status)
+        assertEquals(8, state.steps[2].itemCount)
+        assertTrue(state.loadingComplete)
+        assertFalse(state.isLoading)
+        assertEquals(1f, state.overallProgress)
+    }
+
+    @Test
+    fun `loadData markiert Step als Retrying bei Retry-Fortschritt`() = runTest {
+        val progressFlow = flowOf(
+            DataRefreshProgress(
+                step = RefreshStep.CHANNELS,
+                message = "Erneuter Versuch...",
+                retryAttempt = 1,
+                maxRetries = 3
+            )
+        )
+        every { dataRefreshUseCase.refreshData("chris", "pw") } returns progressFlow
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        val step = vm.uiState.value.steps[0]
+        assertEquals(LoadingStatus.Retrying, step.status)
+        assertEquals(1, step.retryAttempt)
+        assertEquals(3, step.maxRetries)
+    }
+
+    @Test
+    fun `loadData markiert betroffenen Step als Error bei Fehler-Fortschritt`() = runTest {
+        val progressFlow = flowOf(
+            DataRefreshProgress(
+                step = RefreshStep.MOVIES,
+                message = "Fehler",
+                error = "Netzwerk nicht erreichbar"
+            )
+        )
+        every { dataRefreshUseCase.refreshData("chris", "pw") } returns progressFlow
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(LoadingStatus.Error, state.steps[1].status)
+        assertEquals("Netzwerk nicht erreichbar", state.steps[1].errorMessage)
+        assertEquals("Netzwerk nicht erreichbar", state.error)
+        assertFalse(state.isLoading)
+    }
+
+    @Test
+    fun `loadData nutzt Cache-Fallback und uebernimmt gecachte Daten`() = runTest {
+        val cachedData = CachedData(
+            channels = listOf(testLiveStream(streamId = 1), testLiveStream(streamId = 2)),
+            movies = listOf(testVodStream(streamId = 1)),
+            series = emptyList(),
+            liveCategories = emptyList(),
+            vodCategories = emptyList(),
+            seriesCategories = emptyList()
+        )
+        every { cacheService.loadCachedData() } returns cachedData
+        val progressFlow = flowOf(
+            DataRefreshProgress(
+                step = RefreshStep.SAVING,
+                message = "Server nicht erreichbar. Verwende gespeicherte Daten.",
+                isComplete = true,
+                usedCacheFallback = true
+            )
+        )
+        every { dataRefreshUseCase.refreshData("chris", "pw") } returns progressFlow
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertTrue(state.isOfflineMode)
+        assertEquals("Server nicht erreichbar. Verwende gespeicherte Daten.", state.offlineModeMessage)
+        assertTrue(state.loadingComplete)
+        assertFalse(state.isLoading)
+        assertEquals(2, state.steps[0].itemCount)
+        assertEquals(1, state.steps[1].itemCount)
+    }
+
+    @Test
+    fun `loadData Cache-Fallback ohne gecachte Daten behaelt bestehende Steps`() = runTest {
+        every { cacheService.loadCachedData() } returns null
+        val progressFlow = flowOf(
+            DataRefreshProgress(
+                step = RefreshStep.SAVING,
+                message = "Keine gespeicherten Daten verfuegbar.",
+                isComplete = false,
+                usedCacheFallback = true
+            )
+        )
+        every { dataRefreshUseCase.refreshData("chris", "pw") } returns progressFlow
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertTrue(state.isOfflineMode)
+        assertEquals(LoadingStatus.Pending, state.steps[0].status)
+    }
+
+    @Test
+    fun `loadData bei Server-Rekonfiguration loescht Zugangsdaten und sendet NavigationEvent`() = runTest {
+        val progressFlow = flowOf(
+            DataRefreshProgress(
+                step = RefreshStep.SAVING,
+                message = "Bitte Serveradresse neu eingeben.",
+                requiresServerReconfiguration = true
+            )
+        )
+        every { dataRefreshUseCase.refreshData("chris", "pw") } returns progressFlow
+        every { credentialsRepository.clearActiveCredentials() } just Runs
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        verify { credentialsRepository.clearActiveCredentials() }
+        val state = vm.uiState.value
+        assertFalse(state.isLoading)
+        assertFalse(state.loadingComplete)
+        assertNull(state.error)
+        assertEquals(0f, state.overallProgress)
+
+        val event = vm.navigationEvents.first()
+        assertTrue(event is DataLoadingViewModel.NavigationEvent.ReconfigureServer)
+    }
+
+    @Test
+    fun `retry setzt alle Steps zurueck und laedt erneut`() = runTest {
+        coEvery { repository.loadSeriesFromApi("chris", "pw") } coAnswers {
+            Result.failure(Exception("Netzwerkfehler"))
+        }
+        val vm = viewModel()
+        vm.retryStep(2)
+        advanceUntilIdle()
+        assertEquals(LoadingStatus.Error, vm.uiState.value.steps[2].status)
+
+        vm.retry()
+        advanceUntilIdle()
+
+        verify { cacheService.clearFallbackCooldown() }
+        val state = vm.uiState.value
+        assertEquals(0f, state.overallProgress)
+        assertNull(state.error)
+        assertFalse(state.loadingComplete)
+        assertFalse(state.isOfflineMode)
+        assertNull(state.offlineModeMessage)
+        state.steps.forEach { step ->
+            assertEquals(LoadingStatus.Pending, step.status)
+            assertNull(step.itemCount)
+            assertNull(step.errorMessage)
+            assertEquals(0, step.retryAttempt)
+            assertEquals(0, step.maxRetries)
+        }
     }
 }

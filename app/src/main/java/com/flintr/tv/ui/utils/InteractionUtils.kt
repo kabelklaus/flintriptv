@@ -679,7 +679,7 @@ private fun Float.dpToPx(density: Float): Float {
  * Calculates vertical swipe velocity in pixels per second
  * @return Velocity in px/s, or null if calculation is invalid
  */
-private fun calculateVerticalSwipeVelocity(
+internal fun calculateVerticalSwipeVelocity(
     startY: Float,
     startTime: Long,
     currentY: Float,
@@ -698,7 +698,7 @@ private fun calculateVerticalSwipeVelocity(
 /**
  * Checks if swipe is primarily vertical (min vertical distance, max horizontal drift)
  */
-private fun isVerticalSwipe(
+internal fun isVerticalSwipe(
     startX: Float,
     startY: Float,
     currentX: Float,
@@ -718,7 +718,7 @@ private fun isVerticalSwipe(
  * Checks if swipe velocity threshold is reached and determines direction
  * @return true if swipe threshold is met and callback should be called, false otherwise
  */
-private fun checkSwipeVelocityAndDirection(
+internal fun checkSwipeVelocityAndDirection(
     startY: Float,
     currentY: Float,
     startTime: Long,
