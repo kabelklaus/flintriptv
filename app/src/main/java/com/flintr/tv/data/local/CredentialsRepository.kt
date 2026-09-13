@@ -28,9 +28,14 @@ data class LoginPrefill(
 )
 
 @Singleton
-class CredentialsRepository @Inject constructor(
-    @ApplicationContext private val context: Context
+class CredentialsRepository(
+    @ApplicationContext private val context: Context,
+    private val warmupScope: CoroutineScope
 ) {
+    @Inject constructor(
+        @ApplicationContext context: Context
+    ) : this(context, CoroutineScope(SupervisorJob() + Dispatchers.IO))
+
     // Lazy: MasterKey generation and EncryptedSharedPreferences creation are file I/O +
     // Keystore operations. Deferring them until first access keeps Hilt's synchronous
     // constructor call (which happens on the main thread) from ANR-ing.
@@ -50,8 +55,6 @@ class CredentialsRepository @Inject constructor(
             }
         }
     }
-
-    private val warmupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _credentialsFlow = MutableStateFlow<Credentials?>(null)
     val credentialsFlow: StateFlow<Credentials?> = _credentialsFlow.asStateFlow()

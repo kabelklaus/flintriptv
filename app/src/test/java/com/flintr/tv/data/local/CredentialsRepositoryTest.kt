@@ -10,6 +10,8 @@ import io.mockk.mockk
 import io.mockk.mockkConstructor
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -33,7 +35,7 @@ class CredentialsRepositoryTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val credentials = Credentials(serverUrl = "http://server", username = "chris", password = "pw")
 
-    private fun repository() = CredentialsRepository(context)
+    private fun repository() = CredentialsRepository(context, CoroutineScope(UnconfinedTestDispatcher()))
 
     @Before
     fun setUp() {
