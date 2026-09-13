@@ -41,6 +41,12 @@ class DataCacheService @Inject constructor(
         Context.MODE_PRIVATE
     )
 
+    // Memoized parsed catalog: avoids re-parsing multi-MB JSON on every
+    // category navigation. @Volatile is enough — a duplicate parse on a
+    // race is harmless (both results are valid).
+    @Volatile
+    private var memoizedCache: CachedData? = null
+
     companion object {
         private const val KEY_CACHE_TIMESTAMP = "iptv_cache_timestamp"
         private const val KEY_CACHE_CHANNELS = "iptv_cache_channels"
@@ -196,6 +202,7 @@ class DataCacheService @Inject constructor(
                 putInt(KEY_CACHE_MOVIES_COUNT, movies.size)
                 putInt(KEY_CACHE_SERIES_COUNT, series.size)
             }
+            memoizedCache = CachedData(channels, movies, series, liveCategories, vodCategories, seriesCategories)
             android.util.Log.d("DataCacheService", "Cache saved successfully: $timestamp | Channels: ${channels.size}, Movies: ${movies.size}, Series: ${series.size}")
             return true
         } catch (e: Exception) {
@@ -210,6 +217,7 @@ class DataCacheService @Inject constructor(
      * This contains the common logic used by both loadCachedData() and loadCachedDataAsync().
      */
     private fun loadCachedDataInternal(): CachedData? {
+        memoizedCache?.let { return it }
         try {
             val channelsJson = sharedPreferences.getString(KEY_CACHE_CHANNELS, null)
             val moviesJson = sharedPreferences.getString(KEY_CACHE_MOVIES, null)
@@ -240,7 +248,7 @@ class DataCacheService @Inject constructor(
             val vodCategories = vodCategoriesJson?.let { categoryAdapter.fromJson(it) } ?: emptyList()
             val seriesCategories = seriesCategoriesJson?.let { categoryAdapter.fromJson(it) } ?: emptyList()
 
-            return CachedData(
+            val data = CachedData(
                 channels = channels,
                 movies = movies,
                 series = series,
@@ -248,6 +256,8 @@ class DataCacheService @Inject constructor(
                 vodCategories = vodCategories,
                 seriesCategories = seriesCategories
             )
+            memoizedCache = data
+            return data
         } catch (e: Exception) {
             reportError("DataCacheService", "Failed to load cache", e)
             return null
@@ -322,6 +332,7 @@ class DataCacheService @Inject constructor(
     }
 
     fun clearCache() {
+        memoizedCache = null
         sharedPreferences.edit { clear() }
     }
 

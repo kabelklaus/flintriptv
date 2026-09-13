@@ -209,7 +209,7 @@ fun SubSettingsHiddenCategories(
                         item {
                             CategoryTypeHeader(title, colors)
                         }
-                        items(items) { item ->
+                        items(items, key = { it.categoryId }) { item ->
                             val requester = if (isFirstItem) {
                                 isFirstItem = false
                                 firstItemFocusRequester

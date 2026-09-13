@@ -4,13 +4,16 @@ import android.net.Uri
 import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.DataCacheService
+import com.flintr.tv.data.model.DestinationType
 import com.flintr.tv.data.model.Episode
+import com.flintr.tv.data.model.NavigationStateBeforePlayer
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.testSeries
 import com.flintr.tv.data.model.testVodStream
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -147,5 +150,47 @@ class AppNavigationTest {
         val route = handleDeepLink(uri, credentials, cacheService)
 
         assertTrue(route!!.contains("101.ts"))
+    }
+
+    @Test
+    fun `resolveEpisodeOriginCategoryId bevorzugt die im Pending-State gespeicherte Sidebar-Kategorie`() {
+        // "Neu" ist eine synthetische Sidebar-Pseudokategorie, die nie einer echten
+        // Series.categoryId entspricht - genau der Fall, der den Bug ausgeloest hat.
+        val pendingState = NavigationStateBeforePlayer(
+            destinationType = DestinationType.SERIES,
+            categoryId = "new",
+            contentId = "series_1",
+            scrollIndex = 0,
+            scrollOffset = 0
+        )
+
+        val resolved = resolveEpisodeOriginCategoryId(
+            pendingNavigationState = pendingState,
+            seriesCategoryId = "5"
+        )
+
+        assertEquals("new", resolved)
+    }
+
+    @Test
+    fun `resolveEpisodeOriginCategoryId faellt ohne Pending-State auf die Series-Kategorie zurueck`() {
+        // Kein gespeicherter Zustand (z.B. Einstieg ueber Suche/Deep-Link) - series.categoryId
+        // bleibt als einzig sinnvoller Fallback.
+        val resolved = resolveEpisodeOriginCategoryId(
+            pendingNavigationState = null,
+            seriesCategoryId = "5"
+        )
+
+        assertEquals("5", resolved)
+    }
+
+    @Test
+    fun `resolveEpisodeOriginCategoryId liefert null wenn beide Quellen null sind`() {
+        val resolved = resolveEpisodeOriginCategoryId(
+            pendingNavigationState = null,
+            seriesCategoryId = null
+        )
+
+        assertNull(resolved)
     }
 }

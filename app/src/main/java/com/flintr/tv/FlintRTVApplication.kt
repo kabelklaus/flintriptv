@@ -5,6 +5,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.core.os.bundleOf
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.flintr.tv.utils.error.AppErrorReporter
 import com.flintr.tv.utils.error.ErrorReporter
 import com.google.firebase.analytics.FirebaseAnalytics
@@ -15,7 +19,7 @@ import com.flintr.tv.utils.error.reportError
 import com.flintr.tv.utils.error.reportWarning
 
 @HiltAndroidApp
-class FlintRTVApplication : Application() {
+class FlintRTVApplication : Application(), ImageLoaderFactory {
     // Auto-check for updates is handled in the Settings screen
     // This keeps the implementation simple and avoids Hilt entry point complexity
 
@@ -62,6 +66,18 @@ class FlintRTVApplication : Application() {
         }
     }
     
+    override fun newImageLoader(): ImageLoader =
+        ImageLoader.Builder(this)
+            .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("images"))
+                    .maxSizeBytes(250L * 1024 * 1024)
+                    .build()
+            }
+            .crossfade(true)
+            .build()
+
     companion object {
         private const val TAG = "FlintRTVApplication"
         private const val EVENT_APP_INITIALIZED = "app_initialized"

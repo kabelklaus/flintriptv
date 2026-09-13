@@ -10,11 +10,13 @@ import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.utils.isConnectivityError
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -309,7 +311,7 @@ class DataRefreshUseCase @Inject constructor(
                 error = e.message
             ))
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     private suspend fun FlowCollector<DataRefreshProgress>.loadAllContent(
         username: String,

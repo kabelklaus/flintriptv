@@ -58,3 +58,11 @@
 -keepclassmembers class kotlin.Metadata {
     public <methods>;
 }
+
+# Strip verbose/info/debug logging from release builds (konzept.md 1.4).
+# Keep Log.w/e/wtf so error diagnostics survive in Crashlytics.
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}

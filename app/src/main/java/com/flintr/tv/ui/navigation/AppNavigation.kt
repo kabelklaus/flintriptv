@@ -770,6 +770,22 @@ fun AppNavigation(
     }
 }
 
+/**
+ * Determines which category ID to save as the sidebar restore target when navigating
+ * from an episode to the Player.
+ *
+ * The saved [pendingNavigationState] (from entering this series via the Series tab) reflects
+ * the sidebar category the user actually had selected, which may be a synthetic pseudo-category
+ * ("Neu"/Favorites) that never matches [seriesCategoryId] (the series' own backend category).
+ * Falling back to [seriesCategoryId] only when no pending state exists (e.g. entering via search
+ * or a deep link, which don't save one) avoids restoreCategory() silently switching the sidebar
+ * selection away from a pseudo-category on return - see bugfix-series-empty-report.md.
+ */
+internal fun resolveEpisodeOriginCategoryId(
+    pendingNavigationState: NavigationStateBeforePlayer?,
+    seriesCategoryId: String?
+): String? = pendingNavigationState?.categoryId ?: seriesCategoryId
+
 @Composable
 private fun SeriesEpisodesRoute(
     seriesId: Int,
@@ -800,10 +816,14 @@ private fun SeriesEpisodesRoute(
                     // Note: SeriesEpisodesScreen uses LazyRow, not LazyGrid, so we use 0 for scrollIndex/scrollOffset
                     // The actual restoration will be handled by focusing the episode card
                     val seasonNum = episode.season ?: 1
+                    val originCategoryId = resolveEpisodeOriginCategoryId(
+                        pendingNavigationState = mainViewModel.peekPendingNavigationState(),
+                        seriesCategoryId = series.categoryId
+                    )
                     mainViewModel.saveNavigationStateBeforePlayer(
                         NavigationStateBeforePlayer(
                             destinationType = com.flintr.tv.data.model.DestinationType.SERIES,
-                            categoryId = series.categoryId,
+                            categoryId = originCategoryId,
                             contentId = episode.toContentId(series.seriesId, seasonNum),
                             scrollIndex = 0, // LazyRow doesn't have firstVisibleItemIndex, use 0
                             scrollOffset = 0  // LazyRow doesn't have firstVisibleItemScrollOffset, use 0

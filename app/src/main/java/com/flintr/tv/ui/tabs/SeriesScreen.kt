@@ -186,7 +186,11 @@ fun SeriesContent(
                     onSeriesLoaded = { newCategorySeries = it }
                 )
             }
-            !isFavoritesCategory && params.selectedCategoryId != null -> {
+            !isFavoritesCategory -> {
+                // selectedCategoryId can legitimately be null (e.g. no category selected yet,
+                // or a stale/foreign category from navigation-state restore that no longer
+                // resolves to a real sidebar entry) - loadSeries(null) still loads all series
+                // instead of silently showing "no content" with nothing ever requested.
                 params.viewModel.loadSeries(params.selectedCategoryId)
             }
         }
