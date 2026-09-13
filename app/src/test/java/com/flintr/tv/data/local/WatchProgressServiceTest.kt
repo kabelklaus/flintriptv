@@ -65,6 +65,10 @@ class WatchProgressServiceTest {
         coEvery { watchedHistoryService.markAsWatched(any(), any(), any(), any(), any(), any(), any()) } returns true
         coEvery { watchedHistoryService.markAsUnwatched(any(), any(), any(), any()) } returns true
         coEvery { watchedHistoryService.markSeriesEpisodesAsWatched(any(), any(), any(), any(), any()) } returns true
+        // coAnswers statt returns: mockk boxt Result (Value-Class) bei "returns" unzuverlaessig
+        // doppelt, was in deleteProgress (Firestore-Fire-and-forget) zu einer CCE beim
+        // result.fold()-Aufruf fuehrt (siehe seedProgress-Kommentar oben fuer denselben Bug).
+        coEvery { userRepository.deleteWatchProgress(any(), any()) } coAnswers { Result.success(Unit) }
 
         service = WatchProgressService(
             context = context,
@@ -157,6 +161,30 @@ class WatchProgressServiceTest {
     @Test
     fun `saveProgress mit unbekanntem contentType liefert false`() = runBlocking {
         assertFalse(service.saveProgress("radio", 1, null, null, 600_000, 3_600_000, "Radio"))
+    }
+
+    @Test
+    fun `saveProgress speichert Serienfortschritt`() = runBlocking {
+        val saved = service.saveProgress("series", null, 10, 101, 600_000, 1_200_000, "Folge 1")
+
+        assertTrue(saved)
+        assertEquals(600_000L, service.getProgress("series", null, 10, 101))
+    }
+
+    @Test
+    fun `saveProgress markiert Serienepisode ab 90 Prozent als gesehen`() = runBlocking {
+        seedProgress(mapOf("series:10:101" to progress(600_000, 1_200_000)))
+
+        val result = service.saveProgress("series", null, 10, 101, 1_150_000, 1_200_000, "Folge 1")
+
+        assertTrue(result)
+        assertNull(service.getProgress("series", null, 10, 101))
+        coVerify { watchedHistoryService.markAsWatched("series", null, 10, 101, null, null, null) }
+    }
+
+    @Test
+    fun `getProgress mit unvollstaendigem Serien-Schluessel liefert null statt Crash`() = runBlocking {
+        assertNull(service.getProgress("series", null, 10, null))
     }
 
     // --- Abfragen ---
@@ -285,6 +313,29 @@ class WatchProgressServiceTest {
         assertEquals(0, service.cleanupCompletedProgress())
     }
 
+    @Test
+    fun `cleanupCompletedProgress ignoriert Eintraege mit nicht parsbarem Schluessel`() = runBlocking {
+        seedProgress(
+            mapOf(
+                "movie:abc" to progress(3_500_000, 3_600_000),
+                "series:10" to progress(3_500_000, 3_600_000),
+                "series:abc:101" to progress(3_500_000, 3_600_000)
+            )
+        )
+
+        val cleaned = service.cleanupCompletedProgress()
+
+        assertEquals(0, cleaned)
+        coVerify(exactly = 0) { watchedHistoryService.markAsWatched(any(), any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `cleanupCompletedProgress ignoriert Eintraege mit ungueltiger Dauer`() = runBlocking {
+        seedProgress(mapOf("movie:1" to progress(3_500_000, 0)))
+
+        assertEquals(0, service.cleanupCompletedProgress())
+    }
+
     // --- Smart Resume ---
 
     private fun seriesFixture(): Series {
@@ -369,6 +420,85 @@ class WatchProgressServiceTest {
         val leer = testSeries(seriesId = 10, seasons = listOf(testSeason(seasonNumber = 1, episodes = emptyList())))
         assertNull(service.getSmartResumeTarget(10, leer))
         assertNull(service.getSmartResumeTarget(10, testSeries(seriesId = 10, seasons = null)))
+    }
+
+    @Test
+    fun `getLastInteraction ignoriert Eintraege mit ungueltiger Dauer oder Zeitstempel`() = runBlocking {
+        seedProgress(
+            mapOf(
+                "series:10:101" to WatchProgress(600_000, 0, "2026-07-15T10:00:00Z", "S1F1"),
+                "series:10:102" to WatchProgress(600_000, 1_200_000, "kein-datum", "S1F2")
+            )
+        )
+        coEvery { watchedHistoryService.getLatestWatchedEpisode(10) } returns null
+
+        assertNull(service.getLastInteraction(10, seriesFixture()))
+    }
+
+    @Test
+    fun `findNextEpisode liefert null wenn Folgestaffel keine Episoden hat`() = runBlocking {
+        val series = testSeries(
+            seriesId = 20,
+            seasons = listOf(
+                testSeason(seasonNumber = 1, episodes = listOf(testEpisode(id = 101, episodeNum = 1, season = 1))),
+                testSeason(seasonNumber = 2, episodes = emptyList())
+            )
+        )
+        coEvery { watchedHistoryService.getLatestWatchedEpisode(20) } returns (101 to 1_752_600_000_000L)
+
+        // Letzte Episode abgeschlossen, Folgestaffel ist leer -> Fallback auf erste Episode
+        assertEquals(101, service.getSmartResumeTarget(20, series)?.episodeId)
+    }
+
+    @Test
+    fun `getSmartResumeTarget liefert null wenn erste Staffel keine Episoden hat`() = runBlocking {
+        val series = testSeries(
+            seriesId = 30,
+            seasons = listOf(
+                testSeason(seasonNumber = 1, episodes = emptyList()),
+                testSeason(seasonNumber = 2, episodes = listOf(testEpisode(id = 201, episodeNum = 1, season = 2)))
+            )
+        )
+
+        assertNull(service.getSmartResumeTarget(30, series))
+    }
+
+    @Test
+    fun `saveProgress speichert lokal auch ohne Zugangsdaten fuer Firestore-Sync`() = runBlocking {
+        every { credentialsRepository.getCredentials() } returns null
+
+        val saved = service.saveProgress("movie", 77, null, null, 600_000, 3_600_000, "Film")
+
+        assertTrue(saved)
+        assertEquals(600_000L, service.getProgress("movie", 77, null, null))
+        coVerify(exactly = 0) { userRepository.saveWatchProgress(any(), any()) }
+    }
+
+    @Test
+    fun `deleteProgress ueberspringt Firestore-Loeschung ohne Zugangsdaten`() = runBlocking {
+        seedProgress(mapOf("movie:88" to progress(600_000, 3_600_000, "Film")))
+        every { credentialsRepository.getCredentials() } returns null
+
+        val result = service.saveProgress("movie", 88, null, null, 3_500_000, 3_600_000, "Film")
+
+        assertTrue(result)
+        assertNull(service.getProgress("movie", 88, null, null))
+        coVerify(exactly = 0) { userRepository.deleteWatchProgress(any(), any()) }
+    }
+
+    @Test
+    fun `Migration ohne lokale Daten markiert Flag ohne Firestore-Aufruf`() = runBlocking {
+        val prefs = context.getSharedPreferences("watch_progress_prefs", Context.MODE_PRIVATE)
+        prefs.edit {
+            putBoolean("watch_progress_migrated", false)
+            remove("iptv_watch_progress_data")
+        }
+        coEvery { userRepository.loadWatchProgress("chris") } coAnswers { Result.success(emptyMap()) }
+
+        assertTrue(service.syncIfNeeded())
+
+        coVerify(exactly = 0) { userRepository.migrateWatchProgressFromLocal(any(), any()) }
+        assertTrue(prefs.getBoolean("watch_progress_migrated", false))
     }
 
     // --- Manuelles Setzen des Gesehen-Status ---

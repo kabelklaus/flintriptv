@@ -634,11 +634,13 @@ private fun rememberPlayerSetup(
 
         onDispose {
             exoPlayer.removeListener(listener)
+            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Releasing ExoPlayer")
+            exoPlayer.release()
         }
     }
-    
+
     // Handle stream URL changes (for channel switching)
-    DisposableEffect(streamUrl) {
+    DisposableEffect(exoPlayer, streamUrl) {
         if (BuildConfig.DEBUG) Log.d("PlayerScreen", "DisposableEffect triggered for streamUrl: $streamUrl")
         callbacks.onStreamPreparingChanged(true)
         val prepareJob = coroutineScope.launch(Dispatchers.IO) { // NOSONAR - UI component, hardcoded dispatcher acceptable
@@ -656,15 +658,7 @@ private fun rememberPlayerSetup(
             callbacks.onStreamPreparingChanged(false)
         }
     }
-    
-    // Release ExoPlayer only when composable is disposed
-    DisposableEffect(Unit) {
-        onDispose {
-            if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Releasing ExoPlayer")
-            exoPlayer.release()
-        }
-    }
-    
+
     return exoPlayer
 }
 
@@ -798,8 +792,7 @@ private data class PlayerProgressSaveParams(
     val seriesId: Int?,
     val episodeId: Int?,
     val title: String?,
-    val watchProgressService: WatchProgressService,
-    val coroutineScope: CoroutineScope
+    val watchProgressService: WatchProgressService
 )
 
 /**
@@ -839,17 +832,15 @@ private fun PlayerProgressSaveEffect(
     LaunchedEffect(params.contentType, params.streamId, params.seriesId, params.episodeId, params.title) {
         while (true) {
             delay(10000) // 10 seconds
-            params.coroutineScope.launch {
-                saveWatchProgress(
-                    exoPlayer = params.exoPlayer,
-                    contentType = params.contentType,
-                    streamId = params.streamId,
-                    seriesId = params.seriesId,
-                    episodeId = params.episodeId,
-                    title = params.title,
-                    watchProgressService = params.watchProgressService
-                )
-            }
+            saveWatchProgress(
+                exoPlayer = params.exoPlayer,
+                contentType = params.contentType,
+                streamId = params.streamId,
+                seriesId = params.seriesId,
+                episodeId = params.episodeId,
+                title = params.title,
+                watchProgressService = params.watchProgressService
+            )
         }
     }
 }
@@ -1322,8 +1313,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             seriesId = seriesId,
             episodeId = episodeId,
             title = title,
-            watchProgressService = watchProgressService,
-            coroutineScope = coroutineScope
+            watchProgressService = watchProgressService
         )
     )
 
@@ -1595,9 +1585,10 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             })
             .onDpadCenter {
                 if (!state.showControls) {
+                    // First Enter/OK: only reveal the controls overlay, focus Play/Pause.
+                    // Second Enter then hits the focused button and toggles playback.
                     resetControlsTimer()
                     state.focusedButton = FocusedButton.PLAY_PAUSE
-                    onPlayPause()
                 }
             }
             .onDpadDirection(
@@ -1651,10 +1642,13 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                     useController = false // Disable default controls
                 }
             },
-            update = { it.keepScreenOn = keepScreenOn },
+            update = { view ->
+                view.player = exoPlayer
+                view.keepScreenOn = keepScreenOn
+            },
             modifier = Modifier.fillMaxSize()
         )
-        
+
         // Loading indicator during buffering
         PlayerLoadingIndicator(
             isBuffering = state.playbackState == Player.STATE_BUFFERING,

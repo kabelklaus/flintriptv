@@ -7,6 +7,7 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.model.*
 import com.squareup.moshi.Moshi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -83,6 +84,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get server info: ${response.code()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             reportHandled("XtreamRepository.getServerInfo", e)
             Result.failure(e)
         }
@@ -104,6 +106,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get live categories: ${response.code()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             reportHandled("XtreamRepository.getLiveCategories", e)
             Result.failure(e)
         }
@@ -148,6 +151,7 @@ class XtreamRepository @Inject constructor(
             // No cache available - return error (no API calls allowed)
             Result.failure(Exception(ERROR_NO_CACHE_AVAILABLE))
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             reportHandled("XtreamRepository.getLiveCategories", e)
             Result.failure(e)
         }
@@ -173,6 +177,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get live streams: ${response.code()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             reportHandled("XtreamRepository.loadLiveStreamsFromApi", e)
             Result.failure(e)
         }
@@ -194,6 +199,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get VOD categories: ${response.code()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             reportHandled("XtreamRepository.getVodCategories", e)
             Result.failure(e)
         }
@@ -219,6 +225,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get VOD streams: ${response.code()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             reportHandled("XtreamRepository.loadVodStreamsFromApi", e)
             Result.failure(e)
         }
@@ -240,6 +247,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get series categories: ${response.code()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             reportHandled("XtreamRepository.getSeriesCategories", e)
             Result.failure(e)
         }
@@ -265,6 +273,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get series: ${response.code()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             reportHandled("XtreamRepository.loadSeriesFromApi", e)
             Result.failure(e)
         }
@@ -332,6 +341,7 @@ class XtreamRepository @Inject constructor(
 
             return Result.success(series)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             reportHandled(
                 "XtreamRepository.executeSeriesInfoCall",
                 e,
@@ -393,6 +403,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get EPG: ${response.code()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             reportHandled("XtreamRepository.getEpg", e)
             Result.failure(e)
         }
@@ -410,6 +421,7 @@ class XtreamRepository @Inject constructor(
                 Result.failure(Exception("Failed to get EPG list: ${response.code()}"))
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             reportHandled("XtreamRepository.getEpgList", e)
             Result.failure(e)
         }

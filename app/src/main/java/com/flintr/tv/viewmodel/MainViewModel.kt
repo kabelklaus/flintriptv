@@ -69,6 +69,7 @@ class MainViewModel @Inject constructor(
 
     private var searchJob: Job? = null
     private var dataLoadingJob: Job? = null
+    private var loadGeneration: Int = 0
 
     companion object {
         private const val MIN_QUERY_LENGTH = 2
@@ -89,6 +90,8 @@ class MainViewModel @Inject constructor(
         loadInitialData()
     }
 
+    private var initialLoadJob: Job? = null
+
     private fun loadInitialData() {
         val credentials = credentialsRepository.getCredentials()
         if (credentials == null) {
@@ -98,7 +101,8 @@ class MainViewModel @Inject constructor(
 
         saveUsernameIfNeeded(credentials)
 
-        viewModelScope.launch {
+        initialLoadJob?.cancel()
+        initialLoadJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             Log.d("MainViewModel", "Loading initial data...")
 
@@ -235,20 +239,34 @@ class MainViewModel @Inject constructor(
     ) {
         dataLoadingJob?.cancel()
         val credentials = credentialsRepository.getCredentials() ?: return
+        val generation = ++loadGeneration
         dataLoadingJob = viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(error = null)
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             dataFlow.value = emptyList() // Clear old content while loading
             Log.d("MainViewModel", "Loading $logName")
 
-            fetchCall(credentials.username, credentials.password)
-                .onSuccess { data ->
-                    dataFlow.value = data
-                    Log.d("MainViewModel", "$logName loaded successfully: ${data.size} items")
+            try {
+                fetchCall(credentials.username, credentials.password)
+                    .onSuccess { data ->
+                        // A newer loadData() call may have superseded this one between the
+                        // fetch returning and this callback running; stale results must not
+                        // clobber the current load's state.
+                        if (generation == loadGeneration) {
+                            dataFlow.value = data
+                            Log.d("MainViewModel", "$logName loaded successfully: ${data.size} items")
+                        }
+                    }
+                    .onFailure { error ->
+                        if (generation == loadGeneration) {
+                            _uiState.value = _uiState.value.copy(error = error.message)
+                        }
+                        reportError("MainViewModel", "Failed to load $logName", error)
+                    }
+            } finally {
+                if (generation == loadGeneration) {
+                    _uiState.value = _uiState.value.copy(isLoading = false)
                 }
-                .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(error = error.message)
-                    reportError("MainViewModel", "Failed to load $logName", error)
-                }
+            }
         }
     }
 

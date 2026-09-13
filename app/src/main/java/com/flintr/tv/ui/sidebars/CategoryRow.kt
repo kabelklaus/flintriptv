@@ -8,7 +8,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import android.util.Log
@@ -32,7 +33,9 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.theme.focusRingColor
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
+import com.flintr.tv.ui.utils.safeRequestFocus
 import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.launch
 
 data class CategoryRowParams(
     val categories: List<Category>,
@@ -241,6 +244,15 @@ fun CategoryRow(
     // Categories are already filtered and sorted in AppNavigation.kt
     val colors = appColors()
 
+    // Own, stable FocusRequester per chip (keyed on category IDs, not just list size, since
+    // hiding a category changes the list contents without necessarily changing its size) so a
+    // touch tap can focus the tapped chip directly. Never swapped onto a different chip - doing
+    // so previously left an in-flight safeRequestFocus() targeting a now-detached requester when
+    // selection changed mid-request (see Order 2, Bug 2).
+    val chipFocusRequesters = remember(params.categories.map { it.categoryId }) {
+        List(params.categories.size) { FocusRequester() }
+    }
+
     LazyColumn(
         state = params.listState,
         modifier = modifier
@@ -267,10 +279,10 @@ fun CategoryRow(
                 }
             }
         } else {
-            items(
+            itemsIndexed(
                 items = params.categories,
-                key = { it.categoryId }
-            ) { category ->
+                key = { _, category -> category.categoryId }
+            ) { index, category ->
                 // Apply focusRequester to the selected category, or first item as fallback
                 val isFirstItem = params.categories.firstOrNull()?.categoryId == category.categoryId
                 val shouldReceiveFocus = params.selectedCategoryId == category.categoryId ||
@@ -286,7 +298,10 @@ fun CategoryRow(
                         onNavigateRight = params.onNavigateRight,
                         onCategoryHidden = params.onCategoryHidden
                     ),
-                    focusRequester = if (shouldReceiveFocus) params.focusRequester else null
+                    // Own requester always attached (stable tap target); the shared Navbar-return
+                    // requester is attached additionally on the selected chip - never swapped in.
+                    focusRequester = chipFocusRequesters[index],
+                    additionalFocusRequester = if (shouldReceiveFocus) params.focusRequester else null
                 )
             }
         }
@@ -297,12 +312,14 @@ fun CategoryRow(
 fun CategoryChip(
     params: CategoryChipParams,
     modifier: Modifier = Modifier,
-    focusRequester: FocusRequester? = null
+    focusRequester: FocusRequester? = null,
+    additionalFocusRequester: FocusRequester? = null
 ) {
     var hasFocus by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     val colors = appColors()
     val name = params.category.categoryName
+    val coroutineScope = rememberCoroutineScope()
 
     // Debug: Log menu state changes
     LaunchedEffect(showMenu) {
@@ -320,11 +337,23 @@ fun CategoryChip(
 
     Box(
         modifier = modifier
+            .testTag("category-chip-${params.category.categoryId}")
             .fillMaxWidth()
             .categoryChipStyling(params.isSelected, chipColors, animatedBackgroundColor, colors.accentColor)
             .then(
                 if (focusRequester != null) {
                     Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                }
+            )
+            .then(
+                // Second FocusRequester on the same node: the Navbar-return requester on the
+                // selected chip, alongside its own stable requester. A FocusRequester tracks a
+                // set of attached focus targets, so one target node can register with more than
+                // one requester - requestFocus() on either successfully focuses this node.
+                if (additionalFocusRequester != null) {
+                    Modifier.focusRequester(additionalFocusRequester)
                 } else {
                     Modifier
                 }
@@ -354,6 +383,13 @@ fun CategoryChip(
                 },
                 onNormalClick = {
                     Log.d("CategoryChip", "[Click] 🔵 Single-Click erkannt für Kategorie '$name' (via onNormalClick)")
+                    // Touch tap: focus this chip so the Navbar loses focus and collapses.
+                    // No-op if the chip already has focus (D-Pad case).
+                    focusRequester?.let { requester ->
+                        coroutineScope.launch {
+                            requester.safeRequestFocus("CategoryRow", "CategoryChip: $name")
+                        }
+                    }
                     params.onClick()
                 },
                 durationMillis = 300L

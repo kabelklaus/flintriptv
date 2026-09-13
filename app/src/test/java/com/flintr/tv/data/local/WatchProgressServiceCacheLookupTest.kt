@@ -50,6 +50,12 @@ class WatchProgressServiceCacheLookupTest {
         watchedHistoryService = mockk(relaxed = true)
         coEvery { watchedHistoryService.markAsWatched(any(), any(), any(), any(), any(), any(), any()) } returns true
 
+        val userRepository = mockk<UserRepository>(relaxed = true)
+        // coAnswers statt returns: mockk boxt Result (Value-Class) bei "returns" unzuverlaessig
+        // doppelt, was in deleteProgress (Firestore-Fire-and-forget) zu einer CCE beim
+        // result.fold()-Aufruf fuehrt.
+        coEvery { userRepository.deleteWatchProgress(any(), any()) } coAnswers { Result.success(Unit) }
+
         cacheService = mockk(relaxed = true)
         coEvery { cacheService.loadCachedDataAsync() } returns CachedData(
             channels = listOf(testLiveStream(streamId = 100)),
@@ -67,7 +73,7 @@ class WatchProgressServiceCacheLookupTest {
             moshi = Moshi.Builder().build(),
             favoritesRepository = mockk(relaxed = true),
             watchedHistoryService = watchedHistoryService,
-            userRepository = mockk<UserRepository>(relaxed = true),
+            userRepository = userRepository,
             credentialsRepository = credentialsRepository,
             cacheService = cacheService,
             syncManager = FirestoreSyncManager(syncCooldownMs = 0L),

@@ -44,6 +44,8 @@ import com.flintr.tv.utils.error.reportControlFlow
 // Constants for debug overlay
 private const val DECODER_INITIALIZING = "Initializing..."
 private const val HARDWARE_ACCELERATED_SOFTWARE = "false (SW)"
+private const val TAG_GET_COLOR_SPACE = "DebugOverlay.getColorSpace"
+private const val TAG_GET_DROPPED_RENDERED_FRAMES = "DebugOverlay.getDroppedRenderedFrames"
 
 /**
  * Data class for debug information entry
@@ -105,7 +107,7 @@ data class SystemHardwareDebugParams(
 /**
  * Formats decoder name, returning DECODER_INITIALIZING if decoder is unknown or initializing
  */
-private fun formatDecoderName(decoderName: String): String {
+internal fun formatDecoderName(decoderName: String): String {
     return if (decoderName != "unknown" && decoderName != DECODER_INITIALIZING) {
         decoderName
     } else {
@@ -116,7 +118,7 @@ private fun formatDecoderName(decoderName: String): String {
 /**
  * Creates player status debug information
  */
-private fun createPlayerStatusDebugInfo(
+internal fun createPlayerStatusDebugInfo(
     playerState: Int,
     currentPosition: Long,
     duration: Long,
@@ -141,7 +143,7 @@ private fun createPlayerStatusDebugInfo(
 /**
  * Creates video/media debug information
  */
-private fun createVideoMediaDebugInfo(
+internal fun createVideoMediaDebugInfo(
     params: VideoMediaDebugParams
 ): List<DebugInfo> {
     return listOf(
@@ -164,7 +166,7 @@ private fun createVideoMediaDebugInfo(
 /**
  * Creates system/hardware debug information
  */
-private fun createSystemHardwareDebugInfo(
+internal fun createSystemHardwareDebugInfo(
     params: SystemHardwareDebugParams
 ): List<DebugInfo> {
     return listOf(
@@ -183,7 +185,7 @@ private fun createSystemHardwareDebugInfo(
 /**
  * Creates memory debug information
  */
-private fun createMemoryDebugInfo(
+internal fun createMemoryDebugInfo(
     maxHeapMemory: String,
     allocatedHeapMemory: String,
     totalUsedRAM: String,
@@ -202,7 +204,7 @@ private fun createMemoryDebugInfo(
 /**
  * Creates app version debug information
  */
-private fun createAppVersionDebugInfo(
+internal fun createAppVersionDebugInfo(
     flintrIPTVVersion: String,
     exoPlayerVersion: String,
     exoPlayerEngine: String,
@@ -419,7 +421,7 @@ fun DebugOverlay(
 /**
  * Get readable string for player state
  */
-private fun getPlayerStateString(state: Int): String {
+internal fun getPlayerStateString(state: Int): String {
     return when (state) {
         Player.STATE_IDLE -> "IDLE"
         Player.STATE_BUFFERING -> "BUFFERING"
@@ -565,7 +567,7 @@ private fun getVideoAudioBitrate(exoPlayer: ExoPlayer?): String {
 /**
  * Format measured bitrate from bandwidth estimate
  */
-private fun formatMeasuredBitrate(bitrateEstimate: Long): String {
+internal fun formatMeasuredBitrate(bitrateEstimate: Long): String {
     return if (bitrateEstimate > 0) {
         String.format(Locale.US, "%.2f Mbps", bitrateEstimate / 1_000_000.0)
     } else {
@@ -576,7 +578,7 @@ private fun formatMeasuredBitrate(bitrateEstimate: Long): String {
 /**
  * Check if hardware acceleration is enabled based on decoder name
  */
-private fun isHardwareAccelerated(decoderName: String): String {
+internal fun isHardwareAccelerated(decoderName: String): String {
     if (decoderName == "N/A" || decoderName.isEmpty() || decoderName == DECODER_INITIALIZING) {
         return DECODER_INITIALIZING
     }
@@ -661,12 +663,12 @@ private fun getColorSpace(exoPlayer: ExoPlayer?): String {
         colorSpaceField.isAccessible = true
         colorSpaceField.getInt(colorInfo)
     } catch (e: Exception) {
-        reportControlFlow("DebugOverlay.getColorSpace", e)
+        reportControlFlow(TAG_GET_COLOR_SPACE, e)
         try {
             val colorSpaceMethod = colorInfo.javaClass.getMethod("getColorSpace")
             colorSpaceMethod.invoke(colorInfo) as? Int ?: Format.NO_VALUE
         } catch (e2: Exception) {
-            reportControlFlow("DebugOverlay.getColorSpace", e2)
+            reportControlFlow(TAG_GET_COLOR_SPACE, e2)
             Format.NO_VALUE
         }
     }
@@ -683,7 +685,7 @@ private fun getColorSpace(exoPlayer: ExoPlayer?): String {
             else -> "Unknown($colorSpace)"
         }
     } catch (e: Exception) {
-        reportControlFlow("DebugOverlay.getColorSpace", e)
+        reportControlFlow(TAG_GET_COLOR_SPACE, e)
         // Fallback to numeric values if constants don't exist
         when (colorSpace) {
             1 -> "BT.709"
@@ -713,12 +715,12 @@ private fun getDroppedRenderedFrames(exoPlayer: ExoPlayer?): String {
             droppedField.isAccessible = true
             droppedField.getInt(videoDecoderCounters)
         } catch (e: Exception) {
-            reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e)
+            reportControlFlow(TAG_GET_DROPPED_RENDERED_FRAMES, e)
             try {
                 val droppedMethod = videoDecoderCounters.javaClass.getMethod("getDroppedFrameCount")
                 droppedMethod.invoke(videoDecoderCounters) as? Int ?: 0
             } catch (e2: Exception) {
-                reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e2)
+                reportControlFlow(TAG_GET_DROPPED_RENDERED_FRAMES, e2)
                 0
             }
         }
@@ -728,19 +730,19 @@ private fun getDroppedRenderedFrames(exoPlayer: ExoPlayer?): String {
             renderedField.isAccessible = true
             renderedField.getInt(videoDecoderCounters)
         } catch (e: Exception) {
-            reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e)
+            reportControlFlow(TAG_GET_DROPPED_RENDERED_FRAMES, e)
             try {
                 val renderedMethod = videoDecoderCounters.javaClass.getMethod("getRenderedFrameCount")
                 renderedMethod.invoke(videoDecoderCounters) as? Int ?: 0
             } catch (e2: Exception) {
-                reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e2)
+                reportControlFlow(TAG_GET_DROPPED_RENDERED_FRAMES, e2)
                 0
             }
         }
         
         "$droppedFrames/$renderedFrames"
     } catch (e: Exception) {
-        reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e)
+        reportControlFlow(TAG_GET_DROPPED_RENDERED_FRAMES, e)
         "N/A"
     }
 }
@@ -748,7 +750,7 @@ private fun getDroppedRenderedFrames(exoPlayer: ExoPlayer?): String {
 /**
  * Calculate buffer size in seconds
  */
-private fun getBufferSizeSeconds(bufferedPosition: Long): String {
+internal fun getBufferSizeSeconds(bufferedPosition: Long): String {
     if (bufferedPosition <= 0) return "0"
     
     val seconds = bufferedPosition / 1000
@@ -879,7 +881,7 @@ private fun getExoPlayerVersion(): String {
 /**
  * Get ExoPlayer engine
  */
-private fun getExoPlayerEngine(): String {
+internal fun getExoPlayerEngine(): String {
     return "Default"
 }
 
@@ -1015,7 +1017,7 @@ private fun getDiskCacheSize(exoPlayer: ExoPlayer?): String {
 /**
  * Get max heap memory in MB
  */
-private fun getMaxHeapMemory(): String {
+internal fun getMaxHeapMemory(): String {
     return try {
         val maxMemory = Runtime.getRuntime().maxMemory()
         val maxMemoryMB = maxMemory / (1024 * 1024)
@@ -1029,7 +1031,7 @@ private fun getMaxHeapMemory(): String {
 /**
  * Get allocated heap memory in MB
  */
-private fun getAllocatedHeapMemory(): String {
+internal fun getAllocatedHeapMemory(): String {
     return try {
         val totalMemory = Runtime.getRuntime().totalMemory()
         val allocatedMemoryMB = totalMemory / (1024 * 1024)
@@ -1090,7 +1092,7 @@ private fun getRAMUsedPercent(context: android.content.Context): String {
 /**
  * Get number of CPU cores
  */
-private fun getCPUCores(): String {
+internal fun getCPUCores(): String {
     return try {
         val cores = Runtime.getRuntime().availableProcessors()
         cores.toString()

@@ -296,7 +296,10 @@ fun FavoritesContent(
             onItemsRendered = {
                 // Items are now rendered, loading is complete
                 Log.d("FavoritesContent", "Items rendered, loading complete")
-            }
+            },
+            // Not an error state — an empty favorites list is expected, so it must not
+            // read like ContentGridLayout's default "failed to load" message.
+            emptyStateText = "Noch keine Favoriten"
         ),
         content = { item, index, columnIndex, onFocusChanged, cardFocusRequester ->
             FavoriteCard(

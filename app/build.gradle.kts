@@ -27,8 +27,8 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 104
-        versionName = "2.46"
+        versionCode = 105
+        versionName = "2.47"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -75,13 +75,21 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            // App-Name für Debug kommt aus src/debug/res/values/strings.xml (AGP 9: resValues im BuildType deaktiviert)
+        }
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
             signingConfig = signingConfigs.getByName("release")
+            firebaseCrashlytics {
+                mappingFileUploadEnabled = true
+            }
         }
     }
     compileOptions {

@@ -6,7 +6,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +19,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,10 +40,11 @@ import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.theme.focusRingColor
+import com.flintr.tv.ui.theme.tvFocusRing
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.safeRequestFocus
+import kotlinx.coroutines.launch
 
 sealed class HomeDestination {
     object LiveTV : HomeDestination()
@@ -110,7 +111,6 @@ internal data class NavItemConfig(
 
 private data class ItemColors(
     val backgroundColor: Color,
-    val borderColor: Color,
     val iconColor: Color,
     val textColor: Color
 )
@@ -133,28 +133,20 @@ private fun calculateItemColors(
         ),
         label = "backgroundColor"
     )
-    
-    val borderColor by animateColorAsState(
-        // Das ausgewählte Item ist mit selectionFill gefüllt — dort muss der
-        // Rahmen auf Weiß wechseln, sonst liegt Azur auf Blau bei 1,76:1.
-        targetValue = focusRingColor(isFocused = isFocused, onSelectionFill = isSelected),
-        animationSpec = tween(durationMillis = 200),
-        label = "borderColor"
-    )
-    
+
     val iconColor = when {
         isSelected -> Color.White
         isFocused -> colors.accentColor
         else -> colors.iconColor
     }
-    
+
     val textColor = when {
         isSelected -> Color.White
         isFocused -> colors.textPrimary
         else -> colors.textSecondary
     }
-    
-    return ItemColors(backgroundColor, borderColor, iconColor, textColor)
+
+    return ItemColors(backgroundColor, iconColor, textColor)
 }
 
 private fun Modifier.createItemModifier(
@@ -212,27 +204,26 @@ private fun rememberNavbarWidth(isExpanded: Boolean) = animateDpAsState(
 @Composable
 private fun NavItemBackground(
     colors: ItemColors,
+    isFocused: Boolean,
+    isSelected: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
+    val shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(Dimensions.navbarItemHeight)
+            // Fokus-Rahmen zuerst, damit die Skalierung Hintergrund und Inhalt
+            // gemeinsam erfasst (wie in ContentCard.kt) statt nur den Rahmen.
+            .tvFocusRing(
+                isFocused = isFocused,
+                onSelectionFill = isSelected,
+                shape = shape
+            )
             .background(
                 color = colors.backgroundColor,
-                shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-            )
-            .then(
-                if (colors.borderColor != Color.Transparent) {
-                    Modifier.border(
-                        width = Dimensions.listItemHoverBorderWidth,
-                        color = colors.borderColor,
-                        shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
-                    )
-                } else {
-                    Modifier
-                }
+                shape = shape
             )
             .padding(
                 horizontal = Dimensions.navbarItemPadding,
@@ -418,7 +409,8 @@ internal fun HomeSidebarItem(
     var isFocused by remember { mutableStateOf(false) }
     var hasRequestedFocus by remember { mutableStateOf(false) }
     var isPositioned by remember { mutableStateOf(false) }
-    
+    val coroutineScope = rememberCoroutineScope()
+
     // Request focus when item is positioned and should receive focus
     LaunchedEffect(state.pendingFocusDestination) {
         hasRequestedFocus = false
@@ -456,7 +448,19 @@ internal fun HomeSidebarItem(
             isPositioned = true
         }
     }
-    
+
+    // Touch tap on an already-selected item never changes selectedDestination, so the
+    // LaunchedEffect(selectedDestination) focus-request above never fires. Request focus
+    // on click too - a no-op if the item already has focus (D-Pad case).
+    val handleClick = {
+        focusConfig.focusRequester?.let { requester ->
+            coroutineScope.launch {
+                requester.safeRequestFocus("[MainNavbar]", navItem.destination.toString())
+            }
+        }
+        callbacks.onClick()
+    }
+
     Box(
         modifier = modifier
             .testTag("navbar-item-${navItem.destination.testTagName()}")
@@ -468,12 +472,12 @@ internal fun HomeSidebarItem(
                 title = navItem.title,
                 isSelected = isSelected
             ),
-            callbacks = callbacks,
+            callbacks = callbacks.copy(onClick = handleClick),
             onPositioned = handlePositioned,
             onFocusChanged = handleFocusChanged
         )
     ) {
-        NavItemBackground(colors = itemColors) {
+        NavItemBackground(colors = itemColors, isFocused = isFocused, isSelected = isSelected) {
             NavItemContent(
                 title = navItem.title,
                 icon = navItem.icon,

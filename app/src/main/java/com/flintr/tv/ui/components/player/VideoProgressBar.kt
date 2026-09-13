@@ -122,10 +122,10 @@ private suspend fun AwaitPointerEventScope.handleDragGesture(
 
 /**
  * Custom video progress bar with drag interaction and scrubber dot
- * @param progress Progress value between 0.0 and 1.0 (current position - dark red)
+ * @param progress Progress value between 0.0 and 1.0 (current position - accent blue)
  * @param onSeek Callback when user taps to seek to a new position (0.0 to 1.0)
  * @param modifier Modifier for the progress bar
- * @param bufferedProgress Buffered progress value between 0.0 and 1.0 (light red)
+ * @param bufferedProgress Buffered progress value between 0.0 and 1.0 (accent blue, 50% alpha)
  * @param isDragging Whether the user is currently dragging the scrubber
  * @param dragCallbacks Callbacks for drag gestures (start, progress, end)
  */
@@ -197,23 +197,23 @@ fun VideoProgressBar(
                 trackColor = Color.White.copy(alpha = 0.3f)
             )
 
-            // Buffered progress indicator (light red)
+            // Buffered progress indicator (accent blue, 50% alpha)
             LinearProgressIndicator(
                 progress = bufferedProgress.coerceIn(0f, 1f),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(progressHeight),
-                color = SharedColors.red.copy(alpha = 0.5f),
+                color = SharedColors.accent.copy(alpha = 0.5f),
                 trackColor = Color.Transparent
             )
 
-            // Current position indicator (dark red)
+            // Current position indicator (accent blue)
             LinearProgressIndicator(
                 progress = progress,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(progressHeight),
-                color = SharedColors.red,
+                color = SharedColors.accent,
                 trackColor = Color.Transparent
             )
         }
@@ -235,7 +235,7 @@ fun VideoProgressBar(
                         Modifier
                     }
                 )
-                .background(SharedColors.red, CircleShape)
+                .background(SharedColors.accent, CircleShape)
         )
     }
 }

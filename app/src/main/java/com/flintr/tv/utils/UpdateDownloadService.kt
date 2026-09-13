@@ -50,28 +50,32 @@ class UpdateDownloadService @Inject constructor(
             val body = validateResponse(response) ?: return@flow
             
             val totalBytes = body.contentLength()
-            
+            val knownTotal = totalBytes > 0
+            var bytesDownloaded = 0L
+
             body.byteStream().use { inputStream ->
                 FileOutputStream(outputFile).use { outputStream ->
                     val buffer = ByteArray(8192)
                     var bytesRead: Int
-                    var bytesDownloaded = 0L
-                    
+
                     while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                         outputStream.write(buffer, 0, bytesRead)
                         bytesDownloaded += bytesRead
-                        emit(DownloadProgress(bytesDownloaded, totalBytes, false))
+                        // Ohne Content-Length (z. B. chunked) ist totalBytes -1;
+                        // dann keine Prozentrechnung, aber niemals -1 im State.
+                        emit(DownloadProgress(bytesDownloaded, if (knownTotal) totalBytes else 0, false))
                     }
                 }
             }
-            
+
             if (!isValidApk(outputFile)) {
                 deleteFileSafely(outputFile)
                 emit(DownloadProgress(0, 0, false, Exception("Downloaded file is not a valid APK")))
                 return@flow
             }
-            
-            emit(DownloadProgress(totalBytes, totalBytes, true))
+
+            val total = if (knownTotal) totalBytes else bytesDownloaded
+            emit(DownloadProgress(total, total, true))
             
         } catch (e: Exception) {
             reportHandled("UpdateDownloadService.downloadApk", e)

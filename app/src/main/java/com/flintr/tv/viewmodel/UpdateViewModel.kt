@@ -1,5 +1,6 @@
 package com.flintr.tv.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.flintr.tv.R
@@ -10,6 +11,7 @@ import com.flintr.tv.utils.DownloadProgress
 import com.flintr.tv.utils.UpdateDownloadService
 import com.flintr.tv.utils.UpdateInstaller
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,14 +63,20 @@ class UpdateViewModel @Inject constructor(
         }
     }
     
+    private var downloadJob: Job? = null
+
     fun downloadUpdate(downloadUrl: String, version: String) {
-        viewModelScope.launch {
+        if (downloadJob?.isActive == true) {
+            Log.d("UpdateViewModel", "Download already in progress, ignoring second call")
+            return
+        }
+        downloadJob = viewModelScope.launch {
             _errorMessage.value = null
             _downloadProgress.value = DownloadProgress(0, 0, false)
-            
+
             downloadService.downloadApk(downloadUrl, version).collect { progress ->
                 _downloadProgress.value = progress
-                
+
                 if (progress.isComplete) {
                     // Install automatically after download
                     installUpdate(version)

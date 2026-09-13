@@ -123,4 +123,7 @@
     <string name="open_audio_settings">Einstellungen</string>
     <string name="playback_error_generic">Wiedergabefehler: %1$s</string>
     <string name="playback_error_unknown">Unbekannter Fehler</string>
+
+    <!-- Video Settings Dialog: not-yet-wired mock controls -->
+    <string name="video_settings_coming_soon">Demnächst verfügbar</string>
 </resources>

@@ -10,6 +10,10 @@ import io.mockk.coVerify
 import io.mockk.every
 import com.flintr.tv.testutil.silentCredentialsFlow
 import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -68,6 +72,72 @@ class CategoryVisibilityServiceTest {
         }
 
         assertFalse(service.hideCategory("42", CategoryType.LIVE_TV))
+    }
+
+    @Test
+    fun `concurrent hide and show both persist`() {
+        // loadFromFirestore() serialisiert ueber das bestehende loadMutex, aber
+        // hideCategory()/showCategory() halten danach keine Sperre mehr. Mit nur
+        // wenigen Kontrahenten auf Dispatchers.Default (Kernanzahl = Parallelitaet)
+        // gewinnt auf echten Threads fast immer der Thread, der die Sperre gerade
+        // freigegeben hat und ohne Unterbrechung in Schritt 2 weiterlaeuft (der
+        // gerade aufgeweckte Kontrahent verliert durch Scheduling-Latenz) - die
+        // Race bleibt dann unsichtbar. Dispatchers.IO mit deutlicher Thread-
+        // Ueberzeichnung (hier 24 Coroutinen auf einem Pool, der weit mehr
+        // gleichzeitig lauffaehige Threads als CPU-Kerne zulaesst) zwingt den
+        // Scheduler zu haeufigem Praeemptieren und macht die Race reproduzierbar.
+        //
+        // Der Mock spiegelt den JEWEILS AKTUELLEN lokalen Zustand von roundService
+        // zurueck (statt eines fixen Snapshots): das entspricht "Firestore ist
+        // bereits mit dem letzten lokalen Schreibvorgang synchron" und isoliert
+        // damit genau die F5-Race (gleichzeitiges Lesen+Schreiben auf denselben
+        // Snapshot), ohne von echtem Save-Timing auf Dispatchers.IO abzuhaengen.
+        val concurrency = 24
+        repeat(15) { round ->
+            val userRepo = mockk<UserRepository>(relaxed = true)
+            val credRepo = mockk<CredentialsRepository>()
+            every { credRepo.credentialsFlow } returns silentCredentialsFlow
+            every { credRepo.getCredentials() } returns credentials
+            lateinit var roundService: CategoryVisibilityService
+            coEvery { userRepo.loadHiddenCategories("chris") } coAnswers {
+                Result.success(roundService.getAllHiddenCategories())
+            }
+            coEvery { userRepo.saveHiddenCategories("chris", any()) } returns Result.success(Unit)
+
+            roundService = CategoryVisibilityService(
+                context = context,
+                userRepository = userRepo,
+                credentialsRepository = credRepo,
+                syncManager = FirestoreSyncManager(syncCooldownMs = 0L)
+            )
+
+            val startGate = java.util.concurrent.CyclicBarrier(concurrency)
+            val ids = (1..concurrency).map { "cat-$round-$it" }
+            runBlocking {
+                coroutineScope {
+                    ids.map { id ->
+                        async(Dispatchers.IO) {
+                            startGate.await()
+                            roundService.hideCategory(id, CategoryType.LIVE_TV)
+                        }
+                    }.awaitAll()
+                }
+            }
+
+            ids.forEach { id ->
+                assertTrue("Runde $round: $id fehlt", roundService.isCategoryHidden(id, CategoryType.LIVE_TV))
+            }
+        }
+    }
+
+    @Test
+    fun `hideCategory ohne Zugangsdaten aktualisiert lokalen Zustand ohne Firestore-Speicherung`() = runBlocking {
+        every { credentialsRepository.getCredentials() } returns null
+
+        assertTrue(service.hideCategory("42", CategoryType.LIVE_TV))
+
+        assertTrue(service.isCategoryHidden("42", CategoryType.LIVE_TV))
+        coVerify(exactly = 0) { userRepository.saveHiddenCategories(any(), any()) }
     }
 
     @Test

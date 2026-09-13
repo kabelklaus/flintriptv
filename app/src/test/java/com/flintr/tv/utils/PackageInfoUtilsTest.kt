@@ -21,7 +21,7 @@ class PackageInfoUtilsTest {
 
         val info = loadPackageInfo(context, Dispatchers.Unconfined)
 
-        assertEquals("com.flintr.tv", info?.packageName)
+        assertEquals(context.packageName, info?.packageName)
     }
 
     @Test

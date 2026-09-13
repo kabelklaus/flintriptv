@@ -217,7 +217,7 @@ private fun PlayerActionButton(
             )
             .then(
                 if (focusConfig.isFocused) {
-                    Modifier.border(2.dp, SharedColors.red, buttonShape)
+                    Modifier.border(2.dp, SharedColors.accent, buttonShape)
                 } else {
                     Modifier
                 }

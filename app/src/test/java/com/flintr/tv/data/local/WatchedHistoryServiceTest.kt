@@ -111,6 +111,35 @@ class WatchedHistoryServiceTest {
     }
 
     @Test
+    fun `markAsUnwatched liefert false bei nicht generierbarem Schluessel`() = runBlocking {
+        assertFalse(service.markAsUnwatched("movie", null, null, null))
+    }
+
+    @Test
+    fun `isWatched liefert false bei nicht generierbarem Schluessel`() = runBlocking {
+        assertFalse(service.isWatched("series", null, 10, null))
+    }
+
+    @Test
+    fun `markAsWatched setzt und entfernt eine einzelne Serienepisode direkt`() = runBlocking {
+        assertTrue(service.markAsWatched("series", null, 10, 101, "Serie", "Drama", "Serien DE"))
+        assertTrue(service.isWatched("series", null, 10, 101))
+
+        assertTrue(service.markAsUnwatched("series", null, 10, 101))
+        assertFalse(service.isWatched("series", null, 10, 101))
+    }
+
+    @Test
+    fun `markAsWatched speichert lokal auch ohne Zugangsdaten fuer Firestore-Sync`() = runBlocking {
+        every { credentialsRepository.getCredentials() } returns null
+
+        assertTrue(service.markAsWatched("movie", 55, null, null))
+
+        assertTrue(service.isWatched("movie", 55, null, null))
+        coVerify(exactly = 0) { userRepository.saveWatchedHistory(any(), any()) }
+    }
+
+    @Test
     fun `markSeriesEpisodesAsWatched speichert alle Episoden in einem Rutsch`() = runBlocking {
         assertTrue(service.markSeriesEpisodesAsWatched(10, listOf(101, 102), "Serie", null, null))
 
@@ -207,6 +236,21 @@ class WatchedHistoryServiceTest {
         }
         assertTrue(prefs.getBoolean("watched_history_migrated", false))
         assertNull(prefs.getString("iptv_watched_history", null))
+    }
+
+    @Test
+    fun `Migration ohne lokale Daten markiert Flag ohne Firestore-Aufruf`() = runBlocking {
+        val prefs = context.getSharedPreferences("watched_history_prefs", Context.MODE_PRIVATE)
+        prefs.edit {
+            putBoolean("watched_history_migrated", false)
+            remove("iptv_watched_history")
+        }
+        coEvery { userRepository.loadWatchedHistory("chris") } coAnswers { Result.success(emptyMap()) }
+
+        assertTrue(service.syncIfNeeded())
+
+        coVerify(exactly = 0) { userRepository.migrateWatchedHistoryFromLocal(any(), any()) }
+        assertTrue(prefs.getBoolean("watched_history_migrated", false))
     }
 
     @Test
