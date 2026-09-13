@@ -135,4 +135,42 @@ class DataLoadingViewModelTest {
         assertFalse(vm.uiState.value.loadingComplete)
         coVerify(exactly = 0) { cacheService.saveCachedData(any(), any(), any(), any(), any(), any()) }
     }
+
+    @Test
+    fun `retryStep ohne Zugangsdaten setzt Fehler und ruft Repository nicht auf`() = runTest {
+        every { credentialsRepository.getCredentials() } returns null
+
+        val vm = viewModel()
+
+        vm.retryStep(0)
+        advanceUntilIdle()
+
+        assertEquals("Keine Anmeldedaten gefunden", vm.uiState.value.error)
+        coVerify(exactly = 0) { repository.loadLiveStreamsFromApi(any(), any()) }
+    }
+
+    @Test
+    fun `retryStep mit ungueltigem Stepindex faengt IllegalArgumentException ohne Crash ab`() = runTest {
+        val vm = viewModel()
+
+        vm.retryStep(5)
+        advanceUntilIdle()
+
+        assertEquals("Invalid step index: 5", vm.uiState.value.error)
+        assertFalse(vm.uiState.value.loadingComplete)
+        coVerify(exactly = 0) { cacheService.saveCachedData(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `retryStep faengt eine geworfene Exception ab und markiert den Step als Error`() = runTest {
+        coEvery { repository.loadSeriesFromApi("chris", "pw") } throws RuntimeException("Boom")
+
+        val vm = viewModel()
+
+        vm.retryStep(2)
+        advanceUntilIdle()
+
+        assertEquals(LoadingStatus.Error, vm.uiState.value.steps[2].status)
+        assertEquals("Boom", vm.uiState.value.error)
+    }
 }

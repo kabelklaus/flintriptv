@@ -881,7 +881,7 @@ private fun getExoPlayerVersion(): String {
 /**
  * Get ExoPlayer engine
  */
-private fun getExoPlayerEngine(): String {
+internal fun getExoPlayerEngine(): String {
     return "Default"
 }
 
@@ -1017,7 +1017,7 @@ private fun getDiskCacheSize(exoPlayer: ExoPlayer?): String {
 /**
  * Get max heap memory in MB
  */
-private fun getMaxHeapMemory(): String {
+internal fun getMaxHeapMemory(): String {
     return try {
         val maxMemory = Runtime.getRuntime().maxMemory()
         val maxMemoryMB = maxMemory / (1024 * 1024)
@@ -1031,7 +1031,7 @@ private fun getMaxHeapMemory(): String {
 /**
  * Get allocated heap memory in MB
  */
-private fun getAllocatedHeapMemory(): String {
+internal fun getAllocatedHeapMemory(): String {
     return try {
         val totalMemory = Runtime.getRuntime().totalMemory()
         val allocatedMemoryMB = totalMemory / (1024 * 1024)
@@ -1092,7 +1092,7 @@ private fun getRAMUsedPercent(context: android.content.Context): String {
 /**
  * Get number of CPU cores
  */
-private fun getCPUCores(): String {
+internal fun getCPUCores(): String {
     return try {
         val cores = Runtime.getRuntime().availableProcessors()
         cores.toString()

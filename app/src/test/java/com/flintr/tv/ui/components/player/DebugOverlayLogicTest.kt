@@ -3,6 +3,7 @@ package com.flintr.tv.ui.components.player
 import androidx.media3.common.Player
 import com.flintr.tv.ui.utils.formatTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -266,5 +267,29 @@ class DebugOverlayLogicTest {
             DebugInfo("Cronet Version", "N/A")
         )
         assertEquals(expected, info)
+    }
+
+    // --- getExoPlayerEngine / Runtime-basierte Systemwerte ---
+
+    @Test
+    fun `getExoPlayerEngine liefert immer Default`() {
+        assertEquals("Default", getExoPlayerEngine())
+    }
+
+    @Test
+    fun `getMaxHeapMemory liefert die JVM-Maximalspeichergrenze in MB als Zahl`() {
+        val expectedMB = Runtime.getRuntime().maxMemory() / (1024 * 1024)
+        assertEquals(expectedMB.toString(), getMaxHeapMemory())
+    }
+
+    @Test
+    fun `getAllocatedHeapMemory liefert den aktuell allozierten Speicher in MB als Zahl`() {
+        val result = getAllocatedHeapMemory()
+        assertTrue(result.toLongOrNull() != null)
+    }
+
+    @Test
+    fun `getCPUCores liefert die Anzahl verfuegbarer Prozessoren`() {
+        assertEquals(Runtime.getRuntime().availableProcessors().toString(), getCPUCores())
     }
 }

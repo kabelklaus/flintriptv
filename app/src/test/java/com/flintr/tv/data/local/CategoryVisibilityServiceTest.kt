@@ -131,6 +131,16 @@ class CategoryVisibilityServiceTest {
     }
 
     @Test
+    fun `hideCategory ohne Zugangsdaten aktualisiert lokalen Zustand ohne Firestore-Speicherung`() = runBlocking {
+        every { credentialsRepository.getCredentials() } returns null
+
+        assertTrue(service.hideCategory("42", CategoryType.LIVE_TV))
+
+        assertTrue(service.isCategoryHidden("42", CategoryType.LIVE_TV))
+        coVerify(exactly = 0) { userRepository.saveHiddenCategories(any(), any()) }
+    }
+
+    @Test
     fun `showCategory blendet versteckte Kategorie wieder ein`() = runBlocking {
         coEvery { userRepository.loadHiddenCategories("chris") } coAnswers {
             Result.success(mapOf(CategoryType.VOD to setOf("7")))
