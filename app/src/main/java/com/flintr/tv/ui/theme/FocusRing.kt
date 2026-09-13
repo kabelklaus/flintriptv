@@ -52,6 +52,12 @@ fun focusRingColor(isFocused: Boolean, onSelectionFill: Boolean): Color = when {
  *   absetzt. Die Einrückung ist bewusst konstant und nicht an den Fokus
  *   gekoppelt, damit beim Durchsteppen nichts springt.
  */
+// Sonar/Lint verlangt hier eine Non-Composable Modifier-Factory (z.B. via `composed {}`).
+// tvFocusRing ist der Kern des gerade stabilisierten TV-Fokus-Systems und wird von fünf
+// Stellen genutzt (siehe FocusRing.width-Kommentar); ein Refactor birgt Regressionsrisiko
+// für Fokus-Verhalten ohne Compose-UI-Testabdeckung dieser Migration. Bewusst zurückgestellt,
+// FocusRingColorTest deckt die zugrunde liegende Farblogik ab.
+@Suppress("ComposableModifierFactory")
 @Composable
 fun Modifier.tvFocusRing(
     isFocused: Boolean,

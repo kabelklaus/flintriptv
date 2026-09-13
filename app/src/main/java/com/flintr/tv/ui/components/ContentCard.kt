@@ -283,6 +283,11 @@ private fun buildDpadHandler(
     }
 }
 
+// Sonar/Lint verlangt hier eine Non-Composable Modifier-Factory. buildCardModifier
+// baut auf tvFocusRing auf (siehe dortige Begründung) und ist Teil desselben, gerade
+// stabilisierten TV-Fokus-Pfads; ein Refactor beider Stellen zusammen birgt unnötiges
+// Regressionsrisiko. Bewusst zurückgestellt.
+@Suppress("ComposableModifierFactory")
 @Composable
 private fun Modifier.buildCardModifier(
     config: CardConfig,

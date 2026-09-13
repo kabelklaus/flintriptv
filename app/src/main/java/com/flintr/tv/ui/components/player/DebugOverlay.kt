@@ -44,6 +44,8 @@ import com.flintr.tv.utils.error.reportControlFlow
 // Constants for debug overlay
 private const val DECODER_INITIALIZING = "Initializing..."
 private const val HARDWARE_ACCELERATED_SOFTWARE = "false (SW)"
+private const val TAG_GET_COLOR_SPACE = "DebugOverlay.getColorSpace"
+private const val TAG_GET_DROPPED_RENDERED_FRAMES = "DebugOverlay.getDroppedRenderedFrames"
 
 /**
  * Data class for debug information entry
@@ -661,12 +663,12 @@ private fun getColorSpace(exoPlayer: ExoPlayer?): String {
         colorSpaceField.isAccessible = true
         colorSpaceField.getInt(colorInfo)
     } catch (e: Exception) {
-        reportControlFlow("DebugOverlay.getColorSpace", e)
+        reportControlFlow(TAG_GET_COLOR_SPACE, e)
         try {
             val colorSpaceMethod = colorInfo.javaClass.getMethod("getColorSpace")
             colorSpaceMethod.invoke(colorInfo) as? Int ?: Format.NO_VALUE
         } catch (e2: Exception) {
-            reportControlFlow("DebugOverlay.getColorSpace", e2)
+            reportControlFlow(TAG_GET_COLOR_SPACE, e2)
             Format.NO_VALUE
         }
     }
@@ -683,7 +685,7 @@ private fun getColorSpace(exoPlayer: ExoPlayer?): String {
             else -> "Unknown($colorSpace)"
         }
     } catch (e: Exception) {
-        reportControlFlow("DebugOverlay.getColorSpace", e)
+        reportControlFlow(TAG_GET_COLOR_SPACE, e)
         // Fallback to numeric values if constants don't exist
         when (colorSpace) {
             1 -> "BT.709"
@@ -713,12 +715,12 @@ private fun getDroppedRenderedFrames(exoPlayer: ExoPlayer?): String {
             droppedField.isAccessible = true
             droppedField.getInt(videoDecoderCounters)
         } catch (e: Exception) {
-            reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e)
+            reportControlFlow(TAG_GET_DROPPED_RENDERED_FRAMES, e)
             try {
                 val droppedMethod = videoDecoderCounters.javaClass.getMethod("getDroppedFrameCount")
                 droppedMethod.invoke(videoDecoderCounters) as? Int ?: 0
             } catch (e2: Exception) {
-                reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e2)
+                reportControlFlow(TAG_GET_DROPPED_RENDERED_FRAMES, e2)
                 0
             }
         }
@@ -728,19 +730,19 @@ private fun getDroppedRenderedFrames(exoPlayer: ExoPlayer?): String {
             renderedField.isAccessible = true
             renderedField.getInt(videoDecoderCounters)
         } catch (e: Exception) {
-            reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e)
+            reportControlFlow(TAG_GET_DROPPED_RENDERED_FRAMES, e)
             try {
                 val renderedMethod = videoDecoderCounters.javaClass.getMethod("getRenderedFrameCount")
                 renderedMethod.invoke(videoDecoderCounters) as? Int ?: 0
             } catch (e2: Exception) {
-                reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e2)
+                reportControlFlow(TAG_GET_DROPPED_RENDERED_FRAMES, e2)
                 0
             }
         }
         
         "$droppedFrames/$renderedFrames"
     } catch (e: Exception) {
-        reportControlFlow("DebugOverlay.getDroppedRenderedFrames", e)
+        reportControlFlow(TAG_GET_DROPPED_RENDERED_FRAMES, e)
         "N/A"
     }
 }

@@ -22,8 +22,10 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -420,5 +422,33 @@ class MainViewModelTest {
         assertNull(vm.uiState.value.error)
         assertFalse(vm.uiState.value.isLoading)
         assertEquals(listOf("Neu"), vm.vodStreams.value.map { it.name })
+    }
+
+    @Test
+    fun `veralteter Load ueberschreibt frische Daten nicht, wenn er trotz Cancellation noch durchlaeuft`() = runTest {
+        // dataLoadingJob.cancel() stoppt den alten Load normalerweise, sobald er den naechsten
+        // Suspension-Point erreicht. Bei echten Multithread-Workloads (z.B. eine bereits laufende
+        // IO-Anfrage) kann der alte Callback aber trotzdem noch feuern, nachdem ein neuerer Load
+        // begonnen hat - dafuer gibt es zusaetzlich den Generation-Vergleich in loadData().
+        // NonCancellable simuliert genau diesen Fall: der alte Call ignoriert seine eigene
+        // Cancellation und liefert am Ende trotzdem ein Ergebnis.
+        val staleResultGate = CompletableDeferred<Unit>()
+        coEvery { repository.getVodStreams("chris", "pw", "1") } coAnswers {
+            withContext(NonCancellable) { staleResultGate.await() }
+            Result.success(listOf(testVodStream(name = "Alt", streamId = 1, categoryId = "1")))
+        }
+        coEvery { repository.getVodStreams("chris", "pw", "2") } coAnswers {
+            Result.success(listOf(testVodStream(name = "Neu", streamId = 2, categoryId = "2")))
+        }
+        val vm = viewModel()
+
+        vm.loadVodStreams("1")
+        vm.loadVodStreams("2")
+        advanceUntilIdle()
+        staleResultGate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(listOf("Neu"), vm.vodStreams.value.map { it.name })
+        assertFalse(vm.uiState.value.isLoading)
     }
 }

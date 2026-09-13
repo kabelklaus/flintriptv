@@ -13,13 +13,16 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -270,5 +273,98 @@ class XtreamRepositoryTest {
 
         assertTrue(result.isSuccess)
         assertEquals(listOf("Sendung"), result.getOrNull()?.map { it.title })
+    }
+
+    @Test
+    fun `Cancellation wird bei allen einfachen API-Aufrufen weitergereicht statt als Result gekapselt`() = runBlocking {
+        // Ein CancellationException-Fang, der sie in Result.failure kapselt statt sie
+        // weiterzureichen, wuerde strukturierte Nebenlaeufigkeit stillschweigend brechen
+        // (z.B. Coroutine-Abbruch beim Verlassen eines Screens haengt dann als "Fehler" im Result).
+        val cancellingFlow = mockk<MutableStateFlow<Credentials?>>()
+        every { cancellingFlow.value } throws CancellationException("cancelled")
+        every { credentialsRepository.credentialsFlow } returns cancellingFlow
+
+        val calls: List<suspend () -> Result<*>> = listOf(
+            { repository.getServerInfo("chris", "pw") },
+            { repository.getLiveCategories("chris", "pw") },
+            { repository.loadLiveStreamsFromApi("chris", "pw") },
+            { repository.getVodCategories("chris", "pw") },
+            { repository.loadVodStreamsFromApi("chris", "pw") },
+            { repository.getSeriesCategories("chris", "pw") },
+            { repository.loadSeriesFromApi("chris", "pw") },
+            { repository.getSeriesInfo("chris", "pw", 10) },
+            { repository.getEpg("chris", "pw", 101) },
+            { repository.getEpgList("chris", "pw", listOf(101)) }
+        )
+
+        for (call in calls) {
+            var wasRethrown = false
+            try {
+                call()
+            } catch (e: CancellationException) {
+                wasRethrown = true
+            }
+            assertTrue("CancellationException haette weitergereicht werden muessen, nicht als Result gekapselt", wasRethrown)
+        }
+    }
+
+    @Test
+    fun `getLiveStreams reicht Cancellation aus dem Cache-Zugriff weiter`() = runBlocking {
+        every { cacheService.shouldUseCacheForBrowsing() } throws CancellationException("cancelled")
+
+        var wasRethrown = false
+        try {
+            repository.getLiveStreams("chris", "pw")
+        } catch (e: CancellationException) {
+            wasRethrown = true
+        }
+
+        assertTrue(wasRethrown)
+    }
+
+    @Test
+    fun `getVodStreams kapselt unerwarteten Cache-Fehler als Result-Failure`() = runBlocking {
+        every { cacheService.shouldUseCacheForBrowsing() } returns true
+        coEvery { cacheService.loadCachedDataAsync() } throws RuntimeException("cache defekt")
+
+        val result = repository.getVodStreams("chris", "pw")
+
+        assertTrue(result.isFailure)
+        assertEquals("cache defekt", result.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun `Verbindungsabbrueche werden bei allen einfachen API-Aufrufen als Result-Failure gekapselt`() = runBlocking {
+        val calls: List<suspend () -> Result<*>> = listOf(
+            { repository.getServerInfo("chris", "pw") },
+            { repository.getLiveCategories("chris", "pw") },
+            { repository.loadLiveStreamsFromApi("chris", "pw") },
+            { repository.getVodCategories("chris", "pw") },
+            { repository.getSeriesCategories("chris", "pw") },
+            { repository.loadSeriesFromApi("chris", "pw") },
+            { repository.getEpg("chris", "pw", 101) },
+            { repository.getEpgList("chris", "pw", listOf(101)) }
+        )
+
+        for (call in calls) {
+            server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+            val result = call()
+            assertTrue("Verbindungsabbruch haette als Result.failure gekapselt werden muessen", result.isFailure)
+            assertFalse(result.exceptionOrNull() is CancellationException)
+        }
+    }
+
+    @Test
+    fun `getSeriesInfo wiederholt bei Verbindungsfehler und liefert danach Erfolg`() = runBlocking {
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
+        enqueueJson(
+            """{"seasons":[],"info":{"name":"Dark"},
+                "episodes":{"1":[{"id":"101","episode_num":1,"title":"Folge 1","season":1}]}}"""
+        )
+
+        val result = repository.getSeriesInfo("chris", "pw", 10)
+
+        assertTrue(result.isSuccess)
+        assertEquals(2, server.requestCount)
     }
 }
