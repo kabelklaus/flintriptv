@@ -211,6 +211,8 @@ class DataCacheService @Inject constructor(
         movies: List<VodStream>,
         series: List<Series>
     ): Pair<List<VodStream>, List<Series>> {
+        // Blockiert den Aufrufer fuer Download + Entpacken der IMDb-DB: saveCachedData() darf
+        // nie auf Main laufen. Offen: Umstellung auf suspend (Folgeauftrag "ANR-Glaettung").
         runBlocking { imdbEnrichmentService.ensureLoaded() }
 
         if (!imdbEnrichmentService.isAvailable) {
@@ -245,7 +247,12 @@ class DataCacheService @Inject constructor(
         cacheDir.mkdirs()
         val tmp = File(cacheDir, "$fileName.tmp")
         val target = File(cacheDir, fileName)
-        tmp.sink().buffer().use { sink -> adapter.toJson(sink, items) }
+        try {
+            tmp.sink().buffer().use { sink -> adapter.toJson(sink, items) }
+        } catch (t: Throwable) {
+            tmp.delete()
+            throw t
+        }
         if (!tmp.renameTo(target)) {
             tmp.delete()
             throw IOException("rename failed: $fileName")

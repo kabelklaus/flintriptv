@@ -28,8 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.flintr.tv.data.model.RatingEntry
@@ -99,7 +97,7 @@ fun RatingDialog(
                 Row(horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)) {
                     Icon(
                         imageVector = Icons.Default.ThumbUp,
-                        contentDescription = null,
+                        contentDescription = "Daumen hoch",
                         tint = colors.iconColor,
                         modifier = Modifier
                             .size(56.dp)
@@ -115,11 +113,10 @@ fun RatingDialog(
                             .onDpadDirection(
                                 onRight = { thumbsDownFocusRequester.requestFocus(); true }
                             )
-                            .semantics { contentDescription = "Daumen hoch" }
                     )
                     Icon(
                         imageVector = Icons.Default.ThumbDown,
-                        contentDescription = null,
+                        contentDescription = "Daumen runter",
                         tint = colors.iconColor,
                         modifier = Modifier
                             .size(56.dp)
@@ -135,7 +132,6 @@ fun RatingDialog(
                             .onDpadDirection(
                                 onLeft = { thumbsUpFocusRequester.requestFocus(); true }
                             )
-                            .semantics { contentDescription = "Daumen runter" }
                     )
                 }
             }

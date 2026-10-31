@@ -28,17 +28,20 @@ object RecommendationEngine {
             return RecommendationResult(emptyList(), emptyList())
         }
 
+        // Ratings are parsed once per item up front: the comparator runs O(n log n) times
+        // over the full catalog (57k titles), and ratingOf() parses and formats a string.
         val sortedMovies = cached.movies
             .asSequence()
             .filter { it.streamId !in profile.excludedMovieIds }
             .map { it to score(it.genre, profile) }
             .filter { (_, score) -> score > 0.0 }
+            .map { (movie, score) -> Ranked(movie, score, ratingOf(movie)) }
             .sortedWith(
-                compareByDescending<Pair<VodStream, Double>> { it.second }
-                    .thenByDescending { ratingOf(it.first) }
-                    .thenBy { it.first.name }
+                compareByDescending<Ranked<VodStream>> { it.score }
+                    .thenByDescending { it.rating }
+                    .thenBy { it.item.name }
             )
-            .map { it.first }
+            .map { it.item }
             .toList()
 
         val genreMovies = selectWithGenreDiversity(sortedMovies, limitPerType, profile) { it.genre }
@@ -47,10 +50,12 @@ object RecommendationEngine {
             cached.movies
                 .asSequence()
                 .filter { it.streamId !in profile.excludedMovieIds }
+                .map { Ranked(it, 0.0, ratingOf(it)) }
                 .sortedWith(
-                    compareByDescending<VodStream> { ratingOf(it) }.thenBy { it.name }
+                    compareByDescending<Ranked<VodStream>> { it.rating }.thenBy { it.item.name }
                 )
                 .take(limitPerType)
+                .map { it.item }
                 .toList()
         }
 
@@ -59,12 +64,13 @@ object RecommendationEngine {
             .filter { it.seriesId !in profile.excludedSeriesIds }
             .map { it to score(it.genre, profile) }
             .filter { (_, score) -> score > 0.0 }
+            .map { (item, score) -> Ranked(item, score, ratingOf(item)) }
             .sortedWith(
-                compareByDescending<Pair<Series, Double>> { it.second }
-                    .thenByDescending { ratingOf(it.first) }
-                    .thenBy { it.first.name }
+                compareByDescending<Ranked<Series>> { it.score }
+                    .thenByDescending { it.rating }
+                    .thenBy { it.item.name }
             )
-            .map { it.first }
+            .map { it.item }
             .toList()
 
         val genreSeries = selectWithGenreDiversity(sortedSeries, limitPerType, profile) { it.genre }
@@ -73,10 +79,12 @@ object RecommendationEngine {
             cached.series
                 .asSequence()
                 .filter { it.seriesId !in profile.excludedSeriesIds }
+                .map { Ranked(it, 0.0, ratingOf(it)) }
                 .sortedWith(
-                    compareByDescending<Series> { ratingOf(it) }.thenBy { it.name }
+                    compareByDescending<Ranked<Series>> { it.rating }.thenBy { it.item.name }
                 )
                 .take(limitPerType)
+                .map { it.item }
                 .toList()
         }
 
@@ -130,4 +138,6 @@ object RecommendationEngine {
     }
 
     private fun ratingOf(item: Any): Double = ContentParser.getRating(item)?.toDoubleOrNull() ?: 0.0
+
+    private class Ranked<T>(val item: T, val score: Double, val rating: Double)
 }

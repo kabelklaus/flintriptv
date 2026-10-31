@@ -18,8 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
@@ -78,23 +76,21 @@ fun SoftRatingOverlay(
         Row(horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)) {
             Icon(
                 imageVector = Icons.Default.ThumbUp,
-                contentDescription = null,
+                contentDescription = "Gefällt mir",
                 tint = colors.iconColor,
                 modifier = Modifier
                     .size(32.dp)
                     .focusable()
                     .onClick(onClick = onThumbsUp)
-                    .semantics { contentDescription = "Gefällt mir" }
             )
             Icon(
                 imageVector = Icons.Default.ThumbDown,
-                contentDescription = null,
+                contentDescription = "Gefällt mir nicht",
                 tint = colors.iconColor,
                 modifier = Modifier
                     .size(32.dp)
                     .focusable()
                     .onClick(onClick = onThumbsDown)
-                    .semantics { contentDescription = "Gefällt mir nicht" }
             )
         }
     }

@@ -17,10 +17,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
 import android.content.pm.PackageManager
 import android.util.Log
+import com.flintr.tv.R
 import com.flintr.tv.data.local.AudioDecoderMode
 import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.PreferredAudioCodec
@@ -120,7 +122,7 @@ fun SettingsPlayback(
                                 }
                             )
                             Text(
-                                text = "Wirkt nur bei Streams mit mehreren Qualitätsstufen",
+                                text = stringResource(R.string.max_resolution_warning),
                                 fontSize = FontSizes.fontSizeXS,
                                 color = colors.textSecondary
                             )
