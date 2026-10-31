@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.flintr.tv.data.model.RatingEntry
 import com.flintr.tv.ui.theme.FlintRTVTheme
 import com.flintr.tv.ui.theme.appColors
 import org.junit.Rule
@@ -34,6 +35,43 @@ class BadgeAndIndicatorTest {
         }
 
         composeTestRule.onNodeWithContentDescription("Geschaut").assertIsDisplayed()
+    }
+
+    private fun ratingEntry(rating: Int) = RatingEntry(
+        contentType = "movie",
+        contentId = 123,
+        title = "Some Movie",
+        rating = rating,
+        ratedAt = "2026-09-13T10:00:00Z"
+    )
+
+    private fun setRatingUpBadge(rating: RatingEntry?) {
+        composeTestRule.setContent {
+            FlintRTVTheme {
+                RatingUpBadge(rating = rating)
+            }
+        }
+    }
+
+    @Test
+    fun ratingUpBadgeZeigtIconBeiRatingEins() {
+        setRatingUpBadge(ratingEntry(rating = 1))
+
+        composeTestRule.onNodeWithContentDescription("Gefällt dir").assertIsDisplayed()
+    }
+
+    @Test
+    fun ratingUpBadgeFehltBeiRatingNull() {
+        setRatingUpBadge(ratingEntry(rating = 0))
+
+        composeTestRule.onNodeWithContentDescription("Gefällt dir").assertDoesNotExist()
+    }
+
+    @Test
+    fun ratingUpBadgeFehltOhneRating() {
+        setRatingUpBadge(rating = null)
+
+        composeTestRule.onNodeWithContentDescription("Gefällt dir").assertDoesNotExist()
     }
 
     private fun setIndicator(progressPercent: Float, remainingMinutes: Int?) {
