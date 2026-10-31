@@ -3,11 +3,13 @@ package com.flintr.tv.data.local
 import android.content.Context
 import androidx.core.content.edit
 import androidx.test.core.app.ApplicationProvider
+import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.data.model.testLiveStream
 import com.flintr.tv.data.model.testSeries
 import com.flintr.tv.data.model.testVodStream
 import com.squareup.moshi.Moshi
+import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -18,6 +20,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -34,9 +37,14 @@ class DataCacheServicePersistenceTest {
     private val series = listOf(testSeries(name = "Serie", seriesId = 10))
     private val categories = listOf(Category(categoryId = "5", categoryName = "Kategorie"))
 
+    // relaxed mock -> isAvailable=false (Boolean default), ensureLoaded() ist ein No-Op:
+    // Enrichment ist fuer diese generischen Persistenz-Tests nicht der Testgegenstand,
+    // siehe DataCacheServiceEnrichmentTest fuer die Merge-Regeln.
+    private fun newImdbEnrichmentService(): ImdbEnrichmentService = mockk(relaxed = true)
+
     @Before
     fun setUp() {
-        service = DataCacheService(context, moshi, Dispatchers.Unconfined)
+        service = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
         service.clearCache()
     }
 
@@ -246,5 +254,81 @@ class DataCacheServicePersistenceTest {
     fun `loadItemsByIds liefert null ohne Cache`() = runBlocking {
         assertNull(service.loadMoviesByIds(listOf(1)))
         assertNull(service.loadCachedData())
+    }
+
+    private val legacyJsonKeys = listOf(
+        "iptv_cache_channels",
+        "iptv_cache_movies",
+        "iptv_cache_series",
+        "iptv_cache_live_categories",
+        "iptv_cache_vod_categories",
+        "iptv_cache_series_categories"
+    )
+
+    private val cacheFileNames = listOf(
+        "channels.json",
+        "movies.json",
+        "series.json",
+        "live_categories.json",
+        "vod_categories.json",
+        "series_categories.json"
+    )
+
+    private val cacheDir get() = File(context.filesDir, "iptv_cache")
+
+    private fun prefs() = context.getSharedPreferences("iptv_cache_prefs", Context.MODE_PRIVATE)
+
+    @Test
+    fun `init entfernt Legacy-JSON-Keys aus den Prefs`() {
+        prefs().edit {
+            legacyJsonKeys.forEach { putString(it, "[]") }
+            putString("iptv_cache_timestamp", "keep-me")
+        }
+
+        DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+
+        legacyJsonKeys.forEach { assertFalse("$it should be purged", prefs().contains(it)) }
+        assertEquals("keep-me", prefs().getString("iptv_cache_timestamp", null))
+    }
+
+    @Test
+    fun `saveCachedData schreibt Dateien statt Prefs-Strings`() {
+        assertTrue(saveDefaults())
+
+        cacheFileNames.forEach { assertTrue("$it should exist", File(cacheDir, it).isFile) }
+        assertFalse(cacheDir.listFiles().orEmpty().any { it.name.endsWith(".tmp") })
+        legacyJsonKeys.forEach { assertFalse("$it must not be in prefs", prefs().contains(it)) }
+    }
+
+    @Test
+    fun `loadCachedData ohne Cache-Dateien liefert null`() {
+        assertTrue(saveDefaults())
+        // Fresh instance: no memoized data, counts still in prefs, files gone
+        cacheDir.deleteRecursively()
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+
+        assertNull(fresh.loadCachedData())
+    }
+
+    @Test
+    fun `loadCachedData liest Dateien in neuer Instanz`() {
+        assertTrue(saveDefaults())
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+
+        val cached = fresh.loadCachedData()
+
+        assertEquals(listOf(100), cached?.channels?.map { it.streamId })
+        assertEquals(listOf(1), cached?.movies?.map { it.streamId })
+        assertEquals(listOf(10), cached?.series?.map { it.seriesId })
+        assertEquals(listOf("5"), cached?.liveCategories?.map { it.categoryId })
+    }
+
+    @Test
+    fun `clearCache entfernt Dateien und Prefs`() {
+        assertTrue(saveDefaults())
+        service.clearCache()
+
+        assertFalse(cacheDir.exists())
+        assertTrue(prefs().all.isEmpty())
     }
 }
