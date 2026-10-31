@@ -131,7 +131,7 @@ class ImdbEnrichmentService @Inject constructor(
                 openDatabase(dbFile)
             } catch (t: Throwable) {
                 reportHandled("$TAG.ensureLoaded.open", t)
-                dbFile.delete()
+                if (!dbFile.delete()) dbFile.deleteOnExit()
                 null
             }
         }
@@ -196,7 +196,10 @@ class ImdbEnrichmentService @Inject constructor(
     }
 
     private fun deleteLegacyFiles() {
-        LEGACY_FILE_NAMES.forEach { File(context.filesDir, it).delete() }
+        LEGACY_FILE_NAMES.forEach { name ->
+            val file = File(context.filesDir, name)
+            if (!file.delete()) file.deleteOnExit()
+        }
     }
 
     /**
@@ -221,8 +224,8 @@ class ImdbEnrichmentService @Inject constructor(
             writeAtomically(metaFile, metaBytes)
             return true
         } finally {
-            gzFile.delete()
-            unpackedTmp.delete()
+            if (!gzFile.delete()) gzFile.deleteOnExit()
+            if (!unpackedTmp.delete()) unpackedTmp.deleteOnExit()
         }
     }
 
@@ -302,7 +305,7 @@ class ImdbEnrichmentService @Inject constructor(
 
     private fun renameOrThrow(source: File, target: File) {
         if (!source.renameTo(target)) {
-            source.delete()
+            if (!source.delete()) source.deleteOnExit()
             throw IOException("Failed to rename ${source.name} to ${target.name}")
         }
     }

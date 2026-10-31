@@ -1,6 +1,5 @@
 package com.flintr.tv.ui.components.player
 
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
@@ -21,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.annotation.OptIn
+import androidx.core.net.toUri
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
@@ -231,6 +231,7 @@ internal fun applySubtitlesEnabled(exoPlayer: ExoPlayer, enabled: Boolean) {
  * Maps a [VideoResizeMode] to the [AspectRatioFrameLayout] resize-mode constant plus an
  * optional forced aspect ratio (null = use the video's natural ratio).
  */
+@OptIn(UnstableApi::class)
 fun mapResizeMode(mode: VideoResizeMode): Pair<Int, Float?> = when (mode) {
     VideoResizeMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT to null
     VideoResizeMode.ASPECT_16_9 -> AspectRatioFrameLayout.RESIZE_MODE_FIT to (16f / 9f)
@@ -301,7 +302,7 @@ fun buildSubtitleConfigurations(subtitles: List<Subtitle>): List<MediaItem.Subti
             url.endsWith(".srt", ignoreCase = true) -> MimeTypes.APPLICATION_SUBRIP
             else -> MimeTypes.APPLICATION_SUBRIP
         }
-        MediaItem.SubtitleConfiguration.Builder(Uri.parse(url))
+        MediaItem.SubtitleConfiguration.Builder(url.toUri())
             .setMimeType(mimeType)
             .setLanguage(subtitle.lang)
             .build()
@@ -318,6 +319,7 @@ fun buildSubtitleConfigurations(subtitles: List<Subtitle>): List<MediaItem.Subti
  *   so the caller can stop re-applying the preferred-language auto-selection for this stream
  */
 @OptIn(UnstableApi::class)
+@Suppress("S3776") // Composable assembles the full settings dialog; already split into sub-selectors, further splitting risks the tested settings flow
 @Composable
 fun VideoSettingsDialog(
     onDismiss: () -> Unit,

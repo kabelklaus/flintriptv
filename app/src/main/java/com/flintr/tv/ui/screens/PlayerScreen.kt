@@ -347,31 +347,22 @@ private suspend fun restoreWatchProgress(
 /**
  * Saves watch progress periodically
  */
-private suspend fun saveWatchProgress(
-    exoPlayer: ExoPlayer,
-    contentType: String,
-    streamId: Int?,
-    seriesId: Int?,
-    episodeId: Int?,
-    title: String?,
-    watchProgressService: WatchProgressService,
-    playbackSettingsRepository: PlaybackSettingsRepository
-) {
-    if (!playbackSettingsRepository.isRememberPositionEnabled()) return
-    if (contentType == "live") return
-    if (contentType == "movie" && streamId == null) return
-    if (contentType == "series" && (seriesId == null || episodeId == null)) return
+private suspend fun saveWatchProgress(params: PlayerProgressSaveParams) {
+    if (!params.playbackSettingsRepository.isRememberPositionEnabled()) return
+    if (params.contentType == "live") return
+    if (params.contentType == "movie" && params.streamId == null) return
+    if (params.contentType == "series" && (params.seriesId == null || params.episodeId == null)) return
 
-    val position = exoPlayer.currentPosition
-    val duration = exoPlayer.duration
-    
+    val position = params.exoPlayer.currentPosition
+    val duration = params.exoPlayer.duration
+
     if (position > 0 && duration > 0) {
-        val titleToSave = title ?: "Unknown"
-        watchProgressService.saveProgress(
-            contentType = contentType,
-            streamId = streamId,
-            seriesId = seriesId,
-            episodeId = episodeId,
+        val titleToSave = params.title ?: "Unknown"
+        params.watchProgressService.saveProgress(
+            contentType = params.contentType,
+            streamId = params.streamId,
+            seriesId = params.seriesId,
+            episodeId = params.episodeId,
             position = position,
             duration = duration,
             title = titleToSave
@@ -936,16 +927,7 @@ private fun PlayerProgressSaveEffect(
         }
         while (true) {
             delay(10000) // 10 seconds
-            saveWatchProgress(
-                exoPlayer = params.exoPlayer,
-                contentType = params.contentType,
-                streamId = params.streamId,
-                seriesId = params.seriesId,
-                episodeId = params.episodeId,
-                title = params.title,
-                watchProgressService = params.watchProgressService,
-                playbackSettingsRepository = params.playbackSettingsRepository
-            )
+            saveWatchProgress(params)
         }
     }
 }
@@ -1353,14 +1335,16 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 // Save watch progress for non-live content
                 coroutineScope.launch {
                     saveWatchProgress(
-                        exoPlayer = exoPlayer,
-                        contentType = contentType,
-                        streamId = streamId,
-                        seriesId = seriesId,
-                        episodeId = episodeId,
-                        title = currentTitle,
-                        watchProgressService = watchProgressService,
-                        playbackSettingsRepository = playbackSettingsRepository
+                        PlayerProgressSaveParams(
+                            exoPlayer = exoPlayer,
+                            contentType = contentType,
+                            streamId = streamId,
+                            seriesId = seriesId,
+                            episodeId = episodeId,
+                            title = currentTitle,
+                            watchProgressService = watchProgressService,
+                            playbackSettingsRepository = playbackSettingsRepository
+                        )
                     )
                 }
             }
@@ -1528,14 +1512,16 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         onCompletionTriggered = { state.hasTriggeredCompletion = true },
         saveProgress = {
             saveWatchProgress(
-                exoPlayer = exoPlayer,
-                contentType = contentType,
-                streamId = streamId,
-                seriesId = seriesId,
-                episodeId = episodeId,
-                title = title,
-                watchProgressService = watchProgressService,
-                playbackSettingsRepository = playbackSettingsRepository
+                PlayerProgressSaveParams(
+                    exoPlayer = exoPlayer,
+                    contentType = contentType,
+                    streamId = streamId,
+                    seriesId = seriesId,
+                    episodeId = episodeId,
+                    title = title,
+                    watchProgressService = watchProgressService,
+                    playbackSettingsRepository = playbackSettingsRepository
+                )
             )
         }
     )
@@ -1625,11 +1611,9 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 // itself (PlayerViewModel.startAutoPlayCountdown). If disabled, the button
                 // stays Visible so the user can still advance manually.
                 val currentState = viewModel.nextEpisodeState.value
-                if (currentState is NextEpisodeState.Visible) {
-                    if (playbackSettingsRepository.isAutoPlayNextEnabled()) {
-                        viewModel.triggerAutoPlayNext()
-                    }
-                } else {
+                if (currentState is NextEpisodeState.Visible && playbackSettingsRepository.isAutoPlayNextEnabled()) {
+                    viewModel.triggerAutoPlayNext()
+                } else if (currentState !is NextEpisodeState.Visible) {
                     // Series complete: last episode ended, no auto-play pending -
                     // offer the rating prompt instead of leaving the player idle
                     if (!viewModel.hasRatedInSession(contentType, currentContentId) &&
@@ -1659,14 +1643,16 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 // Save current progress before navigating
                 coroutineScope.launch {
                     saveWatchProgress(
-                        exoPlayer = exoPlayer,
-                        contentType = contentType,
-                        streamId = streamId,
-                        seriesId = seriesId,
-                        episodeId = episodeId,
-                        title = title,
-                        watchProgressService = watchProgressService,
-                        playbackSettingsRepository = playbackSettingsRepository
+                        PlayerProgressSaveParams(
+                            exoPlayer = exoPlayer,
+                            contentType = contentType,
+                            streamId = streamId,
+                            seriesId = seriesId,
+                            episodeId = episodeId,
+                            title = title,
+                            watchProgressService = watchProgressService,
+                            playbackSettingsRepository = playbackSettingsRepository
+                        )
                     )
                 }
                 // Navigate to next episode

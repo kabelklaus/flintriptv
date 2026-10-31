@@ -125,6 +125,24 @@ internal fun formatFinishTimeText(
 }
 
 /**
+ * Ticks once per minute boundary, for sampling [formatFinishTimeText]'s "now" while paused
+ * without a per-frame recomposition.
+ */
+@Composable
+private fun rememberMinuteTickMillis(): Long {
+    var minuteTickMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            val delayToNextMinute = 60_000L - (now % 60_000L)
+            delay(delayToNextMinute)
+            minuteTickMillis = System.currentTimeMillis()
+        }
+    }
+    return minuteTickMillis
+}
+
+/**
  * Custom player controls with progress bar, navigation buttons, time display, and utility buttons
  * @param state Player state information
  * @param callbacks Player control callbacks
@@ -136,6 +154,7 @@ internal fun formatFinishTimeText(
  * @param showRatingButtons Whether the thumbs up/down buttons are rendered and focusable
  * @param modifier Modifier for the controls
  */
+@Suppress("S107") // groups state/callbacks/utilityCallbacks already bundle related params; splitting further risks the tested player controls
 @Composable
 fun CustomPlayerControls(
     state: PlayerState,
@@ -143,9 +162,9 @@ fun CustomPlayerControls(
     utilityCallbacks: PlayerUtilityCallbacks,
     contentType: String,
     focusedButton: FocusedButton?,
+    modifier: Modifier = Modifier,
     ratedThumb: Int? = null,
-    showRatingButtons: Boolean = true,
-    modifier: Modifier = Modifier
+    showRatingButtons: Boolean = true
 ) {
     val focusRequesters = remember {
         mapOf(
@@ -165,16 +184,7 @@ fun CustomPlayerControls(
         focusRequesters[focusedButton]?.requestFocus()
     }
 
-    var minuteTickMillis by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            val now = System.currentTimeMillis()
-            val delayToNextMinute = 60_000L - (now % 60_000L)
-            delay(delayToNextMinute)
-            minuteTickMillis = System.currentTimeMillis()
-        }
-    }
-
+    val minuteTickMillis = rememberMinuteTickMillis()
     val sampledNowMillis = if (state.isPlaying) System.currentTimeMillis() else minuteTickMillis
     val finishTime = remember(contentType, sampledNowMillis, state.currentPosition, state.duration) {
         formatFinishTimeText(
@@ -296,6 +306,27 @@ fun CustomPlayerControls(
 /**
  * Creates navigation handlers for a button based on its position and context
  */
+/** Target of THUMBS_UP's left-navigation and DEBUG's (when ratings are hidden) left-navigation fallback. */
+private fun nextEpisodeOrNext(hasNextEpisode: Boolean): FocusedButton =
+    if (hasNextEpisode) FocusedButton.NEXT_EPISODE else FocusedButton.NEXT
+
+/** Target of DEBUG's left-navigation: skip to whichever of ratings/next-episode/next is actually shown. */
+private fun debugLeftTarget(hasNextEpisode: Boolean, showRatingButtons: Boolean): FocusedButton = when {
+    showRatingButtons -> FocusedButton.THUMBS_DOWN
+    else -> nextEpisodeOrNext(hasNextEpisode)
+}
+
+/** Target of NEXT's right-navigation: skip to whichever of next-episode/ratings/debug is actually shown. */
+private fun nextRightTarget(hasNextEpisode: Boolean, showRatingButtons: Boolean): FocusedButton = when {
+    hasNextEpisode -> FocusedButton.NEXT_EPISODE
+    showRatingButtons -> FocusedButton.THUMBS_UP
+    else -> FocusedButton.DEBUG
+}
+
+/** Target of NEXT_EPISODE's right-navigation: skip to ratings if shown, else debug. */
+private fun afterNextEpisodeRightTarget(showRatingButtons: Boolean): FocusedButton =
+    if (showRatingButtons) FocusedButton.THUMBS_UP else FocusedButton.DEBUG
+
 private fun createNavigationHandler(
     button: FocusedButton,
     hasNextEpisode: Boolean,
@@ -307,41 +338,17 @@ private fun createNavigationHandler(
         FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.PREVIOUS) }
         FocusedButton.NEXT -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
         FocusedButton.NEXT_EPISODE -> { -> onFocusChange(FocusedButton.NEXT) }
-        FocusedButton.THUMBS_UP -> { ->
-            onFocusChange(if (hasNextEpisode) FocusedButton.NEXT_EPISODE else FocusedButton.NEXT)
-        }
+        FocusedButton.THUMBS_UP -> { -> onFocusChange(nextEpisodeOrNext(hasNextEpisode)) }
         FocusedButton.THUMBS_DOWN -> { -> onFocusChange(FocusedButton.THUMBS_UP) }
-        FocusedButton.DEBUG -> { ->
-            onFocusChange(
-                if (showRatingButtons) {
-                    FocusedButton.THUMBS_DOWN
-                } else if (hasNextEpisode) {
-                    FocusedButton.NEXT_EPISODE
-                } else {
-                    FocusedButton.NEXT
-                }
-            )
-        }
+        FocusedButton.DEBUG -> { -> onFocusChange(debugLeftTarget(hasNextEpisode, showRatingButtons)) }
         FocusedButton.SETTINGS -> { -> onFocusChange(FocusedButton.DEBUG) }
     }
 
     val onNavigateRight: () -> Unit = when (button) {
         FocusedButton.PREVIOUS -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
         FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.NEXT) }
-        FocusedButton.NEXT -> { ->
-            onFocusChange(
-                if (hasNextEpisode) {
-                    FocusedButton.NEXT_EPISODE
-                } else if (showRatingButtons) {
-                    FocusedButton.THUMBS_UP
-                } else {
-                    FocusedButton.DEBUG
-                }
-            )
-        }
-        FocusedButton.NEXT_EPISODE -> { ->
-            onFocusChange(if (showRatingButtons) FocusedButton.THUMBS_UP else FocusedButton.DEBUG)
-        }
+        FocusedButton.NEXT -> { -> onFocusChange(nextRightTarget(hasNextEpisode, showRatingButtons)) }
+        FocusedButton.NEXT_EPISODE -> { -> onFocusChange(afterNextEpisodeRightTarget(showRatingButtons)) }
         FocusedButton.THUMBS_UP -> { -> onFocusChange(FocusedButton.THUMBS_DOWN) }
         FocusedButton.THUMBS_DOWN -> { -> onFocusChange(FocusedButton.DEBUG) }
         FocusedButton.DEBUG -> { -> onFocusChange(FocusedButton.SETTINGS) }

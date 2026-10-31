@@ -550,7 +550,7 @@ class MainViewModel @Inject constructor(
      * instead of falling back to the series' own backend category.
      */
     fun peekPendingNavigationState(): NavigationStateBeforePlayer? =
-        savedStateHandle.get(KEY_NAVIGATION_STATE)
+        savedStateHandle[KEY_NAVIGATION_STATE]
 
     /**
      * Clear the pending navigation restore state.

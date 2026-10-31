@@ -250,11 +250,11 @@ class DataCacheService @Inject constructor(
         try {
             tmp.sink().buffer().use { sink -> adapter.toJson(sink, items) }
         } catch (t: Throwable) {
-            tmp.delete()
+            if (!tmp.delete()) tmp.deleteOnExit()
             throw t
         }
         if (!tmp.renameTo(target)) {
-            tmp.delete()
+            if (!tmp.delete()) tmp.deleteOnExit()
             throw IOException("rename failed: $fileName")
         }
     }

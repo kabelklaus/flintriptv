@@ -130,7 +130,4 @@
 
     <!-- Settings Playback Screen -->
     <string name="max_resolution_warning">Wirkt nur bei Streams mit mehreren Qualitätsstufen</string>
-
-    <!-- Video Settings Dialog: not-yet-wired mock controls -->
-    <string name="video_settings_coming_soon">Demnächst verfügbar</string>
 </resources>
