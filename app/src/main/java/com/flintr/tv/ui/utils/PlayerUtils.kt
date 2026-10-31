@@ -14,6 +14,8 @@ enum class FocusedButton {
     PLAY_PAUSE,
     NEXT,
     NEXT_EPISODE,
+    THUMBS_UP,
+    THUMBS_DOWN,
     DEBUG,
     SETTINGS
 }

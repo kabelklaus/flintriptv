@@ -24,7 +24,12 @@ import android.util.Log
 import com.flintr.tv.data.local.AudioDecoderMode
 import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.PreferredAudioCodec
+import com.flintr.tv.data.model.AudioLanguage
+import com.flintr.tv.data.model.SubtitleLanguage
+import com.flintr.tv.data.model.VideoQuality
+import com.flintr.tv.data.model.VideoResizeMode
 import com.flintr.tv.ui.theme.Dimensions
+import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
@@ -47,15 +52,13 @@ fun SettingsPlayback(
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
     }
 
-    // Mock state for not-yet-persisted settings
-    var videoQuality by remember { mutableStateOf(VideoQuality.Auto) }
-    var hardwareDecoder by remember { mutableStateOf("Hardware") }
-    var outputFormat by remember { mutableStateOf("Auto") }
-    var autoPlay by remember { mutableStateOf(false) }
-    var rememberPosition by remember { mutableStateOf(true) }
-    var subtitlesEnabled by remember { mutableStateOf(false) }
-    var subtitleLanguage by remember { mutableStateOf(SubtitleLanguage.Deutsch) }
-    var audioLanguage by remember { mutableStateOf(AudioLanguage.Deutsch) }
+    var videoQuality by remember { mutableStateOf(playbackSettingsRepository.getVideoQuality()) }
+    var resizeMode by remember { mutableStateOf(playbackSettingsRepository.getVideoResizeMode()) }
+    var autoPlay by remember { mutableStateOf(playbackSettingsRepository.isAutoPlayNextEnabled()) }
+    var rememberPosition by remember { mutableStateOf(playbackSettingsRepository.isRememberPositionEnabled()) }
+    var subtitlesEnabled by remember { mutableStateOf(playbackSettingsRepository.getSubtitlesEnabled()) }
+    var subtitleLanguage by remember { mutableStateOf(playbackSettingsRepository.getPreferredSubtitleLanguage()) }
+    var audioLanguage by remember { mutableStateOf(playbackSettingsRepository.getPreferredAudioLanguage()) }
     
     // Focus requesters
     val qualityFocusRequester = remember { FocusRequester() }
@@ -99,45 +102,59 @@ fun SettingsPlayback(
                     Column(
                         verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
                     ) {
-                        // Video Quality Selection
-                        VideoQualitySelector(
-                            selectedQuality = videoQuality,
-                            onQualitySelected = { videoQuality = it },
-                            colors = colors,
-                            focusRequester = qualityFocusRequester,
-                            onBack = {
-                                Log.i("SettingsNav", "🔙 BACK: SettingsPlayback -> SettingsMainScreen (via D-Pad Left)")
-                                onBack()
-                            }
-                        )
-                        
-                        // Hardware Decoder (read-only)
-                        ReadOnlySetting(
-                            label = "Hardware-Decoder",
-                            value = hardwareDecoder,
+                        // Max video resolution (upper bound, no real downscaling guarantee)
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXXS)
+                        ) {
+                            VideoQualitySelector(
+                                selectedQuality = videoQuality,
+                                onQualitySelected = {
+                                    videoQuality = it
+                                    playbackSettingsRepository.setVideoQuality(it)
+                                },
+                                colors = colors,
+                                focusRequester = qualityFocusRequester,
+                                onBack = {
+                                    Log.i("SettingsNav", "🔙 BACK: SettingsPlayback -> SettingsMainScreen (via D-Pad Left)")
+                                    onBack()
+                                }
+                            )
+                            Text(
+                                text = "Wirkt nur bei Streams mit mehreren Qualitätsstufen",
+                                fontSize = FontSizes.fontSizeXS,
+                                color = colors.textSecondary
+                            )
+                        }
+
+                        // Aspect ratio / resize mode
+                        ResizeModeSelector(
+                            selectedMode = resizeMode,
+                            onModeSelected = {
+                                resizeMode = it
+                                playbackSettingsRepository.setVideoResizeMode(it)
+                            },
                             colors = colors
                         )
-                        
-                        // Output Format (read-only)
-                        ReadOnlySetting(
-                            label = "Output-Format",
-                            value = outputFormat,
-                            colors = colors
-                        )
-                        
+
                         // Auto Play Switch
                         SwitchSetting(
                             label = "Automatisch abspielen",
                             checked = autoPlay,
-                            onCheckedChange = { autoPlay = it },
+                            onCheckedChange = {
+                                autoPlay = it
+                                playbackSettingsRepository.setAutoPlayNextEnabled(it)
+                            },
                             colors = colors
                         )
-                        
+
                         // Remember Position Switch
                         SwitchSetting(
                             label = "Position merken",
                             checked = rememberPosition,
-                            onCheckedChange = { rememberPosition = it },
+                            onCheckedChange = {
+                                rememberPosition = it
+                                playbackSettingsRepository.setRememberPositionEnabled(it)
+                            },
                             colors = colors
                         )
                     }
@@ -156,15 +173,21 @@ fun SettingsPlayback(
                         SwitchSetting(
                             label = "Untertitel aktivieren",
                             checked = subtitlesEnabled,
-                            onCheckedChange = { subtitlesEnabled = it },
+                            onCheckedChange = {
+                                subtitlesEnabled = it
+                                playbackSettingsRepository.setSubtitlesEnabled(it)
+                            },
                             colors = colors
                         )
-                        
+
                         // Subtitle Language Selection
                         if (subtitlesEnabled) {
                             SubtitleLanguageSelector(
                                 selectedLanguage = subtitleLanguage,
-                                onLanguageSelected = { subtitleLanguage = it },
+                                onLanguageSelected = {
+                                    subtitleLanguage = it
+                                    playbackSettingsRepository.setPreferredSubtitleLanguage(it)
+                                },
                                 colors = colors
                             )
                         }
@@ -215,7 +238,10 @@ fun SettingsPlayback(
                         )
                         AudioLanguageSelector(
                             selectedLanguage = audioLanguage,
-                            onLanguageSelected = { audioLanguage = it },
+                            onLanguageSelected = {
+                                audioLanguage = it
+                                playbackSettingsRepository.setPreferredAudioLanguage(it)
+                            },
                             colors = colors
                         )
                     }
@@ -262,7 +288,7 @@ fun VideoQualitySelector(
             value = selectedQuality.displayName,
             onValueChange = {},
             readOnly = true,
-            label = { Text("Videoqualität") },
+            label = { Text("Max. Videoauflösung") },
             modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 Icon(
@@ -299,6 +325,78 @@ fun VideoQualitySelector(
                     },
                     colors = MenuDefaults.itemColors(
                         textColor = if (selectedQuality == quality) colors.accentColor else colors.textPrimary
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ResizeModeSelector(
+    selectedMode: VideoResizeMode,
+    onModeSelected: (VideoResizeMode) -> Unit,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+    var isFocused by remember { mutableStateOf(false) }
+
+    val borderColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isFocused) colors.accentColor else colors.cardBorder,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
+        label = "borderColor"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { focusState ->
+                isFocused = focusState.isFocused
+            }
+            .focusable()
+            .onDpadCenter { isExpanded = !isExpanded }
+    ) {
+        OutlinedTextField(
+            value = selectedMode.displayName,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Seitenverhältnis") },
+            modifier = Modifier.fillMaxWidth(),
+            trailingIcon = {
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null
+                )
+            },
+            shape = RoundedCornerShape(Dimensions.radiusMD),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = borderColor,
+                unfocusedBorderColor = borderColor,
+                focusedLabelColor = colors.textPrimary,
+                unfocusedLabelColor = colors.textSecondary,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary,
+                focusedTrailingIconColor = colors.accentColor,
+                unfocusedTrailingIconColor = colors.iconColor
+            )
+        )
+
+        DropdownMenu(
+            expanded = isExpanded,
+            onDismissRequest = { isExpanded = false },
+            modifier = Modifier
+                .background(colors.bgCard)
+                .border(1.dp, colors.cardBorder, RoundedCornerShape(Dimensions.radiusMD))
+        ) {
+            VideoResizeMode.entries.forEach { mode ->
+                DropdownMenuItem(
+                    text = { Text(mode.displayName) },
+                    onClick = {
+                        onModeSelected(mode)
+                        isExpanded = false
+                    },
+                    colors = MenuDefaults.itemColors(
+                        textColor = if (selectedMode == mode) colors.accentColor else colors.textPrimary
                     )
                 )
             }
@@ -603,54 +701,4 @@ fun AudioLanguageSelector(
     }
 }
 
-@Composable
-fun ReadOnlySetting(
-    label: String,
-    value: String,
-    colors: com.flintr.tv.ui.theme.AppColors
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = {},
-        readOnly = true,
-        label = { Text(label) },
-        modifier = Modifier.fillMaxWidth(),
-        enabled = false,
-        shape = RoundedCornerShape(Dimensions.radiusMD),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = colors.cardBorder,
-            unfocusedBorderColor = colors.cardBorder,
-            focusedLabelColor = colors.textSecondary,
-            unfocusedLabelColor = colors.textSecondary,
-            focusedTextColor = colors.textSecondary,
-            unfocusedTextColor = colors.textSecondary,
-            disabledTextColor = colors.textSecondary,
-            disabledBorderColor = colors.cardBorder,
-            disabledLabelColor = colors.textSecondary
-        )
-    )
-}
-
-enum class VideoQuality(val displayName: String) {
-    Auto("Auto"),
-    Quality1080p("1080p"),
-    Quality720p("720p"),
-    Quality480p("480p"),
-    Quality360p("360p")
-}
-
-enum class SubtitleLanguage(val displayName: String) {
-    Deutsch("Deutsch"),
-    English("English"),
-    Francais("Français"),
-    Espanol("Español"),
-    Aus("Aus")
-}
-
-enum class AudioLanguage(val displayName: String) {
-    Deutsch("Deutsch"),
-    English("English"),
-    Francais("Français"),
-    Espanol("Español")
-}
 
