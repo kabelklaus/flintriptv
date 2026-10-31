@@ -5,6 +5,7 @@ import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.Favorite
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.FriendEntry
+import com.flintr.tv.data.model.RatingEntry
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.WatchedItem
 import com.google.android.gms.tasks.Task
@@ -14,6 +15,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.flintr.tv.data.model.toFirestoreMap
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
@@ -23,15 +25,20 @@ import com.flintr.tv.utils.error.reportWarning
 
 @Singleton
 class UserRepository @Inject constructor() {
-    
+
     private val firestore = FirebaseFirestore.getInstance()
     private val collectionName = "users"
-    
+
     companion object {
         private const val TAG = "UserRepository"
         private const val ERROR_USERNAME_BLANK = "Username cannot be blank"
         private const val ERROR_FRIEND_ALREADY_EXISTS = "Friend already exists"
         private const val ERROR_CANNOT_ADD_SELF = "Cannot add yourself as friend"
+
+        // Firestore Tasks have no built-in timeout: if the underlying transport never
+        // resolves the Task (e.g. Play Services rejects the calling app with
+        // DEVELOPER_ERROR), .await() suspends forever with no error and no log line.
+        private const val FIRESTORE_TIMEOUT_MS = 15_000L
     }
     
     /**
@@ -454,6 +461,124 @@ class UserRepository @Inject constructor() {
         }
     }
     
+    /**
+     * Saves (upserts) a thumbs up/down rating for a piece of content atomically using a
+     * Firestore transaction. Storage: `users/{username}.ratings` = Map<contentKey, RatingEntry>,
+     * where contentKey is "movie_{id}" or "series_{id}". Rating the same content again
+     * overwrites the previous entry for that key.
+     *
+     * @param username The username to save the rating for
+     * @param entry The rating entry to upsert
+     * @return Result<Unit> - Success if saved, Failure with exception otherwise
+     */
+    suspend fun saveRating(
+        username: String,
+        entry: RatingEntry
+    ): Result<Unit> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+
+        val userDocRef = firestore.collection(collectionName).document(username)
+
+        return try {
+            firestore.runTransaction { transaction ->
+                val snapshot = transaction[userDocRef]
+
+                @Suppress("UNCHECKED_CAST")
+                val ratingsData = snapshot["ratings"] as? Map<String, Map<String, Any?>> ?: emptyMap()
+
+                val updatedRatings = upsertRating(ratingsData, entry)
+                transaction.set(userDocRef, mapOf("ratings" to updatedRatings), SetOptions.merge())
+            }.await()
+
+            Log.d(TAG, "Rating saved atomically")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            reportError(TAG, "Failed to save rating", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Loads a single rating entry for a piece of content from Firestore.
+     *
+     * @param username The username to load the rating for
+     * @param contentKey The content key, e.g. "movie_123" or "series_456"
+     * @return Result<RatingEntry?> - Success with the entry (or null if not rated), Failure with exception otherwise
+     */
+    suspend fun getRating(
+        username: String,
+        contentKey: String
+    ): Result<RatingEntry?> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+
+        return try {
+            val documentSnapshot: DocumentSnapshot = firestore.collection(collectionName)
+                .document(username)
+                .get()
+                .await()
+
+            if (!documentSnapshot.exists()) {
+                Log.d(TAG, "User document does not exist, returning null rating")
+                return Result.success(null)
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            val ratingsData = documentSnapshot["ratings"] as? Map<String, Map<String, Any?>>
+            val ratingMap = ratingsData?.get(contentKey)
+            val result = ratingMap?.let(::parseRatingEntry)
+
+            Log.d(TAG, "Rating loaded, found: ${result != null}")
+            Result.success(result)
+        } catch (e: Exception) {
+            reportError(TAG, "Failed to get rating", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Loads all rating entries for a user from Firestore, keyed by content key
+     * (e.g. "movie_123" or "series_456"). Read-only bulk variant of [getRating].
+     *
+     * @param username The username to load ratings for
+     * @return Result<Map<String, RatingEntry>> - Success with all ratings (empty map if
+     * none), Failure with exception otherwise
+     */
+    suspend fun loadAllRatings(
+        username: String
+    ): Result<Map<String, RatingEntry>> {
+        if (username.isBlank()) {
+            return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
+        }
+
+        return try {
+            val documentSnapshot: DocumentSnapshot = firestore.collection(collectionName)
+                .document(username)
+                .get()
+                .await()
+
+            if (!documentSnapshot.exists()) {
+                Log.d(TAG, "User document does not exist, returning empty ratings map")
+                return Result.success(emptyMap())
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            val ratingsData = documentSnapshot["ratings"] as? Map<String, Map<String, Any?>> ?: emptyMap()
+            val result = ratingsData.mapNotNull { (key, ratingMap) ->
+                parseRatingEntry(ratingMap)?.let { key to it }
+            }.toMap()
+
+            Log.d(TAG, "All ratings loaded, count: ${result.size}")
+            Result.success(result)
+        } catch (e: Exception) {
+            reportError(TAG, "Failed to load all ratings", e)
+            Result.failure(e)
+        }
+    }
+
     /**
      * Adds a favorite atomically using Firestore transaction to prevent race conditions.
      * 
@@ -1015,16 +1140,21 @@ class UserRepository @Inject constructor() {
     }
     
     /**
-     * Extension function to convert Firebase Task to suspend function
+     * Extension function to convert Firebase Task to suspend function.
+     * Bounded by [FIRESTORE_TIMEOUT_MS] so every call site (all go through this single
+     * extension) surfaces a Result.failure instead of hanging forever when Firestore's
+     * underlying transport never resolves the Task.
      */
     private suspend fun <T> Task<T>.await(): T {
-        return suspendCancellableCoroutine { cont ->
-            addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    cont.resume(task.result)
-                } else {
-                    val exception = task.exception ?: Exception("Unknown error")
-                    cont.resumeWithException(exception)
+        return withTimeout(FIRESTORE_TIMEOUT_MS) {
+            suspendCancellableCoroutine { cont ->
+                addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        cont.resume(task.result)
+                    } else {
+                        val exception = task.exception ?: Exception("Unknown error")
+                        cont.resumeWithException(exception)
+                    }
                 }
             }
         }
@@ -1045,5 +1175,49 @@ class UserRepository @Inject constructor() {
             reportWarning(TAG, "Error parsing friend from Firestore", e)
             null
         }
+    }
+}
+
+/**
+ * Builds the Firestore map key for a rating: "movie_{id}" or "series_{id}".
+ * Top-level (not a class member) so it can be unit-tested without instantiating
+ * UserRepository, whose constructor eagerly calls FirebaseFirestore.getInstance().
+ */
+internal fun buildRatingContentKey(contentType: String, contentId: Int): String =
+    "${contentType}_$contentId"
+
+/**
+ * Computes the ratings map after upserting [entry]; the same content key overwrites
+ * a previous entry. Pure function used inside saveRating()'s Firestore transaction.
+ */
+internal fun upsertRating(
+    existingRatings: Map<String, Map<String, Any?>>,
+    entry: RatingEntry
+): Map<String, Map<String, Any?>> {
+    val key = buildRatingContentKey(entry.contentType, entry.contentId)
+    return existingRatings + (key to entry.toFirestoreMap())
+}
+
+/**
+ * Parses a single Firestore rating map back into a [RatingEntry]; returns null if a
+ * required field is missing or malformed.
+ */
+internal fun parseRatingEntry(ratingMap: Map<String, Any?>): RatingEntry? {
+    return try {
+        val contentType = ratingMap["contentType"] as? String ?: return null
+        val contentId = (ratingMap["contentId"] as? Number)?.toInt() ?: return null
+        val title = ratingMap["title"] as? String
+        val rating = (ratingMap["rating"] as? Number)?.toInt() ?: return null
+        val ratedAt = ratingMap["ratedAt"] as? String ?: return null
+
+        RatingEntry(
+            contentType = contentType,
+            contentId = contentId,
+            title = title,
+            rating = rating,
+            ratedAt = ratedAt
+        )
+    } catch (e: Exception) {
+        null
     }
 }

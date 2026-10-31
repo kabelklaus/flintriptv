@@ -82,6 +82,7 @@
     <string name="favorites">Favoriten</string>
     <string name="new_category">Neu</string>
     <string name="in_progress_category">Angefangene Inhalte</string>
+    <string name="recommended_for_you">Für dich</string>
     
     <!-- Settings General Screen -->
     <string name="language">Sprache</string>
@@ -104,7 +105,10 @@
     
     <!-- Watched Badge -->
     <string name="watched_badge_description">Geschaut</string>
-    
+
+    <!-- Rating Up Badge -->
+    <string name="rating_up_badge_description">Gefällt dir</string>
+
     <!-- Watch Progress -->
     <string name="remaining_minutes">%1$dm verbleibend</string>
     <string name="finish_time_at">Fertig um %1$s</string>
