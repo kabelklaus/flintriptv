@@ -3,9 +3,16 @@ package com.flintr.tv.ui.components.player
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
+import com.flintr.tv.ui.utils.safeRequestFocus
+
+private const val LOG_TAG_PLAYER_ERROR_DIALOG = "PlayerErrorDialog"
 
 /**
  * Error dialog shown when playback fails
@@ -21,6 +28,22 @@ fun PlayerErrorDialog(
     modifier: Modifier = Modifier
 ) {
     errorMessage?.let { message ->
+        val retryFocusRequester = remember { FocusRequester() }
+        val dismissFocusRequester = remember { FocusRequester() }
+
+        LaunchedEffect(Unit) {
+            val focused = retryFocusRequester.safeRequestFocus(
+                LOG_TAG_PLAYER_ERROR_DIALOG,
+                "RETRY_BUTTON"
+            )
+            if (!focused) {
+                dismissFocusRequester.safeRequestFocus(
+                    LOG_TAG_PLAYER_ERROR_DIALOG,
+                    "DISMISS_BUTTON_FALLBACK"
+                )
+            }
+        }
+
         Card(
             modifier = modifier
                 .padding(16.dp),
@@ -47,10 +70,16 @@ fun PlayerErrorDialog(
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(onClick = onRetry) {
+                    Button(
+                        onClick = onRetry,
+                        modifier = Modifier.focusRequester(retryFocusRequester)
+                    ) {
                         Text("Erneut versuchen")
                     }
-                    Button(onClick = onDismiss) {
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.focusRequester(dismissFocusRequester)
+                    ) {
                         Text("Zurück")
                     }
                 }

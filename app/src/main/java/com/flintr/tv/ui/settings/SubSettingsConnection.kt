@@ -121,10 +121,13 @@ fun SettingsConnection(
                         serverUrlFocusRequester = serverUrlFocusRequester,
                         playlistNameFocusRequester = playlistNameFocusRequester,
                         colors = colors,
-                        onBack = onBack
+                        onBack = onBack,
+                        onServerUrlDpadDown = { playlistNameFocusRequester.requestFocus() },
+                        onPlaylistNameDpadUp = { serverUrlFocusRequester.requestFocus() },
+                        onPlaylistNameDpadDown = { usernameFocusRequester.requestFocus() }
                     )
                 )
-                
+
                 UserSection(
                     config = UserSectionConfig(
                         username = username,
@@ -133,7 +136,11 @@ fun SettingsConnection(
                         onPasswordChange = { password = it },
                         usernameFocusRequester = usernameFocusRequester,
                         passwordFocusRequester = passwordFocusRequester,
-                        colors = colors
+                        colors = colors,
+                        onUsernameDpadUp = { playlistNameFocusRequester.requestFocus() },
+                        onUsernameDpadDown = { passwordFocusRequester.requestFocus() },
+                        onPasswordDpadUp = { usernameFocusRequester.requestFocus() },
+                        onPasswordDpadDown = { testButtonFocusRequester.requestFocus() }
                     )
                 )
                 
@@ -174,7 +181,10 @@ private data class ServerSectionConfig(
     val serverUrlFocusRequester: FocusRequester,
     val playlistNameFocusRequester: FocusRequester,
     val colors: com.flintr.tv.ui.theme.AppColors,
-    val onBack: () -> Unit
+    val onBack: () -> Unit,
+    val onServerUrlDpadDown: () -> Unit,
+    val onPlaylistNameDpadUp: () -> Unit,
+    val onPlaylistNameDpadDown: () -> Unit
 )
 
 @Composable
@@ -201,10 +211,11 @@ private fun ServerSection(
                     onDpadLeft = {
                         Log.i("SettingsNav", "🔙 BACK: SettingsConnection -> SettingsMainScreen (via D-Pad Left)")
                         config.onBack()
-                    }
+                    },
+                    onDpadDown = config.onServerUrlDpadDown
                 )
             )
-            
+
             ConnectionTextField(
                 config = ConnectionTextFieldConfig(
                     value = config.playlistName,
@@ -213,7 +224,9 @@ private fun ServerSection(
                     placeholder = stringResource(R.string.playlist_name_placeholder),
                     leadingIcon = Icons.Default.PlaylistPlay,
                     focusRequester = config.playlistNameFocusRequester,
-                    colors = config.colors
+                    colors = config.colors,
+                    onDpadUp = config.onPlaylistNameDpadUp,
+                    onDpadDown = config.onPlaylistNameDpadDown
                 )
             )
         }
@@ -227,7 +240,11 @@ private data class UserSectionConfig(
     val onPasswordChange: (String) -> Unit,
     val usernameFocusRequester: FocusRequester,
     val passwordFocusRequester: FocusRequester,
-    val colors: com.flintr.tv.ui.theme.AppColors
+    val colors: com.flintr.tv.ui.theme.AppColors,
+    val onUsernameDpadUp: () -> Unit,
+    val onUsernameDpadDown: () -> Unit,
+    val onPasswordDpadUp: () -> Unit,
+    val onPasswordDpadDown: () -> Unit
 )
 
 @Composable
@@ -250,15 +267,19 @@ private fun UserSection(
                     placeholder = stringResource(R.string.your_username),
                     leadingIcon = Icons.Default.Person,
                     focusRequester = config.usernameFocusRequester,
-                    colors = config.colors
+                    colors = config.colors,
+                    onDpadUp = config.onUsernameDpadUp,
+                    onDpadDown = config.onUsernameDpadDown
                 )
             )
-            
+
             ConnectionPasswordField(
                 value = config.password,
                 onValueChange = config.onPasswordChange,
                 focusRequester = config.passwordFocusRequester,
-                colors = config.colors
+                colors = config.colors,
+                onDpadUp = config.onPasswordDpadUp,
+                onDpadDown = config.onPasswordDpadDown
             )
         }
     }

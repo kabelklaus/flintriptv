@@ -33,6 +33,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.LoadControl
@@ -66,6 +67,8 @@ import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.createVerticalSwipeGestureModifier
 import com.flintr.tv.data.model.LiveStream
+import com.flintr.tv.data.model.RatingEntry
+import com.flintr.tv.data.model.Subtitle
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.flintr.tv.viewmodel.PlayerViewModel
 import com.flintr.tv.viewmodel.NextEpisodeState
@@ -81,10 +84,14 @@ import android.util.Base64
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.lifecycle.Lifecycle
+import java.time.Instant
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.flintr.tv.R
 import com.flintr.tv.utils.error.reportError
+import androidx.media3.session.MediaSession
+import androidx.media3.common.MediaMetadata
+import java.util.UUID
 
 // Constants
 private const val DECODER_INITIALIZING = "Initializing..."
@@ -347,12 +354,14 @@ private suspend fun saveWatchProgress(
     seriesId: Int?,
     episodeId: Int?,
     title: String?,
-    watchProgressService: WatchProgressService
+    watchProgressService: WatchProgressService,
+    playbackSettingsRepository: PlaybackSettingsRepository
 ) {
+    if (!playbackSettingsRepository.isRememberPositionEnabled()) return
     if (contentType == "live") return
     if (contentType == "movie" && streamId == null) return
     if (contentType == "series" && (seriesId == null || episodeId == null)) return
-    
+
     val position = exoPlayer.currentPosition
     val duration = exoPlayer.duration
     
@@ -470,6 +479,7 @@ private fun rememberPlayerState() = remember {
         var showControls by mutableStateOf(true)
         var showDebugOverlay by mutableStateOf(false)
         var showSettingsDialog by mutableStateOf(false)
+        var showRatingDialog by mutableStateOf(false)
         var focusedButton by mutableStateOf<FocusedButton?>(null)
         var isDraggingProgress by mutableStateOf(false)
         var playbackState by mutableStateOf(Player.STATE_IDLE)
@@ -486,6 +496,7 @@ private fun rememberPlayerState() = remember {
         var seekFeedbackText by mutableStateOf<String?>(null)
         var lastSeekTime = 0L
         var hasShownAudioWarning by mutableStateOf(false)
+        var ratedThumb by mutableStateOf<Int?>(null)
     }
 }
 
@@ -549,16 +560,34 @@ private fun rememberCredentials(context: Context): com.flintr.tv.data.local.Cred
 }
 
 /**
+ * Gets the playback settings repository (Hilt singleton; same instance as the one
+ * resolved inside [rememberPlayerSetup]) so [VideoSettingsDialog] can persist/read it.
+ */
+@Composable
+private fun rememberPlaybackSettingsRepository(context: Context): PlaybackSettingsRepository {
+    return remember {
+        EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            PlaybackSettingsRepositoryEntryPoint::class.java
+        ).playbackSettingsRepository()
+    }
+}
+
+/**
  * Prepares a new media item for playback
  */
 @Suppress("InjectDispatcher")
 private suspend fun prepareMediaItem(
     exoPlayer: ExoPlayer,
     streamUrl: String,
+    subtitles: List<Subtitle>?,
     onError: (String) -> Unit
 ) {
     try {
-        val mediaItem = MediaItem.fromUri(streamUrl)
+        val mediaItem = MediaItem.Builder()
+            .setUri(streamUrl)
+            .setSubtitleConfigurations(subtitles?.let { buildSubtitleConfigurations(it) } ?: emptyList())
+            .build()
         withContext(Dispatchers.Main) { // NOSONAR - UI thread required for ExoPlayer operations
             if (BuildConfig.DEBUG) Log.d("PlayerScreen", "Setting new media item: $streamUrl")
             // Stop current playback
@@ -597,6 +626,17 @@ private data class PlayerSetupCallbacks(
 )
 
 /**
+ * Result of [rememberPlayerSetup]: the player plus a flag tracking whether the user has
+ * manually overridden the audio track for the current stream, so the preferred-audio-language
+ * auto-selection in the track-change listener below stops re-asserting itself once the user
+ * has made an explicit choice.
+ */
+private data class PlayerSetup(
+    val exoPlayer: ExoPlayer,
+    val userOverrodeAudioTrack: MutableState<Boolean>
+)
+
+/**
  * Sets up ExoPlayer and manages its lifecycle
  */
 @Suppress("InjectDispatcher")
@@ -604,9 +644,10 @@ private data class PlayerSetupCallbacks(
 private fun rememberPlayerSetup(
     context: Context,
     streamUrl: String,
+    subtitles: List<Subtitle>?,
     callbacks: PlayerSetupCallbacks,
     coroutineScope: CoroutineScope
-): ExoPlayer {
+): PlayerSetup {
     val credentials = rememberCredentials(context)
     val playbackSettingsRepository = remember {
         EntryPointAccessors.fromApplication(
@@ -619,7 +660,16 @@ private fun rememberPlayerSetup(
     val exoPlayer = remember(credentials, audioDecoderMode) {
         createExoPlayer(context, credentials, audioDecoderMode)
     }
-    
+    // Explicit unique session ID: without it, Builder defaults to "". During the
+    // next-episode navigation transition, old and new PlayerScreen compositions
+    // briefly coexist (AnimatedContent crossfade), so two MediaSessions with the
+    // same default "" ID exist at once and media3 throws IllegalStateException.
+    val mediaSession = remember(exoPlayer) {
+        MediaSession.Builder(context, exoPlayer)
+            .setId(UUID.randomUUID().toString())
+            .build()
+    }
+
     // Add listener once when ExoPlayer is created
     DisposableEffect(exoPlayer) {
         val listener = createPlayerListener(
@@ -629,7 +679,7 @@ private fun rememberPlayerSetup(
             onIsPlayingChanged = callbacks.onIsPlayingChanged,
             onPlayWhenReadyChanged = callbacks.onPlayWhenReadyChanged
         )
-        
+
         exoPlayer.addListener(listener)
 
         onDispose {
@@ -638,14 +688,53 @@ private fun rememberPlayerSetup(
             exoPlayer.release()
         }
     }
+    // Registered after the player's DisposableEffect so Compose tears it down
+    // in reverse order: session releases before the player is released.
+    DisposableEffect(mediaSession) {
+        onDispose {
+            mediaSession.release()
+        }
+    }
+
+    val userOverrodeAudioTrack = remember { mutableStateOf(false) }
 
     // Handle stream URL changes (for channel switching)
     DisposableEffect(exoPlayer, streamUrl) {
         if (BuildConfig.DEBUG) Log.d("PlayerScreen", "DisposableEffect triggered for streamUrl: $streamUrl")
         callbacks.onStreamPreparingChanged(true)
+        userOverrodeAudioTrack.value = false
+
+        // Applies the persisted subtitles/audio-language/max-resolution settings once the
+        // new stream's tracks are known (can't select a language-matching track or judge
+        // track-count before then).
+        val playbackSettingsListener = object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                val enabled = playbackSettingsRepository.getSubtitlesEnabled()
+                applySubtitlesEnabled(exoPlayer, enabled)
+                if (enabled) {
+                    val availableTracks = getSubtitleTracksFromPlayer(exoPlayer)
+                    val preferredLanguage = playbackSettingsRepository.getPreferredSubtitleLanguage()
+                    pickSubtitleTrackByLanguage(availableTracks, preferredLanguage)?.let { track ->
+                        selectSubtitleTrack(exoPlayer, track)
+                    }
+                }
+
+                applyMaxVideoSize(exoPlayer, playbackSettingsRepository.getVideoQuality())
+
+                if (!userOverrodeAudioTrack.value) {
+                    val availableAudioTracks = getAudioTracksFromPlayer(exoPlayer)
+                    val preferredAudioLanguage = playbackSettingsRepository.getPreferredAudioLanguage()
+                    pickAudioTrackByLanguage(availableAudioTracks, preferredAudioLanguage)?.let { track ->
+                        selectAudioTrack(exoPlayer, track)
+                    }
+                }
+            }
+        }
+        exoPlayer.addListener(playbackSettingsListener)
+
         val prepareJob = coroutineScope.launch(Dispatchers.IO) { // NOSONAR - UI component, hardcoded dispatcher acceptable
             try {
-                prepareMediaItem(exoPlayer, streamUrl, callbacks.onError)
+                prepareMediaItem(exoPlayer, streamUrl, subtitles, callbacks.onError)
             } finally {
                 withContext(Dispatchers.Main) { // NOSONAR - Compose state update must run on main
                     callbacks.onStreamPreparingChanged(false)
@@ -654,12 +743,13 @@ private fun rememberPlayerSetup(
         }
 
         onDispose {
+            exoPlayer.removeListener(playbackSettingsListener)
             prepareJob.cancel()
             callbacks.onStreamPreparingChanged(false)
         }
     }
 
-    return exoPlayer
+    return PlayerSetup(exoPlayer, userOverrodeAudioTrack)
 }
 
 /**
@@ -792,7 +882,8 @@ private data class PlayerProgressSaveParams(
     val seriesId: Int?,
     val episodeId: Int?,
     val title: String?,
-    val watchProgressService: WatchProgressService
+    val watchProgressService: WatchProgressService,
+    val playbackSettingsRepository: PlaybackSettingsRepository
 )
 
 /**
@@ -830,6 +921,19 @@ private fun PlayerProgressSaveEffect(
     params: PlayerProgressSaveParams
 ) {
     LaunchedEffect(params.contentType, params.streamId, params.seriesId, params.episodeId, params.title) {
+        // media3 1.3.1's Player has no direct setMediaMetadata(); metadata lives on the
+        // MediaItem, so replace the current item with one carrying the updated metadata.
+        params.exoPlayer.currentMediaItem?.let { currentItem ->
+            val updatedItem = currentItem.buildUpon()
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(params.title)
+                        .setArtist(if (params.contentType == "live") "flintrTV Live" else "flintrTV")
+                        .build()
+                )
+                .build()
+            params.exoPlayer.replaceMediaItem(params.exoPlayer.currentMediaItemIndex, updatedItem)
+        }
         while (true) {
             delay(10000) // 10 seconds
             saveWatchProgress(
@@ -839,7 +943,8 @@ private fun PlayerProgressSaveEffect(
                 seriesId = params.seriesId,
                 episodeId = params.episodeId,
                 title = params.title,
-                watchProgressService = params.watchProgressService
+                watchProgressService = params.watchProgressService,
+                playbackSettingsRepository = params.playbackSettingsRepository
             )
         }
     }
@@ -1019,7 +1124,8 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     }
     val credentials by credentialsRepository.credentialsFlow
         .collectAsState(initial = credentialsRepository.getCredentials())
-    
+    val playbackSettingsRepository = rememberPlaybackSettingsRepository(context)
+
     // State for current stream URL (can be changed when switching channels)
     var currentStreamUrl by remember { mutableStateOf(streamUrl) }
     var currentTitle by remember { mutableStateOf(title) }
@@ -1128,7 +1234,74 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     val contentInfoSeriesData = remember(seriesData, seriesContextLoaded) {
         seriesData ?: if (seriesContextLoaded) viewModel.getSeriesContext() else null
     }
-    
+
+    // Title shown in the rating dialog - the series name (not the episode title) for series content
+    val ratingDialogTitle = if (contentType == "series") {
+        contentInfoSeriesData?.series?.name ?: currentTitle ?: ""
+    } else {
+        currentTitle ?: ""
+    }
+
+    // Identifies the currently playing content for ratedInSession lookups (seriesId for
+    // series, streamId for movie/live).
+    val currentContentId = (if (contentType == "series") seriesId else streamId) ?: 0
+
+    // Attempts to leave the player: offers the rating prompt first (VOD always, series only on
+    // its last episode with no auto-play pending), otherwise exits immediately.
+    // Only 1x triggered per player session, see PlayerViewModel.maybeShowRatingPrompt. Skipped
+    // entirely if the content was already rated this session (controls thumbs / soft overlay).
+    val attemptExit: () -> Unit = {
+        if ((contentType == "movie" || contentType == "series") &&
+            !viewModel.hasRatedInSession(contentType, currentContentId) &&
+            viewModel.maybeShowRatingPrompt(contentType, hasNextEpisodeAvailable)
+        ) {
+            state.showRatingDialog = true
+        } else {
+            onBack()
+        }
+    }
+
+    // Direct thumbs up/down rating from the controls bar or the soft rating overlay -
+    // persists immediately and suppresses later end-of-content rating dialogs.
+    val onThumbsUp: () -> Unit = {
+        viewModel.saveRating(
+            RatingEntry(
+                contentType = contentType,
+                contentId = currentContentId,
+                title = ratingDialogTitle,
+                rating = 1,
+                ratedAt = Instant.now().toString()
+            )
+        )
+        viewModel.markRatedInSession(contentType, currentContentId)
+        state.ratedThumb = 1
+    }
+    val onThumbsDown: () -> Unit = {
+        viewModel.saveRating(
+            RatingEntry(
+                contentType = contentType,
+                contentId = currentContentId,
+                title = ratingDialogTitle,
+                rating = 0,
+                ratedAt = Instant.now().toString()
+            )
+        )
+        viewModel.markRatedInSession(contentType, currentContentId)
+        state.ratedThumb = 0
+    }
+
+    // Restores the persisted rating for the current content (movie/series) so the
+    // matching thumb stays highlighted across player sessions. Reloads - and resets to
+    // null while loading - whenever the content changes, so a rating from the previous
+    // content never lingers on a newly opened one.
+    LaunchedEffect(contentType, currentContentId) {
+        state.ratedThumb = if (contentType == "movie" || contentType == "series") {
+            viewModel.loadRating(contentType, currentContentId)
+        } else {
+            null
+        }
+    }
+
     var wasPlayingBeforeDrag by remember { mutableStateOf(false) }
     
     // State for measured bitrate and decoder info
@@ -1137,9 +1310,10 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     var audioDecoderName by remember { mutableStateOf(DECODER_INITIALIZING) }
     
     // Setup player with callbacks (use currentStreamUrl to support channel switching)
-    val exoPlayer = rememberPlayerSetup(
+    val (exoPlayer, userOverrodeAudioTrack) = rememberPlayerSetup(
         context = context,
         streamUrl = currentStreamUrl,
+        subtitles = contentInfoSeriesData?.currentEpisode?.subtitles,
         callbacks = PlayerSetupCallbacks(
             onError = { message -> state.errorMessage = message },
             onStreamPreparingChanged = { preparing -> state.isPreparingStream = preparing },
@@ -1161,6 +1335,16 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     // instead of pausing.
     var isMinimizerActive by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    // Reference to the live PlayerView, set once by the AndroidView factory below; read
+    // lazily by playerSurfaceObserver, so declaration order here doesn't matter.
+    var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
+
+    // Applies the persisted resize mode once the PlayerView is attached - resize mode
+    // doesn't depend on track info, so it doesn't need to wait for onTracksChanged.
+    LaunchedEffect(playerViewRef) {
+        playerViewRef?.let { applyResizeMode(it, playbackSettingsRepository.getVideoResizeMode()) }
+    }
+
     DisposableEffect(lifecycleOwner, exoPlayer) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE && !isMinimizerActive) {
@@ -1175,7 +1359,8 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                         seriesId = seriesId,
                         episodeId = episodeId,
                         title = currentTitle,
-                        watchProgressService = watchProgressService
+                        watchProgressService = watchProgressService,
+                        playbackSettingsRepository = playbackSettingsRepository
                     )
                 }
             }
@@ -1183,6 +1368,21 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Surface-Handling: releases the video surface on ON_STOP and reattaches it (resuming
+    // playback if it was playing before) on ON_START. See PlayerSurfaceLifecycleObserver.
+    val playerSurfaceObserver = remember(exoPlayer) {
+        PlayerSurfaceLifecycleObserver(
+            player = { exoPlayer },
+            playerView = { playerViewRef }
+        )
+    }
+    DisposableEffect(lifecycleOwner, playerSurfaceObserver) {
+        lifecycleOwner.lifecycle.addObserver(playerSurfaceObserver)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(playerSurfaceObserver)
         }
     }
 
@@ -1313,7 +1513,8 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             seriesId = seriesId,
             episodeId = episodeId,
             title = title,
-            watchProgressService = watchProgressService
+            watchProgressService = watchProgressService,
+            playbackSettingsRepository = playbackSettingsRepository
         )
     )
 
@@ -1333,7 +1534,8 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 seriesId = seriesId,
                 episodeId = episodeId,
                 title = title,
-                watchProgressService = watchProgressService
+                watchProgressService = watchProgressService,
+                playbackSettingsRepository = playbackSettingsRepository
             )
         }
     )
@@ -1418,11 +1620,31 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 // Episode was watched to 100% - now start next episode
                 viewModel.triggerAutoPlayNext()
             } else {
-                // Standard auto-play at 98.5%
+                // Standard auto-play at 98.5% - only if the video itself ended before the
+                // countdown finished; gated on the AutoPlay setting like the countdown
+                // itself (PlayerViewModel.startAutoPlayCountdown). If disabled, the button
+                // stays Visible so the user can still advance manually.
                 val currentState = viewModel.nextEpisodeState.value
                 if (currentState is NextEpisodeState.Visible) {
-                    viewModel.triggerAutoPlayNext()
+                    if (playbackSettingsRepository.isAutoPlayNextEnabled()) {
+                        viewModel.triggerAutoPlayNext()
+                    }
+                } else {
+                    // Series complete: last episode ended, no auto-play pending -
+                    // offer the rating prompt instead of leaving the player idle
+                    if (!viewModel.hasRatedInSession(contentType, currentContentId) &&
+                        viewModel.maybeShowRatingPrompt(contentType, viewModel.hasNextEpisode())
+                    ) {
+                        state.showRatingDialog = true
+                    }
                 }
+            }
+        } else if (state.playbackState == Player.STATE_ENDED && contentType == "movie") {
+            // VOD complete: same flow as a series' last episode (Task F3 parity fix)
+            if (!viewModel.hasRatedInSession(contentType, currentContentId) &&
+                viewModel.maybeShowRatingPrompt(contentType, hasNextEpisode = false)
+            ) {
+                state.showRatingDialog = true
             }
         }
     }
@@ -1443,7 +1665,8 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                         seriesId = seriesId,
                         episodeId = episodeId,
                         title = title,
-                        watchProgressService = watchProgressService
+                        watchProgressService = watchProgressService,
+                        playbackSettingsRepository = playbackSettingsRepository
                     )
                 }
                 // Navigate to next episode
@@ -1574,14 +1797,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 if (nextEpisodeState is NextEpisodeState.Visible) {
                     viewModel.hideNextEpisodeButton()
                 }
-                onBack()
+                attemptExit()
             })
             .onBackButton(onBack = {
                 // Cancel next episode auto-play if visible
                 if (nextEpisodeState is NextEpisodeState.Visible) {
                     viewModel.hideNextEpisodeButton()
                 }
-                onBack()
+                attemptExit()
             })
             .onDpadCenter {
                 if (!state.showControls) {
@@ -1640,6 +1863,7 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                     useController = false // Disable default controls
+                    playerViewRef = this
                 }
             },
             update = { view ->
@@ -1696,6 +1920,8 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                         null
                     },
                     onSeek = onSeek,
+                    onThumbsUp = onThumbsUp,
+                    onThumbsDown = onThumbsDown,
                     dragCallbacks = DragCallbacks(
                         onDragStart = {
                             wasPlayingBeforeDrag = exoPlayer.isPlaying
@@ -1738,9 +1964,11 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 ),
                 contentType = contentType,
                 focusedButton = state.focusedButton,
+                ratedThumb = state.ratedThumb,
+                showRatingButtons = contentType != "live",
                 modifier = Modifier.fillMaxSize()
             )
-            
+
             // Central play/pause button with seek feedback
             val seekFeedback = state.seekFeedbackText
             Row(
@@ -1814,10 +2042,57 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         if (state.showSettingsDialog) {
             VideoSettingsDialog(
                 onDismiss = { state.showSettingsDialog = false },
-                exoPlayer = exoPlayer
+                exoPlayer = exoPlayer,
+                playerView = playerViewRef,
+                playbackSettingsRepository = playbackSettingsRepository,
+                onAudioTrackOverridden = { userOverrodeAudioTrack.value = true }
             )
         }
-        
+
+        // Rating dialog - shown on player exit (VOD always, series only on its last episode)
+        if (state.showRatingDialog) {
+            RatingDialog(
+                title = ratingDialogTitle,
+                onRated = { entry ->
+                    viewModel.saveRating(
+                        entry.copy(
+                            contentType = contentType,
+                            contentId = currentContentId,
+                            title = ratingDialogTitle
+                        )
+                    )
+                    viewModel.markRatedInSession(contentType, currentContentId)
+                    state.showRatingDialog = false
+                    onBack()
+                },
+                onDismiss = {
+                    state.showRatingDialog = false
+                    onBack()
+                }
+            )
+        }
+
+        // Soft rating overlay - non-blocking nudge in the last 60s of VOD/last-episode
+        // content, shown regardless of controls visibility, never grabbing focus.
+        val remainingMillis = (state.duration - state.currentPosition).coerceAtLeast(0L)
+        if (state.playbackState != Player.STATE_ENDED &&
+            !state.showRatingDialog &&
+            shouldShowSoftRatingOverlay(
+                contentType = contentType,
+                remainingMillis = remainingMillis,
+                hasNextEpisode = hasNextEpisodeAvailable,
+                hasRatedInSession = viewModel.hasRatedInSession(contentType, currentContentId)
+            )
+        ) {
+            SoftRatingOverlay(
+                onThumbsUp = onThumbsUp,
+                onThumbsDown = onThumbsDown,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(Dimensions.spacingLG)
+            )
+        }
+
         // Show error message if playback failed
         PlayerErrorDialog(
             errorMessage = state.errorMessage,

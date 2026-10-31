@@ -49,6 +49,7 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.PlaybackSettingsRepository
+import com.flintr.tv.data.local.RecommendationService
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
@@ -76,6 +77,11 @@ import com.flintr.tv.ui.tabs.SeriesContent
 import com.flintr.tv.ui.tabs.SeriesContentParams
 import com.flintr.tv.ui.tabs.InProgressContent
 import com.flintr.tv.ui.tabs.InProgressContentParams
+import com.flintr.tv.ui.tabs.SeriesItem
+import com.flintr.tv.ui.sidebars.ContentGridLayout
+import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
+import com.flintr.tv.ui.components.VODCard
+import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.ui.screens.SeriesEpisodesScreen
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
@@ -89,6 +95,7 @@ import com.flintr.tv.ui.components.SearchResultCallbacks
 import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
+import com.flintr.tv.ui.common.UiConstants.RECOMMENDED_CATEGORY_ID
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.size
@@ -600,6 +607,7 @@ data class AppNavigationDependencies(
     val playbackSettingsRepository: PlaybackSettingsRepository,
     val xtreamRepository: XtreamRepository,
     val userRepository: UserRepository,
+    val recommendationService: RecommendationService,
     val ioDispatcher: CoroutineDispatcher
 )
 
@@ -1122,12 +1130,90 @@ private fun InProgressContentSection(params: MainContentBodyParams) {
 }
 
 /**
- * Renders VOD content section (with InProgress support).
+ * Renders the "Für dich" recommendations grid for VOD movies.
+ */
+@Composable
+private fun RecommendedVodContentSection(params: MainContentBodyParams) {
+    val recommendations by params.dependencies.recommendationService.recommendations.collectAsState()
+    val onVodClick = createVodClickHandler(params)
+
+    ContentGridLayout(
+        params = ContentGridLayoutParams(
+            items = recommendations.movies,
+            isLoading = false,
+            focusRequester = params.contentListFocusRequester,
+            lazyGridState = params.lazyGridState,
+            keySelector = { vod -> vod.streamId },
+            contentIdSelector = { vod -> "vod_${vod.streamId}" },
+            focusRequesterMap = params.focusRequesterMap
+        ),
+        content = { vod, _, columnIndex, onFocusChanged, cardFocusRequester ->
+            VODCard(
+                params = VODCardParams(
+                    vod = vod,
+                    onClick = { onVodClick(vod) },
+                    favoritesRepository = params.dependencies.favoritesRepository,
+                    watchProgressService = params.dependencies.watchProgressService,
+                    onFocusChanged = onFocusChanged,
+                    onNavigateLeft = if (columnIndex == 0) {
+                        { params.onNavigateToCategorySidebar() }
+                    } else {
+                        null
+                    },
+                    focusRequester = cardFocusRequester
+                )
+            )
+        }
+    )
+}
+
+/**
+ * Renders the "Für dich" recommendations grid for series.
+ */
+@Composable
+private fun RecommendedSeriesContentSection(params: MainContentBodyParams) {
+    val recommendations by params.dependencies.recommendationService.recommendations.collectAsState()
+    val onSeriesClick = createSeriesClickHandler(params)
+
+    ContentGridLayout(
+        params = ContentGridLayoutParams(
+            items = recommendations.series,
+            isLoading = false,
+            focusRequester = params.contentListFocusRequester,
+            lazyGridState = params.lazyGridState,
+            keySelector = { series -> series.seriesId },
+            contentIdSelector = { series -> "series_${series.seriesId}" },
+            focusRequesterMap = params.focusRequesterMap
+        ),
+        content = { series, _, columnIndex, onFocusChanged, cardFocusRequester ->
+            SeriesItem(
+                series = series,
+                favoritesRepository = params.dependencies.favoritesRepository,
+                onSeriesClick = { onSeriesClick(series) },
+                cardConfig = com.flintr.tv.ui.components.CardConfig(
+                    isSelected = false,
+                    onFocusChanged = onFocusChanged,
+                    onNavigateLeft = if (columnIndex == 0) {
+                        { params.onNavigateToCategorySidebar() }
+                    } else {
+                        null
+                    },
+                    focusRequester = cardFocusRequester
+                )
+            )
+        }
+    )
+}
+
+/**
+ * Renders VOD content section (with InProgress/Recommended support).
  */
 @Composable
 private fun VODContentSection(params: MainContentBodyParams) {
     if (params.selectedCategoryId == IN_PROGRESS_CATEGORY_ID) {
         InProgressContentSection(params)
+    } else if (params.selectedCategoryId == RECOMMENDED_CATEGORY_ID) {
+        RecommendedVodContentSection(params)
     } else {
         VODContent(
             params = VODContentParams(
@@ -1151,12 +1237,14 @@ private fun VODContentSection(params: MainContentBodyParams) {
 }
 
 /**
- * Renders Series content section (with InProgress support).
+ * Renders Series content section (with InProgress/Recommended support).
  */
 @Composable
 private fun SeriesContentSection(params: MainContentBodyParams) {
     if (params.selectedCategoryId == IN_PROGRESS_CATEGORY_ID) {
         InProgressContentSection(params)
+    } else if (params.selectedCategoryId == RECOMMENDED_CATEGORY_ID) {
+        RecommendedSeriesContentSection(params)
     } else {
         SeriesContent(
             params = SeriesContentParams(
@@ -1315,7 +1403,8 @@ private fun createSpecialCategories(
     sortedCategories: List<Category>,
     favoritesCategoryName: String,
     newCategoryName: String,
-    inProgressCategoryName: String
+    inProgressCategoryName: String,
+    recommendedCategoryName: String
 ): List<Category> {
     if (!destination.supportsCategories()) return sortedCategories
 
@@ -1323,8 +1412,9 @@ private fun createSpecialCategories(
     val newCategory = Category(NEW_CATEGORY_ID, newCategoryName, 0)
 
     return if (destination.supportsInProgress()) {
+        val recommendedCategory = Category(RECOMMENDED_CATEGORY_ID, recommendedCategoryName, 0)
         val inProgressCategory = Category(IN_PROGRESS_CATEGORY_ID, inProgressCategoryName, 0)
-        listOf(favoritesCategory, inProgressCategory, newCategory) + sortedCategories
+        listOf(favoritesCategory, recommendedCategory, inProgressCategory, newCategory) + sortedCategories
     } else {
         listOf(favoritesCategory, newCategory) + sortedCategories
     }
@@ -1349,9 +1439,10 @@ private fun useCategoryManagement(
     val favoritesCategoryName = stringResource(R.string.favorites)
     val newCategoryName = stringResource(R.string.new_category)
     val inProgressCategoryName = stringResource(R.string.in_progress_category)
+    val recommendedCategoryName = stringResource(R.string.recommended_for_you)
 
-    val categoriesWithSpecial = remember(sortedCategories, selectedDestination, favoritesCategoryName, newCategoryName, inProgressCategoryName) {
-        createSpecialCategories(selectedDestination, sortedCategories, favoritesCategoryName, newCategoryName, inProgressCategoryName)
+    val categoriesWithSpecial = remember(sortedCategories, selectedDestination, favoritesCategoryName, newCategoryName, inProgressCategoryName, recommendedCategoryName) {
+        createSpecialCategories(selectedDestination, sortedCategories, favoritesCategoryName, newCategoryName, inProgressCategoryName, recommendedCategoryName)
     }
 
     return CategoryManagementResult(

@@ -53,6 +53,7 @@ import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.ui.utils.InteractionUtils.tvFocusable
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.utils.ContentParser
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import com.flintr.tv.utils.error.reportHandled
 import com.flintr.tv.utils.error.reportControlFlow
@@ -168,7 +169,11 @@ internal fun rememberEpisodeFocus(
         mutableStateOf(initialEpisodeIndex?.coerceIn(0, episodes.size - 1) ?: 0) 
     }
     val listState = rememberLazyListState()
-    val focusRequesters = remember { episodes.map { FocusRequester() } }
+    // Keyed by episodes (like focusedEpisodeIndex above): without this key, a season switch that
+    // reuses this same composable slot (EpisodesList's call site in SeasonNavigation is not keyed
+    // by season, see SeriesEpisodesScreen.kt) would keep the previous season's stale, wrong-sized
+    // FocusRequester list - see c2-report.md.
+    val focusRequesters = remember(episodes) { episodes.map { FocusRequester() } }
     
     // Update focusedEpisodeIndex when initialEpisodeIndex changes
     LaunchedEffect(initialEpisodeIndex) {
@@ -185,11 +190,28 @@ internal fun rememberEpisodeFocus(
         requestInitialEpisodeFocus(listState, focusRequesters, targetIndex)
     }
 
-    // Scroll to focused episode
-    LaunchedEffect(focusedEpisodeIndex.value) {
-        if (focusedEpisodeIndex.value in 0 until episodes.size) {
-            listState.animateScrollToItem(focusedEpisodeIndex.value)
-        }
+    // Scroll to focused episode - keyed the same as requestInitialEpisodeFocus above (rather than
+    // focusedEpisodeIndex.value) and drop(1)-ing the first emission on every restart, so this
+    // effect only reacts to LATER, genuine navigation-driven focusedEpisodeIndex changes (e.g.
+    // D-Pad left/right updating focusState.focusedEpisodeIndex.value directly).
+    //
+    // Without the drop(1): on a season switch (or any initialEpisodeIndex change), focusedEpisodeIndex
+    // is freshly remembered already holding the resume target, so this effect's very first emission
+    // duplicates requestInitialEpisodeFocus's own scrollToItem(targetIndex) call above - both then
+    // race scroll(MutatePriority.Default) on the SAME listState. The second one to acquire the
+    // mutex cancels the other mid-flight; if that's requestInitialEpisodeFocus, its scrollToItem
+    // throws CancellationException before it ever reaches focusRequesters.getOrNull(targetIndex)
+    // ?.safeRequestFocus(...) - so nothing ends up focused. Reproduced deterministically via
+    // SeriesEpisodesFocusRecoveryTest.seasonSwitchAfterInitialCompositionLeavesFocusRequestersStaleForTheNewSeason;
+    // see fix2-report.md.
+    LaunchedEffect(episodes.size, initialEpisodeIndex) {
+        snapshotFlow { focusedEpisodeIndex.value }
+            .drop(1)
+            .collect { index ->
+                if (index in 0 until episodes.size) {
+                    listState.animateScrollToItem(index)
+                }
+            }
     }
     
     return EpisodeFocusState(
@@ -278,68 +300,6 @@ private fun HandleSmartResume(
 }
 
 /**
- * Daten für den Weiterschauen-Button: UI-Zustand plus aufgelöste Ziel-Episode.
- */
-private data class ResumeButtonData(
-    val uiState: ResumeButtonUiState,
-    val targetInfo: ResumeTargetInfo
-)
-
-/**
- * Löst die Ziel-Episode für den Weiterschauen-Button auf und baut Label plus Fortschritt.
- */
-@Composable
-private fun rememberResumeButtonData(
-    sortedSeasons: List<Season>,
-    resumeTarget: SmartResumeTarget?,
-    resumeTargetLoaded: Boolean,
-    series: Series,
-    watchProgressService: WatchProgressService,
-    watchedEpisodeIds: Set<Int>
-): ResumeButtonData? {
-    if (!resumeTargetLoaded) return null
-
-    val targetInfo = remember(sortedSeasons, resumeTarget) {
-        SeriesResumeLogic.resolveResumeEpisode(sortedSeasons, resumeTarget)
-    } ?: return null
-
-    var progressMs by remember(targetInfo.episode.id) { mutableStateOf<Long?>(null) }
-    LaunchedEffect(targetInfo.episode.id, watchedEpisodeIds) {
-        progressMs = watchProgressService.getProgress(
-            contentType = "series",
-            streamId = null,
-            seriesId = series.seriesId,
-            episodeId = targetInfo.episode.id
-        )
-    }
-
-    val hasProgress = (progressMs ?: 0L) > 0L
-    val durationMs = targetInfo.episode.info?.duration?.let { durationStr ->
-        durationStr.toLongOrNull()?.times(1000) ?: parseDurationString(durationStr)?.times(1000)
-    }
-    val progressPercent = if (hasProgress && durationMs != null && durationMs > 0) {
-        ((progressMs ?: 0L).toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-
-    val labelType = SeriesResumeLogic.determineResumeLabelType(
-        hasProgressOnTarget = hasProgress,
-        hasAnyWatchHistory = watchedEpisodeIds.isNotEmpty()
-    )
-    val label = SeriesResumeLogic.buildResumeButtonLabel(
-        type = labelType,
-        seasonNumber = targetInfo.seasonNumber,
-        episodeNumber = targetInfo.episodeNumber
-    )
-
-    return ResumeButtonData(
-        uiState = ResumeButtonUiState(label = label, progressPercent = progressPercent),
-        targetInfo = targetInfo
-    )
-}
-
-/**
  * Merkt sich den aktuell ladbaren Bild-Kandidaten und schaltet bei
  * Ladefehlern auf den nächsten weiter.
  */
@@ -423,74 +383,24 @@ private fun AutoScrollToSeason(
 }
 
 /**
- * Serien-Header mit Fokus-Navigation nach unten (Resume-Button oder Staffel-Leiste).
+ * Serien-Header mit Fokus-Navigation nach unten (Staffel-Leiste).
  */
 @Composable
 private fun SeriesHeaderWithNav(
     series: Series,
     headerFocusRequester: FocusRequester,
-    resumeButtonFocusRequester: FocusRequester,
-    hasResumeButton: Boolean,
     onNavigateToSeasonButton: () -> Unit,
     onHeaderHeightChanged: (Int) -> Unit
 ) {
-    val coroutineScope = rememberCoroutineScope()
     SeriesHeader(
         series = series,
         headerFocusRequester = headerFocusRequester,
-        onNavigateDown = {
-            if (hasResumeButton) {
-                coroutineScope.launch {
-                    resumeButtonFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "RESUME_BUTTON")
-                }
-            } else {
-                // Navigate to selected season button
-                onNavigateToSeasonButton()
-            }
-        },
+        onNavigateDown = onNavigateToSeasonButton,
         modifier = Modifier
             .fillMaxWidth()
             .onGloballyPositioned { coordinates ->
                 onHeaderHeightChanged(coordinates.size.height)
             }
-    )
-}
-
-/**
- * Weiterschauen-Button samt Fokus-Navigation; rendert nichts ohne Button-Daten.
- */
-@Composable
-private fun SeriesResumeSection(
-    resumeButtonData: ResumeButtonData?,
-    resumeButtonFocusRequester: FocusRequester,
-    headerFocusRequester: FocusRequester,
-    hasMultipleSeasons: Boolean,
-    onEpisodeClick: (Episode) -> Unit,
-    onNavigateToSeasonButton: () -> Unit
-) {
-    if (resumeButtonData == null) return
-    val coroutineScope = rememberCoroutineScope()
-
-    Spacer(modifier = Modifier.height(16.dp))
-    SeriesResumeButton(
-        state = resumeButtonData.uiState,
-        onClick = { onEpisodeClick(resumeButtonData.targetInfo.episode) },
-        focusRequester = resumeButtonFocusRequester,
-        onNavigateUp = {
-            coroutineScope.launch {
-                headerFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "HEADER")
-            }
-            true
-        },
-        onNavigateDown = {
-            if (hasMultipleSeasons) {
-                onNavigateToSeasonButton()
-                true
-            } else {
-                // Nur eine Staffel: Standard-Fokusnavigation zur Episodenliste durchlassen
-                false
-            }
-        }
     )
 }
 
@@ -525,22 +435,11 @@ fun SeriesEpisodesScreen(
     var initialEpisodeIndex by remember { mutableStateOf<Int?>(null) }
     var smartResumeSeasonIndex by remember { mutableStateOf<Int?>(null) }
 
-    // Resume-Button: target episode for one-click resume
-    var resumeTarget by remember { mutableStateOf<SmartResumeTarget?>(null) }
-    var resumeTargetLoaded by remember { mutableStateOf(false) }
-
     // Increments after long-press menu actions to reload watched state
     var watchedRefreshTrigger by remember { mutableStateOf(0) }
 
     LaunchedEffect(series.seriesId, watchedRefreshTrigger) {
         watchedEpisodeIds = watchProgressService.getWatchedEpisodeIds(series.seriesId)
-    }
-
-    // Re-resolve the resume target after menu actions (without focus navigation)
-    LaunchedEffect(watchedRefreshTrigger) {
-        if (watchedRefreshTrigger > 0) {
-            resumeTarget = watchProgressService.getSmartResumeTarget(displaySeries.seriesId, displaySeries)
-        }
     }
 
     // Load smart resume target when series info is available
@@ -550,22 +449,9 @@ fun SeriesEpisodesScreen(
         watchProgressService = watchProgressService,
         onSeasonSelected = { selectedSeasonIndex = it },
         onEpisodeIndexSet = { initialEpisodeIndex = it },
-        onSmartResumeSeasonIndexSet = { smartResumeSeasonIndex = it },
-        onResumeTargetLoaded = { target ->
-            resumeTarget = target
-            resumeTargetLoaded = true
-        }
+        onSmartResumeSeasonIndexSet = { smartResumeSeasonIndex = it }
     )
 
-    val resumeButtonData = rememberResumeButtonData(
-        sortedSeasons = sortedSeasons,
-        resumeTarget = resumeTarget,
-        resumeTargetLoaded = resumeTargetLoaded,
-        series = displaySeries,
-        watchProgressService = watchProgressService,
-        watchedEpisodeIds = watchedEpisodeIds
-    )
-    
     // Background image candidates: backdrops -> first episode image -> cover
     val backdropCandidates = ContentParser.seriesBackdropCandidates(displaySeries)
     val backdropImageUrl = backdropCandidates.firstOrNull()
@@ -587,12 +473,9 @@ fun SeriesEpisodesScreen(
 
     // FocusRequester for header to enable navigation from season buttons
     val headerFocusRequester = remember { FocusRequester() }
-    // FocusRequester for the resume button (between header and season buttons)
-    val resumeButtonFocusRequester = remember { FocusRequester() }
     // Callback to navigate to selected season button
     var navigateToSeasonButton by remember { mutableStateOf<(() -> Unit)?>(null) }
 
-    val upFocusRequester = if (resumeButtonData != null) resumeButtonFocusRequester else headerFocusRequester
     val handleSeasonSelected = { index: Int ->
         selectedSeasonIndex = index
         // Reset initialEpisodeIndex when season changes manually (not via smart resume)
@@ -625,19 +508,8 @@ fun SeriesEpisodesScreen(
             SeriesHeaderWithNav(
                 series = displaySeries,
                 headerFocusRequester = headerFocusRequester,
-                resumeButtonFocusRequester = resumeButtonFocusRequester,
-                hasResumeButton = resumeButtonData != null,
                 onNavigateToSeasonButton = { navigateToSeasonButton?.invoke() },
                 onHeaderHeightChanged = { headerHeight = it }
-            )
-
-            SeriesResumeSection(
-                resumeButtonData = resumeButtonData,
-                resumeButtonFocusRequester = resumeButtonFocusRequester,
-                headerFocusRequester = headerFocusRequester,
-                hasMultipleSeasons = sortedSeasons.size > 1,
-                onEpisodeClick = onEpisodeClick,
-                onNavigateToSeasonButton = { navigateToSeasonButton?.invoke() }
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -655,7 +527,7 @@ fun SeriesEpisodesScreen(
                     smartResumeSeasonIndex = smartResumeSeasonIndex,
                     fallbackImageUrl = backdropImageUrl
                 ),
-                upFocusRequester = upFocusRequester,
+                upFocusRequester = headerFocusRequester,
                 onNavigateToSeasonButton = { callback ->
                     navigateToSeasonButton = callback
                 },
@@ -888,7 +760,12 @@ private fun SeasonNavigation(
                         season = season,
                         isSelected = seasonIndex == params.selectedSeasonIndex,
                         focusRequester = seasonButtonFocusRequesters.getOrNull(seasonIndex),
-                        onSelect = { onSeasonSelected(seasonIndex) }
+                        onSelect = { onSeasonSelected(seasonIndex) },
+                        // A smart-resume episode target is pending for this season - let
+                        // EpisodesList/rememberEpisodeFocus own the focus instead of racing it
+                        // (see c2-report.md H1); with no pending target, self-focus is unaffected.
+                        suppressAutoFocus = seasonIndex == params.smartResumeSeasonIndex &&
+                            params.initialEpisodeIndex != null
                     )
                 }
             }
@@ -930,7 +807,8 @@ private fun SeasonButton(
     season: Season,
     isSelected: Boolean,
     focusRequester: FocusRequester? = null,
-    onSelect: () -> Unit
+    onSelect: () -> Unit,
+    suppressAutoFocus: Boolean = false
 ) {
     val colors = appColors()
     var isFocused by remember { mutableStateOf(false) }
@@ -963,9 +841,12 @@ private fun SeasonButton(
     val internalFocusRequester = remember { FocusRequester() }
     val actualFocusRequester = focusRequester ?: internalFocusRequester
     
-    // Request focus when selected
-    LaunchedEffect(isSelected) {
-        if (isSelected) {
+    // Request focus when selected - unless a smart-resume episode focus is pending for this
+    // season, in which case EpisodesList/rememberEpisodeFocus owns the focus (see c2-report.md
+    // H1: this effect previously always won that race regardless of the episode list's own,
+    // slower/retrying focus request).
+    LaunchedEffect(isSelected, suppressAutoFocus) {
+        if (isSelected && !suppressAutoFocus) {
             kotlinx.coroutines.delay(50)
             try {
                 actualFocusRequester.requestFocus()

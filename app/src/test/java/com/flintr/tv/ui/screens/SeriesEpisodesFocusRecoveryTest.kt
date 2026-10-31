@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.Modifier
@@ -70,13 +71,13 @@ class SeriesEpisodesFocusRecoveryTest {
     private fun episodeTag(index: Int) = "episode-card-$index"
 
     @androidx.compose.runtime.Composable
-    private fun EpisodeCard(index: Int, focusRequester: FocusRequester) {
+    private fun EpisodeCard(index: Int, focusRequester: FocusRequester?) {
         Box(
             modifier = Modifier
                 .testTag(episodeTag(index))
                 .width(300.dp)
                 .height(180.dp)
-                .focusRequester(focusRequester)
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .focusable()
         )
     }
@@ -193,5 +194,101 @@ class SeriesEpisodesFocusRecoveryTest {
         )
         // Nothing else in this isolated setup ever retries - exactly the deadlock Chris hit.
         composeTestRule.onAllNodes(isFocused()).assertCountEquals(0)
+    }
+
+    // ---- C2 regression: "Back from Player -> season button focused instead of the episode" ----
+
+    /**
+     * C2 diagnosis (read-only, see c2-report.md): `EpisodesList` calls `rememberEpisodeFocus`
+     * at a call site that is NOT keyed by season (SeriesEpisodesScreen.kt:759-774, no
+     * `key(selectedSeasonIndex) { ... }` around the `EpisodesList(...)` call inside
+     * `SeasonNavigation`). `rememberEpisodeFocus`'s own `focusRequesters = remember { episodes.map
+     * { FocusRequester() } }` (line 171) has no key at all either.
+     *
+     * On every screen entry, `selectedSeasonIndex` starts at 0 (plain `remember`, not
+     * `rememberSaveable` - Navigation-Compose disposes/recomposes a destination that isn't on top
+     * of the back stack, so "Back from Player" is a FRESH composition, not a resumed one) and
+     * `EpisodesList` first composes with season 0's episodes - `focusRequesters` is created for
+     * THAT season's episode count. `HandleSmartResume` (SeriesEpisodesScreen.kt:250-278) then
+     * asynchronously calls `onSeasonSelected`, which can switch to a DIFFERENT season. `EpisodesList`
+     * recomposes with the new season's `episodes` at the SAME call site, but `focusRequesters` is
+     * never recreated - it stays the stale, wrong-sized list bound to season 0's (now disposed)
+     * LazyRow nodes.
+     *
+     * This test reproduces that season switch directly through the real, production
+     * `rememberEpisodeFocus`/`requestInitialEpisodeFocus` functions: season A composes first (3
+     * episodes), then - without tearing down the composition, exactly like `EpisodesList`
+     * recomposing after `HandleSmartResume` changes the selected season - season B's 10 episodes
+     * and a smart-resume target of index 7 replace it at the same call site.
+     *
+     * Expected (fixed) behavior: episode 7 of season B ends up focused.
+     * Actual (current, buggy) behavior: `focusRequesters` still has only 3 (season A-sized)
+     * entries, `getOrNull(7)` is null, so `requestInitialEpisodeFocus`'s off-screen-target path is
+     * never even attempted - it falls straight to the EPISODE_0_FALLBACK, which lands on the
+     * wrong episode (season B's index 0) instead of the smart-resume target. This is the
+     * structural defect that also explains Chris' "season button ends up focused" symptom: since
+     * the episode list's own focus request never successfully lands on the correct target, it
+     * never challenges/overrides the season button's own unconditional self-focus effect
+     * (`SeasonButton`'s `LaunchedEffect(isSelected) { delay(50); requestFocus() }`,
+     * SeriesEpisodesScreen.kt:817-827) - that effect's earlier, always-succeeding focus grab is
+     * left standing. The season-button race itself is real-time-delay-based and not encoded here
+     * as a second timing test to avoid a flaky/non-deterministic test (see c2-report.md); this
+     * test instead deterministically proves the enabling defect (H2).
+     */
+    @Test
+    fun seasonSwitchAfterInitialCompositionLeavesFocusRequestersStaleForTheNewSeason() {
+        val seasonAEpisodes = List(3) { episode(100 + it) }
+        val seasonBEpisodes = List(10) { episode(200 + it) }
+
+        lateinit var episodesState: androidx.compose.runtime.MutableState<List<Episode>>
+        lateinit var initialIndexState: androidx.compose.runtime.MutableState<Int?>
+
+        composeTestRule.setContent {
+            episodesState = remember { mutableStateOf(seasonAEpisodes) }
+            initialIndexState = remember { mutableStateOf<Int?>(null) }
+            val episodes = episodesState.value
+
+            // Mirrors EpisodesList's call site inside SeasonNavigation: no key(selectedSeasonIndex)
+            // wrapper, so this is the SAME call site (and the SAME `remember` slot inside
+            // rememberEpisodeFocus) across a season switch, exactly like production.
+            val focusState = rememberEpisodeFocus(
+                episodes = episodes,
+                initialEpisodeIndex = initialIndexState.value
+            )
+            LazyRow(state = focusState.listState) {
+                itemsIndexed(items = episodes, key = { _, ep -> ep.id }) { index, _ ->
+                    // Mirrors EpisodesList passing `focusState.focusRequesters.getOrNull(episodeIndex)`
+                    // (nullable) straight into the card (SeriesEpisodesScreen.kt:934) - the card still
+                    // renders (and is D-Pad-reachable) even when the stale list has no requester for it.
+                    EpisodeCard(index, focusState.focusRequesters.getOrNull(index))
+                }
+            }
+        }
+        composeTestRule.mainClock.advanceTimeBy(1000L)
+        composeTestRule.waitForIdle()
+        // Baseline: season A settles normally (matches noInitialEpisodeIndexFocusesFirstEpisode).
+        composeTestRule.onNodeWithTag(episodeTag(0)).assertIsFocused()
+
+        // Simulate HandleSmartResume's async season jump (onSeasonSelected + onEpisodeIndexSet in
+        // navigateToTargetSeason, SeriesEpisodesScreen.kt:224-244): season B replaces season A's
+        // episodes at the same rememberEpisodeFocus call site, with a smart-resume target deep in
+        // season B (index 7 - outside season A's stale 3-entry focusRequesters list).
+        composeTestRule.runOnIdle {
+            episodesState.value = seasonBEpisodes
+            initialIndexState.value = 7
+        }
+        // Advance in smaller steps (mirroring real frame-by-frame execution) instead of one large
+        // 1000ms jump: the season switch relaunches several LaunchedEffects at once
+        // (requestInitialEpisodeFocus's scroll+safeRequestFocus retries, the focusedEpisodeIndex
+        // sync effect, the scroll-follow effect), and driving that settle frame-by-frame is what
+        // actually happens on a real device - a single huge advanceTimeBy jump does not reliably
+        // step through their delay()/retry interplay the same way. See fix2-report.md.
+        repeat(10) {
+            composeTestRule.mainClock.advanceTimeBy(100L)
+            composeTestRule.waitForIdle()
+        }
+
+        // Bug proof: the smart-resume target (season B, index 7) is not focused.
+        composeTestRule.onNodeWithTag(episodeTag(7)).assertIsFocused()
     }
 }
