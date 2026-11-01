@@ -16,6 +16,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -38,11 +43,11 @@ import com.flintr.tv.data.model.SubtitleLanguage
 import com.flintr.tv.data.model.VideoQuality
 import com.flintr.tv.data.model.VideoResizeMode
 import com.flintr.tv.ui.settings.*
+import com.flintr.tv.ui.settings.dropdownSelectorColors
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onClick
-import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.utils.error.reportWarning
 import java.util.Locale
 
@@ -574,6 +579,7 @@ private fun MaxVideoResolutionSelector(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
+    val fieldLabel = "Max. Videoauflösung"
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (focused) colors.accentColor else colors.cardBorder,
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
@@ -584,15 +590,23 @@ private fun MaxVideoResolutionSelector(
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
-            .onDpadCenter { expanded = !expanded }
+            .onClick(onClick = { expanded = !expanded })
+            .semantics {
+                contentDescription = "$fieldLabel: ${selectedQuality.displayName}"
+            }
     ) {
         OutlinedTextField(
             value = selectedQuality.displayName,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
-            label = { Text("Max. Videoauflösung") },
-            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
+            label = { Text(fieldLabel) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clearAndSetSemantics {
+                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedQuality.displayName))
+                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedQuality.displayName)
+                },
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -600,16 +614,7 @@ private fun MaxVideoResolutionSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, focused)
         )
         DropdownMenu(
             expanded = expanded,
@@ -645,6 +650,7 @@ private fun VideoResizeModeSelector(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
+    val fieldLabel = "Seitenverhältnis"
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (focused) colors.accentColor else colors.cardBorder,
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
@@ -655,15 +661,23 @@ private fun VideoResizeModeSelector(
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
-            .onDpadCenter { expanded = !expanded }
+            .onClick(onClick = { expanded = !expanded })
+            .semantics {
+                contentDescription = "$fieldLabel: ${selectedMode.displayName}"
+            }
     ) {
         OutlinedTextField(
             value = selectedMode.displayName,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
-            label = { Text("Seitenverhältnis") },
-            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
+            label = { Text(fieldLabel) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clearAndSetSemantics {
+                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedMode.displayName))
+                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedMode.displayName)
+                },
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -671,16 +685,7 @@ private fun VideoResizeModeSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, focused)
         )
         DropdownMenu(
             expanded = expanded,
@@ -790,6 +795,7 @@ private fun AudioTrackSelector(
 
     var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
+    val fieldLabel = "Audio-Track"
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (focused) colors.accentColor else colors.cardBorder,
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
@@ -803,15 +809,23 @@ private fun AudioTrackSelector(
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
-            .onDpadCenter { expanded = !expanded }
+            .onClick(onClick = { expanded = !expanded })
+            .semantics {
+                contentDescription = "$fieldLabel: $selectedLabel"
+            }
     ) {
         OutlinedTextField(
             value = selectedLabel,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
-            label = { Text("Audio-Track") },
-            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
+            label = { Text(fieldLabel) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clearAndSetSemantics {
+                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedLabel))
+                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedLabel)
+                },
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -819,16 +833,7 @@ private fun AudioTrackSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, focused)
         )
         DropdownMenu(
             expanded = expanded,
@@ -919,6 +924,7 @@ private fun SubtitleTrackSelector(
 
     var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
+    val fieldLabel = "Untertitel-Track"
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (focused) colors.accentColor else colors.cardBorder,
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
@@ -932,15 +938,23 @@ private fun SubtitleTrackSelector(
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
-            .onDpadCenter { expanded = !expanded }
+            .onClick(onClick = { expanded = !expanded })
+            .semantics {
+                contentDescription = "$fieldLabel: $selectedLabel"
+            }
     ) {
         OutlinedTextField(
             value = selectedLabel,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
-            label = { Text("Untertitel-Track") },
-            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
+            label = { Text(fieldLabel) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clearAndSetSemantics {
+                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedLabel))
+                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedLabel)
+                },
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -948,16 +962,7 @@ private fun SubtitleTrackSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, focused)
         )
         DropdownMenu(
             expanded = expanded,
