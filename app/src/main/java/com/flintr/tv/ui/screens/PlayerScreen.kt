@@ -1613,23 +1613,21 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 val currentState = viewModel.nextEpisodeState.value
                 if (currentState is NextEpisodeState.Visible && playbackSettingsRepository.isAutoPlayNextEnabled()) {
                     viewModel.triggerAutoPlayNext()
-                } else if (currentState !is NextEpisodeState.Visible) {
+                } else if (currentState !is NextEpisodeState.Visible &&
                     // Series complete: last episode ended, no auto-play pending -
                     // offer the rating prompt instead of leaving the player idle
-                    if (!viewModel.hasRatedInSession(contentType, currentContentId) &&
-                        viewModel.maybeShowRatingPrompt(contentType, viewModel.hasNextEpisode())
-                    ) {
-                        state.showRatingDialog = true
-                    }
+                    !viewModel.hasRatedInSession(contentType, currentContentId) &&
+                    viewModel.maybeShowRatingPrompt(contentType, viewModel.hasNextEpisode())
+                ) {
+                    state.showRatingDialog = true
                 }
             }
-        } else if (state.playbackState == Player.STATE_ENDED && contentType == "movie") {
+        } else if (state.playbackState == Player.STATE_ENDED && contentType == "movie" &&
             // VOD complete: same flow as a series' last episode (Task F3 parity fix)
-            if (!viewModel.hasRatedInSession(contentType, currentContentId) &&
-                viewModel.maybeShowRatingPrompt(contentType, hasNextEpisode = false)
-            ) {
-                state.showRatingDialog = true
-            }
+            !viewModel.hasRatedInSession(contentType, currentContentId) &&
+            viewModel.maybeShowRatingPrompt(contentType, hasNextEpisode = false)
+        ) {
+            state.showRatingDialog = true
         }
     }
     

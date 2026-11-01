@@ -298,9 +298,10 @@ internal fun applyMaxVideoSize(exoPlayer: ExoPlayer, quality: VideoQuality) {
 fun buildSubtitleConfigurations(subtitles: List<Subtitle>): List<MediaItem.SubtitleConfiguration> =
     subtitles.mapNotNull { subtitle ->
         val url = subtitle.url?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val path = runCatching { url.toUri().path }.getOrNull() ?: url
         val mimeType = when {
-            url.endsWith(".vtt", ignoreCase = true) -> MimeTypes.TEXT_VTT
-            url.endsWith(".srt", ignoreCase = true) -> MimeTypes.APPLICATION_SUBRIP
+            path.endsWith(".vtt", ignoreCase = true) -> MimeTypes.TEXT_VTT
+            path.endsWith(".srt", ignoreCase = true) -> MimeTypes.APPLICATION_SUBRIP
             else -> MimeTypes.APPLICATION_SUBRIP
         }
         MediaItem.SubtitleConfiguration.Builder(url.toUri())
@@ -591,7 +592,7 @@ private fun MaxVideoResolutionSelector(
             onValueChange = {},
             readOnly = true,
             label = { Text("Max. Videoauflösung") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -662,7 +663,7 @@ private fun VideoResizeModeSelector(
             onValueChange = {},
             readOnly = true,
             label = { Text("Seitenverhältnis") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -810,7 +811,7 @@ private fun AudioTrackSelector(
             onValueChange = {},
             readOnly = true,
             label = { Text("Audio-Track") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -939,7 +940,7 @@ private fun SubtitleTrackSelector(
             onValueChange = {},
             readOnly = true,
             label = { Text("Untertitel-Track") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
