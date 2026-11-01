@@ -44,6 +44,7 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.utils.error.reportWarning
+import java.util.Locale
 
 /**
  * Info for a single audio track for display and selection.
@@ -168,7 +169,7 @@ private fun buildSubtitleTrackLabel(language: String?, fallbackIndex: Int): Stri
  */
 private fun normalizeLanguageCode(code: String?): String? {
     if (code.isNullOrEmpty()) return null
-    val lower = code.lowercase()
+    val lower = code.lowercase(Locale.ROOT)
     return LANGUAGE_CODE_ALIASES[lower] ?: lower
 }
 
