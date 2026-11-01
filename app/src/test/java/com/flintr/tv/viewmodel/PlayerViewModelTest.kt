@@ -2,16 +2,20 @@ package com.flintr.tv.viewmodel
 
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.EpgProgram
+import com.flintr.tv.data.model.RatingEntry
 import com.flintr.tv.data.model.testEpisode
 import com.flintr.tv.data.model.testLiveStream
 import com.flintr.tv.data.model.testSeason
 import com.flintr.tv.data.model.testSeries
+import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.testutil.MainDispatcherRule
 import com.flintr.tv.ui.screens.SeriesContext
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -34,18 +38,27 @@ class PlayerViewModelTest {
 
     private lateinit var repository: XtreamRepository
     private lateinit var credentialsRepository: CredentialsRepository
+    private lateinit var userRepository: UserRepository
+    private lateinit var playbackSettingsRepository: PlaybackSettingsRepository
     private lateinit var viewModel: PlayerViewModel
 
     @Before
     fun setUp() {
         repository = mockk(relaxed = true)
         credentialsRepository = mockk()
+        userRepository = mockk(relaxed = true)
+        playbackSettingsRepository = mockk(relaxed = true)
         every { credentialsRepository.getCredentials() } returns
             Credentials(serverUrl = "http://srv", username = "chris", password = "pw")
+        // Countdown/auto-play tests below assume the setting is on by default; the
+        // disabled case is covered explicitly with its own viewModel instance.
+        every { playbackSettingsRepository.isAutoPlayNextEnabled() } returns true
         viewModel = PlayerViewModel(
             repository = repository,
             credentialsRepository = credentialsRepository,
-            watchProgressService = mockk<WatchProgressService>(relaxed = true)
+            watchProgressService = mockk<WatchProgressService>(relaxed = true),
+            userRepository = userRepository,
+            playbackSettingsRepository = playbackSettingsRepository
         )
     }
 
@@ -173,6 +186,27 @@ class PlayerViewModelTest {
     }
 
     @Test
+    fun `Countdown startet nicht wenn AutoPlay deaktiviert ist`() = runTest {
+        val disabledSettingsRepository = mockk<PlaybackSettingsRepository>(relaxed = true)
+        every { disabledSettingsRepository.isAutoPlayNextEnabled() } returns false
+        val viewModelWithAutoPlayDisabled = PlayerViewModel(
+            repository = repository,
+            credentialsRepository = credentialsRepository,
+            watchProgressService = mockk(relaxed = true),
+            userRepository = userRepository,
+            playbackSettingsRepository = disabledSettingsRepository
+        )
+        viewModelWithAutoPlayDisabled.loadSeriesContext(10, 101, contextFor(101))
+
+        viewModelWithAutoPlayDisabled.showNextEpisodeButton()
+        advanceUntilIdle()
+
+        val state = viewModelWithAutoPlayDisabled.nextEpisodeState.value
+        assertTrue(state is NextEpisodeState.Visible)
+        assertEquals(0f, (state as NextEpisodeState.Visible).autoPlayProgress)
+    }
+
+    @Test
     fun `watchCreditsMode unterdrueckt Button`() = runTest {
         viewModel.loadSeriesContext(10, 101, contextFor(101))
 
@@ -270,5 +304,98 @@ class PlayerViewModelTest {
 
         assertTrue(viewModel.currentCategoryChannels.value.isEmpty())
         assertEquals(-1, viewModel.currentChannelIndex.value)
+    }
+
+    @Test
+    fun `maybeShowRatingPrompt zeigt Dialog bei VOD-Exit`() {
+        assertTrue(viewModel.maybeShowRatingPrompt("movie", hasNextEpisode = false))
+    }
+
+    @Test
+    fun `maybeShowRatingPrompt unterdrueckt Dialog bei Serie mit naechster Folge`() {
+        viewModel.loadSeriesContext(10, 101, contextFor(101))
+
+        assertFalse(viewModel.maybeShowRatingPrompt("series", hasNextEpisode = true))
+    }
+
+    @Test
+    fun `maybeShowRatingPrompt zeigt Dialog bei Serie ohne naechste Folge`() {
+        viewModel.loadSeriesContext(10, 201, contextFor(201))
+
+        assertTrue(viewModel.maybeShowRatingPrompt("series", hasNextEpisode = false))
+    }
+
+    @Test
+    fun `maybeShowRatingPrompt unterdrueckt Dialog wenn Auto-Next mitten im Binge aktiv ist`() = runTest {
+        viewModel.loadSeriesContext(10, 101, contextFor(101))
+        viewModel.showNextEpisodeButton() // next episode button visible -> auto-play engaging
+
+        assertFalse(viewModel.maybeShowRatingPrompt("series", hasNextEpisode = false))
+    }
+
+    @Test
+    fun `maybeShowRatingPrompt triggert nur einmal pro Session`() {
+        assertTrue(viewModel.maybeShowRatingPrompt("movie", hasNextEpisode = false))
+        assertFalse(viewModel.maybeShowRatingPrompt("movie", hasNextEpisode = false))
+    }
+
+    @Test
+    fun `maybeShowRatingPrompt ignoriert Live-Content`() {
+        assertFalse(viewModel.maybeShowRatingPrompt("live", hasNextEpisode = false))
+    }
+
+    @Test
+    fun `saveRating speichert ueber UserRepository`() = runTest {
+        val entry = RatingEntry(
+            contentType = "movie",
+            contentId = 42,
+            title = "Testfilm",
+            rating = 1,
+            ratedAt = "2026-09-13T00:00:00Z"
+        )
+        coEvery { userRepository.saveRating("chris", entry) } returns Result.success(Unit)
+
+        viewModel.saveRating(entry)
+        advanceUntilIdle()
+
+        coVerify { userRepository.saveRating("chris", entry) }
+    }
+
+    @Test
+    fun `hasRatedInSession ist false ohne vorheriges Rating`() {
+        assertFalse(viewModel.hasRatedInSession("movie", 42))
+    }
+
+    @Test
+    fun `markRatedInSession setzt ratedInSession fuer denselben Content`() {
+        viewModel.markRatedInSession("movie", 42)
+
+        assertTrue(viewModel.hasRatedInSession("movie", 42))
+    }
+
+    @Test
+    fun `ratedInSession ist content-spezifisch (contentType und contentId muessen matchen)`() {
+        viewModel.markRatedInSession("movie", 42)
+
+        assertFalse(viewModel.hasRatedInSession("movie", 43))
+        assertFalse(viewModel.hasRatedInSession("series", 42))
+    }
+
+    @Test
+    fun `VOD-Ende (F3) zeigt Dialog wenn nicht ratedInSession`() {
+        assertFalse(viewModel.hasRatedInSession("movie", 42))
+        assertTrue(viewModel.maybeShowRatingPrompt("movie", hasNextEpisode = false))
+    }
+
+    @Test
+    fun `VOD-Ende (F3) unterdrueckt Dialog nach Rating ueber Overlay-Controls-Pfad`() {
+        viewModel.markRatedInSession("movie", 42)
+
+        // Mirrors PlayerScreen's STATE_ENDED gating: hasRatedInSession short-circuits
+        // before maybeShowRatingPrompt is even consulted.
+        val shouldShowDialog = !viewModel.hasRatedInSession("movie", 42) &&
+            viewModel.maybeShowRatingPrompt("movie", hasNextEpisode = false)
+
+        assertFalse(shouldShowDialog)
     }
 }

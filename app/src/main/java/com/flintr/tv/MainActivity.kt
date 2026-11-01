@@ -21,6 +21,7 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.PlaybackSettingsRepository
+import com.flintr.tv.data.local.RecommendationService
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
@@ -64,6 +65,9 @@ class MainActivity : ComponentActivity() {
     lateinit var userRepository: UserRepository
 
     @Inject
+    lateinit var recommendationService: RecommendationService
+
+    @Inject
     @Named("IO")
     lateinit var ioDispatcher: CoroutineDispatcher
 
@@ -98,6 +102,7 @@ class MainActivity : ComponentActivity() {
                             playbackSettingsRepository = playbackSettingsRepository,
                             xtreamRepository = xtreamRepository,
                             userRepository = userRepository,
+                            recommendationService = recommendationService,
                             ioDispatcher = ioDispatcher
                         )
                     )

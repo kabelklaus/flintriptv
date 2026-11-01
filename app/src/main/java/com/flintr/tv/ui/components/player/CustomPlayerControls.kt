@@ -55,6 +55,8 @@ data class PlayerCallbacks(
     val onNext: () -> Unit,
     val onNextEpisode: (() -> Unit)? = null,
     val onSeek: (Float) -> Unit,
+    val onThumbsUp: () -> Unit = {},
+    val onThumbsDown: () -> Unit = {},
     val dragCallbacks: DragCallbacks = DragCallbacks(),
     val isDragging: Boolean = false
 )
@@ -95,6 +97,7 @@ data class ButtonConfig(
     val iconSize: androidx.compose.ui.unit.Dp,
     val contentDescription: String,
     val isFocused: Boolean,
+    val isHighlighted: Boolean = false,
     val focusRequester: FocusRequester,
     val onFocusChange: (Boolean) -> Unit,
     val onClick: () -> Unit,
@@ -122,14 +125,36 @@ internal fun formatFinishTimeText(
 }
 
 /**
+ * Ticks once per minute boundary, for sampling [formatFinishTimeText]'s "now" while paused
+ * without a per-frame recomposition.
+ */
+@Composable
+private fun rememberMinuteTickMillis(): Long {
+    var minuteTickMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            val delayToNextMinute = 60_000L - (now % 60_000L)
+            delay(delayToNextMinute)
+            minuteTickMillis = System.currentTimeMillis()
+        }
+    }
+    return minuteTickMillis
+}
+
+/**
  * Custom player controls with progress bar, navigation buttons, time display, and utility buttons
  * @param state Player state information
  * @param callbacks Player control callbacks
  * @param utilityCallbacks Utility callbacks
  * @param contentType Current content type (live/movie/series)
  * @param focusedButton Currently focused button
+ * @param ratedThumb The persisted rating for the current content (1 = up, 0 = down, null =
+ *   none), highlighted independent of focus for as long as the content stays rated
+ * @param showRatingButtons Whether the thumbs up/down buttons are rendered and focusable
  * @param modifier Modifier for the controls
  */
+@Suppress("S107") // groups state/callbacks/utilityCallbacks already bundle related params; splitting further risks the tested player controls
 @Composable
 fun CustomPlayerControls(
     state: PlayerState,
@@ -137,7 +162,9 @@ fun CustomPlayerControls(
     utilityCallbacks: PlayerUtilityCallbacks,
     contentType: String,
     focusedButton: FocusedButton?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    ratedThumb: Int? = null,
+    showRatingButtons: Boolean = true
 ) {
     val focusRequesters = remember {
         mapOf(
@@ -145,6 +172,8 @@ fun CustomPlayerControls(
             FocusedButton.PLAY_PAUSE to FocusRequester(),
             FocusedButton.NEXT to FocusRequester(),
             FocusedButton.NEXT_EPISODE to FocusRequester(),
+            FocusedButton.THUMBS_UP to FocusRequester(),
+            FocusedButton.THUMBS_DOWN to FocusRequester(),
             FocusedButton.DEBUG to FocusRequester(),
             FocusedButton.SETTINGS to FocusRequester()
         )
@@ -155,16 +184,7 @@ fun CustomPlayerControls(
         focusRequesters[focusedButton]?.requestFocus()
     }
 
-    var minuteTickMillis by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            val now = System.currentTimeMillis()
-            val delayToNextMinute = 60_000L - (now % 60_000L)
-            delay(delayToNextMinute)
-            minuteTickMillis = System.currentTimeMillis()
-        }
-    }
-
+    val minuteTickMillis = rememberMinuteTickMillis()
     val sampledNowMillis = if (state.isPlaying) System.currentTimeMillis() else minuteTickMillis
     val finishTime = remember(contentType, sampledNowMillis, state.currentPosition, state.duration) {
         formatFinishTimeText(
@@ -234,15 +254,29 @@ fun CustomPlayerControls(
                         utilityCallbacks = utilityCallbacks,
                         focusedButton = focusedButton,
                         focusRequesters = focusRequesters,
-                        hasNextEpisode = callbacks.onNextEpisode != null
+                        hasNextEpisode = callbacks.onNextEpisode != null,
+                        showRatingButtons = showRatingButtons
                     )
+
+                    // Rating buttons (thumbs up/down)
+                    if (showRatingButtons) {
+                        RatingButtons(
+                            callbacks = callbacks,
+                            utilityCallbacks = utilityCallbacks,
+                            focusedButton = focusedButton,
+                            focusRequesters = focusRequesters,
+                            hasNextEpisode = callbacks.onNextEpisode != null,
+                            ratedThumb = ratedThumb
+                        )
+                    }
 
                     // Utility buttons
                     UtilityButtons(
                         utilityCallbacks = utilityCallbacks,
                         focusedButton = focusedButton,
                         focusRequesters = focusRequesters,
-                        hasNextEpisode = callbacks.onNextEpisode != null
+                        hasNextEpisode = callbacks.onNextEpisode != null,
+                        showRatingButtons = showRatingButtons
                     )
                 }
 
@@ -272,33 +306,55 @@ fun CustomPlayerControls(
 /**
  * Creates navigation handlers for a button based on its position and context
  */
+/** Target of THUMBS_UP's left-navigation and DEBUG's (when ratings are hidden) left-navigation fallback. */
+private fun nextEpisodeOrNext(hasNextEpisode: Boolean): FocusedButton =
+    if (hasNextEpisode) FocusedButton.NEXT_EPISODE else FocusedButton.NEXT
+
+/** Target of DEBUG's left-navigation: skip to whichever of ratings/next-episode/next is actually shown. */
+private fun debugLeftTarget(hasNextEpisode: Boolean, showRatingButtons: Boolean): FocusedButton = when {
+    showRatingButtons -> FocusedButton.THUMBS_DOWN
+    else -> nextEpisodeOrNext(hasNextEpisode)
+}
+
+/** Target of NEXT's right-navigation: skip to whichever of next-episode/ratings/debug is actually shown. */
+private fun nextRightTarget(hasNextEpisode: Boolean, showRatingButtons: Boolean): FocusedButton = when {
+    hasNextEpisode -> FocusedButton.NEXT_EPISODE
+    showRatingButtons -> FocusedButton.THUMBS_UP
+    else -> FocusedButton.DEBUG
+}
+
+/** Target of NEXT_EPISODE's right-navigation: skip to ratings if shown, else debug. */
+private fun afterNextEpisodeRightTarget(showRatingButtons: Boolean): FocusedButton =
+    if (showRatingButtons) FocusedButton.THUMBS_UP else FocusedButton.DEBUG
+
 private fun createNavigationHandler(
     button: FocusedButton,
     hasNextEpisode: Boolean,
-    onFocusChange: (FocusedButton?) -> Unit
+    onFocusChange: (FocusedButton?) -> Unit,
+    showRatingButtons: Boolean = true
 ): Pair<() -> Unit, () -> Unit> {
     val onNavigateLeft: () -> Unit = when (button) {
         FocusedButton.PREVIOUS -> { -> onFocusChange(null) }
         FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.PREVIOUS) }
         FocusedButton.NEXT -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
         FocusedButton.NEXT_EPISODE -> { -> onFocusChange(FocusedButton.NEXT) }
-        FocusedButton.DEBUG -> { -> 
-            onFocusChange(if (hasNextEpisode) FocusedButton.NEXT_EPISODE else FocusedButton.NEXT)
-        }
+        FocusedButton.THUMBS_UP -> { -> onFocusChange(nextEpisodeOrNext(hasNextEpisode)) }
+        FocusedButton.THUMBS_DOWN -> { -> onFocusChange(FocusedButton.THUMBS_UP) }
+        FocusedButton.DEBUG -> { -> onFocusChange(debugLeftTarget(hasNextEpisode, showRatingButtons)) }
         FocusedButton.SETTINGS -> { -> onFocusChange(FocusedButton.DEBUG) }
     }
-    
+
     val onNavigateRight: () -> Unit = when (button) {
         FocusedButton.PREVIOUS -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
         FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.NEXT) }
-        FocusedButton.NEXT -> { -> 
-            onFocusChange(if (hasNextEpisode) FocusedButton.NEXT_EPISODE else FocusedButton.DEBUG)
-        }
-        FocusedButton.NEXT_EPISODE -> { -> onFocusChange(FocusedButton.DEBUG) }
+        FocusedButton.NEXT -> { -> onFocusChange(nextRightTarget(hasNextEpisode, showRatingButtons)) }
+        FocusedButton.NEXT_EPISODE -> { -> onFocusChange(afterNextEpisodeRightTarget(showRatingButtons)) }
+        FocusedButton.THUMBS_UP -> { -> onFocusChange(FocusedButton.THUMBS_DOWN) }
+        FocusedButton.THUMBS_DOWN -> { -> onFocusChange(FocusedButton.DEBUG) }
         FocusedButton.DEBUG -> { -> onFocusChange(FocusedButton.SETTINGS) }
         FocusedButton.SETTINGS -> { -> onFocusChange(null) }
     }
-    
+
     return Pair(onNavigateLeft, onNavigateRight)
 }
 
@@ -309,13 +365,15 @@ private fun createButtonConfig(
     appearance: ButtonAppearance,
     focusConfig: ButtonFocusConfig,
     onClick: () -> Unit,
-    navigationHandler: Pair<() -> Unit, () -> Unit>
+    navigationHandler: Pair<() -> Unit, () -> Unit>,
+    isHighlighted: Boolean = false
 ): ButtonConfig {
     return ButtonConfig(
         icon = appearance.icon,
         iconSize = appearance.iconSize,
         contentDescription = appearance.contentDescription,
         isFocused = focusConfig.focusedButton == focusConfig.targetButton,
+        isHighlighted = isHighlighted,
         focusRequester = focusConfig.focusRequester,
         onFocusChange = { isFocused -> 
             focusConfig.onFocusChange(if (isFocused) focusConfig.targetButton else null) 
@@ -336,7 +394,8 @@ private fun NavigationButtons(
     utilityCallbacks: PlayerUtilityCallbacks,
     focusedButton: FocusedButton?,
     focusRequesters: Map<FocusedButton, FocusRequester>,
-    hasNextEpisode: Boolean
+    hasNextEpisode: Boolean,
+    showRatingButtons: Boolean = true
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
@@ -406,11 +465,12 @@ private fun NavigationButtons(
                 navigationHandler = createNavigationHandler(
                     FocusedButton.NEXT,
                     hasNextEpisode,
-                    utilityCallbacks.onFocusChange
+                    utilityCallbacks.onFocusChange,
+                    showRatingButtons
                 )
             )
         )
-        
+
         // Next Episode button (only shown if next episode is available)
         if (hasNextEpisode && callbacks.onNextEpisode != null) {
             PlayerControlButton(
@@ -430,11 +490,80 @@ private fun NavigationButtons(
                     navigationHandler = createNavigationHandler(
                         FocusedButton.NEXT_EPISODE,
                         hasNextEpisode,
-                        utilityCallbacks.onFocusChange
+                        utilityCallbacks.onFocusChange,
+                        showRatingButtons
                     )
                 )
             )
         }
+    }
+}
+
+/**
+ * Rating buttons group (thumbs up/down) - direct rating without the RatingDialog.
+ * [ratedThumb] persistently highlights the currently rated thumb (1 = up, 0 = down),
+ * for as long as this content stays rated.
+ */
+@Composable
+private fun RatingButtons(
+    callbacks: PlayerCallbacks,
+    utilityCallbacks: PlayerUtilityCallbacks,
+    focusedButton: FocusedButton?,
+    focusRequesters: Map<FocusedButton, FocusRequester>,
+    hasNextEpisode: Boolean,
+    ratedThumb: Int?
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Thumbs up
+        PlayerControlButton(
+            config = createButtonConfig(
+                appearance = ButtonAppearance(
+                    icon = Icons.Default.ThumbUp,
+                    iconSize = 24.dp,
+                    contentDescription = "Gefällt mir"
+                ),
+                focusConfig = ButtonFocusConfig(
+                    focusedButton = focusedButton,
+                    targetButton = FocusedButton.THUMBS_UP,
+                    focusRequester = focusRequesters[FocusedButton.THUMBS_UP]!!,
+                    onFocusChange = utilityCallbacks.onFocusChange
+                ),
+                onClick = callbacks.onThumbsUp,
+                navigationHandler = createNavigationHandler(
+                    FocusedButton.THUMBS_UP,
+                    hasNextEpisode,
+                    utilityCallbacks.onFocusChange
+                ),
+                isHighlighted = ratedThumb == 1
+            )
+        )
+
+        // Thumbs down
+        PlayerControlButton(
+            config = createButtonConfig(
+                appearance = ButtonAppearance(
+                    icon = Icons.Default.ThumbDown,
+                    iconSize = 24.dp,
+                    contentDescription = "Gefällt mir nicht"
+                ),
+                focusConfig = ButtonFocusConfig(
+                    focusedButton = focusedButton,
+                    targetButton = FocusedButton.THUMBS_DOWN,
+                    focusRequester = focusRequesters[FocusedButton.THUMBS_DOWN]!!,
+                    onFocusChange = utilityCallbacks.onFocusChange
+                ),
+                onClick = callbacks.onThumbsDown,
+                navigationHandler = createNavigationHandler(
+                    FocusedButton.THUMBS_DOWN,
+                    hasNextEpisode,
+                    utilityCallbacks.onFocusChange
+                ),
+                isHighlighted = ratedThumb == 0
+            )
+        )
     }
 }
 
@@ -446,7 +575,8 @@ private fun UtilityButtons(
     utilityCallbacks: PlayerUtilityCallbacks,
     focusedButton: FocusedButton?,
     focusRequesters: Map<FocusedButton, FocusRequester>,
-    hasNextEpisode: Boolean
+    hasNextEpisode: Boolean,
+    showRatingButtons: Boolean = true
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
@@ -470,7 +600,8 @@ private fun UtilityButtons(
                 navigationHandler = createNavigationHandler(
                     FocusedButton.DEBUG,
                     hasNextEpisode,
-                    utilityCallbacks.onFocusChange
+                    utilityCallbacks.onFocusChange,
+                    showRatingButtons
                 )
             )
         )
@@ -540,7 +671,7 @@ private fun PlayerControlButton(
             imageVector = config.icon,
             contentDescription = config.contentDescription,
             modifier = Modifier.size(config.iconSize),
-            tint = if (config.isFocused) SharedColors.accent else Color.White
+            tint = if (config.isFocused || config.isHighlighted) SharedColors.accent else Color.White
         )
     }
 }

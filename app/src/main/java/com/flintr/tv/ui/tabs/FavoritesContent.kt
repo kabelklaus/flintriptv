@@ -3,6 +3,7 @@ package com.flintr.tv.ui.tabs
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -243,18 +244,29 @@ fun FavoritesContent(
     var favorites by remember { mutableStateOf<List<Favorite>>(emptyList()) }
     var favoriteItems by remember { mutableStateOf<List<FavoriteContentItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    
-    // Load favorites
-    LaunchedEffect(Unit) {
-        // Sync with Firestore before loading (respects cooldown)
-        params.favoritesRepository.syncIfNeeded()
+    var retryTrigger by remember { mutableStateOf(0) }
+    val loadError by params.favoritesRepository.loadError.collectAsState()
+
+    // Load favorites; retryTrigger > 0 means the user tapped the error state's retry button
+    LaunchedEffect(retryTrigger) {
+        if (retryTrigger == 0) {
+            // Sync with Firestore before loading (respects cooldown)
+            params.favoritesRepository.syncIfNeeded()
+        } else {
+            isLoading = true
+            // Explicit user retry: bypass the sync cooldown
+            params.favoritesRepository.retryLoadFromFirestore()
+        }
         favorites = params.favoritesRepository.getAllFavorites()
         // isLoading bleibt true, bis Matching abgeschlossen ist
         Log.d("FavoritesContent", "Loaded ${favorites.size} favorites")
     }
     
-    // Load only needed streams/series and match favorites on background thread
-    LaunchedEffect(favorites) {
+    // Load only needed streams/series and match favorites on background thread.
+    // Keyed on retryTrigger too: if a retry still yields an empty (structurally equal)
+    // list, "favorites" alone wouldn't change and this effect wouldn't rerun, leaving
+    // isLoading stuck at true from the retry branch above.
+    LaunchedEffect(favorites, retryTrigger) {
         if (favorites.isEmpty()) {
             favoriteItems = emptyList()
             isLoading = false // Keine Favoriten = fertig
@@ -299,7 +311,10 @@ fun FavoritesContent(
             },
             // Not an error state — an empty favorites list is expected, so it must not
             // read like ContentGridLayout's default "failed to load" message.
-            emptyStateText = "Noch keine Favoriten"
+            emptyStateText = "Noch keine Favoriten",
+            errorMessage = loadError,
+            // Only offer retry for an actual load error, not for a legitimately empty list.
+            onRetry = loadError?.let { { retryTrigger++ } }
         ),
         content = { item, index, columnIndex, onFocusChanged, cardFocusRequester ->
             FavoriteCard(

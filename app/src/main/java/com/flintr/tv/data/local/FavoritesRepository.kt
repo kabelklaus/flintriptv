@@ -50,6 +50,11 @@ class FavoritesRepository @Inject constructor(
     private val _favorites = MutableStateFlow<List<Favorite>>(emptyList())
     val favorites: StateFlow<List<Favorite>> = _favorites.asStateFlow()
 
+    // Non-null after a failed/timed-out Firestore load; cleared on the next successful load.
+    // Consumed by FavoritesContent to show an error+retry state instead of a silent empty list.
+    private val _loadError = MutableStateFlow<String?>(null)
+    val loadError: StateFlow<String?> = _loadError.asStateFlow()
+
     // Mutex to prevent concurrent loadFromFirestore() calls
     private val loadMutex = Mutex()
 
@@ -71,6 +76,7 @@ class FavoritesRepository @Inject constructor(
                 } else {
                     // Clear state when logged out
                     _favorites.value = emptyList()
+                    _loadError.value = null
                     Log.d(TAG, "Credentials cleared, resetting favorites")
                 }
             }
@@ -101,11 +107,13 @@ class FavoritesRepository @Inject constructor(
             result.fold(
                 onSuccess = { favorites ->
                     _favorites.value = favorites
+                    _loadError.value = null
                     syncManager.updateLastSyncTimestamp()
                     Log.d(TAG, "Loaded favorites from Firestore: ${favorites.size} total")
                 },
                 onFailure = { exception ->
                     reportError(TAG, "Failed to load favorites from Firestore", exception)
+                    _loadError.value = "Fehler beim Laden der Favoriten"
                     // Keep current state or use empty list
                     if (_favorites.value.isEmpty()) {
                         Log.e(TAG, "State is empty after failed Firestore load - user data may be unavailable")
@@ -119,11 +127,21 @@ class FavoritesRepository @Inject constructor(
     /**
      * Synchronizes favorites from Firestore if enough time has passed since last sync.
      * This prevents excessive Firestore reads when users switch tabs quickly.
-     * 
+     *
      * @return true if sync was performed, false if skipped due to cooldown
      */
     suspend fun syncIfNeeded(): Boolean {
         return syncManager.syncIfNeeded {
+            loadFromFirestore()
+        }
+    }
+
+    /**
+     * Retries loading favorites from Firestore, bypassing the sync cooldown.
+     * Used by the UI's explicit retry action after a failed/timed-out load.
+     */
+    suspend fun retryLoadFromFirestore() {
+        syncManager.forceSync {
             loadFromFirestore()
         }
     }

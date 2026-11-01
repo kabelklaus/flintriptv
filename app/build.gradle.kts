@@ -27,8 +27,8 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 106
-        versionName = "2.48"
+        versionCode = 107
+        versionName = "2.49"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -225,6 +225,7 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
     implementation(libs.media3.hls)
+    implementation(libs.media3.session)
     
     // Image Loading
     implementation(libs.coil.compose)

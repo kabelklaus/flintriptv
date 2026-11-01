@@ -3,12 +3,15 @@ package com.flintr.tv.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.EpgProgram
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.LiveStream
+import com.flintr.tv.data.model.RatingEntry
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
+import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.BuildConfig
 import com.flintr.tv.ui.common.PlayerConstants
@@ -45,7 +48,9 @@ sealed class NextEpisodeState {
 class PlayerViewModel @Inject constructor(
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
-    private val watchProgressService: WatchProgressService
+    private val watchProgressService: WatchProgressService,
+    private val userRepository: UserRepository,
+    private val playbackSettingsRepository: PlaybackSettingsRepository
 ) : ViewModel() {
     
     private val _epgPrograms = MutableStateFlow<List<EpgProgram>>(emptyList())
@@ -79,6 +84,8 @@ class PlayerViewModel @Inject constructor(
     private var currentEpisodeId: Int? = null
     private var autoPlayJob: kotlinx.coroutines.Job? = null
     private var _pendingNextEpisodeInfo: Channel<NextEpisodeInfo>? = null
+    private var ratingPromptShown = false
+    private val ratedContentKeys = mutableSetOf<String>()
     
     private fun getPendingNextEpisodeInfoChannel(): Channel<NextEpisodeInfo> {
         if (_pendingNextEpisodeInfo == null || _pendingNextEpisodeInfo!!.isClosedForSend) {
@@ -350,14 +357,19 @@ class PlayerViewModel @Inject constructor(
     
     /**
      * Starts the auto-play countdown (10 seconds)
-     * Only starts if no timer is already running
+     * Only starts if no timer is already running and the AutoPlay setting is enabled -
+     * when disabled, the next-episode button still shows (via showNextEpisodeButton), it
+     * just never advances on its own; the user can still click it manually.
      */
     private fun startAutoPlayCountdown() {
+        if (!playbackSettingsRepository.isAutoPlayNextEnabled()) {
+            return
+        }
         // Don't start if timer is already running
         if (autoPlayJob != null && autoPlayJob!!.isActive) {
             return
         }
-        
+
         autoPlayJob = viewModelScope.launch {
             repeat(PlayerConstants.AUTO_PLAY_COUNTDOWN_STEPS) {
                 delay(PlayerConstants.AUTO_PLAY_UPDATE_INTERVAL_MS)
@@ -522,6 +534,79 @@ class PlayerViewModel @Inject constructor(
     fun clearChannelNavigation() {
         _currentCategoryChannels.value = emptyList()
         _currentChannelIndex.value = -1
+    }
+
+    /**
+     * Decides whether the thumbs up/down rating prompt should be shown for the current
+     * exit (VOD/series ended or user backed out). VOD always prompts; a series only
+     * prompts on its last episode, and only once per player session (guards against the
+     * swipe-exit/back-button/STATE_ENDED paths all firing for the same exit).
+     *
+     * Also guards against auto-play already engaging (next-episode button visible/loading
+     * or watch-credits mode) so the dialog never interrupts a binge.
+     *
+     * @param contentType "movie" or "series"
+     * @param hasNextEpisode whether another episode follows (irrelevant for movies)
+     */
+    fun maybeShowRatingPrompt(contentType: String, hasNextEpisode: Boolean): Boolean {
+        if (ratingPromptShown) return false
+
+        val autoNextEngaging = _nextEpisodeState.value !is NextEpisodeState.Hidden || _watchCreditsMode.value
+        val shouldShow = when (contentType) {
+            "movie" -> true
+            "series" -> !hasNextEpisode && !autoNextEngaging
+            else -> false
+        }
+
+        if (shouldShow) {
+            ratingPromptShown = true
+        }
+        return shouldShow
+    }
+
+    /**
+     * Marks [contentType]/[contentId] as rated in this player session (via the controls
+     * thumbs buttons or the soft rating overlay), so callers can suppress a later
+     * end-of-content rating dialog for the same content.
+     */
+    fun markRatedInSession(contentType: String, contentId: Int) {
+        ratedContentKeys.add("$contentType:$contentId")
+    }
+
+    /**
+     * Whether [contentType]/[contentId] has already been rated in this player session.
+     */
+    fun hasRatedInSession(contentType: String, contentId: Int): Boolean {
+        return ratedContentKeys.contains("$contentType:$contentId")
+    }
+
+    /**
+     * Persists a rating entry via UserRepository. Fire-and-forget from the caller's
+     * perspective (used right before navigating back out of the player).
+     */
+    fun saveRating(entry: RatingEntry) {
+        val username = credentialsRepository.getCredentials()?.username ?: return
+        viewModelScope.launch {
+            userRepository.saveRating(username, entry)
+                .onFailure { reportError("PlayerViewModel", "Failed to save rating", it) }
+        }
+    }
+
+    /**
+     * Loads the persisted rating (1 = up, 0 = down, null = none/unavailable) for
+     * [contentType]/[contentId], so the player can restore the "already rated" indicator
+     * when the same content is opened again.
+     */
+    @Suppress("S6313") // called directly from a LaunchedEffect keyed on (contentType, contentId) in PlayerScreen,
+    // so cancellation follows that content-identity key; moving this to a viewModelScope-owned
+    // StateFlow would be a larger behavioral change than this fix pass should risk
+    suspend fun loadRating(contentType: String, contentId: Int): Int? {
+        val username = credentialsRepository.getCredentials()?.username ?: return null
+        val contentKey = "${contentType}_$contentId"
+        return userRepository.getRating(username, contentKey)
+            .onFailure { reportError("PlayerViewModel", "Failed to load rating", it) }
+            .getOrNull()
+            ?.rating
     }
 }
 

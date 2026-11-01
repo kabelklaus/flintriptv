@@ -17,6 +17,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
@@ -136,6 +141,29 @@ fun SwitchSetting(
 }
 
 /**
+ * Intercepts D-Pad Up/Down before the text field consumes them for cursor movement,
+ * so vertical navigation always moves focus to the next/previous element in the chain.
+ */
+private fun Modifier.onDpadVerticalFocusChange(
+    onDpadUp: (() -> Unit)?,
+    onDpadDown: (() -> Unit)?
+): Modifier {
+    if (onDpadUp == null && onDpadDown == null) {
+        return this
+    }
+    return this.onPreviewKeyEvent { event ->
+        if (event.type != KeyEventType.KeyDown) {
+            return@onPreviewKeyEvent false
+        }
+        when (event.key) {
+            Key.DirectionUp -> onDpadUp?.let { it(); true } ?: false
+            Key.DirectionDown -> onDpadDown?.let { it(); true } ?: false
+            else -> false
+        }
+    }
+}
+
+/**
  * Configuration data class for ConnectionTextField
  */
 data class ConnectionTextFieldConfig(
@@ -146,7 +174,9 @@ data class ConnectionTextFieldConfig(
     val leadingIcon: ImageVector,
     val focusRequester: FocusRequester? = null,
     val colors: com.flintr.tv.ui.theme.AppColors,
-    val onDpadLeft: (() -> Unit)? = null
+    val onDpadLeft: (() -> Unit)? = null,
+    val onDpadUp: (() -> Unit)? = null,
+    val onDpadDown: (() -> Unit)? = null
 )
 
 /**
@@ -171,6 +201,7 @@ fun ConnectionTextField(
                     Modifier
                 }
             )
+            .onDpadVerticalFocusChange(config.onDpadUp, config.onDpadDown)
             .then(
                 if (config.focusRequester != null) {
                     Modifier.focusRequester(config.focusRequester)
@@ -209,7 +240,9 @@ fun ConnectionPasswordField(
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
-    colors: com.flintr.tv.ui.theme.AppColors
+    colors: com.flintr.tv.ui.theme.AppColors,
+    onDpadUp: (() -> Unit)? = null,
+    onDpadDown: (() -> Unit)? = null
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
     
@@ -225,6 +258,7 @@ fun ConnectionPasswordField(
         ),
         modifier = modifier
             .fillMaxWidth()
+            .onDpadVerticalFocusChange(onDpadUp, onDpadDown)
             .then(
                 if (focusRequester != null) {
                     Modifier.focusRequester(focusRequester)
