@@ -43,6 +43,7 @@ import com.flintr.tv.data.model.SubtitleLanguage
 import com.flintr.tv.data.model.VideoQuality
 import com.flintr.tv.data.model.VideoResizeMode
 import com.flintr.tv.ui.settings.*
+import com.flintr.tv.ui.settings.dropdownSelectorColors
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
@@ -613,20 +614,7 @@ private fun MaxVideoResolutionSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                disabledBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                disabledLabelColor = if (focused) colors.textPrimary else colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                disabledTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor,
-                disabledTrailingIconColor = if (focused) colors.accentColor else colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, focused)
         )
         DropdownMenu(
             expanded = expanded,
@@ -697,20 +685,7 @@ private fun VideoResizeModeSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                disabledBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                disabledLabelColor = if (focused) colors.textPrimary else colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                disabledTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor,
-                disabledTrailingIconColor = if (focused) colors.accentColor else colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, focused)
         )
         DropdownMenu(
             expanded = expanded,
@@ -858,20 +833,7 @@ private fun AudioTrackSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                disabledBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                disabledLabelColor = if (focused) colors.textPrimary else colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                disabledTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor,
-                disabledTrailingIconColor = if (focused) colors.accentColor else colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, focused)
         )
         DropdownMenu(
             expanded = expanded,
@@ -1000,20 +962,7 @@ private fun SubtitleTrackSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                disabledBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                disabledLabelColor = if (focused) colors.textPrimary else colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                disabledTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor,
-                disabledTrailingIconColor = if (focused) colors.accentColor else colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, focused)
         )
         DropdownMenu(
             expanded = expanded,

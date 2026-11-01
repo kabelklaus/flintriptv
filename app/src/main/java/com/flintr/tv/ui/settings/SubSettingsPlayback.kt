@@ -312,20 +312,7 @@ fun VideoQualitySelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                disabledBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                disabledLabelColor = if (isFocused) colors.textPrimary else colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                disabledTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor,
-                disabledTrailingIconColor = if (isFocused) colors.accentColor else colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, isFocused)
         )
 
         DropdownMenu(
@@ -397,20 +384,7 @@ fun ResizeModeSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                disabledBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                disabledLabelColor = if (isFocused) colors.textPrimary else colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                disabledTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor,
-                disabledTrailingIconColor = if (isFocused) colors.accentColor else colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, isFocused)
         )
 
         DropdownMenu(
@@ -491,20 +465,7 @@ fun AudioDecoderSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                disabledBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                disabledLabelColor = if (isFocused) colors.textPrimary else colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                disabledTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor,
-                disabledTrailingIconColor = if (isFocused) colors.accentColor else colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, isFocused)
         )
 
         DropdownMenu(
@@ -576,20 +537,7 @@ fun PreferredAudioCodecSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                disabledBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                disabledLabelColor = if (isFocused) colors.textPrimary else colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                disabledTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor,
-                disabledTrailingIconColor = if (isFocused) colors.accentColor else colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, isFocused)
         )
 
         DropdownMenu(
@@ -661,20 +609,7 @@ fun SubtitleLanguageSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                disabledBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                disabledLabelColor = if (isFocused) colors.textPrimary else colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                disabledTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor,
-                disabledTrailingIconColor = if (isFocused) colors.accentColor else colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, isFocused)
         )
 
         DropdownMenu(
@@ -746,20 +681,7 @@ fun AudioLanguageSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = borderColor,
-                unfocusedBorderColor = borderColor,
-                disabledBorderColor = borderColor,
-                focusedLabelColor = colors.textPrimary,
-                unfocusedLabelColor = colors.textSecondary,
-                disabledLabelColor = if (isFocused) colors.textPrimary else colors.textSecondary,
-                focusedTextColor = colors.textPrimary,
-                unfocusedTextColor = colors.textPrimary,
-                disabledTextColor = colors.textPrimary,
-                focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor,
-                disabledTrailingIconColor = if (isFocused) colors.accentColor else colors.iconColor
-            )
+            colors = dropdownSelectorColors(colors, borderColor, isFocused)
         )
 
         DropdownMenu(

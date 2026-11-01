@@ -141,6 +141,32 @@ fun SwitchSetting(
 }
 
 /**
+ * Shared colors for the read-only OutlinedTextField used by dropdown selectors
+ * (video quality, resize mode, audio/subtitle language, decoder/codec selectors).
+ */
+@Composable
+fun dropdownSelectorColors(
+    colors: com.flintr.tv.ui.theme.AppColors,
+    borderColor: Color,
+    isFocused: Boolean
+): TextFieldColors {
+    return OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = borderColor,
+        unfocusedBorderColor = borderColor,
+        disabledBorderColor = borderColor,
+        focusedLabelColor = colors.textPrimary,
+        unfocusedLabelColor = colors.textSecondary,
+        disabledLabelColor = if (isFocused) colors.textPrimary else colors.textSecondary,
+        focusedTextColor = colors.textPrimary,
+        unfocusedTextColor = colors.textPrimary,
+        disabledTextColor = colors.textPrimary,
+        focusedTrailingIconColor = colors.accentColor,
+        unfocusedTrailingIconColor = colors.iconColor,
+        disabledTrailingIconColor = if (isFocused) colors.accentColor else colors.iconColor
+    )
+}
+
+/**
  * Intercepts D-Pad Up/Down before the text field consumes them for cursor movement,
  * so vertical navigation always moves focus to the next/previous element in the chain.
  */

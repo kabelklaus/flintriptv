@@ -5,7 +5,6 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
@@ -13,7 +12,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.flintr.tv.data.model.VideoResizeMode
 import com.flintr.tv.ui.theme.FlintRTVTheme
 import com.flintr.tv.ui.theme.appColorsForTest
-import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -78,9 +76,6 @@ class SubSettingsPlaybackTouchTest {
         composeTestRule.onAllNodes(hasClickAction() and hasText(selectedMode.displayName)).onFirst().performTouchInput { click() }
         composeTestRule.waitForIdle()
 
-        assertEquals(
-            0,
-            composeTestRule.onAllNodesWithText(onlyInDropdownText).fetchSemanticsNodes().size
-        )
+        composeTestRule.onNodeWithText(onlyInDropdownText).assertDoesNotExist()
     }
 }
