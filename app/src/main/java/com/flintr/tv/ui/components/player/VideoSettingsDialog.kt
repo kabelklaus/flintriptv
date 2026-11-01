@@ -42,7 +42,6 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onClick
-import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.utils.error.reportWarning
 import java.util.Locale
 
@@ -585,14 +584,16 @@ private fun MaxVideoResolutionSelector(
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
             .focusable()
-            .onDpadCenter { expanded = !expanded }
+            .onClick(onClick = { expanded = !expanded })
     ) {
         OutlinedTextField(
             value = selectedQuality.displayName,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
             label = { Text("Max. Videoauflösung") },
-            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
+            modifier = Modifier
+                .fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -603,12 +604,16 @@ private fun MaxVideoResolutionSelector(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = borderColor,
                 unfocusedBorderColor = borderColor,
+                disabledBorderColor = borderColor,
                 focusedLabelColor = colors.textPrimary,
                 unfocusedLabelColor = colors.textSecondary,
+                disabledLabelColor = colors.textSecondary,
                 focusedTextColor = colors.textPrimary,
                 unfocusedTextColor = colors.textPrimary,
+                disabledTextColor = colors.textPrimary,
                 focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
+                unfocusedTrailingIconColor = colors.iconColor,
+                disabledTrailingIconColor = colors.iconColor
             )
         )
         DropdownMenu(
@@ -656,14 +661,16 @@ private fun VideoResizeModeSelector(
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
             .focusable()
-            .onDpadCenter { expanded = !expanded }
+            .onClick(onClick = { expanded = !expanded })
     ) {
         OutlinedTextField(
             value = selectedMode.displayName,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
             label = { Text("Seitenverhältnis") },
-            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
+            modifier = Modifier
+                .fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -674,12 +681,16 @@ private fun VideoResizeModeSelector(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = borderColor,
                 unfocusedBorderColor = borderColor,
+                disabledBorderColor = borderColor,
                 focusedLabelColor = colors.textPrimary,
                 unfocusedLabelColor = colors.textSecondary,
+                disabledLabelColor = colors.textSecondary,
                 focusedTextColor = colors.textPrimary,
                 unfocusedTextColor = colors.textPrimary,
+                disabledTextColor = colors.textPrimary,
                 focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
+                unfocusedTrailingIconColor = colors.iconColor,
+                disabledTrailingIconColor = colors.iconColor
             )
         )
         DropdownMenu(
@@ -804,14 +815,16 @@ private fun AudioTrackSelector(
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
             .focusable()
-            .onDpadCenter { expanded = !expanded }
+            .onClick(onClick = { expanded = !expanded })
     ) {
         OutlinedTextField(
             value = selectedLabel,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
             label = { Text("Audio-Track") },
-            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
+            modifier = Modifier
+                .fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -822,12 +835,16 @@ private fun AudioTrackSelector(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = borderColor,
                 unfocusedBorderColor = borderColor,
+                disabledBorderColor = borderColor,
                 focusedLabelColor = colors.textPrimary,
                 unfocusedLabelColor = colors.textSecondary,
+                disabledLabelColor = colors.textSecondary,
                 focusedTextColor = colors.textPrimary,
                 unfocusedTextColor = colors.textPrimary,
+                disabledTextColor = colors.textPrimary,
                 focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
+                unfocusedTrailingIconColor = colors.iconColor,
+                disabledTrailingIconColor = colors.iconColor
             )
         )
         DropdownMenu(
@@ -933,14 +950,16 @@ private fun SubtitleTrackSelector(
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
             .focusable()
-            .onDpadCenter { expanded = !expanded }
+            .onClick(onClick = { expanded = !expanded })
     ) {
         OutlinedTextField(
             value = selectedLabel,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
             label = { Text("Untertitel-Track") },
-            modifier = Modifier.fillMaxWidth().focusable(enabled = false),
+            modifier = Modifier
+                .fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -951,12 +970,16 @@ private fun SubtitleTrackSelector(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = borderColor,
                 unfocusedBorderColor = borderColor,
+                disabledBorderColor = borderColor,
                 focusedLabelColor = colors.textPrimary,
                 unfocusedLabelColor = colors.textSecondary,
+                disabledLabelColor = colors.textSecondary,
                 focusedTextColor = colors.textPrimary,
                 unfocusedTextColor = colors.textPrimary,
+                disabledTextColor = colors.textPrimary,
                 focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
+                unfocusedTrailingIconColor = colors.iconColor,
+                disabledTrailingIconColor = colors.iconColor
             )
         )
         DropdownMenu(

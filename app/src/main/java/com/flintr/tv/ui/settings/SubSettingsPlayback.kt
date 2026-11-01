@@ -33,7 +33,7 @@ import com.flintr.tv.data.model.VideoResizeMode
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onDpadCenter
+import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 
 @Composable
@@ -284,14 +284,16 @@ fun VideoQualitySelector(
                 isFocused = focusState.isFocused
             }
             .focusable()
-            .onDpadCenter { isExpanded = !isExpanded }
+            .onClick(onClick = { isExpanded = !isExpanded })
     ) {
         OutlinedTextField(
             value = selectedQuality.displayName,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
             label = { Text("Max. Videoauflösung") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -302,15 +304,19 @@ fun VideoQualitySelector(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = borderColor,
                 unfocusedBorderColor = borderColor,
+                disabledBorderColor = borderColor,
                 focusedLabelColor = colors.textPrimary,
                 unfocusedLabelColor = colors.textSecondary,
+                disabledLabelColor = colors.textSecondary,
                 focusedTextColor = colors.textPrimary,
                 unfocusedTextColor = colors.textPrimary,
+                disabledTextColor = colors.textPrimary,
                 focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
+                unfocusedTrailingIconColor = colors.iconColor,
+                disabledTrailingIconColor = colors.iconColor
             )
         )
-        
+
         DropdownMenu(
             expanded = isExpanded,
             onDismissRequest = { isExpanded = false },
@@ -356,14 +362,16 @@ fun ResizeModeSelector(
                 isFocused = focusState.isFocused
             }
             .focusable()
-            .onDpadCenter { isExpanded = !isExpanded }
+            .onClick(onClick = { isExpanded = !isExpanded })
     ) {
         OutlinedTextField(
             value = selectedMode.displayName,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
             label = { Text("Seitenverhältnis") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -374,12 +382,16 @@ fun ResizeModeSelector(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = borderColor,
                 unfocusedBorderColor = borderColor,
+                disabledBorderColor = borderColor,
                 focusedLabelColor = colors.textPrimary,
                 unfocusedLabelColor = colors.textSecondary,
+                disabledLabelColor = colors.textSecondary,
                 focusedTextColor = colors.textPrimary,
                 unfocusedTextColor = colors.textPrimary,
+                disabledTextColor = colors.textPrimary,
                 focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
+                unfocusedTrailingIconColor = colors.iconColor,
+                disabledTrailingIconColor = colors.iconColor
             )
         )
 
@@ -437,14 +449,16 @@ fun AudioDecoderSelector(
                 isFocused = focusState.isFocused
             }
             .focusable()
-            .onDpadCenter { isExpanded = !isExpanded }
+            .onClick(onClick = { isExpanded = !isExpanded })
     ) {
         OutlinedTextField(
             value = selectedMode.displayName,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
             label = { Text("Audio-Decoder") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -455,12 +469,16 @@ fun AudioDecoderSelector(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = borderColor,
                 unfocusedBorderColor = borderColor,
+                disabledBorderColor = borderColor,
                 focusedLabelColor = colors.textPrimary,
                 unfocusedLabelColor = colors.textSecondary,
+                disabledLabelColor = colors.textSecondary,
                 focusedTextColor = colors.textPrimary,
                 unfocusedTextColor = colors.textPrimary,
+                disabledTextColor = colors.textPrimary,
                 focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
+                unfocusedTrailingIconColor = colors.iconColor,
+                disabledTrailingIconColor = colors.iconColor
             )
         )
 
@@ -509,14 +527,16 @@ fun PreferredAudioCodecSelector(
                 isFocused = focusState.isFocused
             }
             .focusable()
-            .onDpadCenter { isExpanded = !isExpanded }
+            .onClick(onClick = { isExpanded = !isExpanded })
     ) {
         OutlinedTextField(
             value = selectedCodec.displayName,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
             label = { Text("Bevorzugter Audio-Codec") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -527,12 +547,16 @@ fun PreferredAudioCodecSelector(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = borderColor,
                 unfocusedBorderColor = borderColor,
+                disabledBorderColor = borderColor,
                 focusedLabelColor = colors.textPrimary,
                 unfocusedLabelColor = colors.textSecondary,
+                disabledLabelColor = colors.textSecondary,
                 focusedTextColor = colors.textPrimary,
                 unfocusedTextColor = colors.textPrimary,
+                disabledTextColor = colors.textPrimary,
                 focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
+                unfocusedTrailingIconColor = colors.iconColor,
+                disabledTrailingIconColor = colors.iconColor
             )
         )
 
@@ -581,14 +605,16 @@ fun SubtitleLanguageSelector(
                 isFocused = focusState.isFocused
             }
             .focusable()
-            .onDpadCenter { isExpanded = !isExpanded }
+            .onClick(onClick = { isExpanded = !isExpanded })
     ) {
         OutlinedTextField(
             value = selectedLanguage.displayName,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
             label = { Text("Untertitel-Sprache") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -599,15 +625,19 @@ fun SubtitleLanguageSelector(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = borderColor,
                 unfocusedBorderColor = borderColor,
+                disabledBorderColor = borderColor,
                 focusedLabelColor = colors.textPrimary,
                 unfocusedLabelColor = colors.textSecondary,
+                disabledLabelColor = colors.textSecondary,
                 focusedTextColor = colors.textPrimary,
                 unfocusedTextColor = colors.textPrimary,
+                disabledTextColor = colors.textPrimary,
                 focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
+                unfocusedTrailingIconColor = colors.iconColor,
+                disabledTrailingIconColor = colors.iconColor
             )
         )
-        
+
         DropdownMenu(
             expanded = isExpanded,
             onDismissRequest = { isExpanded = false },
@@ -653,14 +683,16 @@ fun AudioLanguageSelector(
                 isFocused = focusState.isFocused
             }
             .focusable()
-            .onDpadCenter { isExpanded = !isExpanded }
+            .onClick(onClick = { isExpanded = !isExpanded })
     ) {
         OutlinedTextField(
             value = selectedLanguage.displayName,
             onValueChange = {},
+            enabled = false,
             readOnly = true,
             label = { Text("Audio-Sprache") },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -671,15 +703,19 @@ fun AudioLanguageSelector(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = borderColor,
                 unfocusedBorderColor = borderColor,
+                disabledBorderColor = borderColor,
                 focusedLabelColor = colors.textPrimary,
                 unfocusedLabelColor = colors.textSecondary,
+                disabledLabelColor = colors.textSecondary,
                 focusedTextColor = colors.textPrimary,
                 unfocusedTextColor = colors.textPrimary,
+                disabledTextColor = colors.textPrimary,
                 focusedTrailingIconColor = colors.accentColor,
-                unfocusedTrailingIconColor = colors.iconColor
+                unfocusedTrailingIconColor = colors.iconColor,
+                disabledTrailingIconColor = colors.iconColor
             )
         )
-        
+
         DropdownMenu(
             expanded = isExpanded,
             onDismissRequest = { isExpanded = false },
