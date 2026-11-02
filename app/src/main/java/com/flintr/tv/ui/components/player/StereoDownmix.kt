@@ -14,9 +14,10 @@ internal val DOWNMIX_INPUT_CHANNEL_COUNTS = 3..8
  * Android channel order FL FR FC LFE BL BR SL SR.
  *
  * FL/FR pass at 1.0, centre goes to both sides at 0.707, rear/side channels go to
- * their side at 0.707. LFE is dropped. Coefficients are not normalised, so
- * simultaneous peaks on several channels can saturate the 16-bit output — accepted
- * in favour of standard downmix levels.
+ * their side at 0.707. The 6.1 back-center channel (row 7 of the n=7 matrix) has no
+ * single side, so it mixes symmetrically to both L and R at 0.707. LFE is dropped.
+ * Coefficients are not normalised, so simultaneous peaks on several channels can
+ * saturate the 16-bit output — accepted in favour of standard downmix levels.
  */
 internal fun stereoDownmixCoefficients(inputChannelCount: Int): FloatArray {
     val g = DOWNMIX_GAIN
@@ -29,8 +30,8 @@ internal fun stereoDownmixCoefficients(inputChannelCount: Int): FloatArray {
         5 -> floatArrayOf(1f, 0f, 0f, 1f, g, g, g, 0f, 0f, g)
         // FL FR FC LFE BL BR
         6 -> floatArrayOf(1f, 0f, 0f, 1f, g, g, 0f, 0f, g, 0f, 0f, g)
-        // FL FR FC LFE BL BR SR
-        7 -> floatArrayOf(1f, 0f, 0f, 1f, g, g, 0f, 0f, g, 0f, 0f, g, 0f, g)
+        // FL FR FC LFE BL BR BC
+        7 -> floatArrayOf(1f, 0f, 0f, 1f, g, g, 0f, 0f, g, 0f, 0f, g, g, g)
         // FL FR FC LFE BL BR SL SR
         8 -> floatArrayOf(1f, 0f, 0f, 1f, g, g, 0f, 0f, g, 0f, 0f, g, g, 0f, 0f, g)
         else -> throw IllegalArgumentException("No stereo downmix for $inputChannelCount channels")

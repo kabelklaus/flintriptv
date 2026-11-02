@@ -30,6 +30,13 @@ class StereoDownmixTest {
     }
 
     @Test
+    fun `7ch Back-Center mixes symmetrically`() {
+        val coefficients = stereoDownmixCoefficients(7)
+        assertEquals(0.707f, coefficients[12], 0.001f)
+        assertEquals(0.707f, coefficients[13], 0.001f)
+    }
+
+    @Test
     fun `coefficient array length matches input times two and is non-negative`() {
         for (n in DOWNMIX_INPUT_CHANNEL_COUNTS) {
             val coefficients = stereoDownmixCoefficients(n)
