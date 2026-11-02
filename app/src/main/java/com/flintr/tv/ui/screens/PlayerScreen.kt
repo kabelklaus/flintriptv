@@ -38,6 +38,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -160,7 +162,18 @@ private fun createExoPlayer(
         .build()
 
     // Configure RenderersFactory based on audio decoder setting
-    val renderersFactory = DefaultRenderersFactory(context).apply {
+    val renderersFactory = object : DefaultRenderersFactory(context) {
+        override fun buildAudioSink(
+            context: Context,
+            enableFloatOutput: Boolean,
+            enableAudioTrackPlaybackParams: Boolean
+        ): AudioSink =
+            DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setAudioProcessors(arrayOf(createStereoDownmixProcessor()))
+                .build()
+    }.apply {
         setEnableDecoderFallback(true)
         when (audioDecoderMode) {
             com.flintr.tv.data.local.AudioDecoderMode.SOFTWARE ->
