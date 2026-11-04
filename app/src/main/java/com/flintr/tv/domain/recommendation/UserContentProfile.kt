@@ -64,36 +64,69 @@ object UserContentProfile {
         val excludedMovieIds = mutableSetOf<Int>()
         val excludedSeriesIds = mutableSetOf<Int>()
 
-        fun addGenreWeights(genres: List<String>, weight: Double, signalMs: Long?) {
-            if (genres.isEmpty()) return
-            val weighted = weight * ageDecayFactor(nowMs, signalMs)
-            genres.forEach { genre -> weights[genre] = (weights[genre] ?: 0.0) + weighted }
-        }
+        applyFavoriteSignals(favorites, moviesById, seriesById, nowMs, weights, coreSignalKeys, excludedMovieIds, excludedSeriesIds)
+        applyWatchedMovieExclusions(watchedHistory, excludedMovieIds)
+        applyMovieProgressSignals(watchProgress, watchedHistory, moviesById, nowMs, weights, coreSignalKeys, excludedMovieIds)
+        applySeriesProgressSignals(watchProgress, seriesById, nowMs, weights, coreSignalKeys, excludedSeriesIds)
+        applyRatingSignals(ratings, moviesById, seriesById, nowMs, weights)
 
+        return GenreProfile(
+            weights = weights,
+            signalCount = coreSignalKeys.size,
+            excludedMovieIds = excludedMovieIds,
+            excludedSeriesIds = excludedSeriesIds
+        )
+    }
+
+    private fun applyFavoriteSignals(
+        favorites: List<Favorite>,
+        moviesById: Map<Int, VodStream>,
+        seriesById: Map<Int, Series>,
+        nowMs: Long,
+        weights: MutableMap<String, Double>,
+        coreSignalKeys: MutableSet<String>,
+        excludedMovieIds: MutableSet<Int>,
+        excludedSeriesIds: MutableSet<Int>
+    ) {
         favorites.forEach { favorite ->
             when (favorite.type) {
                 FavoriteType.MOVIE -> {
                     excludedMovieIds += favorite.streamId
                     val vod = moviesById[favorite.streamId] ?: return@forEach
-                    addGenreWeights(GenreNormalizer.normalize(vod.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt))
+                    addGenreWeights(weights, GenreNormalizer.normalize(vod.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt), nowMs)
                     coreSignalKeys += "fav_movie_${favorite.streamId}"
                 }
                 FavoriteType.SERIES -> {
                     excludedSeriesIds += favorite.streamId
                     val show = seriesById[favorite.streamId] ?: return@forEach
-                    addGenreWeights(GenreNormalizer.normalize(show.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt))
+                    addGenreWeights(weights, GenreNormalizer.normalize(show.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt), nowMs)
                     coreSignalKeys += "fav_series_${favorite.streamId}"
                 }
                 FavoriteType.LIVE -> Unit
             }
         }
+    }
 
+    private fun applyWatchedMovieExclusions(
+        watchedHistory: Map<String, WatchedItem>,
+        excludedMovieIds: MutableSet<Int>
+    ) {
         watchedHistory.keys.forEach { key ->
             if (key.startsWith(UiConstants.PROGRESS_KEY_MOVIE_PREFIX)) {
                 key.removePrefix(UiConstants.PROGRESS_KEY_MOVIE_PREFIX).toIntOrNull()?.let { excludedMovieIds += it }
             }
         }
+    }
 
+    private fun applyMovieProgressSignals(
+        watchProgress: Map<String, WatchProgress>,
+        watchedHistory: Map<String, WatchedItem>,
+        moviesById: Map<Int, VodStream>,
+        nowMs: Long,
+        weights: MutableMap<String, Double>,
+        coreSignalKeys: MutableSet<String>,
+        excludedMovieIds: MutableSet<Int>
+    ) {
         watchProgress.forEach { (key, progress) ->
             if (!key.startsWith(UiConstants.PROGRESS_KEY_MOVIE_PREFIX)) return@forEach
             val streamId = key.removePrefix(UiConstants.PROGRESS_KEY_MOVIE_PREFIX).toIntOrNull() ?: return@forEach
@@ -103,23 +136,38 @@ object UserContentProfile {
             when {
                 ratio >= MOVIE_COMPLETED_THRESHOLD -> {
                     excludedMovieIds += streamId
-                    addGenreWeights(GenreNormalizer.normalize(vod.genre), WEIGHT_MOVIE_COMPLETED, ageMs)
+                    addGenreWeights(weights, GenreNormalizer.normalize(vod.genre), WEIGHT_MOVIE_COMPLETED, ageMs, nowMs)
                     coreSignalKeys += "movie_done_$streamId"
                 }
                 ratio > 0.0 && ratio < MOVIE_ABANDONED_MAX_PROGRESS && key !in watchedHistory -> {
-                    addGenreWeights(GenreNormalizer.normalize(vod.genre), WEIGHT_MOVIE_ABANDONED, ageMs)
+                    addGenreWeights(weights, GenreNormalizer.normalize(vod.genre), WEIGHT_MOVIE_ABANDONED, ageMs, nowMs)
                 }
             }
         }
+    }
 
-        val episodeProgressBySeriesId = mutableMapOf<Int, MutableList<WatchProgress>>()
-        watchProgress.forEach { (key, progress) ->
-            if (!key.startsWith(UiConstants.PROGRESS_KEY_SERIES_PREFIX)) return@forEach
-            val parts = key.removePrefix(UiConstants.PROGRESS_KEY_SERIES_PREFIX).split(":")
-            if (parts.size != 2) return@forEach
-            val seriesId = parts[0].toIntOrNull() ?: return@forEach
-            episodeProgressBySeriesId.getOrPut(seriesId) { mutableListOf() }.add(progress)
-        }
+    /**
+     * Groups episode progress by series id via [groupBy] (immutable [Map]/[List]) instead of an
+     * imperative mutable accumulator - same grouping, same "key must split into exactly 2 parts"
+     * filter as before.
+     */
+    private fun applySeriesProgressSignals(
+        watchProgress: Map<String, WatchProgress>,
+        seriesById: Map<Int, Series>,
+        nowMs: Long,
+        weights: MutableMap<String, Double>,
+        coreSignalKeys: MutableSet<String>,
+        excludedSeriesIds: MutableSet<Int>
+    ) {
+        val episodeProgressBySeriesId: Map<Int, List<WatchProgress>> = watchProgress.entries
+            .filter { (key, _) -> key.startsWith(UiConstants.PROGRESS_KEY_SERIES_PREFIX) }
+            .mapNotNull { (key, progress) ->
+                val parts = key.removePrefix(UiConstants.PROGRESS_KEY_SERIES_PREFIX).split(":")
+                if (parts.size != 2) return@mapNotNull null
+                val seriesId = parts[0].toIntOrNull() ?: return@mapNotNull null
+                seriesId to progress
+            }
+            .groupBy({ it.first }, { it.second })
 
         episodeProgressBySeriesId.forEach { (seriesId, episodeProgresses) ->
             excludedSeriesIds += seriesId
@@ -134,17 +182,25 @@ object UserContentProfile {
                 isActive -> {
                     val mostRecentMs = started.maxOfOrNull { parseInstantMs(it.lastWatched) ?: Long.MIN_VALUE }
                         ?.takeIf { it != Long.MIN_VALUE }
-                    addGenreWeights(GenreNormalizer.normalize(show.genre), WEIGHT_SERIES_ACTIVE, mostRecentMs)
+                    addGenreWeights(weights, GenreNormalizer.normalize(show.genre), WEIGHT_SERIES_ACTIVE, mostRecentMs, nowMs)
                     coreSignalKeys += "series_active_$seriesId"
                 }
                 started.size in 1..4 -> {
                     val mostRecentMs = started.maxOfOrNull { parseInstantMs(it.lastWatched) ?: Long.MIN_VALUE }
                         ?.takeIf { it != Long.MIN_VALUE }
-                    addGenreWeights(GenreNormalizer.normalize(show.genre), WEIGHT_SERIES_STARTED, mostRecentMs)
+                    addGenreWeights(weights, GenreNormalizer.normalize(show.genre), WEIGHT_SERIES_STARTED, mostRecentMs, nowMs)
                 }
             }
         }
+    }
 
+    private fun applyRatingSignals(
+        ratings: Map<String, RatingEntry>,
+        moviesById: Map<Int, VodStream>,
+        seriesById: Map<Int, Series>,
+        nowMs: Long,
+        weights: MutableMap<String, Double>
+    ) {
         ratings.values.forEach { entry ->
             val genres = when (entry.contentType) {
                 "movie" -> moviesById[entry.contentId]?.genre
@@ -153,15 +209,20 @@ object UserContentProfile {
             }?.let { GenreNormalizer.normalize(it) } ?: return@forEach
 
             val weight = if (entry.rating == 1) WEIGHT_THUMB_UP else WEIGHT_THUMB_DOWN
-            addGenreWeights(genres, weight, parseInstantMs(entry.ratedAt))
+            addGenreWeights(weights, genres, weight, parseInstantMs(entry.ratedAt), nowMs)
         }
+    }
 
-        return GenreProfile(
-            weights = weights,
-            signalCount = coreSignalKeys.size,
-            excludedMovieIds = excludedMovieIds,
-            excludedSeriesIds = excludedSeriesIds
-        )
+    private fun addGenreWeights(
+        weights: MutableMap<String, Double>,
+        genres: List<String>,
+        weight: Double,
+        signalMs: Long?,
+        nowMs: Long
+    ) {
+        if (genres.isEmpty()) return
+        val weighted = weight * ageDecayFactor(nowMs, signalMs)
+        genres.forEach { genre -> weights[genre] = (weights[genre] ?: 0.0) + weighted }
     }
 
     private fun progressRatio(progress: WatchProgress): Double {

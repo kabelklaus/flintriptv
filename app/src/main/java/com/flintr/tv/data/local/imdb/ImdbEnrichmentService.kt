@@ -297,7 +297,7 @@ class ImdbEnrichmentService @Inject constructor(
 
     private fun renameOrThrow(source: File, target: File) {
         if (!source.renameTo(target)) {
-            source.delete()
+            if (!source.delete()) source.deleteOnExit()
             throw IOException("Failed to rename ${source.name} to ${target.name}")
         }
     }

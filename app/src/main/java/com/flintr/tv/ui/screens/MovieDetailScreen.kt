@@ -2,7 +2,6 @@ package com.flintr.tv.ui.screens
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.lazy.LazyRow
@@ -47,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import com.flintr.tv.data.model.DetailDisplayData
 import com.flintr.tv.ui.components.detail.DetailHeaderData
@@ -581,7 +581,7 @@ internal fun youtubeTrailerVideoId(raw: String?): String? {
     if (trimmed.isEmpty()) return null
     if (!trimmed.contains("://")) return trimmed
 
-    val uri = Uri.parse(trimmed)
+    val uri = trimmed.toUri()
     val fromQuery = uri.getQueryParameter("v")?.trim()
     if (!fromQuery.isNullOrEmpty()) return fromQuery
 
@@ -602,7 +602,7 @@ internal fun buildYouTubeTrailerIntent(raw: String?): Intent? {
     val videoId = youtubeTrailerVideoId(raw) ?: return null
     return Intent(
         Intent.ACTION_VIEW,
-        Uri.parse("https://www.youtube.com/watch?v=$videoId")
+        "https://www.youtube.com/watch?v=$videoId".toUri()
     ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 }
 

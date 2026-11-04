@@ -47,14 +47,17 @@ internal fun formatOverlayDateTime(
 }
 
 @Composable
-fun OverlayClockDate(modifier: Modifier = Modifier) {
+fun OverlayClockDate(
+    modifier: Modifier = Modifier,
+    clockMillis: () -> Long = { System.currentTimeMillis() }
+) {
     val context = LocalContext.current
-    var currentMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    var currentMillis by remember { mutableStateOf(clockMillis()) }
 
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                currentMillis = System.currentTimeMillis()
+                currentMillis = clockMillis()
             }
         }
 
@@ -78,10 +81,10 @@ fun OverlayClockDate(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) {
         while (true) {
-            val now = System.currentTimeMillis()
+            val now = clockMillis()
             val delayToNextMinute = 60_000L - (now % 60_000L)
             delay(delayToNextMinute)
-            currentMillis = System.currentTimeMillis()
+            currentMillis = clockMillis()
         }
     }
 

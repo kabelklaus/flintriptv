@@ -26,15 +26,19 @@ class OverlayClockDateRenderTest {
 
     @Test
     fun zeigtAktuelleUhrzeitUndDatum() {
+        val fixedInstant = Instant.parse("2026-11-04T10:04:00Z")
+
         composeTestRule.setContent {
             FlintRTVTheme {
-                OverlayClockDate()
+                OverlayClockDate(clockMillis = { fixedInstant.toEpochMilli() })
             }
         }
 
-        // Erwartete Texte aus derselben Formatierungslogik ableiten
+        // Erwartete Texte aus derselben Formatierungslogik ableiten, gegen denselben fixen
+        // Zeitpunkt, der auch der Komponente übergeben wurde - sonst flackert der Test an
+        // Minuten-Grenzen, wenn beide Seiten ihr eigenes Instant.now() abfragen.
         val expected = formatOverlayDateTime(
-            instant = Instant.now(),
+            instant = fixedInstant,
             zoneId = ZoneId.systemDefault(),
             locale = Locale.getDefault()
         )
@@ -45,9 +49,11 @@ class OverlayClockDateRenderTest {
 
     @Test
     fun uhrLaeuftNachMinutenwechselWeiter() {
+        val fixedInstant = Instant.parse("2026-11-04T10:04:00Z")
+
         composeTestRule.setContent {
             FlintRTVTheme {
-                OverlayClockDate()
+                OverlayClockDate(clockMillis = { fixedInstant.toEpochMilli() })
             }
         }
 
@@ -56,7 +62,7 @@ class OverlayClockDateRenderTest {
         composeTestRule.waitForIdle()
 
         val expected = formatOverlayDateTime(
-            instant = Instant.now(),
+            instant = fixedInstant,
             zoneId = ZoneId.systemDefault(),
             locale = Locale.getDefault()
         )

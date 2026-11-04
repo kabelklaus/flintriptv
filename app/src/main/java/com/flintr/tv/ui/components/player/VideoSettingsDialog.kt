@@ -765,6 +765,9 @@ internal fun selectAudioTrack(exoPlayer: ExoPlayer, track: AudioTrackInfo) {
  * Audio track list and selection for the current stream.
  * Shows available audio tracks and allows switching during playback.
  */
+@Suppress("S3776") // Dropdown selector with guard clauses + forEach-nested selection lambda; this
+// shape is touch/d-pad regression-tested (SubSettingsPlaybackTouchTest) via the sibling
+// ResizeModeSelector, so the Modifier/semantics chain here stays untouched rather than merged.
 @OptIn(UnstableApi::class)
 @Composable
 private fun AudioTrackSelector(
@@ -895,6 +898,8 @@ private fun isSubtitleTrackSelected(
  * Subtitle track list and selection for the current stream.
  * Shows available subtitle tracks and allows switching during playback.
  */
+@Suppress("S3776") // Mirror of AudioTrackSelector above; same touch/d-pad regression-tested
+// Modifier/semantics shape, kept unmerged for the same reason.
 @OptIn(UnstableApi::class)
 @Composable
 private fun SubtitleTrackSelector(

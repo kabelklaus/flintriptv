@@ -3,6 +3,8 @@ package com.flintr.tv.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.flintr.tv.data.local.CachedData
+import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
@@ -18,10 +20,10 @@ import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.domain.recommendation.RecommendationEngine
 import com.flintr.tv.utils.error.reportWarning
+import com.flintr.tv.utils.parseTimestampMillisOrZero
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import javax.inject.Named
-import java.time.Instant
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -124,21 +126,8 @@ class SeriesDetailViewModel @Inject constructor(
         viewModelScope.launch(ioDispatcher) {
             _uiState.update { it.copy(isLoading = true, error = null) }
 
-            val credentials = credentialsRepository.getCredentials()
-            if (credentials == null) {
-                _uiState.value = SeriesDetailUiState(
-                    isLoading = false,
-                    error = "Keine gespeicherten Anmeldedaten gefunden"
-                )
-                return@launch
-            }
-            if (seriesId <= 0) {
-                _uiState.value = SeriesDetailUiState(
-                    isLoading = false,
-                    error = "Ungültige Serien-ID"
-                )
-                return@launch
-            }
+            val credentials = requireCredentials() ?: return@launch
+            requireValidSeriesId() ?: return@launch
 
             try {
                 val result = repository.getSeriesInfo(
@@ -149,7 +138,7 @@ class SeriesDetailViewModel @Inject constructor(
                 if (result.isFailure) {
                     _uiState.value = SeriesDetailUiState(
                         isLoading = false,
-                        error = "Details konnten nicht geladen werden"
+                        error = DETAIL_LOAD_ERROR_MESSAGE
                     )
                     reportWarning(
                         TAG,
@@ -163,81 +152,101 @@ class SeriesDetailViewModel @Inject constructor(
                 if (loadedSeries == null) {
                     _uiState.value = SeriesDetailUiState(
                         isLoading = false,
-                        error = "Details konnten nicht geladen werden"
+                        error = DETAIL_LOAD_ERROR_MESSAGE
                     )
                     return@launch
                 }
 
-                val watchedEpisodeIds = watchProgressService.getWatchedEpisodeIds(seriesId)
-                val seasons = buildSeasons(loadedSeries, watchedEpisodeIds)
-                // Basisdaten sofort mappen, ohne auf das (teure) IMDb-Enrichment zu warten -
-                // genres/rating bleiben hier bewusst null, siehe DetailDisplayData.
-                val baseDetail = buildDetail(loadedSeries)
-                val watchTarget = resolveWatchTarget(loadedSeries, watchedEpisodeIds)
-
-                _uiState.value = SeriesDetailUiState(
-                    isLoading = false,
-                    detail = baseDetail,
-                    series = loadedSeries,
-                    seasons = seasons,
-                    isFavorite = findFavorite() != null,
-                    seasonsHint = if (seasons.isEmpty()) NO_SEASONS_HINT else null,
-                    recommendations = emptyList(),
-                    watchTarget = watchTarget,
-                    watchLabel = watchTarget?.label ?: "Ansehen",
-                    watchProgress = watchTarget?.watchProgress
-                )
+                _uiState.value = buildLoadedState(loadedSeries)
 
                 // IMDb-Enrichment nachschieben: Rating/Genres kommen ausschliesslich von hier,
                 // ein Fehler/Miss darf den bereits gezeigten Basis-State nicht zuruecknehmen.
-                try {
-                    imdbEnrichmentService.ensureLoaded()
-                    val enrichment = lookupEnrichment(loadedSeries)
-                    if (enrichment != null) {
-                        _uiState.update { state ->
-                            state.copy(
-                                detail = state.detail?.copy(
-                                    genres = enrichment.genres,
-                                    rating = enrichment.rating
-                                )
-                            )
-                        }
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    reportWarning(TAG, "IMDb enrichment failed for seriesId=$seriesId", e)
+                loadImdbEnrichment(
+                    tag = TAG,
+                    failureMessage = "IMDb enrichment failed for seriesId=$seriesId",
+                    imdbEnrichmentService = imdbEnrichmentService,
+                    lookup = { lookupEnrichment(loadedSeries) }
+                ) { enrichment ->
+                    _uiState.update { state -> state.copy(detail = mergeImdbEnrichment(state.detail, enrichment)) }
                 }
 
                 // Genres are IMDb-only and therefore may be null; RecommendationEngine returns
                 // an empty row in that case, so the section hides instead of falling back to
                 // the (untrusted) Xtream genre string.
                 val cached = cacheService.loadCachedDataAsync()
-                val recommendations = if (cached != null) {
-                    RecommendationEngine.recommendSimilarSeries(
-                        anchorGenres = _uiState.value.detail?.genres,
-                        cached = cached,
-                        excludedSeriesIds = setOf(seriesId)
-                    )
-                } else {
-                    emptyList()
-                }
+                val recommendations = computeRecommendations(cached, _uiState.value.detail?.genres)
                 _uiState.update { it.copy(recommendations = recommendations) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _uiState.value = SeriesDetailUiState(
                     isLoading = false,
-                    error = "Details konnten nicht geladen werden"
+                    error = DETAIL_LOAD_ERROR_MESSAGE
                 )
                 reportWarning(TAG, "Error loading series detail for seriesId=$seriesId", e)
             }
         }
     }
 
+    private fun requireCredentials(): Credentials? {
+        val credentials = credentialsRepository.getCredentials()
+        if (credentials == null) {
+            _uiState.value = SeriesDetailUiState(
+                isLoading = false,
+                error = "Keine gespeicherten Anmeldedaten gefunden"
+            )
+        }
+        return credentials
+    }
+
+    private fun requireValidSeriesId(): Int? {
+        if (seriesId <= 0) {
+            _uiState.value = SeriesDetailUiState(
+                isLoading = false,
+                error = "Ungültige Serien-ID"
+            )
+            return null
+        }
+        return seriesId
+    }
+
+    private suspend fun buildLoadedState(loadedSeries: Series): SeriesDetailUiState {
+        val watchedEpisodeIds = watchProgressService.getWatchedEpisodeIds(seriesId)
+        val seasons = buildSeasons(loadedSeries, watchedEpisodeIds)
+        // Basisdaten sofort mappen, ohne auf das (teure) IMDb-Enrichment zu warten -
+        // genres/rating bleiben hier bewusst null, siehe DetailDisplayData.
+        val baseDetail = buildDetail(loadedSeries)
+        val watchTarget = resolveWatchTarget(loadedSeries, watchedEpisodeIds)
+
+        return SeriesDetailUiState(
+            isLoading = false,
+            detail = baseDetail,
+            series = loadedSeries,
+            seasons = seasons,
+            isFavorite = findFavorite() != null,
+            seasonsHint = if (seasons.isEmpty()) NO_SEASONS_HINT else null,
+            recommendations = emptyList(),
+            watchTarget = watchTarget,
+            watchLabel = watchTarget?.label ?: "Ansehen",
+            watchProgress = watchTarget?.watchProgress
+        )
+    }
+
+    private fun computeRecommendations(cached: CachedData?, genres: List<String>?): List<Series> {
+        return if (cached != null) {
+            RecommendationEngine.recommendSimilarSeries(
+                anchorGenres = genres,
+                cached = cached,
+                excludedSeriesIds = setOf(seriesId)
+            )
+        } else {
+            emptyList()
+        }
+    }
+
     fun toggleFavorite() {
         val series = _uiState.value.series ?: return
-        viewModelScope.launch {
+        viewModelScope.launch(ioDispatcher) {
             val existing = findFavorite()
             if (existing != null) {
                 if (favoritesRepository.removeFavorite(existing.id)) {
@@ -311,8 +320,9 @@ class SeriesDetailViewModel @Inject constructor(
                 episodeId = episode.id
             ) ?: continue
             if (progress.position <= 0L || progress.duration <= 0L) continue
-            val timestamp = runCatching { Instant.parse(progress.lastWatched).toEpochMilli() }
-                .getOrDefault(Long.MIN_VALUE)
+            val timestamp = parseTimestampMillisOrZero(progress.lastWatched) { error ->
+                reportWarning(TAG, "Error parsing lastWatched timestamp: ${progress.lastWatched}", error)
+            }
             if (inProgress == null || timestamp > latestInProgressTimestamp) {
                 latestInProgressTimestamp = timestamp
                 inProgress = season to episode

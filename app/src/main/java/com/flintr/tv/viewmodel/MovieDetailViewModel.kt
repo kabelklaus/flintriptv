@@ -3,6 +3,8 @@ package com.flintr.tv.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.flintr.tv.data.local.CachedData
+import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
@@ -82,30 +84,15 @@ class MovieDetailViewModel @Inject constructor(
         viewModelScope.launch(ioDispatcher) {
             _uiState.update { it.copy(isLoading = true, error = null) }
 
-            val credentials = credentialsRepository.getCredentials()
-            if (credentials == null) {
-                _uiState.value = MovieDetailUiState(
-                    isLoading = false,
-                    error = "Keine gespeicherten Anmeldedaten gefunden"
-                )
-                return@launch
-            }
-            if (vodId <= 0) {
-                _uiState.value = MovieDetailUiState(
-                    isLoading = false,
-                    error = "Ungültige Film-ID"
-                )
-                return@launch
-            }
+            val credentials = requireCredentials() ?: return@launch
+            requireValidVodId() ?: return@launch
 
             try {
                 val cached = cacheService.loadCachedDataAsync()
                 val catalogMovie = cached?.movies?.firstOrNull { it.streamId == vodId }
-                if (catalogMovie != null) {
-                    // Katalog ist bereits lokal vorhanden - Basisdaten (Poster/Titel) sofort
-                    // zeigen, statt bis zum VodInfo-Call + IMDb-Enrichment leer zu bleiben.
-                    _uiState.update { it.copy(baseStream = catalogMovie) }
-                }
+                // Katalog ist bereits lokal vorhanden - Basisdaten (Poster/Titel) sofort
+                // zeigen, statt bis zum VodInfo-Call + IMDb-Enrichment leer zu bleiben.
+                showCachedBaseStream(catalogMovie)
 
                 val result = repository.loadVodInfo(
                     username = credentials.username,
@@ -117,7 +104,7 @@ class MovieDetailViewModel @Inject constructor(
                         it.copy(
                             isLoading = false,
                             detail = null,
-                            error = "Details konnten nicht geladen werden"
+                            error = DETAIL_LOAD_ERROR_MESSAGE
                         )
                     }
                     reportWarning(
@@ -141,60 +128,32 @@ class MovieDetailViewModel @Inject constructor(
                         it.copy(
                             isLoading = false,
                             detail = null,
-                            error = "Details konnten nicht geladen werden"
+                            error = DETAIL_LOAD_ERROR_MESSAGE
                         )
                     }
                     return@launch
                 }
 
-                _uiState.value = MovieDetailUiState(
-                    isLoading = false,
-                    baseStream = catalogMovie,
-                    detail = baseDetail,
-                    isFavorite = findFavorite() != null,
-                    watchProgress = watchProgressService.getWatchProgress(
-                        contentType = "movie",
-                        streamId = vodId,
-                        seriesId = null,
-                        episodeId = null
-                    ),
-                    recommendations = emptyList()
-                )
+                _uiState.value = buildLoadedState(catalogMovie, baseDetail)
 
                 // IMDb-Enrichment nachschieben: Rating/Genres kommen ausschliesslich von hier,
                 // ein Fehler/Miss darf den bereits gezeigten Basis-State nicht zuruecknehmen.
-                try {
-                    imdbEnrichmentService.ensureLoaded()
-                    val lookupName = resolveImdbLookupName(baseDetail.title, baseDetail.releaseDate)
-                    val enrichment = lookupName?.let(imdbEnrichmentService::lookup)
-                    if (enrichment != null) {
-                        _uiState.update { state ->
-                            state.copy(
-                                detail = state.detail?.copy(
-                                    genres = enrichment.genres,
-                                    rating = enrichment.rating
-                                )
-                            )
-                        }
+                loadImdbEnrichment(
+                    tag = TAG,
+                    failureMessage = "IMDb enrichment failed for vodId=$vodId",
+                    imdbEnrichmentService = imdbEnrichmentService,
+                    lookup = {
+                        resolveImdbLookupName(baseDetail.title, baseDetail.releaseDate)
+                            ?.let(imdbEnrichmentService::lookup)
                     }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    reportWarning(TAG, "IMDb enrichment failed for vodId=$vodId", e)
+                ) { enrichment ->
+                    _uiState.update { state -> state.copy(detail = mergeImdbEnrichment(state.detail, enrichment)) }
                 }
 
                 // Genres are IMDb-only and therefore may be null; RecommendationEngine returns
                 // an empty row in that case, so the section hides instead of falling back to
                 // the (untrusted) Xtream genre string.
-                val recommendations = if (cached != null) {
-                    RecommendationEngine.recommendSimilar(
-                        anchorGenres = _uiState.value.detail?.genres,
-                        cached = cached,
-                        excludedMovieIds = setOf(vodId)
-                    )
-                } else {
-                    emptyList()
-                }
+                val recommendations = computeRecommendations(cached, _uiState.value.detail?.genres)
                 _uiState.update { it.copy(recommendations = recommendations) }
             } catch (e: CancellationException) {
                 throw e
@@ -203,11 +162,67 @@ class MovieDetailViewModel @Inject constructor(
                     it.copy(
                         isLoading = false,
                         detail = null,
-                        error = "Details konnten nicht geladen werden"
+                        error = DETAIL_LOAD_ERROR_MESSAGE
                     )
                 }
                 reportWarning(TAG, "Error loading movie detail for vodId=$vodId", e)
             }
+        }
+    }
+
+    private fun requireCredentials(): Credentials? {
+        val credentials = credentialsRepository.getCredentials()
+        if (credentials == null) {
+            _uiState.value = MovieDetailUiState(
+                isLoading = false,
+                error = "Keine gespeicherten Anmeldedaten gefunden"
+            )
+        }
+        return credentials
+    }
+
+    private fun requireValidVodId(): Int? {
+        if (vodId <= 0) {
+            _uiState.value = MovieDetailUiState(
+                isLoading = false,
+                error = "Ungültige Film-ID"
+            )
+            return null
+        }
+        return vodId
+    }
+
+    private fun showCachedBaseStream(catalogMovie: VodStream?) {
+        if (catalogMovie != null) {
+            _uiState.update { it.copy(baseStream = catalogMovie) }
+        }
+    }
+
+    private suspend fun buildLoadedState(catalogMovie: VodStream?, baseDetail: DetailDisplayData): MovieDetailUiState {
+        return MovieDetailUiState(
+            isLoading = false,
+            baseStream = catalogMovie,
+            detail = baseDetail,
+            isFavorite = findFavorite() != null,
+            watchProgress = watchProgressService.getWatchProgress(
+                contentType = "movie",
+                streamId = vodId,
+                seriesId = null,
+                episodeId = null
+            ),
+            recommendations = emptyList()
+        )
+    }
+
+    private fun computeRecommendations(cached: CachedData?, genres: List<String>?): List<VodStream> {
+        return if (cached != null) {
+            RecommendationEngine.recommendSimilar(
+                anchorGenres = genres,
+                cached = cached,
+                excludedMovieIds = setOf(vodId)
+            )
+        } else {
+            emptyList()
         }
     }
 
@@ -226,7 +241,7 @@ class MovieDetailViewModel @Inject constructor(
 
     fun toggleFavorite() {
         val detail = _uiState.value.detail ?: return
-        viewModelScope.launch {
+        viewModelScope.launch(ioDispatcher) {
             val existing = findFavorite()
             if (existing != null) {
                 if (favoritesRepository.removeFavorite(existing.id)) {

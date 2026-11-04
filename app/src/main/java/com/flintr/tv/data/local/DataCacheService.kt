@@ -313,7 +313,7 @@ class DataCacheService @Inject constructor(
         val target = File(cacheDir, fileName)
         JsonWriter.of(tmp.sink().buffer()).use { writer -> write(writer) }
         if (!tmp.renameTo(target)) {
-            tmp.delete()
+            if (!tmp.delete()) tmp.deleteOnExit()
             throw IOException("rename failed: $fileName")
         }
     }

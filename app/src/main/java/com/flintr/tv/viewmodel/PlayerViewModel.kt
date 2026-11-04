@@ -597,6 +597,10 @@ class PlayerViewModel @Inject constructor(
      * [contentType]/[contentId], so the player can restore the "already rated" indicator
      * when the same content is opened again.
      */
+    @Suppress("S6313") // PlayerScreen's LaunchedEffect awaits this return value directly
+    // (state.ratedThumb = viewModel.loadRating(...)); converting to a private suspend fun +
+    // viewModelScope.launch trigger would require replacing that pull with a StateFlow the
+    // composable collects instead, which is a real API/architecture change, not a mechanical one.
     suspend fun loadRating(contentType: String, contentId: Int): Int? {
         val username = credentialsRepository.getCredentials()?.username ?: return null
         val contentKey = "${contentType}_$contentId"
