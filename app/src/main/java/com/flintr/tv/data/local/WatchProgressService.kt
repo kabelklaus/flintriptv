@@ -269,27 +269,14 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Generates a storage key for the given content type and IDs
+     * Generates a storage key for the given content type and IDs (same format as watched history)
      */
     private fun generateKey(
         contentType: String,
         streamId: Int?,
         seriesId: Int?,
         episodeId: Int?
-    ): String {
-        return when (contentType) {
-            "movie" -> {
-                requireNotNull(streamId) { "streamId must not be null for movie" }
-                "$KEY_PREFIX_MOVIE$streamId"
-            }
-            "series" -> {
-                requireNotNull(seriesId) { "seriesId must not be null for series" }
-                requireNotNull(episodeId) { "episodeId must not be null for series" }
-                "$KEY_PREFIX_SERIES$seriesId:$episodeId"
-            }
-            else -> throw IllegalArgumentException("Unsupported contentType: $contentType")
-        }
-    }
+    ): String = WatchedHistoryService.generateKey(contentType, streamId, seriesId, episodeId)
 
     /**
      * Result of progress validation determining how to proceed with save operation.

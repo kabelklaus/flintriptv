@@ -54,6 +54,30 @@ class WatchedHistoryService @Inject constructor(
             return "$KEY_PREFIX_SERIES$seriesId:$episodeId"
         }
 
+        /**
+         * Generates a storage key for the given content type and IDs.
+         * Shared with WatchProgressService, which uses the same key format.
+         */
+        internal fun generateKey(
+            contentType: String,
+            streamId: Int?,
+            seriesId: Int?,
+            episodeId: Int?
+        ): String {
+            return when (contentType) {
+                "movie" -> {
+                    requireNotNull(streamId) { "streamId must not be null for movie" }
+                    "$KEY_PREFIX_MOVIE$streamId"
+                }
+                "series" -> {
+                    requireNotNull(seriesId) { "seriesId must not be null for series" }
+                    requireNotNull(episodeId) { "episodeId must not be null for series" }
+                    seriesEpisodeKey(seriesId, episodeId)
+                }
+                else -> throw IllegalArgumentException("Unsupported contentType: $contentType")
+            }
+        }
+
         internal fun buildSeriesWatchedEntries(
             seriesId: Int,
             episodeIds: Collection<Int>,
@@ -277,29 +301,6 @@ class WatchedHistoryService @Inject constructor(
                     // Firestore will sync when connection is restored
                 }
             )
-        }
-    }
-
-    /**
-     * Generates a storage key for the given content type and IDs
-     */
-    private fun generateKey(
-        contentType: String,
-        streamId: Int?,
-        seriesId: Int?,
-        episodeId: Int?
-    ): String {
-        return when (contentType) {
-            "movie" -> {
-                requireNotNull(streamId) { "streamId must not be null for movie" }
-                "$KEY_PREFIX_MOVIE$streamId"
-            }
-            "series" -> {
-                requireNotNull(seriesId) { "seriesId must not be null for series" }
-                requireNotNull(episodeId) { "episodeId must not be null for series" }
-                "$KEY_PREFIX_SERIES$seriesId:$episodeId"
-            }
-            else -> throw IllegalArgumentException("Unsupported contentType: $contentType")
         }
     }
 

@@ -1,6 +1,6 @@
 // File-level suppress: Sonar reports S3776 as a file/class aggregate here even though each
-// flagged function already carries its own @Suppress("S3776") with a rationale below.
-@file:Suppress("S3776")
+// flagged function already carries its own @Suppress("kotlin:S3776") with a rationale below.
+@file:Suppress("kotlin:S3776")
 
 package com.flintr.tv.ui.components.player
 
@@ -332,7 +332,7 @@ fun buildSubtitleConfigurations(subtitles: List<Subtitle>): List<MediaItem.Subti
  *   so the caller can stop re-applying the preferred-language auto-selection for this stream
  */
 @OptIn(UnstableApi::class)
-@Suppress("S3776") // Composable assembles the full settings dialog; already split into sub-selectors, further splitting risks the tested settings flow
+@Suppress("kotlin:S3776") // Composable assembles the full settings dialog; already split into sub-selectors, further splitting risks the tested settings flow
 @Composable
 fun VideoSettingsDialog(
     onDismiss: () -> Unit,
@@ -769,7 +769,7 @@ internal fun selectAudioTrack(exoPlayer: ExoPlayer, track: AudioTrackInfo) {
  * Audio track list and selection for the current stream.
  * Shows available audio tracks and allows switching during playback.
  */
-@Suppress("S3776") // Dropdown selector with guard clauses + forEach-nested selection lambda; this
+@Suppress("kotlin:S3776") // Dropdown selector with guard clauses + forEach-nested selection lambda; this
 // shape is touch/d-pad regression-tested (SubSettingsPlaybackTouchTest) via the sibling
 // ResizeModeSelector, so the Modifier/semantics chain here stays untouched rather than merged.
 @OptIn(UnstableApi::class)
@@ -902,7 +902,7 @@ private fun isSubtitleTrackSelected(
  * Subtitle track list and selection for the current stream.
  * Shows available subtitle tracks and allows switching during playback.
  */
-@Suppress("S3776") // Mirror of AudioTrackSelector above; same touch/d-pad regression-tested
+@Suppress("kotlin:S3776") // Mirror of AudioTrackSelector above; same touch/d-pad regression-tested
 // Modifier/semantics shape, kept unmerged for the same reason.
 @OptIn(UnstableApi::class)
 @Composable

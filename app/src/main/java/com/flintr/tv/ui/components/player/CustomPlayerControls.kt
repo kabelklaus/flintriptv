@@ -1,3 +1,8 @@
+// File-level suppress: Sonar reports S107 here as a file aggregate (no line). The only function
+// over the limit is the CustomPlayerControls composable (8 params, already grouped into state/callback
+// holders); further bundling would pull PlayerScreen.kt into the change without behavioral gain.
+@file:Suppress("kotlin:S107")
+
 package com.flintr.tv.ui.components.player
 
 import androidx.compose.foundation.background
