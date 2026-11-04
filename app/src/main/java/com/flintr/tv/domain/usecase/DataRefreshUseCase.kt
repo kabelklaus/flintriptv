@@ -37,7 +37,10 @@ data class DataRefreshProgress(
     val retryAttempt: Int = 0,
     val maxRetries: Int = 0,
     val usedCacheFallback: Boolean = false,
-    val requiresServerReconfiguration: Boolean = false
+    val requiresServerReconfiguration: Boolean = false,
+    // SAVING only: channels + movies + series written so far, out of itemsToSave.
+    val savedItems: Int = 0,
+    val itemsToSave: Int = 0
 )
 
 /**
@@ -272,11 +275,13 @@ class DataRefreshUseCase @Inject constructor(
                 vodCategories = vodCategories.size,
                 seriesCategories = seriesCategories.size
             )
+            val itemsToSave = liveStreams.size + vodStreams.size + series.size
             emit(DataRefreshProgress(
                 step = RefreshStep.SAVING,
                 message = "Speichere Cache... (${liveStreams.size} Kanäle, ${vodStreams.size} Filme, ${series.size} Serien)",
                 itemCounts = finalCounts,
-                isComplete = false
+                isComplete = false,
+                itemsToSave = itemsToSave
             ))
 
             Log.d(TAG, "Saving data to cache: Channels=${liveStreams.size}, Movies=${vodStreams.size}, Series=${series.size}")
@@ -286,7 +291,17 @@ class DataRefreshUseCase @Inject constructor(
                 series = series,
                 liveCategories = liveCategories,
                 vodCategories = vodCategories,
-                seriesCategories = seriesCategories
+                seriesCategories = seriesCategories,
+                onProgress = { savedItems ->
+                    emit(DataRefreshProgress(
+                        step = RefreshStep.SAVING,
+                        message = "Speichere Cache... ($savedItems / $itemsToSave)",
+                        itemCounts = finalCounts,
+                        isComplete = false,
+                        savedItems = savedItems,
+                        itemsToSave = itemsToSave
+                    ))
+                }
             )
             Log.d(TAG, "Cache saved successfully")
 

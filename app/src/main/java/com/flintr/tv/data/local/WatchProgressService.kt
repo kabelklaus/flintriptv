@@ -818,8 +818,34 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
+     * Parses the timestamps we persist/still receive (ISO instant, offset date-time, local
+     * date-time or epoch millis). A malformed value must never drop the entry: fall back to 0
+     * so the episode stays in the resume calculation.
+     */
+    private fun parseTimestampMillisOrZero(raw: String, onError: (Exception) -> Unit): Long {
+        return try {
+            Instant.parse(raw).toEpochMilli()
+        } catch (instantError: Exception) {
+            try {
+                java.time.OffsetDateTime.parse(raw).toInstant().toEpochMilli()
+            } catch (offsetError: Exception) {
+                try {
+                    java.time.LocalDateTime.parse(raw)
+                        .toInstant(java.time.ZoneOffset.UTC)
+                        .toEpochMilli()
+                } catch (localError: Exception) {
+                    raw.toLongOrNull() ?: run {
+                        onError(instantError)
+                        0L
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Creates a LastInteraction from a WatchProgress entry
-     * Returns null if the episode is not found or timestamp parsing fails
+     * Returns null if the episode is not found or the duration is invalid
      */
     private fun createInteractionFromProgress(
         episodeId: Int,
@@ -834,11 +860,8 @@ class WatchProgressService @Inject constructor(
             return null
         }
         val progressPercent = progress.position.toFloat() / progress.duration.toFloat()
-        val timestamp = try {
-            Instant.parse(progress.lastWatched).toEpochMilli()
-        } catch (e: Exception) {
-            reportWarning(TAG, "Error parsing lastWatched timestamp: ${progress.lastWatched}", e)
-            return null
+        val timestamp = parseTimestampMillisOrZero(progress.lastWatched) { error ->
+            reportWarning(TAG, "Error parsing lastWatched timestamp: ${progress.lastWatched}", error)
         }
         
         val episodeNumber = episode.episodeNum ?: episode.id

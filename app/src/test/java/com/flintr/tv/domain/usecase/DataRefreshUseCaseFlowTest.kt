@@ -63,8 +63,25 @@ class DataRefreshUseCaseFlowTest {
         assertEquals(1, final.itemCounts?.channels)
         assertEquals(2, final.itemCounts?.movies)
         assertEquals(1, final.itemCounts?.series)
-        verify { cacheService.saveCachedData(channels, movies, series, categories, categories, categories) }
+        coVerify { cacheService.saveCachedData(channels, movies, series, categories, categories, categories, any()) }
         verify { cacheService.clearFallbackCooldown() }
+    }
+
+    @Test
+    fun `Speicherfortschritt wird als SAVING-Zwischenstand emittiert`() = runTest {
+        coEvery { cacheService.saveCachedData(any(), any(), any(), any(), any(), any(), any()) } coAnswers {
+            val onProgress = arg<suspend (Int) -> Unit>(6)
+            onProgress(2)
+            onProgress(4)
+            true
+        }
+
+        val events = useCase.refreshData("chris", "pw").toList()
+
+        val saving = events.filter { it.step == RefreshStep.SAVING && !it.isComplete }
+        assertEquals(listOf(0, 2, 4), saving.map { it.savedItems })
+        assertTrue(saving.all { it.itemsToSave == 4 })
+        assertTrue(events.last().isComplete)
     }
 
     @Test
@@ -146,6 +163,6 @@ class DataRefreshUseCaseFlowTest {
         val events = useCase.refreshData("chris", "pw").toList()
 
         assertTrue(events.last().isComplete)
-        verify { cacheService.saveCachedData(channels, movies, series, emptyList(), categories, categories) }
+        coVerify { cacheService.saveCachedData(channels, movies, series, emptyList(), categories, categories, any()) }
     }
 }

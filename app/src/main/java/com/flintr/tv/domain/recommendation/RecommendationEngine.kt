@@ -28,68 +28,127 @@ object RecommendationEngine {
             return RecommendationResult(emptyList(), emptyList())
         }
 
-        // Ratings are parsed once per item up front: the comparator runs O(n log n) times
-        // over the full catalog (57k titles), and ratingOf() parses and formats a string.
-        val sortedMovies = cached.movies
-            .asSequence()
-            .filter { it.streamId !in profile.excludedMovieIds }
-            .map { it to score(it.genre, profile) }
-            .filter { (_, score) -> score > 0.0 }
-            .map { (movie, score) -> Ranked(movie, score, ratingOf(movie)) }
-            .sortedWith(
-                compareByDescending<Ranked<VodStream>> { it.score }
-                    .thenByDescending { it.rating }
-                    .thenBy { it.item.name }
-            )
-            .map { it.item }
-            .toList()
-
-        val genreMovies = selectWithGenreDiversity(sortedMovies, limitPerType, profile) { it.genre }
+        val genreMovies = selectWithGenreDiversity(
+            rankMovies(cached.movies, profile),
+            limitPerType,
+            profile
+        ) { it.genre }
 
         val movies = genreMovies.ifEmpty {
             cached.movies
                 .asSequence()
                 .filter { it.streamId !in profile.excludedMovieIds }
-                .map { Ranked(it, 0.0, ratingOf(it)) }
                 .sortedWith(
-                    compareByDescending<Ranked<VodStream>> { it.rating }.thenBy { it.item.name }
+                    compareByDescending<VodStream> { ratingOf(it) }.thenBy { it.name }
                 )
                 .take(limitPerType)
-                .map { it.item }
                 .toList()
         }
 
-        val sortedSeries = cached.series
-            .asSequence()
-            .filter { it.seriesId !in profile.excludedSeriesIds }
-            .map { it to score(it.genre, profile) }
-            .filter { (_, score) -> score > 0.0 }
-            .map { (item, score) -> Ranked(item, score, ratingOf(item)) }
-            .sortedWith(
-                compareByDescending<Ranked<Series>> { it.score }
-                    .thenByDescending { it.rating }
-                    .thenBy { it.item.name }
-            )
-            .map { it.item }
-            .toList()
-
-        val genreSeries = selectWithGenreDiversity(sortedSeries, limitPerType, profile) { it.genre }
+        val genreSeries = selectWithGenreDiversity(
+            rankSeries(cached.series, profile),
+            limitPerType,
+            profile
+        ) { it.genre }
 
         val series = genreSeries.ifEmpty {
             cached.series
                 .asSequence()
                 .filter { it.seriesId !in profile.excludedSeriesIds }
-                .map { Ranked(it, 0.0, ratingOf(it)) }
                 .sortedWith(
-                    compareByDescending<Ranked<Series>> { it.rating }.thenBy { it.item.name }
+                    compareByDescending<Series> { ratingOf(it) }.thenBy { it.name }
                 )
                 .take(limitPerType)
-                .map { it.item }
                 .toList()
         }
 
         return RecommendationResult(movies = movies, series = series)
     }
+
+    /**
+     * Similar-Movie row for a detail screen: reuses the exact same scoring and diversity
+     * pipeline as [recommend], only the profile is built from the anchor movie's genres instead
+     * of the user's signals. Deliberately no fallback list - without a genre match the section
+     * stays hidden rather than showing unrelated titles.
+     */
+    fun recommendSimilar(
+        anchorGenres: List<String>?,
+        cached: CachedData,
+        excludedMovieIds: Set<Int> = emptySet(),
+        limit: Int = DEFAULT_LIMIT_PER_TYPE
+    ): List<VodStream> {
+        val tokens = anchorGenres.orEmpty()
+            .flatMap { GenreNormalizer.normalize(it) }
+            .distinct()
+        if (tokens.isEmpty()) return emptyList()
+
+        val anchorProfile = GenreProfile(
+            weights = tokens.associateWith { 1.0 },
+            signalCount = tokens.size,
+            excludedMovieIds = excludedMovieIds
+        )
+        return selectWithGenreDiversity(
+            rankMovies(cached.movies, anchorProfile),
+            limit,
+            anchorProfile
+        ) { it.genre }
+    }
+
+    /**
+     * Similar-Series row for SeriesDetailScreen: mirrors [recommendSimilar] but ranks the series
+     * catalog instead of movies, since the detail screen's anchor is a series, not a movie.
+     * Same scoring/diversity pipeline, no second matching implementation.
+     */
+    fun recommendSimilarSeries(
+        anchorGenres: List<String>?,
+        cached: CachedData,
+        excludedSeriesIds: Set<Int> = emptySet(),
+        limit: Int = DEFAULT_LIMIT_PER_TYPE
+    ): List<Series> {
+        val tokens = anchorGenres.orEmpty()
+            .flatMap { GenreNormalizer.normalize(it) }
+            .distinct()
+        if (tokens.isEmpty()) return emptyList()
+
+        val anchorProfile = GenreProfile(
+            weights = tokens.associateWith { 1.0 },
+            signalCount = tokens.size,
+            excludedSeriesIds = excludedSeriesIds
+        )
+        return selectWithGenreDiversity(
+            rankSeries(cached.series, anchorProfile),
+            limit,
+            anchorProfile
+        ) { it.genre }
+    }
+
+    private fun rankMovies(movies: List<VodStream>, profile: GenreProfile): List<VodStream> =
+        movies
+            .asSequence()
+            .filter { it.streamId !in profile.excludedMovieIds }
+            .map { it to score(it.genre, profile) }
+            .filter { (_, score) -> score > 0.0 }
+            .sortedWith(
+                compareByDescending<Pair<VodStream, Double>> { it.second }
+                    .thenByDescending { ratingOf(it.first) }
+                    .thenBy { it.first.name }
+            )
+            .map { it.first }
+            .toList()
+
+    private fun rankSeries(series: List<Series>, profile: GenreProfile): List<Series> =
+        series
+            .asSequence()
+            .filter { it.seriesId !in profile.excludedSeriesIds }
+            .map { it to score(it.genre, profile) }
+            .filter { (_, score) -> score > 0.0 }
+            .sortedWith(
+                compareByDescending<Pair<Series, Double>> { it.second }
+                    .thenByDescending { ratingOf(it.first) }
+                    .thenBy { it.first.name }
+            )
+            .map { it.first }
+            .toList()
 
     private fun score(rawGenre: String?, profile: GenreProfile): Double {
         return GenreNormalizer.normalize(rawGenre).sumOf { genre -> profile.weights[genre] ?: 0.0 }
@@ -138,6 +197,4 @@ object RecommendationEngine {
     }
 
     private fun ratingOf(item: Any): Double = ContentParser.getRating(item)?.toDoubleOrNull() ?: 0.0
-
-    private class Ranked<T>(val item: T, val score: Double, val rating: Double)
 }

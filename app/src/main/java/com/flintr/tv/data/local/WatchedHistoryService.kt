@@ -501,11 +501,29 @@ class WatchedHistoryService @Inject constructor(
                 .filterKeys { it.startsWith(prefix) }
                 .mapNotNull { (key, item) ->
                     val episodeId = key.removePrefix(prefix).toIntOrNull() ?: return@mapNotNull null
+                    // Never forget a watched episode because of a malformed timestamp. Try the
+                    // common ISO variants, then fall back to 0 instead of dropping the entry.
                     val timestamp = try {
                         Instant.parse(item.watchedAt).toEpochMilli()
-                    } catch (e: Exception) {
-                        reportWarning(TAG, "Error parsing watchedAt timestamp for episode $episodeId: ${item.watchedAt}", e)
-                        return@mapNotNull null
+                    } catch (instantError: Exception) {
+                        try {
+                            java.time.OffsetDateTime.parse(item.watchedAt).toInstant().toEpochMilli()
+                        } catch (offsetError: Exception) {
+                            try {
+                                java.time.LocalDateTime.parse(item.watchedAt)
+                                    .toInstant(java.time.ZoneOffset.UTC)
+                                    .toEpochMilli()
+                            } catch (localError: Exception) {
+                                item.watchedAt.toLongOrNull() ?: run {
+                                    reportWarning(
+                                        TAG,
+                                        "Error parsing watchedAt timestamp for episode $episodeId: ${item.watchedAt}",
+                                        instantError
+                                    )
+                                    0L
+                                }
+                            }
+                        }
                     }
                     episodeId to timestamp
                 }

@@ -7,12 +7,14 @@ import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.*
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import okio.buffer
 import okio.sink
 import okio.source
@@ -87,6 +89,7 @@ class DataCacheService @Inject constructor(
         internal const val FILE_LIVE_CATEGORIES = "live_categories.json"
         internal const val FILE_VOD_CATEGORIES = "vod_categories.json"
         internal const val FILE_SERIES_CATEGORIES = "series_categories.json"
+        internal const val SAVE_CHUNK_SIZE = 2_000
         private const val KEY_CACHE_CHANNELS_COUNT = "iptv_cache_channels_count"
         private const val KEY_CACHE_MOVIES_COUNT = "iptv_cache_movies_count"
         private const val KEY_CACHE_SERIES_COUNT = "iptv_cache_series_count"
@@ -155,13 +158,20 @@ class DataCacheService @Inject constructor(
         return hasUsableFallbackCache()
     }
 
-    fun saveCachedData(
+    /**
+     * Streams the catalog to the cache files in chunks of [SAVE_CHUNK_SIZE]: each chunk is
+     * enriched and written on [ioDispatcher], then [onProgress] receives the running total of
+     * written channels + movies + series in the caller's context (safe to `emit` from a flow).
+     * The file format is the same JSON array the list adapter writes, so [readList] is unchanged.
+     */
+    suspend fun saveCachedData(
         channels: List<LiveStream>,
         movies: List<VodStream>,
         series: List<Series>,
         liveCategories: List<Category>,
         vodCategories: List<Category>,
-        seriesCategories: List<Category>
+        seriesCategories: List<Category>,
+        onProgress: suspend (savedItems: Int) -> Unit = {}
     ): Boolean {
         // NOTE: Use || (not &&) here — all three content types must be present.
         // isCacheValid(), hasCacheData(), and loadCachedDataInternal() all require
@@ -173,17 +183,24 @@ class DataCacheService @Inject constructor(
             return false
         }
         try {
-            val (enrichedMovies, enrichedSeries) = applyImdbEnrichment(movies, series)
+            val enricher = imdbEnricher()
             val timestamp = ISO8601_FORMAT.format(Date())
 
-            writeList(FILE_CHANNELS, listAdapter(LiveStream::class.java), channels)
-            writeList(FILE_MOVIES, listAdapter(VodStream::class.java), enrichedMovies)
-            writeList(FILE_SERIES, listAdapter(Series::class.java), enrichedSeries)
+            var savedItems = 0
+            val onChunkWritten: suspend (Int) -> Unit = { written ->
+                savedItems += written
+                onProgress(savedItems)
+            }
+            writeListChunked(FILE_CHANNELS, LiveStream::class.java, channels, transform = null, onChunkWritten)
+            val enrichedMovies = writeListChunked(FILE_MOVIES, VodStream::class.java, movies, enricher?.let { it::enrichMovie }, onChunkWritten)
+            val enrichedSeries = writeListChunked(FILE_SERIES, Series::class.java, series, enricher?.let { it::enrichSeries }, onChunkWritten)
 
-            val categoryAdapter = listAdapter(Category::class.java)
-            writeList(FILE_LIVE_CATEGORIES, categoryAdapter, liveCategories)
-            writeList(FILE_VOD_CATEGORIES, categoryAdapter, vodCategories)
-            writeList(FILE_SERIES_CATEGORIES, categoryAdapter, seriesCategories)
+            withContext(ioDispatcher) {
+                val categoryAdapter = listAdapter(Category::class.java)
+                writeList(FILE_LIVE_CATEGORIES, categoryAdapter, liveCategories)
+                writeList(FILE_VOD_CATEGORIES, categoryAdapter, vodCategories)
+                writeList(FILE_SERIES_CATEGORIES, categoryAdapter, seriesCategories)
+            }
 
             sharedPreferences.edit {
                 putString(KEY_CACHE_TIMESTAMP, timestamp)
@@ -194,6 +211,8 @@ class DataCacheService @Inject constructor(
             memoizedCache = CachedData(channels, enrichedMovies, enrichedSeries, liveCategories, vodCategories, seriesCategories)
             android.util.Log.d("DataCacheService", "Cache saved successfully: $timestamp | Channels: ${channels.size}, Movies: ${enrichedMovies.size}, Series: ${enrichedSeries.size}")
             return true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // Log error but don't crash
             reportError("DataCacheService", "Failed to save cache", e)
@@ -204,39 +223,43 @@ class DataCacheService @Inject constructor(
     /**
      * Reichert Movies/Series einmalig vor dem Schreiben mit IMDb-Daten an (Chris-Spec 30.10.):
      * Genres kommen exklusiv aus IMDb, Xtream-Ratings werden abgeloest. Ist der Enrichment-Service
-     * nicht verfuegbar (z.B. noch kein Download), bleiben die Xtream-Rohwerte unveraendert --
-     * nur ein versuchter Lookup ohne Treffer nullt die Felder.
+     * nicht verfuegbar (z.B. noch kein Download), liefert dies null und die Xtream-Rohwerte bleiben
+     * unveraendert -- nur ein versuchter Lookup ohne Treffer nullt die Felder.
      */
-    private fun applyImdbEnrichment(
-        movies: List<VodStream>,
-        series: List<Series>
-    ): Pair<List<VodStream>, List<Series>> {
-        // Blockiert den Aufrufer fuer Download + Entpacken der IMDb-DB: saveCachedData() darf
-        // nie auf Main laufen. Offen: Umstellung auf suspend (Folgeauftrag "ANR-Glaettung").
-        runBlocking { imdbEnrichmentService.ensureLoaded() }
-
+    private suspend fun imdbEnricher(): ImdbEnricher? {
+        imdbEnrichmentService.ensureLoaded()
         if (!imdbEnrichmentService.isAvailable) {
             android.util.Log.d("DataCacheService", "IMDb enrichment unavailable, keeping Xtream genre/rating values")
-            return movies to series
+            return null
+        }
+        return ImdbEnricher(imdbEnrichmentService)
+    }
+
+    private class ImdbEnricher(private val service: ImdbEnrichmentService) {
+        // IMDb ratings have ~100 distinct values: format each once instead of
+        // allocating a Formatter for every one of the ~70k titles.
+        private val ratingLabels = HashMap<Double, String>()
+
+        fun enrichMovie(movie: VodStream): VodStream {
+            val enrichment = service.lookup(movie.name)
+            return movie.copy(
+                genre = enrichment?.genres?.joinToString(", "),
+                rating = enrichment?.rating?.let(::ratingLabel),
+                rating5Based = enrichment?.rating?.let { it / 2.0 }
+            )
         }
 
-        val enrichedMovies = movies.map { movie ->
-            val enrichment = imdbEnrichmentService.lookup(movie.name)
-            movie.copy(
+        fun enrichSeries(item: Series): Series {
+            val enrichment = service.lookup(item.name)
+            return item.copy(
                 genre = enrichment?.genres?.joinToString(", "),
-                rating = enrichment?.rating?.let { String.format(Locale.US, "%.1f", it) },
+                rating = enrichment?.rating?.let(::ratingLabel),
                 rating5Based = enrichment?.rating?.let { it / 2.0 }
             )
         }
-        val enrichedSeries = series.map { item ->
-            val enrichment = imdbEnrichmentService.lookup(item.name)
-            item.copy(
-                genre = enrichment?.genres?.joinToString(", "),
-                rating = enrichment?.rating?.let { String.format(Locale.US, "%.1f", it) },
-                rating5Based = enrichment?.rating?.let { it / 2.0 }
-            )
-        }
-        return enrichedMovies to enrichedSeries
+
+        private fun ratingLabel(rating: Double): String =
+            ratingLabels.getOrPut(rating) { String.format(Locale.US, "%.1f", rating) }
     }
 
     private fun <T> listAdapter(itemClass: Class<T>): JsonAdapter<List<T>> =
@@ -244,17 +267,49 @@ class DataCacheService @Inject constructor(
 
     /** Streams [items] to a temp file and renames it into place, so readers never see a partial file. */
     private fun <T> writeList(fileName: String, adapter: JsonAdapter<List<T>>, items: List<T>) {
+        writeAtomically(fileName) { writer -> adapter.toJson(writer, items) }
+    }
+
+    /**
+     * Writes [items] as one JSON array, [SAVE_CHUNK_SIZE] elements at a time, yielding between
+     * chunks. Returns the stored list: [items] itself without [transform], otherwise the
+     * transformed items (kept for the memoized cache).
+     */
+    private suspend fun <T> writeListChunked(
+        fileName: String,
+        itemClass: Class<T>,
+        items: List<T>,
+        transform: ((T) -> T)?,
+        onChunkWritten: suspend (Int) -> Unit
+    ): List<T> {
+        val adapter = moshi.adapter(itemClass)
+        val transformed: MutableList<T>? = transform?.let { ArrayList(items.size) }
+        writeAtomically(fileName) { writer ->
+            writer.beginArray()
+            for (start in items.indices step SAVE_CHUNK_SIZE) {
+                val end = minOf(start + SAVE_CHUNK_SIZE, items.size)
+                withContext(ioDispatcher) {
+                    for (index in start until end) {
+                        val item = if (transform != null) transform(items[index]) else items[index]
+                        transformed?.add(item)
+                        adapter.toJson(writer, item)
+                    }
+                }
+                onChunkWritten(end - start)
+                yield()
+            }
+            writer.endArray()
+        }
+        return transformed ?: items
+    }
+
+    private inline fun writeAtomically(fileName: String, write: (JsonWriter) -> Unit) {
         cacheDir.mkdirs()
         val tmp = File(cacheDir, "$fileName.tmp")
         val target = File(cacheDir, fileName)
-        try {
-            tmp.sink().buffer().use { sink -> adapter.toJson(sink, items) }
-        } catch (t: Throwable) {
-            if (!tmp.delete()) tmp.deleteOnExit()
-            throw t
-        }
+        JsonWriter.of(tmp.sink().buffer()).use { writer -> write(writer) }
         if (!tmp.renameTo(target)) {
-            if (!tmp.delete()) tmp.deleteOnExit()
+            tmp.delete()
             throw IOException("rename failed: $fileName")
         }
     }

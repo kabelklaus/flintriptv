@@ -120,7 +120,9 @@ data class EpisodeInfo(
     @Json(name = "rating")
     val rating: String?,
     @Json(name = "tmdb_id")
-    val tmdbId: String?
+    val tmdbId: String?,
+    @Json(name = "air_date")
+    val airDate: String? = null
 )
 
 @JsonClass(generateAdapter = true)

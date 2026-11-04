@@ -5,10 +5,12 @@ import androidx.core.content.edit
 import androidx.test.core.app.ApplicationProvider
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.Category
+import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.testLiveStream
 import com.flintr.tv.data.model.testSeries
 import com.flintr.tv.data.model.testVodStream
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -48,14 +50,16 @@ class DataCacheServicePersistenceTest {
         service.clearCache()
     }
 
-    private fun saveDefaults(): Boolean = service.saveCachedData(
-        channels = channels,
-        movies = movies,
-        series = series,
-        liveCategories = categories,
-        vodCategories = emptyList(),
-        seriesCategories = emptyList()
-    )
+    private fun saveDefaults(): Boolean = runBlocking {
+        service.saveCachedData(
+            channels = channels,
+            movies = movies,
+            series = series,
+            liveCategories = categories,
+            vodCategories = emptyList(),
+            seriesCategories = emptyList()
+        )
+    }
 
     @Test
     fun `saveCachedData speichert und laedt Daten verlustfrei`() {
@@ -71,7 +75,7 @@ class DataCacheServicePersistenceTest {
     }
 
     @Test
-    fun `saveCachedData verweigert leere Inhalte`() {
+    fun `saveCachedData verweigert leere Inhalte`() = runBlocking {
         assertFalse(
             service.saveCachedData(
                 channels = emptyList(),
@@ -321,6 +325,41 @@ class DataCacheServicePersistenceTest {
         assertEquals(listOf(1), cached?.movies?.map { it.streamId })
         assertEquals(listOf(10), cached?.series?.map { it.seriesId })
         assertEquals(listOf("5"), cached?.liveCategories?.map { it.categoryId })
+    }
+
+    @Test
+    fun `chunked Speichern meldet Fortschritt und bleibt mit dem Lesepfad kompatibel`() = runBlocking {
+        val manyMovies = (1..DataCacheService.SAVE_CHUNK_SIZE * 2 + 500).map {
+            testVodStream(name = "Film $it", streamId = it)
+        }
+        val reported = mutableListOf<Int>()
+
+        assertTrue(
+            service.saveCachedData(
+                channels = channels,
+                movies = manyMovies,
+                series = series,
+                liveCategories = categories,
+                vodCategories = emptyList(),
+                seriesCategories = emptyList(),
+                onProgress = { reported += it }
+            )
+        )
+
+        val total = channels.size + manyMovies.size + series.size
+        // channels (1 chunk) + movies (3 chunks) + series (1 chunk)
+        assertEquals(5, reported.size)
+        assertEquals(reported.sorted(), reported)
+        assertEquals(total, reported.last())
+
+        // Format unchanged: byte-identical to what the List adapter wrote before chunking
+        val listAdapter = moshi.adapter<List<VodStream>>(
+            Types.newParameterizedType(List::class.java, VodStream::class.java)
+        )
+        assertEquals(listAdapter.toJson(manyMovies), File(cacheDir, "movies.json").readText())
+
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        assertEquals(manyMovies.map { it.streamId }, fresh.loadCachedData()?.movies?.map { it.streamId })
     }
 
     @Test

@@ -47,7 +47,6 @@ object UserContentProfile {
     private const val AGE_DECAY_MIN_FACTOR = 0.3
     private const val MS_PER_DAY = 24.0 * 60.0 * 60.0 * 1000.0
 
-    @Suppress("S3776") // scoring spec (.hermes-plan/task_plan.md) ties these signal blocks to shared accumulators; splitting risks subtly changing the formula
     fun build(
         favorites: List<Favorite>,
         watchedHistory: Map<String, WatchedItem>,
@@ -113,7 +112,6 @@ object UserContentProfile {
             }
         }
 
-        @Suppress("S6524") // mutated below via getOrPut(...).add(progress); immutable collection is not viable here
         val episodeProgressBySeriesId = mutableMapOf<Int, MutableList<WatchProgress>>()
         watchProgress.forEach { (key, progress) ->
             if (!key.startsWith(UiConstants.PROGRESS_KEY_SERIES_PREFIX)) return@forEach

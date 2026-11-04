@@ -3,6 +3,8 @@ package com.flintr.tv.data.local
 import androidx.test.core.app.ApplicationProvider
 import com.flintr.tv.data.local.imdb.ImdbEnrichment
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
+import com.flintr.tv.data.model.Series
+import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.testLiveStream
 import com.flintr.tv.data.model.testSeries
 import com.flintr.tv.data.model.testVodStream
@@ -11,6 +13,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -37,6 +40,10 @@ class DataCacheServiceEnrichmentTest {
     private fun newService(): DataCacheService =
         DataCacheService(context, moshi, Dispatchers.Unconfined, imdbEnrichmentService).also { it.clearCache() }
 
+    private fun save(movies: List<VodStream>, series: List<Series>): Boolean = runBlocking {
+        service.saveCachedData(channels, movies, series, emptyList(), emptyList(), emptyList())
+    }
+
     @Before
     fun setUp() {
         imdbEnrichmentService = mockk()
@@ -57,7 +64,7 @@ class DataCacheServiceEnrichmentTest {
         )
         val movies = listOf(testVodStream(name = "Film", streamId = 1, rating = "3", rating5Based = 1.5).copy(genre = "Xtream-Genre"))
 
-        assertTrue(service.saveCachedData(channels, movies, listOf(testSeries()), emptyList(), emptyList(), emptyList()))
+        assertTrue(save(movies, listOf(testSeries())))
 
         val saved = service.loadCachedData()!!.movies.single()
         assertEquals("Drama, Family", saved.genre)
@@ -74,7 +81,7 @@ class DataCacheServiceEnrichmentTest {
         )
         val series = listOf(testSeries(name = "Unbekannte Serie", rating = "4", rating5Based = 2.0).copy(genre = "Xtream-Serien-Genre"))
 
-        assertTrue(service.saveCachedData(channels, movies, series, emptyList(), emptyList(), emptyList()))
+        assertTrue(save(movies, series))
 
         val cached = service.loadCachedData()!!
         val savedMovie = cached.movies.single()
@@ -96,7 +103,7 @@ class DataCacheServiceEnrichmentTest {
         )
         val series = listOf(testSeries(name = "Serie", rating = "4", rating5Based = 2.0).copy(genre = "Xtream-Serien-Genre"))
 
-        assertTrue(service.saveCachedData(channels, movies, series, emptyList(), emptyList(), emptyList()))
+        assertTrue(save(movies, series))
 
         val cached = service.loadCachedData()!!
         val savedMovie = cached.movies.single()
@@ -116,7 +123,7 @@ class DataCacheServiceEnrichmentTest {
         every { imdbEnrichmentService.lookup("Film") } returns ImdbEnrichment(rating = 7.4, numVotes = 1, genres = listOf("Drama"))
         val movies = listOf(testVodStream(name = "Film", streamId = 1))
 
-        assertTrue(service.saveCachedData(channels, movies, listOf(testSeries()), emptyList(), emptyList(), emptyList()))
+        assertTrue(save(movies, listOf(testSeries())))
 
         val saved = service.loadCachedData()!!.movies.single()
         assertEquals("7.4", saved.rating)
@@ -129,7 +136,7 @@ class DataCacheServiceEnrichmentTest {
         every { imdbEnrichmentService.lookup("Film") } returns ImdbEnrichment(rating = 7.0, numVotes = 1, genres = listOf("Drama"))
         val movies = listOf(testVodStream(name = "Film", streamId = 42, categoryId = "7", containerExtension = "mp4"))
 
-        assertTrue(service.saveCachedData(channels, movies, listOf(testSeries()), emptyList(), emptyList(), emptyList()))
+        assertTrue(save(movies, listOf(testSeries())))
 
         val saved = service.loadCachedData()!!.movies.single()
         assertEquals("Film", saved.name)
@@ -144,7 +151,7 @@ class DataCacheServiceEnrichmentTest {
         every { imdbEnrichmentService.lookup("Film") } returns ImdbEnrichment(rating = 5.0, numVotes = 1, genres = listOf("Drama", "Family"))
         val movies = listOf(testVodStream(name = "Film", streamId = 1))
 
-        assertTrue(service.saveCachedData(channels, movies, listOf(testSeries()), emptyList(), emptyList(), emptyList()))
+        assertTrue(save(movies, listOf(testSeries())))
 
         assertEquals("Drama, Family", service.loadCachedData()!!.movies.single().genre)
     }
