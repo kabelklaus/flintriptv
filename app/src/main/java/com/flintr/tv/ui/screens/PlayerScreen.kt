@@ -22,6 +22,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -161,18 +162,19 @@ private fun createExoPlayer(
         .setPrioritizeTimeOverSizeThresholds(true)
         .build()
 
-    // Configure RenderersFactory based on audio decoder setting
+    // Configure RenderersFactory based on audio decoder setting.
+    // The audio sink downmixes multichannel PCM to stereo so devices without a
+    // multichannel AudioTrack (e.g. 5.1 over HDMI to a stereo TV) don't fail.
     val renderersFactory = object : DefaultRenderersFactory(context) {
         override fun buildAudioSink(
             context: Context,
             enableFloatOutput: Boolean,
             enableAudioTrackPlaybackParams: Boolean
-        ): AudioSink =
-            DefaultAudioSink.Builder(context)
-                .setEnableFloatOutput(enableFloatOutput)
-                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                .setAudioProcessors(arrayOf(createStereoDownmixProcessor()))
-                .build()
+        ): AudioSink = DefaultAudioSink.Builder(context)
+            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+            .setAudioProcessors(arrayOf(createStereoDownmixProcessor()))
+            .build()
     }.apply {
         setEnableDecoderFallback(true)
         when (audioDecoderMode) {
@@ -360,22 +362,31 @@ private suspend fun restoreWatchProgress(
 /**
  * Saves watch progress periodically
  */
-private suspend fun saveWatchProgress(params: PlayerProgressSaveParams) {
-    if (!params.playbackSettingsRepository.isRememberPositionEnabled()) return
-    if (params.contentType == "live") return
-    if (params.contentType == "movie" && params.streamId == null) return
-    if (params.contentType == "series" && (params.seriesId == null || params.episodeId == null)) return
+private suspend fun saveWatchProgress(
+    exoPlayer: ExoPlayer,
+    contentType: String,
+    streamId: Int?,
+    seriesId: Int?,
+    episodeId: Int?,
+    title: String?,
+    watchProgressService: WatchProgressService,
+    playbackSettingsRepository: PlaybackSettingsRepository
+) {
+    if (!playbackSettingsRepository.isRememberPositionEnabled()) return
+    if (contentType == "live") return
+    if (contentType == "movie" && streamId == null) return
+    if (contentType == "series" && (seriesId == null || episodeId == null)) return
 
-    val position = params.exoPlayer.currentPosition
-    val duration = params.exoPlayer.duration
-
+    val position = exoPlayer.currentPosition
+    val duration = exoPlayer.duration
+    
     if (position > 0 && duration > 0) {
-        val titleToSave = params.title ?: "Unknown"
-        params.watchProgressService.saveProgress(
-            contentType = params.contentType,
-            streamId = params.streamId,
-            seriesId = params.seriesId,
-            episodeId = params.episodeId,
+        val titleToSave = title ?: "Unknown"
+        watchProgressService.saveProgress(
+            contentType = contentType,
+            streamId = streamId,
+            seriesId = seriesId,
+            episodeId = episodeId,
             position = position,
             duration = duration,
             title = titleToSave
@@ -940,7 +951,16 @@ private fun PlayerProgressSaveEffect(
         }
         while (true) {
             delay(10000) // 10 seconds
-            saveWatchProgress(params)
+            saveWatchProgress(
+                exoPlayer = params.exoPlayer,
+                contentType = params.contentType,
+                streamId = params.streamId,
+                seriesId = params.seriesId,
+                episodeId = params.episodeId,
+                title = params.title,
+                watchProgressService = params.watchProgressService,
+                playbackSettingsRepository = params.playbackSettingsRepository
+            )
         }
     }
 }
@@ -1348,16 +1368,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 // Save watch progress for non-live content
                 coroutineScope.launch {
                     saveWatchProgress(
-                        PlayerProgressSaveParams(
-                            exoPlayer = exoPlayer,
-                            contentType = contentType,
-                            streamId = streamId,
-                            seriesId = seriesId,
-                            episodeId = episodeId,
-                            title = currentTitle,
-                            watchProgressService = watchProgressService,
-                            playbackSettingsRepository = playbackSettingsRepository
-                        )
+                        exoPlayer = exoPlayer,
+                        contentType = contentType,
+                        streamId = streamId,
+                        seriesId = seriesId,
+                        episodeId = episodeId,
+                        title = currentTitle,
+                        watchProgressService = watchProgressService,
+                        playbackSettingsRepository = playbackSettingsRepository
                     )
                 }
             }
@@ -1525,16 +1543,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         onCompletionTriggered = { state.hasTriggeredCompletion = true },
         saveProgress = {
             saveWatchProgress(
-                PlayerProgressSaveParams(
-                    exoPlayer = exoPlayer,
-                    contentType = contentType,
-                    streamId = streamId,
-                    seriesId = seriesId,
-                    episodeId = episodeId,
-                    title = title,
-                    watchProgressService = watchProgressService,
-                    playbackSettingsRepository = playbackSettingsRepository
-                )
+                exoPlayer = exoPlayer,
+                contentType = contentType,
+                streamId = streamId,
+                seriesId = seriesId,
+                episodeId = episodeId,
+                title = title,
+                watchProgressService = watchProgressService,
+                playbackSettingsRepository = playbackSettingsRepository
             )
         }
     )
@@ -1624,23 +1640,27 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 // itself (PlayerViewModel.startAutoPlayCountdown). If disabled, the button
                 // stays Visible so the user can still advance manually.
                 val currentState = viewModel.nextEpisodeState.value
-                if (currentState is NextEpisodeState.Visible && playbackSettingsRepository.isAutoPlayNextEnabled()) {
-                    viewModel.triggerAutoPlayNext()
-                } else if (currentState !is NextEpisodeState.Visible &&
+                if (currentState is NextEpisodeState.Visible) {
+                    if (playbackSettingsRepository.isAutoPlayNextEnabled()) {
+                        viewModel.triggerAutoPlayNext()
+                    }
+                } else {
                     // Series complete: last episode ended, no auto-play pending -
                     // offer the rating prompt instead of leaving the player idle
-                    !viewModel.hasRatedInSession(contentType, currentContentId) &&
-                    viewModel.maybeShowRatingPrompt(contentType, viewModel.hasNextEpisode())
-                ) {
-                    state.showRatingDialog = true
+                    if (!viewModel.hasRatedInSession(contentType, currentContentId) &&
+                        viewModel.maybeShowRatingPrompt(contentType, viewModel.hasNextEpisode())
+                    ) {
+                        state.showRatingDialog = true
+                    }
                 }
             }
-        } else if (state.playbackState == Player.STATE_ENDED && contentType == "movie" &&
+        } else if (state.playbackState == Player.STATE_ENDED && contentType == "movie") {
             // VOD complete: same flow as a series' last episode (Task F3 parity fix)
-            !viewModel.hasRatedInSession(contentType, currentContentId) &&
-            viewModel.maybeShowRatingPrompt(contentType, hasNextEpisode = false)
-        ) {
-            state.showRatingDialog = true
+            if (!viewModel.hasRatedInSession(contentType, currentContentId) &&
+                viewModel.maybeShowRatingPrompt(contentType, hasNextEpisode = false)
+            ) {
+                state.showRatingDialog = true
+            }
         }
     }
     
@@ -1654,16 +1674,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 // Save current progress before navigating
                 coroutineScope.launch {
                     saveWatchProgress(
-                        PlayerProgressSaveParams(
-                            exoPlayer = exoPlayer,
-                            contentType = contentType,
-                            streamId = streamId,
-                            seriesId = seriesId,
-                            episodeId = episodeId,
-                            title = title,
-                            watchProgressService = watchProgressService,
-                            playbackSettingsRepository = playbackSettingsRepository
-                        )
+                        exoPlayer = exoPlayer,
+                        contentType = contentType,
+                        streamId = streamId,
+                        seriesId = seriesId,
+                        episodeId = episodeId,
+                        title = title,
+                        watchProgressService = watchProgressService,
+                        playbackSettingsRepository = playbackSettingsRepository
                     )
                 }
                 // Navigate to next episode
@@ -2069,27 +2087,6 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             )
         }
 
-        // Soft rating overlay - non-blocking nudge in the last 60s of VOD/last-episode
-        // content, shown regardless of controls visibility, never grabbing focus.
-        val remainingMillis = (state.duration - state.currentPosition).coerceAtLeast(0L)
-        if (state.playbackState != Player.STATE_ENDED &&
-            !state.showRatingDialog &&
-            shouldShowSoftRatingOverlay(
-                contentType = contentType,
-                remainingMillis = remainingMillis,
-                hasNextEpisode = hasNextEpisodeAvailable,
-                hasRatedInSession = viewModel.hasRatedInSession(contentType, currentContentId)
-            )
-        ) {
-            SoftRatingOverlay(
-                onThumbsUp = onThumbsUp,
-                onThumbsDown = onThumbsDown,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(Dimensions.spacingLG)
-            )
-        }
-
         // Show error message if playback failed
         PlayerErrorDialog(
             errorMessage = state.errorMessage,
@@ -2104,55 +2101,16 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
             modifier = Modifier.align(Alignment.Center)
         )
         
-        // Next episode button group (shown when progress >= 98.5% or auto-play is active)
-        // Positioned directly above the timeline (progress bar), right-aligned
-        // CustomPlayerControls are at BottomCenter with padding
-        // Progress bar is the first element, so button should be just above it
-        // Height calculation: ProgressBar (~4dp) + Spacer (12dp) + Controls (~48dp) + Padding vertical (12dp) = ~76dp
-        // Position button directly above the progress bar
-        when (val nextState = nextEpisodeState) {
-            is NextEpisodeState.Visible -> {
-                NextEpisodeButtonGroup(
-                    autoPlayProgress = nextState.autoPlayProgress,
-                    onWatchCredits = {
-                        viewModel.enableWatchCreditsMode()
-                    },
-                    onNextEpisode = {
-                        viewModel.triggerAutoPlayNext()
-                    },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = 100.dp, end = 16.dp) // Position above timeline with more spacing
-                )
-            }
-            is NextEpisodeState.Error -> {
-                // Show error message for next episode loading
-                Text(
-                    text = nextState.message,
-                    color = Color.White,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = 100.dp, end = 16.dp)
-                        .background(
-                            color = Color.Black.copy(alpha = 0.8f),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        .padding(16.dp)
-                )
-            }
-            is NextEpisodeState.Loading -> {
-                // Show loading indicator
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = 100.dp, end = 16.dp)
-                        .size(48.dp)
-                )
-            }
-            is NextEpisodeState.Hidden -> {
-                // Nothing to show
-            }
-        }
+        // Discreet, non-blocking next-episode overlay (no scrim, no dialog): only a small
+        // bottom-right group above the timeline. Hidden while playback is far from the end.
+        NextEpisodeOverlay(
+            state = nextEpisodeState,
+            onWatchCredits = { viewModel.enableWatchCreditsMode() },
+            onNextEpisode = { viewModel.triggerAutoPlayNext() },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 100.dp, end = 16.dp)
+        )
 
         // Snackbar for no-audio warning
         SnackbarHost(
@@ -2161,5 +2119,51 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 .align(Alignment.BottomCenter)
                 .padding(16.dp)
         )
+    }
+}
+
+
+/**
+ * Task 14: minimal next-episode overlay.
+ *
+ * Deliberately NOT a dialog and NOT a full-screen scrim - it sits above the timeline at the
+ * bottom right, leaves playback visible and lets the user keep using the normal player controls.
+ * "Watch Credits" dismisses the auto-play countdown, "Next Episode" advances immediately; both
+ * are the streamflix overlay's dismiss/play actions. [NextEpisodeState.Hidden] renders nothing.
+ */
+@Composable
+internal fun NextEpisodeOverlay(
+    state: NextEpisodeState,
+    onWatchCredits: () -> Unit,
+    onNextEpisode: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    when (state) {
+        is NextEpisodeState.Visible -> NextEpisodeButtonGroup(
+            autoPlayProgress = state.autoPlayProgress,
+            onWatchCredits = onWatchCredits,
+            onNextEpisode = onNextEpisode,
+            modifier = modifier.testTag("next-episode-overlay")
+        )
+
+        is NextEpisodeState.Error -> Text(
+            text = state.message,
+            color = Color.White,
+            modifier = modifier
+                .testTag("next-episode-overlay-error")
+                .background(
+                    color = Color.Black.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(8.dp)
+                )
+                .padding(16.dp)
+        )
+
+        is NextEpisodeState.Loading -> CircularProgressIndicator(
+            modifier = modifier
+                .testTag("next-episode-overlay-loading")
+                .size(48.dp)
+        )
+
+        is NextEpisodeState.Hidden -> Unit
     }
 }

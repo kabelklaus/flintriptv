@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
@@ -43,6 +44,7 @@ import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.ui.components.PopupMenu
 import com.flintr.tv.ui.components.WatchedBadge
+import com.flintr.tv.ui.components.detail.formatDate
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.theme.focusRingColor
@@ -63,8 +65,13 @@ private enum class NavigationDirection {
     LEFT, RIGHT
 }
 
+// Streamflix-nahe, thumbnail-dominante Karte: ~3-4 Karten pro Screen-Breite statt der
+// bisherigen 5 (300dp). 16:9 statt der alten 180dp-Fixhöhe, damit das Poster mitwächst.
+private val EPISODE_CARD_WIDTH = 420.dp
+private const val EPISODE_THUMBNAIL_ASPECT_RATIO = 16f / 9f
+
 // Data classes for EpisodeDetailCard
-private data class EpisodeCardState(
+internal data class EpisodeCardState(
     val progressPercent: Float,
     val isCompleted: Boolean,
     val remainingMinutes: Int?,
@@ -100,7 +107,7 @@ private data class SeasonNavigationParams(
     val fallbackImageUrl: String? = null
 )
 
-private data class EpisodesListParams(
+internal data class EpisodesListParams(
     val episodes: List<Episode>,
     val season: Season,
     val series: Series,
@@ -889,7 +896,7 @@ private fun SeasonButton(
 }
 
 @Composable
-private fun EpisodesList(
+internal fun EpisodesList(
     params: EpisodesListParams,
     onEpisodeClick: (Episode) -> Unit,
     onWatchedStateChanged: () -> Unit,
@@ -922,7 +929,7 @@ private fun EpisodesList(
         // Episodes horizontal list
         LazyRow(
             state = focusState.listState,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingLG),
             modifier = Modifier.fillMaxWidth()
         ) {
             itemsIndexed(
@@ -1089,7 +1096,8 @@ private fun EpisodeDetailCard(
     
     Box(
         modifier = modifier
-            .width(300.dp)
+            .width(EPISODE_CARD_WIDTH)
+            .testTag("episode-card")
             .episodeCardShadow(
                 isFocused = isFocused,
                 elevation = shadowElevation,
@@ -1125,56 +1133,13 @@ private fun EpisodeDetailCard(
             )
             .padding(12.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // Thumbnail with badge and progress overlay; falls back to the series
-            // backdrop when the episode image is missing or fails to load
-            EpisodeThumbnail(
-                imageCandidates = ContentParser.imageCandidates(
-                    config.episode.info?.movieImage,
-                    config.fallbackImageUrl
-                ),
-                showWatchedBadge = progressState.isWatched,
-                progressPercent = if (progressState.isCompleted) 0f else progressState.progressPercent,
-                remainingMinutes = progressState.remainingMinutes
-            )
-            
-            // Episode number and cleaned title (without redundant series prefix)
-            val episodeNum = config.episode.episodeNum ?: config.episode.id
-            val episodeCode = "S${config.season.seasonNumber}E$episodeNum"
-            val episodeName = ContentParser.extractEpisodeName(config.episode.title, config.series.name)
-            val episodeTitle = episodeName?.let { "$episodeCode - $it" } ?: episodeCode
-            
-            Text(
-                text = episodeTitle,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-            
-            // Description
-            OptionalMetadataText(
-                content = config.episode.info?.plot,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-            
-            // Duration
-            config.episode.info?.duration?.let { durationStr ->
-                Text(
-                    text = formatDuration(durationStr),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-            }
-        }
+        EpisodeCardContent(
+            episode = config.episode,
+            seasonNumber = config.season.seasonNumber,
+            seriesName = config.series.name,
+            progressState = progressState,
+            fallbackImageUrl = config.fallbackImageUrl
+        )
     }
 
     PopupMenu(
@@ -1191,6 +1156,74 @@ private fun EpisodeDetailCard(
             }
         }
     )
+}
+
+
+/**
+ * Streamflix-nahe, thumbnail-dominante Karte (`item_episode_tv`): großes 16:9-Poster, watched
+ * ribbon, progress bar, darunter zentriert Titel + eine Meta-Zeile "SxE • Dauer • Datum".
+ * Deliberately WITHOUT an overview: Xtream's get_series_info does not deliver an episode plot
+ * (FINDINGS_DETAIL_SCREENS.tmp.md), so there is nothing to show and no invented fallback text -
+ * the title's existing 2-line clamp absorbs the space instead.
+ *
+ * Extracted from [EpisodeDetailCard] so the card rendering is testable without focus, menu and
+ * watch-progress side effects.
+ */
+@Composable
+internal fun EpisodeCardContent(
+    episode: Episode,
+    seasonNumber: Int,
+    seriesName: String,
+    progressState: EpisodeCardState,
+    fallbackImageUrl: String?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        EpisodeThumbnail(
+            imageCandidates = ContentParser.imageCandidates(
+                episode.info?.movieImage,
+                fallbackImageUrl
+            ),
+            showWatchedBadge = progressState.isWatched,
+            progressPercent = if (progressState.isCompleted) 0f else progressState.progressPercent,
+            remainingMinutes = progressState.remainingMinutes
+        )
+
+        val episodeNum = episode.episodeNum ?: episode.id
+        val episodeCode = "S${seasonNumber}E$episodeNum"
+        val episodeName = ContentParser.extractEpisodeName(episode.title, seriesName)
+
+        Text(
+            text = episodeName ?: "Episode $episodeNum",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .padding(bottom = 2.dp)
+                .testTag("episode-card-title")
+        )
+
+        val duration = episode.info?.duration?.let { formatDuration(it) }
+        val airDate = (episode.info?.airDate ?: episode.info?.releaseDate)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { formatDate(it) }
+        val meta = listOfNotNull(episodeCode, duration, airDate).joinToString(" • ")
+        Text(
+            text = meta,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag("episode-card-info")
+        )
+    }
 }
 
 /**
@@ -1293,7 +1326,7 @@ internal fun EpisodeThumbnail(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(180.dp)
+            .aspectRatio(EPISODE_THUMBNAIL_ASPECT_RATIO)
             .padding(bottom = 8.dp)
     ) {
         val painter = rememberImageCandidatePainter(imageCandidates)
@@ -1313,6 +1346,7 @@ internal fun EpisodeThumbnail(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(8.dp)
+                    .testTag("episode-watched-ribbon")
             ) {
                 WatchedBadge()
             }

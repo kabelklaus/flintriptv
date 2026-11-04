@@ -597,9 +597,6 @@ class PlayerViewModel @Inject constructor(
      * [contentType]/[contentId], so the player can restore the "already rated" indicator
      * when the same content is opened again.
      */
-    @Suppress("S6313") // called directly from a LaunchedEffect keyed on (contentType, contentId) in PlayerScreen,
-    // so cancellation follows that content-identity key; moving this to a viewModelScope-owned
-    // StateFlow would be a larger behavioral change than this fix pass should risk
     suspend fun loadRating(contentType: String, contentId: Int): Int? {
         val username = credentialsRepository.getCredentials()?.username ?: return null
         val contentKey = "${contentType}_$contentId"

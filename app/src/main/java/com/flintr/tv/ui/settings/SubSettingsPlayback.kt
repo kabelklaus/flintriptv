@@ -2,6 +2,7 @@ package com.flintr.tv.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,17 +17,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.BackHandler
 import android.content.pm.PackageManager
 import android.util.Log
-import com.flintr.tv.R
 import com.flintr.tv.data.local.AudioDecoderMode
 import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.PreferredAudioCodec
@@ -37,7 +31,7 @@ import com.flintr.tv.data.model.VideoResizeMode
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.utils.onClick
+import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 
 @Composable
@@ -126,7 +120,7 @@ fun SettingsPlayback(
                                 }
                             )
                             Text(
-                                text = stringResource(R.string.max_resolution_warning),
+                                text = "Wirkt nur bei Streams mit mehreren Qualitätsstufen",
                                 fontSize = FontSizes.fontSizeXS,
                                 color = colors.textSecondary
                             )
@@ -267,14 +261,13 @@ fun VideoQualitySelector(
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
-    val fieldLabel = "Max. Videoauflösung"
-
+    
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (isFocused) colors.accentColor else colors.cardBorder,
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
         label = "borderColor"
     )
-
+    
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -288,23 +281,15 @@ fun VideoQualitySelector(
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
             }
-            .onClick(onClick = { isExpanded = !isExpanded })
-            .semantics {
-                contentDescription = "$fieldLabel: ${selectedQuality.displayName}"
-            }
+            .focusable()
+            .onDpadCenter { isExpanded = !isExpanded }
     ) {
         OutlinedTextField(
             value = selectedQuality.displayName,
             onValueChange = {},
-            enabled = false,
             readOnly = true,
-            label = { Text(fieldLabel) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clearAndSetSemantics {
-                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedQuality.displayName))
-                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedQuality.displayName)
-                },
+            label = { Text("Max. Videoauflösung") },
+            modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -312,9 +297,18 @@ fun VideoQualitySelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = dropdownSelectorColors(colors, borderColor, isFocused)
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = borderColor,
+                unfocusedBorderColor = borderColor,
+                focusedLabelColor = colors.textPrimary,
+                unfocusedLabelColor = colors.textSecondary,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary,
+                focusedTrailingIconColor = colors.accentColor,
+                unfocusedTrailingIconColor = colors.iconColor
+            )
         )
-
+        
         DropdownMenu(
             expanded = isExpanded,
             onDismissRequest = { isExpanded = false },
@@ -346,7 +340,6 @@ fun ResizeModeSelector(
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
-    val fieldLabel = "Seitenverhältnis"
 
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (isFocused) colors.accentColor else colors.cardBorder,
@@ -360,23 +353,15 @@ fun ResizeModeSelector(
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
             }
-            .onClick(onClick = { isExpanded = !isExpanded })
-            .semantics {
-                contentDescription = "$fieldLabel: ${selectedMode.displayName}"
-            }
+            .focusable()
+            .onDpadCenter { isExpanded = !isExpanded }
     ) {
         OutlinedTextField(
             value = selectedMode.displayName,
             onValueChange = {},
-            enabled = false,
             readOnly = true,
-            label = { Text(fieldLabel) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clearAndSetSemantics {
-                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedMode.displayName))
-                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedMode.displayName)
-                },
+            label = { Text("Seitenverhältnis") },
+            modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -384,7 +369,16 @@ fun ResizeModeSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = dropdownSelectorColors(colors, borderColor, isFocused)
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = borderColor,
+                unfocusedBorderColor = borderColor,
+                focusedLabelColor = colors.textPrimary,
+                unfocusedLabelColor = colors.textSecondary,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary,
+                focusedTrailingIconColor = colors.accentColor,
+                unfocusedTrailingIconColor = colors.iconColor
+            )
         )
 
         DropdownMenu(
@@ -420,7 +414,6 @@ fun AudioDecoderSelector(
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
-    val fieldLabel = "Audio-Decoder"
 
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (isFocused) colors.accentColor else colors.cardBorder,
@@ -441,23 +434,15 @@ fun AudioDecoderSelector(
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
             }
-            .onClick(onClick = { isExpanded = !isExpanded })
-            .semantics {
-                contentDescription = "$fieldLabel: ${selectedMode.displayName}"
-            }
+            .focusable()
+            .onDpadCenter { isExpanded = !isExpanded }
     ) {
         OutlinedTextField(
             value = selectedMode.displayName,
             onValueChange = {},
-            enabled = false,
             readOnly = true,
-            label = { Text(fieldLabel) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clearAndSetSemantics {
-                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedMode.displayName))
-                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedMode.displayName)
-                },
+            label = { Text("Audio-Decoder") },
+            modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -465,7 +450,16 @@ fun AudioDecoderSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = dropdownSelectorColors(colors, borderColor, isFocused)
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = borderColor,
+                unfocusedBorderColor = borderColor,
+                focusedLabelColor = colors.textPrimary,
+                unfocusedLabelColor = colors.textSecondary,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary,
+                focusedTrailingIconColor = colors.accentColor,
+                unfocusedTrailingIconColor = colors.iconColor
+            )
         )
 
         DropdownMenu(
@@ -499,7 +493,6 @@ fun PreferredAudioCodecSelector(
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
-    val fieldLabel = "Bevorzugter Audio-Codec"
 
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (isFocused) colors.accentColor else colors.cardBorder,
@@ -513,23 +506,15 @@ fun PreferredAudioCodecSelector(
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
             }
-            .onClick(onClick = { isExpanded = !isExpanded })
-            .semantics {
-                contentDescription = "$fieldLabel: ${selectedCodec.displayName}"
-            }
+            .focusable()
+            .onDpadCenter { isExpanded = !isExpanded }
     ) {
         OutlinedTextField(
             value = selectedCodec.displayName,
             onValueChange = {},
-            enabled = false,
             readOnly = true,
-            label = { Text(fieldLabel) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clearAndSetSemantics {
-                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedCodec.displayName))
-                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedCodec.displayName)
-                },
+            label = { Text("Bevorzugter Audio-Codec") },
+            modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -537,7 +522,16 @@ fun PreferredAudioCodecSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = dropdownSelectorColors(colors, borderColor, isFocused)
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = borderColor,
+                unfocusedBorderColor = borderColor,
+                focusedLabelColor = colors.textPrimary,
+                unfocusedLabelColor = colors.textSecondary,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary,
+                focusedTrailingIconColor = colors.accentColor,
+                unfocusedTrailingIconColor = colors.iconColor
+            )
         )
 
         DropdownMenu(
@@ -571,37 +565,28 @@ fun SubtitleLanguageSelector(
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
-    val fieldLabel = "Untertitel-Sprache"
-
+    
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (isFocused) colors.accentColor else colors.cardBorder,
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
         label = "borderColor"
     )
-
+    
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
             }
-            .onClick(onClick = { isExpanded = !isExpanded })
-            .semantics {
-                contentDescription = "$fieldLabel: ${selectedLanguage.displayName}"
-            }
+            .focusable()
+            .onDpadCenter { isExpanded = !isExpanded }
     ) {
         OutlinedTextField(
             value = selectedLanguage.displayName,
             onValueChange = {},
-            enabled = false,
             readOnly = true,
-            label = { Text(fieldLabel) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clearAndSetSemantics {
-                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedLanguage.displayName))
-                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedLanguage.displayName)
-                },
+            label = { Text("Untertitel-Sprache") },
+            modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -609,9 +594,18 @@ fun SubtitleLanguageSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = dropdownSelectorColors(colors, borderColor, isFocused)
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = borderColor,
+                unfocusedBorderColor = borderColor,
+                focusedLabelColor = colors.textPrimary,
+                unfocusedLabelColor = colors.textSecondary,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary,
+                focusedTrailingIconColor = colors.accentColor,
+                unfocusedTrailingIconColor = colors.iconColor
+            )
         )
-
+        
         DropdownMenu(
             expanded = isExpanded,
             onDismissRequest = { isExpanded = false },
@@ -643,37 +637,28 @@ fun AudioLanguageSelector(
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
-    val fieldLabel = "Audio-Sprache"
-
+    
     val borderColor by androidx.compose.animation.animateColorAsState(
         targetValue = if (isFocused) colors.accentColor else colors.cardBorder,
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
         label = "borderColor"
     )
-
+    
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged { focusState ->
                 isFocused = focusState.isFocused
             }
-            .onClick(onClick = { isExpanded = !isExpanded })
-            .semantics {
-                contentDescription = "$fieldLabel: ${selectedLanguage.displayName}"
-            }
+            .focusable()
+            .onDpadCenter { isExpanded = !isExpanded }
     ) {
         OutlinedTextField(
             value = selectedLanguage.displayName,
             onValueChange = {},
-            enabled = false,
             readOnly = true,
-            label = { Text(fieldLabel) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clearAndSetSemantics {
-                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedLanguage.displayName))
-                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedLanguage.displayName)
-                },
+            label = { Text("Audio-Sprache") },
+            modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -681,9 +666,18 @@ fun AudioLanguageSelector(
                 )
             },
             shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = dropdownSelectorColors(colors, borderColor, isFocused)
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = borderColor,
+                unfocusedBorderColor = borderColor,
+                focusedLabelColor = colors.textPrimary,
+                unfocusedLabelColor = colors.textSecondary,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary,
+                focusedTrailingIconColor = colors.accentColor,
+                unfocusedTrailingIconColor = colors.iconColor
+            )
         )
-
+        
         DropdownMenu(
             expanded = isExpanded,
             onDismissRequest = { isExpanded = false },

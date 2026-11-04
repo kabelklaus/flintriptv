@@ -41,6 +41,7 @@ import com.flintr.tv.viewmodel.LoadingStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import java.text.NumberFormat
+import kotlin.math.roundToInt
 
 private const val STATUS_ANIMATION_DURATION_MS = 300
 
@@ -516,7 +517,7 @@ private fun StepStatusWidget(
     ) { currentStatus ->
         when (currentStatus) {
             LoadingStatus.Pending -> PendingStatusWidget(statusIconSize)
-            LoadingStatus.Loading -> LoadingStatusWidget(statusIconSize, colors)
+            LoadingStatus.Loading -> LoadingStatusWidget(step.progress, isLandscape, statusIconSize, colors)
             LoadingStatus.Retrying -> RetryingStatusWidget(
                 retryAttempt = step.retryAttempt,
                 maxRetries = step.maxRetries,
@@ -537,14 +538,39 @@ private fun PendingStatusWidget(statusIconSize: androidx.compose.ui.unit.Dp) {
 
 @Composable
 private fun LoadingStatusWidget(
+    progress: Float?,
+    isLandscape: Boolean,
     statusIconSize: androidx.compose.ui.unit.Dp,
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
-    CircularProgressIndicator(
-        modifier = Modifier.size(statusIconSize),
-        strokeWidth = 2.dp,
-        color = colors.accentColor
-    )
+    if (progress == null) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(statusIconSize),
+            strokeWidth = 2.dp,
+            color = colors.accentColor
+        )
+        return
+    }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        CircularProgressIndicator(
+            progress = progress,
+            modifier = Modifier.size(statusIconSize),
+            strokeWidth = 2.dp,
+            color = colors.accentColor,
+            trackColor = colors.bgHover
+        )
+        Text(
+            text = "${(progress * 100).roundToInt()} %",
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = if (isLandscape) 10.sp else 11.sp
+            ),
+            color = colors.textSecondary,
+            textAlign = TextAlign.Center
+        )
+    }
 }
 
 @Composable

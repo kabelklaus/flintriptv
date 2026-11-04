@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -82,8 +83,12 @@ import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.components.VODCardParams
-import com.flintr.tv.ui.screens.SeriesEpisodesScreen
+import com.flintr.tv.ui.screens.MovieDetailScreen
+import com.flintr.tv.ui.screens.SeasonScreen
+import com.flintr.tv.ui.screens.SeriesDetailScreen
 import com.flintr.tv.viewmodel.MainViewModel
+import com.flintr.tv.viewmodel.MovieDetailViewModel
+import com.flintr.tv.viewmodel.SeriesDetailViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
 import com.flintr.tv.viewmodel.NextEpisodeInfo
 import com.flintr.tv.data.model.UpdateInfo
@@ -149,10 +154,27 @@ sealed class Screen(val route: String) {
         }
     }
     
-    object SeriesEpisodes : Screen("series_episodes/{seriesId}") {
-        fun createRoute(seriesId: Int): String {
-            return "series_episodes/$seriesId"
-        }
+    /**
+     * Detail-first navigation (finding 3): only IDs are passed, never stream URLs or credentials.
+     */
+    object MovieDetail : Screen("movie_detail/{vodId}") {
+        const val ARG_VOD_ID = "vodId"
+
+        fun createRoute(vodId: Int): String = "movie_detail/$vodId"
+    }
+
+    object SeriesDetail : Screen("series_detail/{seriesId}") {
+        const val ARG_SERIES_ID = "seriesId"
+
+        fun createRoute(seriesId: Int): String = "series_detail/$seriesId"
+    }
+
+    object Season : Screen("season/{seriesId}/{seasonNumber}") {
+        const val ARG_SERIES_ID = "seriesId"
+        const val ARG_SEASON_NUMBER = "seasonNumber"
+
+        fun createRoute(seriesId: Int, seasonNumber: Int): String =
+            "season/$seriesId/$seasonNumber"
     }
 }
 
@@ -279,9 +301,62 @@ private fun VodStream.toContentId(): String = "vod_$streamId"
 private fun Series.toContentId(): String = "series_$seriesId"
 
 /**
+ * Detail-first click targets. Kept as small pure helpers so the Phase-4 route contract is
+ * testable without a NavHost (IDs only, explicit player routes for "watch"/"resume").
+ */
+internal fun vodDetailRoute(vodId: Int): String = Screen.MovieDetail.createRoute(vodId)
+
+internal fun seriesDetailRoute(seriesId: Int): String = Screen.SeriesDetail.createRoute(seriesId)
+
+internal fun seasonRoute(seriesId: Int, seasonNumber: Int): String =
+    Screen.Season.createRoute(seriesId, seasonNumber)
+
+/** "Das könnte dir gefallen" cards on a detail screen open the recommended item's detail. */
+internal fun movieRecommendationClickHandler(navigate: (String) -> Unit): (Int) -> Unit =
+    { movieId -> navigate(vodDetailRoute(movieId)) }
+
+internal fun seriesRecommendationClickHandler(navigate: (String) -> Unit): (Int) -> Unit =
+    { seriesId -> navigate(seriesDetailRoute(seriesId)) }
+
+internal fun moviePlayerRoute(
+    credentials: Credentials,
+    vodId: Int,
+    title: String?,
+    containerExtension: String?
+): String {
+    val extension = containerExtension ?: "mkv"
+    val streamUrl = "${credentials.serverUrl}/movie/${credentials.username}/${credentials.password}/$vodId.$extension"
+    return Screen.Player.createRouteForMovie(streamUrl, vodId, title.orEmpty())
+}
+
+internal fun episodePlayerRoute(
+    credentials: Credentials,
+    seriesId: Int,
+    episode: Episode
+): String {
+    val streamUrl = episode.getStreamUrl(
+        credentials.serverUrl,
+        credentials.username,
+        credentials.password,
+        seriesId
+    )
+    return Screen.Player.createRouteForSeries(streamUrl, seriesId, episode.id, episode.title)
+}
+
+/**
+ * The series-detail watch button uses the exact same player route contract as a SeasonScreen
+ * episode click; only the target episode is resolved by SeriesDetailViewModel.
+ */
+internal fun seriesDetailWatchRoute(
+    credentials: Credentials,
+    seriesId: Int,
+    episode: Episode
+): String = episodePlayerRoute(credentials, seriesId, episode)
+
+/**
  * Helper function to generate content ID for episode
- * Note: SeriesEpisodesScreen is a separate screen, so we don't save navigation state there
- * The state is saved when navigating from Series screen to SeriesEpisodesScreen
+ * Note: SeasonScreen is a separate screen, so we don't save navigation state there
+ * The state is saved when navigating from the Series grid to SeriesDetailScreen
  */
 private fun com.flintr.tv.data.model.Episode.toContentId(seriesId: Int, seasonNum: Int): String {
     return "series_${seriesId}_${seasonNum}_$id"
@@ -760,16 +835,49 @@ fun AppNavigation(
         }
         
         composable(
-            route = Screen.SeriesEpisodes.route,
+            route = Screen.MovieDetail.route,
             arguments = listOf(
-                navArgument("seriesId") {
-                    type = NavType.IntType
-                }
+                navArgument(Screen.MovieDetail.ARG_VOD_ID) { type = NavType.IntType }
             )
         ) { backStackEntry ->
-            val seriesId = backStackEntry.arguments?.getInt("seriesId") ?: -1
-            SeriesEpisodesRoute(
+            val vodId = backStackEntry.arguments?.getInt(Screen.MovieDetail.ARG_VOD_ID) ?: -1
+            MovieDetailRoute(
+                vodId = vodId,
+                dependencies = dependencies,
+                navController = navController
+            )
+        }
+
+        composable(
+            route = Screen.SeriesDetail.route,
+            arguments = listOf(
+                navArgument(Screen.SeriesDetail.ARG_SERIES_ID) { type = NavType.IntType }
+            )
+        ) { backStackEntry ->
+            val seriesId =
+                backStackEntry.arguments?.getInt(Screen.SeriesDetail.ARG_SERIES_ID) ?: -1
+            SeriesDetailRoute(
                 seriesId = seriesId,
+                mainViewModel = mainViewModel,
+                dependencies = dependencies,
+                navController = navController
+            )
+        }
+
+        composable(
+            route = Screen.Season.route,
+            arguments = listOf(
+                navArgument(Screen.Season.ARG_SERIES_ID) { type = NavType.IntType },
+                navArgument(Screen.Season.ARG_SEASON_NUMBER) { type = NavType.IntType }
+            )
+        ) { backStackEntry ->
+            val seriesId =
+                backStackEntry.arguments?.getInt(Screen.Season.ARG_SERIES_ID) ?: -1
+            val seasonNumber =
+                backStackEntry.arguments?.getInt(Screen.Season.ARG_SEASON_NUMBER) ?: 1
+            SeasonRoute(
+                seriesId = seriesId,
+                seasonNumber = seasonNumber,
                 mainViewModel = mainViewModel,
                 dependencies = dependencies,
                 navController = navController
@@ -795,35 +903,127 @@ internal fun resolveEpisodeOriginCategoryId(
 ): String? = pendingNavigationState?.categoryId ?: seriesCategoryId
 
 @Composable
-private fun SeriesEpisodesRoute(
+private fun MovieDetailRoute(
+    vodId: Int,
+    dependencies: AppNavigationDependencies,
+    navController: NavHostController
+) {
+    val viewModel: MovieDetailViewModel = hiltViewModel()
+    val uiState by viewModel.uiState.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
+
+    MovieDetailScreen(
+        uiState = uiState,
+        onBackClick = { navController.popBackStack() },
+        onWatchClick = {
+            val credentials = dependencies.credentialsRepository.getCredentials()
+            if (credentials != null) {
+                coroutineScope.launch {
+                    val extension = runCatching {
+                        dependencies.cacheService.loadCachedDataAsync()
+                            ?.movies
+                            ?.firstOrNull { it.streamId == vodId }
+                            ?.containerExtension
+                    }.getOrNull()
+                    val route = moviePlayerRoute(
+                        credentials = credentials,
+                        vodId = vodId,
+                        title = uiState.detail?.title,
+                        containerExtension = extension
+                    )
+                    navController.logAndNavigate(route, "AppNavigation") {
+                        "🎬 MovieDetail watch - vodId: $vodId, route: $route"
+                    }
+                }
+            }
+        },
+        onToggleFavorite = viewModel::toggleFavorite,
+        onMovieClick = movieRecommendationClickHandler { route -> navController.navigate(route) },
+        onRetry = viewModel::retry
+    )
+}
+
+@Composable
+private fun SeriesDetailRoute(
     seriesId: Int,
     mainViewModel: MainViewModel,
     dependencies: AppNavigationDependencies,
     navController: NavHostController
 ) {
+    val viewModel: SeriesDetailViewModel = hiltViewModel()
+    val uiState by viewModel.uiState.collectAsState()
+
+    SeriesDetailScreen(
+        uiState = uiState,
+        onBackClick = { navController.popBackStack() },
+        onToggleFavorite = viewModel::toggleFavorite,
+        onWatchClick = { episode ->
+            val series = uiState.series
+            val credentials = dependencies.credentialsRepository.getCredentials()
+            if (series != null && credentials != null) {
+                val seasonNumber = episode.season
+                    ?: uiState.watchTarget?.seasonNumber
+                    ?: 1
+                val originCategoryId = resolveEpisodeOriginCategoryId(
+                    pendingNavigationState = mainViewModel.peekPendingNavigationState(),
+                    seriesCategoryId = series.categoryId
+                )
+                mainViewModel.saveNavigationStateBeforePlayer(
+                    NavigationStateBeforePlayer(
+                        destinationType = com.flintr.tv.data.model.DestinationType.SERIES,
+                        categoryId = originCategoryId,
+                        contentId = episode.toContentId(series.seriesId, seasonNumber),
+                        scrollIndex = 0,
+                        scrollOffset = 0
+                    )
+                )
+                val route = seriesDetailWatchRoute(
+                    credentials = credentials,
+                    seriesId = series.seriesId,
+                    episode = episode
+                )
+                navController.logAndNavigate(route, "AppNavigation") {
+                    "📺 SeriesDetail watch - episode.title: ${episode.title}, seriesId: ${series.seriesId}, episodeId: ${episode.id}, route: $route"
+                }
+            }
+        },
+        onSeasonClick = { seasonNumber ->
+            navController.navigate(seasonRoute(seriesId, seasonNumber))
+        },
+        onSeriesClick = seriesRecommendationClickHandler { route -> navController.navigate(route) },
+        onRetry = viewModel::retry
+    )
+}
+
+@Composable
+private fun SeasonRoute(
+    seriesId: Int,
+    seasonNumber: Int,
+    mainViewModel: MainViewModel,
+    dependencies: AppNavigationDependencies,
+    navController: NavHostController
+) {
     val selectedSeries by mainViewModel.selectedSeries.collectAsState()
-    
-    // Load series info only if not already loaded for this seriesId
+
+    // Same loading path as the former SeriesEpisodesRoute: the series object (including all
+    // seasons/episodes) comes from MainViewModel, SeasonScreen only renders the chosen season.
     LaunchedEffect(seriesId) {
         if (seriesId >= 0 && selectedSeries?.seriesId != seriesId) {
             mainViewModel.loadSeriesInfo(seriesId)
         }
     }
-    
+
     val series = selectedSeries
     if (series != null && series.seriesId == seriesId) {
-        SeriesEpisodesScreen(
+        SeasonScreen(
             series = series,
-            mainViewModel = mainViewModel,
+            seasonNumber = seasonNumber,
             watchProgressService = dependencies.watchProgressService,
             onBack = { navController.popBackStack() },
             onEpisodeClick = { episode ->
-                val creds = dependencies.credentialsRepository.getCredentials()
-                if (creds != null) {
-                    // Save navigation state before navigating to player
-                    // Note: SeriesEpisodesScreen uses LazyRow, not LazyGrid, so we use 0 for scrollIndex/scrollOffset
-                    // The actual restoration will be handled by focusing the episode card
-                    val seasonNum = episode.season ?: 1
+                val credentials = dependencies.credentialsRepository.getCredentials()
+                if (credentials != null) {
+                    val episodeSeasonNumber = episode.season ?: seasonNumber
                     val originCategoryId = resolveEpisodeOriginCategoryId(
                         pendingNavigationState = mainViewModel.peekPendingNavigationState(),
                         seriesCategoryId = series.categoryId
@@ -832,37 +1032,42 @@ private fun SeriesEpisodesRoute(
                         NavigationStateBeforePlayer(
                             destinationType = com.flintr.tv.data.model.DestinationType.SERIES,
                             categoryId = originCategoryId,
-                            contentId = episode.toContentId(series.seriesId, seasonNum),
-                            scrollIndex = 0, // LazyRow doesn't have firstVisibleItemIndex, use 0
-                            scrollOffset = 0  // LazyRow doesn't have firstVisibleItemScrollOffset, use 0
+                            contentId = episode.toContentId(series.seriesId, episodeSeasonNumber),
+                            scrollIndex = 0,
+                            scrollOffset = 0
                         )
                     )
-                    val streamUrl = episode.getStreamUrl(
-                        creds.serverUrl,
-                        creds.username,
-                        creds.password,
-                        series.seriesId
-                    )
-                    val route = Screen.Player.createRouteForSeries(
-                        streamUrl,
-                        series.seriesId,
-                        episode.id,
-                        episode.title
+                    val route = episodePlayerRoute(
+                        credentials = credentials,
+                        seriesId = series.seriesId,
+                        episode = episode
                     )
                     navController.logAndNavigate(route, "AppNavigation") {
-                        "📺 SeriesEpisodes onClick - episode.title: ${episode.title}, seriesId: ${series.seriesId}, episodeId: ${episode.id}, streamUrl: $streamUrl, route: $route"
+                        "📺 Season onClick - episode.title: ${episode.title}, seriesId: ${series.seriesId}, episodeId: ${episode.id}, route: $route"
                     }
                 }
-            }
+            },
+            onLoadSeriesInfo = mainViewModel::loadSeriesInfo
         )
     } else {
-        // Show loading state
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator()
-        }
+        SeasonLoading()
+    }
+}
+
+@Composable
+private fun SeasonLoading() {
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        focusRequester.safeRequestFocus("AppNavigation", "SEASON_LOADING")
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .focusRequester(focusRequester)
+            .focusable(),
+        contentAlignment = Alignment.Center
+    ) {
+        CircularProgressIndicator()
     }
 }
 
@@ -943,12 +1148,15 @@ private fun createLiveStreamClickHandler(
 
 /**
  * Creates a click handler for VOD navigation.
+ *
+ * Detail-first (Phase 4): a movie click opens [Screen.MovieDetail]; the explicit "watch"/"resume"
+ * action on that screen is what starts [Screen.Player].
  */
 private fun createVodClickHandler(
     params: MainContentBodyParams
 ): (VodStream) -> Unit {
     return { vod ->
-        params.credentials?.let { creds ->
+        params.credentials?.let {
             val scrollIndex = params.lazyGridState.firstVisibleItemIndex
             val scrollOffset = params.lazyGridState.firstVisibleItemScrollOffset
             params.mainViewModel.saveNavigationStateBeforePlayer(
@@ -960,14 +1168,9 @@ private fun createVodClickHandler(
                     scrollOffset = scrollOffset
                 )
             )
-            val streamUrl = vod.getStreamUrl(
-                creds.serverUrl,
-                creds.username,
-                creds.password
-            )
-            val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
+            val route = vodDetailRoute(vod.streamId)
             params.navController.logAndNavigate(route, "AppNavigation") {
-                "🎬 VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
+                "🎬 VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, route: $route"
             }
         }
     }
@@ -975,6 +1178,8 @@ private fun createVodClickHandler(
 
 /**
  * Creates a click handler for Series navigation.
+ *
+ * Detail-first (Phase 4): a series click opens [Screen.SeriesDetail], which owns the season tiles.
  */
 private fun createSeriesClickHandler(
     params: MainContentBodyParams
@@ -991,7 +1196,7 @@ private fun createSeriesClickHandler(
                 scrollOffset = scrollOffset
             )
         )
-        val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
+        val route = seriesDetailRoute(series.seriesId)
         params.navController.logAndNavigate(route, "AppNavigation") {
             "📺 Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
         }
@@ -1000,12 +1205,16 @@ private fun createSeriesClickHandler(
 
 /**
  * Creates click handlers for InProgressContent (VOD, Series, Episode).
+ *
+ * Movies/series are detail-first even when watch progress exists: the detail screen shows the
+ * "Fortsetzen" affordance instead of jumping straight into the player. Episodes are already a
+ * concrete playback choice (from the season card) and keep navigating to the player directly.
  */
 private fun createInProgressClickHandlers(
     params: MainContentBodyParams
 ): Triple<(VodStream) -> Unit, (Series) -> Unit, (Series, Episode) -> Unit> {
     val onVodClick: (VodStream) -> Unit = { vod ->
-        params.credentials?.let { creds ->
+        params.credentials?.let {
             val scrollIndex = params.lazyGridState.firstVisibleItemIndex
             val scrollOffset = params.lazyGridState.firstVisibleItemScrollOffset
             params.mainViewModel.saveNavigationStateBeforePlayer(
@@ -1017,14 +1226,9 @@ private fun createInProgressClickHandlers(
                     scrollOffset = scrollOffset
                 )
             )
-            val streamUrl = vod.getStreamUrl(
-                creds.serverUrl,
-                creds.username,
-                creds.password
-            )
-            val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
+            val route = vodDetailRoute(vod.streamId)
             params.navController.logAndNavigate(route, "AppNavigation") {
-                "🎬 InProgress VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
+                "🎬 InProgress VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, route: $route"
             }
         }
     }
@@ -1041,7 +1245,7 @@ private fun createInProgressClickHandlers(
                 scrollOffset = scrollOffset
             )
         )
-        val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
+        val route = seriesDetailRoute(series.seriesId)
         params.navController.logAndNavigate(route, "AppNavigation") {
             "📺 InProgress Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
         }
@@ -1059,18 +1263,7 @@ private fun createInProgressClickHandlers(
                     scrollOffset = params.lazyGridState.firstVisibleItemScrollOffset
                 )
             )
-            val streamUrl = episode.getStreamUrl(
-                creds.serverUrl,
-                creds.username,
-                creds.password,
-                series.seriesId
-            )
-            val route = Screen.Player.createRouteForSeries(
-                streamUrl,
-                series.seriesId,
-                episode.id,
-                episode.title
-            )
+            val route = episodePlayerRoute(creds, series.seriesId, episode)
             params.navController.logAndNavigate(route, "AppNavigation") {
                 "📺 InProgress Episode click - episode.title: ${episode.title}, seriesId: ${series.seriesId}, episodeId: ${episode.id}, route: $route"
             }
@@ -1396,9 +1589,9 @@ private fun filterHiddenCategories(
 }
 
 /**
- * Creates special categories (favorites, new, in-progress)
+ * Creates special categories. Fixed order: favorites, in-progress, recommended, new.
  */
-private fun createSpecialCategories(
+internal fun createSpecialCategories(
     destination: HomeDestination,
     sortedCategories: List<Category>,
     favoritesCategoryName: String,
@@ -1414,7 +1607,7 @@ private fun createSpecialCategories(
     return if (destination.supportsInProgress()) {
         val recommendedCategory = Category(RECOMMENDED_CATEGORY_ID, recommendedCategoryName, 0)
         val inProgressCategory = Category(IN_PROGRESS_CATEGORY_ID, inProgressCategoryName, 0)
-        listOf(favoritesCategory, recommendedCategory, inProgressCategory, newCategory) + sortedCategories
+        listOf(favoritesCategory, inProgressCategory, recommendedCategory, newCategory) + sortedCategories
     } else {
         listOf(favoritesCategory, newCategory) + sortedCategories
     }
@@ -1628,7 +1821,7 @@ private fun NavigationRestoreEffect(
     restoreContext: NavigationRestoreContext?,
     mainViewModel: MainViewModel
 ) {
-    // Check for navigation state when returning from Player or SeriesEpisodesScreen
+    // Check for navigation state when returning from Player or the detail screens
     // This LaunchedEffect runs when the screen is first composed (e.g., after process death)
     LaunchedEffect(Unit) {
         mainViewModel.consumeNavigationState()
@@ -1642,7 +1835,7 @@ private fun NavigationRestoreEffect(
             restoreNavigationState(context = restoreContext)
         } else {
             // If pendingNavigationRestore is null but there might be a state in SavedStateHandle,
-            // try to consume it (this handles the case when returning from SeriesEpisodesScreen)
+            // try to consume it (this handles the case when returning from a detail screen)
             mainViewModel.consumeNavigationState()
         }
     }
@@ -1955,21 +2148,16 @@ private fun createSearchClickHandlers(
             }
         },
         onVodClick = { vod ->
-            val creds = credentials ?: return@SearchClickHandlers
-            val streamUrl = vod.getStreamUrl(
-                creds.serverUrl,
-                creds.username,
-                creds.password
-            )
-            val route = Screen.Player.createRouteForMovie(streamUrl, vod.streamId, vod.name)
+            if (credentials == null) return@SearchClickHandlers
+            val route = vodDetailRoute(vod.streamId)
             mainViewModel.clearSearch()
             onDismiss()
             navController.logAndNavigate(route, "AppNavigation") {
-                "🔍 Search VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, streamUrl: $streamUrl, route: $route"
+                "🔍 Search VOD onClick - vod.name: ${vod.name}, vod.streamId: ${vod.streamId}, route: $route"
             }
         },
         onSeriesClick = { series ->
-            val route = Screen.SeriesEpisodes.createRoute(series.seriesId)
+            val route = seriesDetailRoute(series.seriesId)
             mainViewModel.clearSearch()
             onDismiss()
             navController.logAndNavigate(route, "AppNavigation") {

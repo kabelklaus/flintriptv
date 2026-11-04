@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -59,6 +60,13 @@ class RatingDialogTest {
         composeTestRule.onNodeWithText("Some Movie", substring = true).assertIsDisplayed()
         composeTestRule.onNodeWithContentDescription("Daumen hoch").assertIsDisplayed()
         composeTestRule.onNodeWithContentDescription("Daumen runter").assertIsDisplayed()
+    }
+
+    @Test
+    fun istUeberTestTagAlsZentrierterDialogAuffindbar() {
+        setDialog(title = "Some Movie")
+
+        composeTestRule.onNodeWithTag("rating-dialog").assertIsDisplayed()
     }
 
     @Test
