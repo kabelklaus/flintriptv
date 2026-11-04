@@ -124,3 +124,8 @@ test.txt
 konzept-backup.md
 # SonarQube local credentials (never commit)
 .env.sonar.local
+
+# lokal / Hermes-interne Artefakte — nie committen
+.reconcile_ref/
+.hermes-plan/
+*.tmp.md
