@@ -24,6 +24,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.annotation.OptIn
 import androidx.core.net.toUri
 import androidx.media3.common.C
@@ -360,10 +361,13 @@ fun VideoSettingsDialog(
         mutableStateOf(playbackSettingsRepository?.getPreferredAudioLanguage() ?: AudioLanguage.Deutsch)
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Card(
             modifier = modifier
-                .fillMaxWidth(0.9f)
+                .fillMaxWidth(0.75f)
                 .fillMaxHeight(0.8f),
             shape = RoundedCornerShape(Dimensions.radiusMD),
             colors = CardDefaults.cardColors(
