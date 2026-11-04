@@ -49,6 +49,7 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onClick
+import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.utils.error.reportWarning
 import java.util.Locale
 
@@ -595,6 +596,7 @@ private fun MaxVideoResolutionSelector(
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
             .onClick(onClick = { expanded = !expanded })
+            .onDpadCenter { expanded = !expanded }
             .semantics {
                 contentDescription = "$fieldLabel: ${selectedQuality.displayName}"
             }
