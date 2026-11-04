@@ -15,7 +15,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
@@ -233,7 +233,14 @@ class DataRefreshUseCase @Inject constructor(
      * @param password Password for API authentication
      * @return Flow of DataRefreshProgress events
      */
-    fun refreshData(username: String, password: String): Flow<DataRefreshProgress> = flow {
+    fun refreshData(username: String, password: String): Flow<DataRefreshProgress> = channelFlow {
+        // channelFlow, not flow: saveCachedData reports progress from inside its own
+        // withContext(ioDispatcher) coroutines, and flow{}'s SafeCollector rejects any
+        // emit whose context differs from the collector's ("Flow invariant is violated").
+        FlowCollector<DataRefreshProgress> { send(it) }.refresh(username, password)
+    }.flowOn(Dispatchers.IO)
+
+    private suspend fun FlowCollector<DataRefreshProgress>.refresh(username: String, password: String) {
         try {
             // Step 1: Load Live Streams
             emit(DataRefreshProgress(
@@ -256,7 +263,7 @@ class DataRefreshUseCase @Inject constructor(
                         errorMessage = loadResult.errorMessage
                     )
                 }
-                return@flow
+                return
             }
 
             val liveStreams = loadResult.liveStreams
@@ -317,6 +324,10 @@ class DataRefreshUseCase @Inject constructor(
             ))
 
             Log.d(TAG, "Data refresh completed successfully")
+        } catch (e: CancellationException) {
+            // Collector gone (or downstream first()/take()): emitting again here is the
+            // "exception transparency is violated" crash.
+            throw e
         } catch (e: Exception) {
             reportError(TAG, "Error refreshing data", e)
             emit(DataRefreshProgress(
@@ -326,7 +337,7 @@ class DataRefreshUseCase @Inject constructor(
                 error = e.message
             ))
         }
-    }.flowOn(Dispatchers.IO)
+    }
 
     private suspend fun FlowCollector<DataRefreshProgress>.loadAllContent(
         username: String,

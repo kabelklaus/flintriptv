@@ -11,8 +11,12 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -82,6 +86,38 @@ class DataRefreshUseCaseFlowTest {
         assertEquals(listOf(0, 2, 4), saving.map { it.savedItems })
         assertTrue(saving.all { it.itemsToSave == 4 })
         assertTrue(events.last().isComplete)
+    }
+
+    @Test
+    fun `Speicherfortschritt aus fremdem Coroutine-Kontext verletzt keine Flow-Invariante`() = runTest {
+        // Reproduces the 2.50.0 crash: DataCacheService reports chunk progress from its own
+        // withContext(ioDispatcher) coroutines, so the emission job differs from the collector's.
+        coEvery { cacheService.saveCachedData(any(), any(), any(), any(), any(), any(), any()) } coAnswers {
+            val onProgress = arg<suspend (Int) -> Unit>(6)
+            withContext(Dispatchers.IO) { onProgress(2) }
+            withContext(Dispatchers.Default) { onProgress(4) }
+            withContext(Dispatchers.IO) { onProgress(6) }
+            true
+        }
+
+        val events = useCase.refreshData("chris", "pw").toList()
+
+        val saving = events.filter { it.step == RefreshStep.SAVING && !it.isComplete }
+        assertEquals(listOf(0, 2, 4, 6), saving.map { it.savedItems })
+        assertTrue(events.none { it.error != null })
+        val final = events.last()
+        assertTrue(final.isComplete)
+        assertEquals(1, final.itemCounts?.channels)
+        assertEquals(2, final.itemCounts?.movies)
+        assertEquals(1, final.itemCounts?.series)
+    }
+
+    @Test
+    fun `vorzeitiger Abbruch durch den Collector verletzt keine Exception-Transparenz`() = runTest {
+        val events = useCase.refreshData("chris", "pw").take(2).toList()
+
+        assertEquals(listOf(RefreshStep.CHANNELS, RefreshStep.MOVIES), events.map { it.step })
+        assertEquals(RefreshStep.CHANNELS, useCase.refreshData("chris", "pw").first().step)
     }
 
     @Test
