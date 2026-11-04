@@ -22,6 +22,7 @@ import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.coroutines.coroutineContext
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -282,25 +283,28 @@ class DataCacheService @Inject constructor(
         transform: ((T) -> T)?,
         onChunkWritten: suspend (Int) -> Unit
     ): List<T> {
-        val adapter = moshi.adapter(itemClass)
-        val transformed: MutableList<T>? = transform?.let { ArrayList(items.size) }
-        writeAtomically(fileName) { writer ->
-            writer.beginArray()
-            for (start in items.indices step SAVE_CHUNK_SIZE) {
-                val end = minOf(start + SAVE_CHUNK_SIZE, items.size)
-                withContext(ioDispatcher) {
+        val callerContext = coroutineContext
+        return withContext(ioDispatcher) {
+            val adapter = moshi.adapter(itemClass)
+            val transformed: MutableList<T>? = transform?.let { ArrayList(items.size) }
+            writeAtomically(fileName) { writer ->
+                writer.beginArray()
+                for (start in items.indices step SAVE_CHUNK_SIZE) {
+                    val end = minOf(start + SAVE_CHUNK_SIZE, items.size)
                     for (index in start until end) {
                         val item = if (transform != null) transform(items[index]) else items[index]
                         transformed?.add(item)
                         adapter.toJson(writer, item)
                     }
+                    withContext(callerContext) {
+                        onChunkWritten(end - start)
+                    }
+                    yield()
                 }
-                onChunkWritten(end - start)
-                yield()
+                writer.endArray()
             }
-            writer.endArray()
+            transformed ?: items
         }
-        return transformed ?: items
     }
 
     private inline fun writeAtomically(fileName: String, write: (JsonWriter) -> Unit) {

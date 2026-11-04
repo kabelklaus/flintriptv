@@ -26,6 +26,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class MovieDetailUiState(
@@ -79,7 +80,7 @@ class MovieDetailViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch(ioDispatcher) {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.update { it.copy(isLoading = true, error = null) }
 
             val credentials = credentialsRepository.getCredentials()
             if (credentials == null) {
@@ -103,7 +104,7 @@ class MovieDetailViewModel @Inject constructor(
                 if (catalogMovie != null) {
                     // Katalog ist bereits lokal vorhanden - Basisdaten (Poster/Titel) sofort
                     // zeigen, statt bis zum VodInfo-Call + IMDb-Enrichment leer zu bleiben.
-                    _uiState.value = _uiState.value.copy(baseStream = catalogMovie)
+                    _uiState.update { it.copy(baseStream = catalogMovie) }
                 }
 
                 val result = repository.loadVodInfo(
@@ -112,11 +113,13 @@ class MovieDetailViewModel @Inject constructor(
                     vodId = vodId
                 )
                 if (result.isFailure) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        detail = null,
-                        error = "Details konnten nicht geladen werden"
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            detail = null,
+                            error = "Details konnten nicht geladen werden"
+                        )
+                    }
                     reportWarning(
                         TAG,
                         "Failed to load VOD info for vodId=$vodId",
@@ -134,11 +137,13 @@ class MovieDetailViewModel @Inject constructor(
                     imdbLookup = { null }
                 )
                 if (baseDetail == null) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        detail = null,
-                        error = "Details konnten nicht geladen werden"
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            detail = null,
+                            error = "Details konnten nicht geladen werden"
+                        )
+                    }
                     return@launch
                 }
 
@@ -163,12 +168,14 @@ class MovieDetailViewModel @Inject constructor(
                     val lookupName = resolveImdbLookupName(baseDetail.title, baseDetail.releaseDate)
                     val enrichment = lookupName?.let(imdbEnrichmentService::lookup)
                     if (enrichment != null) {
-                        _uiState.value = _uiState.value.copy(
-                            detail = _uiState.value.detail?.copy(
-                                genres = enrichment.genres,
-                                rating = enrichment.rating
+                        _uiState.update { state ->
+                            state.copy(
+                                detail = state.detail?.copy(
+                                    genres = enrichment.genres,
+                                    rating = enrichment.rating
+                                )
                             )
-                        )
+                        }
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -188,15 +195,17 @@ class MovieDetailViewModel @Inject constructor(
                 } else {
                     emptyList()
                 }
-                _uiState.value = _uiState.value.copy(recommendations = recommendations)
+                _uiState.update { it.copy(recommendations = recommendations) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    detail = null,
-                    error = "Details konnten nicht geladen werden"
-                )
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        detail = null,
+                        error = "Details konnten nicht geladen werden"
+                    )
+                }
                 reportWarning(TAG, "Error loading movie detail for vodId=$vodId", e)
             }
         }
@@ -221,11 +230,11 @@ class MovieDetailViewModel @Inject constructor(
             val existing = findFavorite()
             if (existing != null) {
                 if (favoritesRepository.removeFavorite(existing.id)) {
-                    _uiState.value = _uiState.value.copy(isFavorite = false)
+                    _uiState.update { it.copy(isFavorite = false) }
                 }
             } else {
                 if (favoritesRepository.addFavorite(buildFavorite(detail))) {
-                    _uiState.value = _uiState.value.copy(isFavorite = true)
+                    _uiState.update { it.copy(isFavorite = true) }
                 }
             }
         }

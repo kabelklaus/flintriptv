@@ -28,6 +28,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -121,7 +122,7 @@ class SeriesDetailViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch(ioDispatcher) {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.update { it.copy(isLoading = true, error = null) }
 
             val credentials = credentialsRepository.getCredentials()
             if (credentials == null) {
@@ -193,12 +194,14 @@ class SeriesDetailViewModel @Inject constructor(
                     imdbEnrichmentService.ensureLoaded()
                     val enrichment = lookupEnrichment(loadedSeries)
                     if (enrichment != null) {
-                        _uiState.value = _uiState.value.copy(
-                            detail = _uiState.value.detail?.copy(
-                                genres = enrichment.genres,
-                                rating = enrichment.rating
+                        _uiState.update { state ->
+                            state.copy(
+                                detail = state.detail?.copy(
+                                    genres = enrichment.genres,
+                                    rating = enrichment.rating
+                                )
                             )
-                        )
+                        }
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -219,7 +222,7 @@ class SeriesDetailViewModel @Inject constructor(
                 } else {
                     emptyList()
                 }
-                _uiState.value = _uiState.value.copy(recommendations = recommendations)
+                _uiState.update { it.copy(recommendations = recommendations) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -238,11 +241,11 @@ class SeriesDetailViewModel @Inject constructor(
             val existing = findFavorite()
             if (existing != null) {
                 if (favoritesRepository.removeFavorite(existing.id)) {
-                    _uiState.value = _uiState.value.copy(isFavorite = false)
+                    _uiState.update { it.copy(isFavorite = false) }
                 }
             } else {
                 if (favoritesRepository.addFavorite(series.toFavorite())) {
-                    _uiState.value = _uiState.value.copy(isFavorite = true)
+                    _uiState.update { it.copy(isFavorite = true) }
                 }
             }
         }

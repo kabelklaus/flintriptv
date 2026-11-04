@@ -260,8 +260,10 @@ class ImdbEnrichmentService @Inject constructor(
 
     /** Entpackt mit konstantem Speicherbedarf, unabhaengig von der DB-Groesse. */
     private fun gunzipToFile(gzFile: File, target: File) {
-        GZIPInputStream(gzFile.inputStream(), COPY_BUFFER_SIZE).use { input ->
-            target.outputStream().use { output -> input.copyTo(output, COPY_BUFFER_SIZE) }
+        gzFile.inputStream().use { raw ->
+            GZIPInputStream(raw, COPY_BUFFER_SIZE).use { input ->
+                target.outputStream().use { output -> input.copyTo(output, COPY_BUFFER_SIZE) }
+            }
         }
     }
 
