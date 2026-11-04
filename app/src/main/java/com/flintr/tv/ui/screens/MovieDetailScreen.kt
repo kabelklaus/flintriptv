@@ -570,7 +570,12 @@ private fun MovieDetailCastSection(cast: List<String>) {
     }
 }
 
-/** Extracts a video id from raw `youtube_trailer` values (id, watch URL or youtu.be link). */
+private val YOUTUBE_ID_PATH_PREFIXES = setOf("embed", "shorts", "v")
+
+/**
+ * Extracts a video id from raw `youtube_trailer` values (id, watch URL, youtu.be link or
+ * `/embed/`, `/shorts/`, `/v/` paths on any youtube.com host incl. m.youtube.com).
+ */
 internal fun youtubeTrailerVideoId(raw: String?): String? {
     val trimmed = raw?.trim().orEmpty()
     if (trimmed.isEmpty()) return null
@@ -580,8 +585,15 @@ internal fun youtubeTrailerVideoId(raw: String?): String? {
     val fromQuery = uri.getQueryParameter("v")?.trim()
     if (!fromQuery.isNullOrEmpty()) return fromQuery
 
-    if (uri.host?.contains("youtu.be") == true) {
+    val host = uri.host.orEmpty()
+    if (host.contains("youtu.be")) {
         return uri.lastPathSegment?.trim()?.takeIf { it.isNotEmpty() }
+    }
+    if (host.contains("youtube.com")) {
+        val segments = uri.pathSegments.orEmpty()
+        if (segments.size >= 2 && segments[0] in YOUTUBE_ID_PATH_PREFIXES) {
+            return segments[1].trim().takeIf { it.isNotEmpty() }
+        }
     }
     return null
 }

@@ -26,6 +26,7 @@ import javax.inject.Named
 import javax.inject.Singleton
 import com.flintr.tv.utils.error.reportError
 import com.flintr.tv.utils.error.reportWarning
+import com.flintr.tv.utils.parseTimestampMillisOrZero
 
 @Singleton
 class WatchedHistoryService @Inject constructor(
@@ -503,27 +504,12 @@ class WatchedHistoryService @Inject constructor(
                     val episodeId = key.removePrefix(prefix).toIntOrNull() ?: return@mapNotNull null
                     // Never forget a watched episode because of a malformed timestamp. Try the
                     // common ISO variants, then fall back to 0 instead of dropping the entry.
-                    val timestamp = try {
-                        Instant.parse(item.watchedAt).toEpochMilli()
-                    } catch (instantError: Exception) {
-                        try {
-                            java.time.OffsetDateTime.parse(item.watchedAt).toInstant().toEpochMilli()
-                        } catch (offsetError: Exception) {
-                            try {
-                                java.time.LocalDateTime.parse(item.watchedAt)
-                                    .toInstant(java.time.ZoneOffset.UTC)
-                                    .toEpochMilli()
-                            } catch (localError: Exception) {
-                                item.watchedAt.toLongOrNull() ?: run {
-                                    reportWarning(
-                                        TAG,
-                                        "Error parsing watchedAt timestamp for episode $episodeId: ${item.watchedAt}",
-                                        instantError
-                                    )
-                                    0L
-                                }
-                            }
-                        }
+                    val timestamp = parseTimestampMillisOrZero(item.watchedAt) { error ->
+                        reportWarning(
+                            TAG,
+                            "Error parsing watchedAt timestamp for episode $episodeId: ${item.watchedAt}",
+                            error
+                        )
                     }
                     episodeId to timestamp
                 }

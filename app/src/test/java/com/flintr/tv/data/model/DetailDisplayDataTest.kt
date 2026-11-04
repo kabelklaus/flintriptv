@@ -103,6 +103,18 @@ class DetailDisplayDataTest {
     }
 
     @Test
+    fun `year is not taken from inside a longer digit run`() {
+        var lookupKey: String? = null
+
+        mapVodInfoToDetail(xtreamInfo.copy(name = "Inception 120131", releasedate = "12013")) { key ->
+            lookupKey = key
+            null
+        }
+
+        assertEquals("Inception 120131", lookupKey)
+    }
+
+    @Test
     fun `blank title skips imdb lookup`() {
         var called = false
 

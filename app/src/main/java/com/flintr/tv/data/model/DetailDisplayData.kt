@@ -24,7 +24,7 @@ data class DetailDisplayData(
     val rating: Double?
 )
 
-private val YEAR_PATTERN = Regex("(?:19|20)\\d{2}")
+private val YEAR_PATTERN = Regex("(?<!\\d)(?:19|20)\\d{2}(?!\\d)")
 private val TITLE_YEAR_PATTERN = Regex("\\((?:19|20)\\d{2}\\)")
 private val CAST_SEPARATOR = ","
 

@@ -1,6 +1,7 @@
 package com.flintr.tv.data.local.imdb
 
 import java.text.Normalizer
+import java.util.Locale
 
 /**
  * Kotlin mirror of `tools/imdb_enrichment/normalize.py`. Keep both in sync.
@@ -29,7 +30,7 @@ object ImdbKeyNormalizer {
         text = Normalizer.normalize(text, Normalizer.Form.NFD)
         text = COMBINING_MARKS.replace(text, "")
 
-        text = text.lowercase()
+        text = text.lowercase(Locale.ROOT)
         text = PUNCTUATION.replace(text, " ")
         text = WHITESPACE.replace(text, " ").trim()
 

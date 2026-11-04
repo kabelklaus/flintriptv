@@ -30,6 +30,7 @@ import javax.inject.Named
 import javax.inject.Singleton
 import com.flintr.tv.utils.error.reportError
 import com.flintr.tv.utils.error.reportWarning
+import com.flintr.tv.utils.parseTimestampMillisOrZero
 
 /**
  * Represents the last interaction with an episode (either in-progress or completed)
@@ -815,32 +816,6 @@ class WatchProgressService @Inject constructor(
                 episode.id to (season to episode)
             } ?: emptyList()
         }.toMap()
-    }
-
-    /**
-     * Parses the timestamps we persist/still receive (ISO instant, offset date-time, local
-     * date-time or epoch millis). A malformed value must never drop the entry: fall back to 0
-     * so the episode stays in the resume calculation.
-     */
-    private fun parseTimestampMillisOrZero(raw: String, onError: (Exception) -> Unit): Long {
-        return try {
-            Instant.parse(raw).toEpochMilli()
-        } catch (instantError: Exception) {
-            try {
-                java.time.OffsetDateTime.parse(raw).toInstant().toEpochMilli()
-            } catch (offsetError: Exception) {
-                try {
-                    java.time.LocalDateTime.parse(raw)
-                        .toInstant(java.time.ZoneOffset.UTC)
-                        .toEpochMilli()
-                } catch (localError: Exception) {
-                    raw.toLongOrNull() ?: run {
-                        onError(instantError)
-                        0L
-                    }
-                }
-            }
-        }
     }
 
     /**

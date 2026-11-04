@@ -3,8 +3,12 @@ package com.flintr.tv.utils
 import android.util.Log
 import androidx.compose.ui.graphics.Color
 import java.text.SimpleDateFormat
+import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.*
@@ -71,6 +75,30 @@ fun getExpirationDateColor(
         daysUntilExpiration < 0 -> expiredColor
         daysUntilExpiration <= 7 -> warningColor
         else -> normalColor
+    }
+}
+
+/**
+ * Parses the timestamps we persist/still receive (ISO instant, offset date-time, local
+ * date-time as UTC, or epoch millis). A malformed value must never drop the entry: it
+ * falls back to 0 and reports the original [Instant.parse] error via [onError].
+ */
+fun parseTimestampMillisOrZero(raw: String, onError: (Exception) -> Unit): Long {
+    return try {
+        Instant.parse(raw).toEpochMilli()
+    } catch (instantError: Exception) {
+        try {
+            OffsetDateTime.parse(raw).toInstant().toEpochMilli()
+        } catch (offsetError: Exception) {
+            try {
+                LocalDateTime.parse(raw).toInstant(ZoneOffset.UTC).toEpochMilli()
+            } catch (localError: Exception) {
+                raw.toLongOrNull() ?: run {
+                    onError(instantError)
+                    0L
+                }
+            }
+        }
     }
 }
 
