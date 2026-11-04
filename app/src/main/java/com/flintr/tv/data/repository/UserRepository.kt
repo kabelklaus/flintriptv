@@ -14,6 +14,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.flintr.tv.data.model.toFirestoreMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
@@ -494,6 +495,8 @@ class UserRepository @Inject constructor() {
 
             Log.d(TAG, "Rating saved atomically")
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             reportError(TAG, "Failed to save rating", e)
             Result.failure(e)
@@ -533,6 +536,8 @@ class UserRepository @Inject constructor() {
 
             Log.d(TAG, "Rating loaded, found: ${result != null}")
             Result.success(result)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             reportError(TAG, "Failed to get rating", e)
             Result.failure(e)
@@ -573,6 +578,8 @@ class UserRepository @Inject constructor() {
 
             Log.d(TAG, "All ratings loaded, count: ${result.size}")
             Result.success(result)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             reportError(TAG, "Failed to load all ratings", e)
             Result.failure(e)
