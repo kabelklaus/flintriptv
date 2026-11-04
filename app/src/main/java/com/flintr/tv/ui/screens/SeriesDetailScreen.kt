@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -49,9 +48,11 @@ import coil.compose.AsyncImage
 import com.flintr.tv.data.model.DetailDisplayData
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.Series
+import com.flintr.tv.ui.components.detail.DetailCastSection
 import com.flintr.tv.ui.components.detail.DetailHeaderData
 import com.flintr.tv.ui.components.detail.DetailHeaderSection
 import com.flintr.tv.ui.components.detail.DetailHeaderSkeleton
+import com.flintr.tv.ui.components.detail.DetailRecommendationsSection
 import com.flintr.tv.ui.components.detail.focusWatchAndRevealHeader
 import com.flintr.tv.ui.components.detail.formatSeasonLabel
 import com.flintr.tv.ui.theme.DarkColors
@@ -416,7 +417,7 @@ private fun SeriesDetailContent(
             }
 
             if (detail.cast.isNotEmpty()) {
-                SeriesCastSection(cast = detail.cast)
+                DetailCastSection(cast = detail.cast, testTag = "series-detail-cast")
             }
 
             detail.director?.takeIf { it.isNotBlank() }?.let { director ->
@@ -444,16 +445,21 @@ private fun SeriesDetailContent(
             }
 
             if (recommendations.isNotEmpty()) {
-                SeriesDetailRecommendationsSection(
+                DetailRecommendationsSection(
+                    testTag = "series-detail-recommendations",
                     recommendations = recommendations,
                     listState = recommendationListState,
                     focusRequesters = recommendationFocusRequesters,
-                    onSeriesClick = onSeriesClick,
                     onUp = {
                         if (!focusFirstSeason()) {
                             focusWatchButton()
                         }
-                    }
+                    },
+                    key = { series -> series.seriesId },
+                    posterUrl = { series -> series.cover },
+                    title = { series -> series.name },
+                    cardTestTag = { series -> "series-recommendation-${series.seriesId}" },
+                    onItemClick = { series -> onSeriesClick(series.seriesId) }
                 )
             }
 
@@ -555,150 +561,6 @@ private fun SeasonTile(
             modifier = Modifier
                 .padding(top = Dimensions.spacingXS)
                 .testTag("season-title-${season.seasonNumber}")
-        )
-    }
-}
-
-@Composable
-private fun SeriesCastSection(cast: List<String>) {
-    val colors = appColors()
-    Column(
-        modifier = Modifier
-            .padding(top = Dimensions.spacingLG, start = Dimensions.spacingXL, end = Dimensions.spacingXL)
-            .testTag("series-detail-cast")
-    ) {
-        Text(
-            text = "Besetzung",
-            color = DarkColors.textPrimary,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = Dimensions.spacingSM)
-        )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)) {
-            itemsIndexed(items = cast) { index, name ->
-                Column(
-                    modifier = Modifier
-                        .width(120.dp)
-                        .testTag("series-detail-cast-member-$index"),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(RoundedCornerShape(Dimensions.radiusRound))
-                            .background(colors.bgCard),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = name.trim().take(1).uppercase(),
-                            color = colors.accentBright,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Text(
-                        text = name,
-                        color = DarkColors.textPrimary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = Dimensions.spacingXS)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SeriesDetailRecommendationsSection(
-    recommendations: List<Series>,
-    listState: androidx.compose.foundation.lazy.LazyListState,
-    focusRequesters: List<FocusRequester>,
-    onSeriesClick: (Int) -> Unit,
-    onUp: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .padding(top = Dimensions.spacingLG, start = Dimensions.spacingXL, end = Dimensions.spacingXL)
-            .testTag("series-detail-recommendations")
-    ) {
-        Text(
-            text = "Das könnte dir gefallen",
-            color = DarkColors.textPrimary,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = Dimensions.spacingSM)
-        )
-        LazyRow(
-            state = listState,
-            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
-        ) {
-            itemsIndexed(
-                items = recommendations,
-                key = { _, series -> series.seriesId }
-            ) { index, series ->
-                SeriesRecommendationCard(
-                    series = series,
-                    focusRequester = focusRequesters.getOrNull(index),
-                    onUp = onUp,
-                    onClick = { onSeriesClick(series.seriesId) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SeriesRecommendationCard(
-    series: Series,
-    focusRequester: FocusRequester?,
-    onUp: () -> Unit,
-    onClick: () -> Unit
-) {
-    val colors = appColors()
-    var isFocused by remember { mutableStateOf(false) }
-    val internalFocusRequester = remember { FocusRequester() }
-    val actualFocusRequester = focusRequester ?: internalFocusRequester
-
-    Column(
-        modifier = Modifier
-            .width(140.dp)
-            .focusRequester(actualFocusRequester)
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-            .onDpadDirection(onUp = { onUp(); true })
-            .onClick(onClick = onClick)
-            .tvFocusRing(
-                isFocused = isFocused,
-                onArtwork = true,
-                shape = RoundedCornerShape(Dimensions.radiusMD)
-            )
-            .testTag("series-recommendation-${series.seriesId}")
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp)
-                .clip(RoundedCornerShape(Dimensions.radiusMD))
-                .background(colors.bgCard)
-        ) {
-            if (series.cover != null) {
-                AsyncImage(
-                    model = series.cover,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-        Text(
-            text = series.name,
-            color = DarkColors.textPrimary,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = Dimensions.spacingXS)
         )
     }
 }

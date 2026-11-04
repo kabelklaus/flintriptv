@@ -4,8 +4,6 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,8 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -33,7 +29,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -43,23 +38,22 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import com.flintr.tv.data.model.DetailDisplayData
+import com.flintr.tv.ui.components.detail.DetailCastSection
 import com.flintr.tv.ui.components.detail.DetailHeaderData
 import com.flintr.tv.ui.components.detail.DetailHeaderSection
 import com.flintr.tv.ui.components.detail.DetailHeaderSkeleton
+import com.flintr.tv.ui.components.detail.DetailRecommendationsSection
 import com.flintr.tv.ui.components.detail.focusWatchAndRevealHeader
 import com.flintr.tv.ui.theme.DarkColors
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
-import com.flintr.tv.ui.theme.tvFocusRing
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onClick
-import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.utils.error.reportWarning
 import com.flintr.tv.viewmodel.MovieDetailUiState
@@ -383,7 +377,7 @@ private fun MovieDetailContent(
             }
 
             if (detail.cast.isNotEmpty()) {
-                MovieDetailCastSection(cast = detail.cast)
+                DetailCastSection(cast = detail.cast, testTag = "movie-detail-cast")
             }
 
             detail.director?.takeIf { it.isNotBlank() }?.let { director ->
@@ -411,161 +405,21 @@ private fun MovieDetailContent(
             }
 
             if (recommendations.isNotEmpty()) {
-                MovieDetailRecommendationsSection(
+                DetailRecommendationsSection(
+                    testTag = "movie-detail-recommendations",
                     recommendations = recommendations,
                     listState = recommendationListState,
                     focusRequesters = recommendationFocusRequesters,
-                    onMovieClick = onMovieClick,
-                    onUp = { focusWatchButton() }
+                    onUp = { focusWatchButton() },
+                    key = { movie -> movie.streamId },
+                    posterUrl = { movie -> movie.streamIcon ?: movie.cover },
+                    title = { movie -> movie.name },
+                    cardTestTag = { movie -> "recommendation-${movie.streamId}" },
+                    onItemClick = { movie -> onMovieClick(movie.streamId) }
                 )
             }
 
             Spacer(modifier = Modifier.height(Dimensions.spacingXL))
-        }
-    }
-}
-
-@Composable
-private fun MovieDetailRecommendationsSection(
-    recommendations: List<com.flintr.tv.data.model.VodStream>,
-    listState: androidx.compose.foundation.lazy.LazyListState,
-    focusRequesters: List<FocusRequester>,
-    onMovieClick: (Int) -> Unit,
-    onUp: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .padding(top = Dimensions.spacingLG, start = Dimensions.spacingXL, end = Dimensions.spacingXL)
-            .testTag("movie-detail-recommendations")
-    ) {
-        Text(
-            text = "Das könnte dir gefallen",
-            color = DarkColors.textPrimary,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = Dimensions.spacingSM)
-        )
-        LazyRow(
-            state = listState,
-            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
-        ) {
-            itemsIndexed(
-                items = recommendations,
-                key = { _, movie -> movie.streamId }
-            ) { index, movie ->
-                RecommendationCard(
-                    movie = movie,
-                    focusRequester = focusRequesters.getOrNull(index),
-                    onUp = onUp,
-                    onClick = { onMovieClick(movie.streamId) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RecommendationCard(
-    movie: com.flintr.tv.data.model.VodStream,
-    focusRequester: FocusRequester?,
-    onUp: () -> Unit,
-    onClick: () -> Unit
-) {
-    val colors = appColors()
-    var isFocused by remember { mutableStateOf(false) }
-    val internalFocusRequester = remember { FocusRequester() }
-    val actualFocusRequester = focusRequester ?: internalFocusRequester
-    val poster = movie.streamIcon ?: movie.cover
-
-    Column(
-        modifier = Modifier
-            .width(140.dp)
-            .focusRequester(actualFocusRequester)
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-            .onDpadDirection(onUp = { onUp(); true })
-            .onClick(onClick = onClick)
-            .tvFocusRing(
-                isFocused = isFocused,
-                onArtwork = true,
-                shape = RoundedCornerShape(Dimensions.radiusMD)
-            )
-            .testTag("recommendation-${movie.streamId}")
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp)
-                .clip(RoundedCornerShape(Dimensions.radiusMD))
-                .background(colors.bgCard)
-        ) {
-            if (poster != null) {
-                AsyncImage(
-                    model = poster,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
-        Text(
-            text = movie.name,
-            color = DarkColors.textPrimary,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = Dimensions.spacingXS)
-        )
-    }
-}
-
-@Composable
-private fun MovieDetailCastSection(cast: List<String>) {
-    val colors = appColors()
-    Column(
-        modifier = Modifier
-            .padding(top = Dimensions.spacingLG, start = Dimensions.spacingXL, end = Dimensions.spacingXL)
-            .testTag("movie-detail-cast")
-    ) {
-        Text(
-            text = "Besetzung",
-            color = DarkColors.textPrimary,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = Dimensions.spacingSM)
-        )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)) {
-            itemsIndexed(items = cast) { index, name ->
-                Column(
-                    modifier = Modifier
-                        .width(120.dp)
-                        .testTag("movie-detail-cast-member-$index"),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(RoundedCornerShape(Dimensions.radiusRound))
-                            .background(colors.bgCard),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = name.trim().take(1).uppercase(),
-                            color = colors.accentBright,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Text(
-                        text = name,
-                        color = DarkColors.textPrimary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = Dimensions.spacingXS)
-                    )
-                }
-            }
         }
     }
 }

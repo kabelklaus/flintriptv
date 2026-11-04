@@ -47,6 +47,17 @@ object UserContentProfile {
     private const val AGE_DECAY_MIN_FACTOR = 0.3
     private const val MS_PER_DAY = 24.0 * 60.0 * 60.0 * 1000.0
 
+    /**
+     * Bundles [applyFavoriteSignals]'s mutable accumulators (same backing collections as the
+     * caller's locals) so the function stays under the parameter-count limit.
+     */
+    private data class ProfileAccumulator(
+        val weights: MutableMap<String, Double>,
+        val coreSignalKeys: MutableSet<String>,
+        val excludedMovieIds: MutableSet<Int>,
+        val excludedSeriesIds: MutableSet<Int>
+    )
+
     fun build(
         favorites: List<Favorite>,
         watchedHistory: Map<String, WatchedItem>,
@@ -64,7 +75,13 @@ object UserContentProfile {
         val excludedMovieIds = mutableSetOf<Int>()
         val excludedSeriesIds = mutableSetOf<Int>()
 
-        applyFavoriteSignals(favorites, moviesById, seriesById, nowMs, weights, coreSignalKeys, excludedMovieIds, excludedSeriesIds)
+        applyFavoriteSignals(
+            favorites,
+            moviesById,
+            seriesById,
+            nowMs,
+            ProfileAccumulator(weights, coreSignalKeys, excludedMovieIds, excludedSeriesIds)
+        )
         applyWatchedMovieExclusions(watchedHistory, excludedMovieIds)
         applyMovieProgressSignals(watchProgress, watchedHistory, moviesById, nowMs, weights, coreSignalKeys, excludedMovieIds)
         applySeriesProgressSignals(watchProgress, seriesById, nowMs, weights, coreSignalKeys, excludedSeriesIds)
@@ -83,24 +100,21 @@ object UserContentProfile {
         moviesById: Map<Int, VodStream>,
         seriesById: Map<Int, Series>,
         nowMs: Long,
-        weights: MutableMap<String, Double>,
-        coreSignalKeys: MutableSet<String>,
-        excludedMovieIds: MutableSet<Int>,
-        excludedSeriesIds: MutableSet<Int>
+        accumulator: ProfileAccumulator
     ) {
         favorites.forEach { favorite ->
             when (favorite.type) {
                 FavoriteType.MOVIE -> {
-                    excludedMovieIds += favorite.streamId
+                    accumulator.excludedMovieIds += favorite.streamId
                     val vod = moviesById[favorite.streamId] ?: return@forEach
-                    addGenreWeights(weights, GenreNormalizer.normalize(vod.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt), nowMs)
-                    coreSignalKeys += "fav_movie_${favorite.streamId}"
+                    addGenreWeights(accumulator.weights, GenreNormalizer.normalize(vod.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt), nowMs)
+                    accumulator.coreSignalKeys += "fav_movie_${favorite.streamId}"
                 }
                 FavoriteType.SERIES -> {
-                    excludedSeriesIds += favorite.streamId
+                    accumulator.excludedSeriesIds += favorite.streamId
                     val show = seriesById[favorite.streamId] ?: return@forEach
-                    addGenreWeights(weights, GenreNormalizer.normalize(show.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt), nowMs)
-                    coreSignalKeys += "fav_series_${favorite.streamId}"
+                    addGenreWeights(accumulator.weights, GenreNormalizer.normalize(show.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt), nowMs)
+                    accumulator.coreSignalKeys += "fav_series_${favorite.streamId}"
                 }
                 FavoriteType.LIVE -> Unit
             }

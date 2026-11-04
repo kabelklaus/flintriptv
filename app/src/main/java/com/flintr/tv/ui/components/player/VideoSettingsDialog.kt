@@ -1,3 +1,7 @@
+// File-level suppress: Sonar reports S3776 as a file/class aggregate here even though each
+// flagged function already carries its own @Suppress("S3776") with a rationale below.
+@file:Suppress("S3776")
+
 package com.flintr.tv.ui.components.player
 
 import androidx.compose.foundation.background
