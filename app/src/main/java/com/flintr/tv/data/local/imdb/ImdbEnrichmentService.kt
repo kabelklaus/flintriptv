@@ -74,7 +74,7 @@ class ImdbEnrichmentService @Inject constructor(
             "imdb_enrichment.json.gz.tmp",
             "imdb-enrichment.json.gz"
         )
-        private const val LOOKUP_SQL = "SELECT key, rating, numvotes, genres FROM enrich WHERE key IN"
+        private const val LOOKUP_SQL = "SELECT rating, numvotes, genres FROM enrich WHERE key = ?"
         private const val COPY_BUFFER_SIZE = 64 * 1024
         private val STALE_THRESHOLD: Duration = Duration.ofDays(14)
     }
@@ -131,7 +131,7 @@ class ImdbEnrichmentService @Inject constructor(
                 openDatabase(dbFile)
             } catch (t: Throwable) {
                 reportHandled("$TAG.ensureLoaded.open", t)
-                if (!dbFile.delete()) dbFile.deleteOnExit()
+                dbFile.delete()
                 null
             }
         }
@@ -150,18 +150,15 @@ class ImdbEnrichmentService @Inject constructor(
 
         return try {
             val words = clean.split(" ")
-            val candidates = words.indices.flatMap { position ->
-                keyCandidates(words.subList(0, words.size - position).joinToString(" "), year)
-            }.distinct()
-
-            // Eine IN-Query statt einer Query pro Kandidat; die Reihenfolge der
-            // Kandidaten bestimmt danach den Sieger.
-            val placeholders = candidates.joinToString(",") { "?" }
-            val hits = HashMap<String, ImdbEnrichment?>()
-            db.rawQuery("$LOOKUP_SQL ($placeholders)", candidates.toTypedArray()).use { cursor ->
-                while (cursor.moveToNext()) hits[cursor.getString(0)] = toEnrichment(cursor)
+            for (position in words.indices) {
+                val variant = words.subList(0, words.size - position).joinToString(" ")
+                for (key in keyCandidates(variant, year)) {
+                    db.rawQuery(LOOKUP_SQL, arrayOf(key)).use { cursor ->
+                        if (cursor.moveToFirst()) return toEnrichment(cursor)
+                    }
+                }
             }
-            candidates.firstOrNull { it in hits }?.let { hits[it] }
+            null
         } catch (e: Exception) {
             // Die DB kann waehrend eines Refreshs geschlossen werden.
             null
@@ -179,10 +176,10 @@ class ImdbEnrichmentService @Inject constructor(
     }
 
     private fun toEnrichment(cursor: Cursor): ImdbEnrichment? {
-        if (cursor.isNull(1) || cursor.isNull(2)) return null
-        val rating = cursor.getDouble(1)
-        val numVotes = cursor.getInt(2)
-        val genres = cursor.getString(3).orEmpty().split(",").filter { it.isNotBlank() }
+        if (cursor.isNull(0) || cursor.isNull(1)) return null
+        val rating = cursor.getDouble(0)
+        val numVotes = cursor.getInt(1)
+        val genres = cursor.getString(2).orEmpty().split(",").filter { it.isNotBlank() }
         return ImdbEnrichment(rating, numVotes, genres)
     }
 
@@ -196,10 +193,7 @@ class ImdbEnrichmentService @Inject constructor(
     }
 
     private fun deleteLegacyFiles() {
-        LEGACY_FILE_NAMES.forEach { name ->
-            val file = File(context.filesDir, name)
-            if (!file.delete()) file.deleteOnExit()
-        }
+        LEGACY_FILE_NAMES.forEach { File(context.filesDir, it).delete() }
     }
 
     /**
@@ -224,8 +218,8 @@ class ImdbEnrichmentService @Inject constructor(
             writeAtomically(metaFile, metaBytes)
             return true
         } finally {
-            if (!gzFile.delete()) gzFile.deleteOnExit()
-            if (!unpackedTmp.delete()) unpackedTmp.deleteOnExit()
+            gzFile.delete()
+            unpackedTmp.delete()
         }
     }
 
@@ -266,8 +260,6 @@ class ImdbEnrichmentService @Inject constructor(
 
     /** Entpackt mit konstantem Speicherbedarf, unabhaengig von der DB-Groesse. */
     private fun gunzipToFile(gzFile: File, target: File) {
-        // Der GZIP-Konstruktor liest schon den Header und wirft bei korrupter Datei --
-        // der Rohstream braucht deshalb ein eigenes use.
         gzFile.inputStream().use { raw ->
             GZIPInputStream(raw, COPY_BUFFER_SIZE).use { input ->
                 target.outputStream().use { output -> input.copyTo(output, COPY_BUFFER_SIZE) }

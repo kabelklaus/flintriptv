@@ -1,6 +1,7 @@
 package com.flintr.tv
 
 import android.app.Application
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
@@ -15,6 +16,8 @@ import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import com.flintr.tv.utils.error.reportError
 import com.flintr.tv.utils.error.reportWarning
 
@@ -66,17 +69,7 @@ class FlintRTVApplication : Application(), ImageLoaderFactory {
         }
     }
     
-    override fun newImageLoader(): ImageLoader =
-        ImageLoader.Builder(this)
-            .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
-            .diskCache {
-                DiskCache.Builder()
-                    .directory(cacheDir.resolve("images"))
-                    .maxSizeBytes(250L * 1024 * 1024)
-                    .build()
-            }
-            .crossfade(true)
-            .build()
+    override fun newImageLoader(): ImageLoader = buildFlintrImageLoader(this)
 
     companion object {
         private const val TAG = "FlintRTVApplication"
@@ -84,4 +77,31 @@ class FlintRTVApplication : Application(), ImageLoaderFactory {
         private const val PARAM_APP_VERSION = "app_version"
     }
 }
+
+/** Max concurrent bitmap decodes; leaves the other cores of a 4-core box to the UI/render threads. */
+internal const val IMAGE_DECODE_PARALLELISM = 2
+
+/**
+ * Coil loader tuned for scrolling large poster grids on weak TV boxes (ANR at load ~5 on 4 cores):
+ * - decoding is capped at [IMAGE_DECODE_PARALLELISM] so a fast scroll can't saturate every core
+ *   and starve the main thread's input dispatch,
+ * - RGB_565 halves bitmap memory/bandwidth for opaque posters (fewer GCs while recycling),
+ * - no crossfade: every visible tile would otherwise animate for its first frames after a scroll,
+ * - cache headers are ignored so posters come from the disk cache instead of being re-fetched.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun buildFlintrImageLoader(context: Context): ImageLoader =
+    ImageLoader.Builder(context)
+        .memoryCache { MemoryCache.Builder(context).maxSizePercent(0.25).build() }
+        .diskCache {
+            DiskCache.Builder()
+                .directory(context.cacheDir.resolve("images"))
+                .maxSizeBytes(250L * 1024 * 1024)
+                .build()
+        }
+        .decoderDispatcher(Dispatchers.IO.limitedParallelism(IMAGE_DECODE_PARALLELISM))
+        .allowRgb565(true)
+        .crossfade(false)
+        .respectCacheHeaders(false)
+        .build()
 

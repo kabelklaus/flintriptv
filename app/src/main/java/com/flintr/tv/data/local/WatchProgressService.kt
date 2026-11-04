@@ -30,6 +30,7 @@ import javax.inject.Named
 import javax.inject.Singleton
 import com.flintr.tv.utils.error.reportError
 import com.flintr.tv.utils.error.reportWarning
+import com.flintr.tv.utils.parseTimestampMillisOrZero
 
 /**
  * Represents the last interaction with an episode (either in-progress or completed)
@@ -268,27 +269,14 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Generates a storage key for the given content type and IDs
+     * Generates a storage key for the given content type and IDs (same format as watched history)
      */
     private fun generateKey(
         contentType: String,
         streamId: Int?,
         seriesId: Int?,
         episodeId: Int?
-    ): String {
-        return when (contentType) {
-            "movie" -> {
-                requireNotNull(streamId) { "streamId must not be null for movie" }
-                "$KEY_PREFIX_MOVIE$streamId"
-            }
-            "series" -> {
-                requireNotNull(seriesId) { "seriesId must not be null for series" }
-                requireNotNull(episodeId) { "episodeId must not be null for series" }
-                "$KEY_PREFIX_SERIES$seriesId:$episodeId"
-            }
-            else -> throw IllegalArgumentException("Unsupported contentType: $contentType")
-        }
-    }
+    ): String = WatchedHistoryService.generateKey(contentType, streamId, seriesId, episodeId)
 
     /**
      * Result of progress validation determining how to proceed with save operation.
@@ -819,7 +807,7 @@ class WatchProgressService @Inject constructor(
 
     /**
      * Creates a LastInteraction from a WatchProgress entry
-     * Returns null if the episode is not found or timestamp parsing fails
+     * Returns null if the episode is not found or the duration is invalid
      */
     private fun createInteractionFromProgress(
         episodeId: Int,
@@ -834,11 +822,8 @@ class WatchProgressService @Inject constructor(
             return null
         }
         val progressPercent = progress.position.toFloat() / progress.duration.toFloat()
-        val timestamp = try {
-            Instant.parse(progress.lastWatched).toEpochMilli()
-        } catch (e: Exception) {
-            reportWarning(TAG, "Error parsing lastWatched timestamp: ${progress.lastWatched}", e)
-            return null
+        val timestamp = parseTimestampMillisOrZero(progress.lastWatched) { error ->
+            reportWarning(TAG, "Error parsing lastWatched timestamp: ${progress.lastWatched}", error)
         }
         
         val episodeNumber = episode.episodeNum ?: episode.id

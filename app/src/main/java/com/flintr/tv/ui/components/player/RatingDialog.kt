@@ -28,7 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.window.Dialog
 import com.flintr.tv.data.model.RatingEntry
 import com.flintr.tv.ui.theme.Dimensions
@@ -80,7 +82,9 @@ fun RatingDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            modifier = Modifier.onBackButton(onBack = onDismiss),
+            modifier = Modifier
+                .testTag("rating-dialog")
+                .onBackButton(onBack = onDismiss),
             shape = RoundedCornerShape(Dimensions.radiusMD),
             colors = CardDefaults.cardColors(containerColor = colors.bgCard)
         ) {
@@ -90,17 +94,17 @@ fun RatingDialog(
             ) {
                 Text(
                     text = "Wie fandst du „$title\"?",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     color = colors.textPrimary
                 )
                 Spacer(modifier = Modifier.height(Dimensions.spacingLG))
-                Row(horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingLG)) {
                     Icon(
                         imageVector = Icons.Default.ThumbUp,
-                        contentDescription = "Daumen hoch",
+                        contentDescription = null,
                         tint = colors.iconColor,
                         modifier = Modifier
-                            .size(56.dp)
+                            .size(Dimensions.iconSizeXL)
                             .padding(Dimensions.spacingXS)
                             .focusRequester(thumbsUpFocusRequester)
                             .onFocusChanged { thumbsUpFocused = it.isFocused }
@@ -113,13 +117,14 @@ fun RatingDialog(
                             .onDpadDirection(
                                 onRight = { thumbsDownFocusRequester.requestFocus(); true }
                             )
+                            .semantics { contentDescription = "Daumen hoch" }
                     )
                     Icon(
                         imageVector = Icons.Default.ThumbDown,
-                        contentDescription = "Daumen runter",
+                        contentDescription = null,
                         tint = colors.iconColor,
                         modifier = Modifier
-                            .size(56.dp)
+                            .size(Dimensions.iconSizeXL)
                             .padding(Dimensions.spacingXS)
                             .focusRequester(thumbsDownFocusRequester)
                             .onFocusChanged { thumbsDownFocused = it.isFocused }
@@ -132,6 +137,7 @@ fun RatingDialog(
                             .onDpadDirection(
                                 onLeft = { thumbsUpFocusRequester.requestFocus(); true }
                             )
+                            .semantics { contentDescription = "Daumen runter" }
                     )
                 }
             }

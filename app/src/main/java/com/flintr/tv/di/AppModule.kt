@@ -14,6 +14,7 @@ import com.flintr.tv.data.model.EmptyArrayAsObjectAdapterFactory
 import com.flintr.tv.data.model.EpisodeInfo
 import com.flintr.tv.data.model.SeriesInfo
 import com.flintr.tv.data.model.SeriesInfoResponseAdapterFactory
+import com.flintr.tv.data.model.VodInfoResponseAdapterFactory
 import com.flintr.tv.data.repository.UpdateRepository
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
@@ -58,6 +59,7 @@ object AppModule {
     fun provideMoshi(): Moshi {
         return Moshi.Builder()
             .add(SeriesInfoResponseAdapterFactory())
+            .add(VodInfoResponseAdapterFactory())
             .add(EmptyArrayAsObjectAdapterFactory(setOf(EpisodeInfo::class.java, SeriesInfo::class.java)))
             .addLast(KotlinJsonAdapterFactory())
             .build()

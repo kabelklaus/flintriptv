@@ -15,6 +15,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.flintr.tv.utils.error.reportHandled
+import com.flintr.tv.utils.error.reportWarning
 
 @Singleton
 class XtreamRepository @Inject constructor(
@@ -390,6 +391,20 @@ class XtreamRepository @Inject constructor(
             return null // Signal for retry
         }
         return Result.failure(Exception("Failed to get series info: $errorCode"))
+    }
+
+    suspend fun loadVodInfo(username: String, password: String, vodId: Int): Result<VodInfo?> {
+        return try {
+            val service = requireApiService()
+            val response = service.getVodInfo(username, password, "get_vod_info", vodId)
+            // The adapter maps a PHP empty array ("info": []) to null; an
+            // empty detail payload is a valid "nothing to show" result, not an error.
+            Result.success(response.info)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            reportWarning("XtreamRepository", "Failed to load VOD info for vodId=$vodId", e)
+            Result.failure(e)
+        }
     }
 
     suspend fun getEpg(username: String, password: String, streamId: Int): Result<List<EpgProgram>> {

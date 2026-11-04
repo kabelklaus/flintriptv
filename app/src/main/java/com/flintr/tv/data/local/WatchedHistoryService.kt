@@ -26,6 +26,7 @@ import javax.inject.Named
 import javax.inject.Singleton
 import com.flintr.tv.utils.error.reportError
 import com.flintr.tv.utils.error.reportWarning
+import com.flintr.tv.utils.parseTimestampMillisOrZero
 
 @Singleton
 class WatchedHistoryService @Inject constructor(
@@ -51,6 +52,30 @@ class WatchedHistoryService @Inject constructor(
 
         internal fun seriesEpisodeKey(seriesId: Int, episodeId: Int): String {
             return "$KEY_PREFIX_SERIES$seriesId:$episodeId"
+        }
+
+        /**
+         * Generates a storage key for the given content type and IDs.
+         * Shared with WatchProgressService, which uses the same key format.
+         */
+        internal fun generateKey(
+            contentType: String,
+            streamId: Int?,
+            seriesId: Int?,
+            episodeId: Int?
+        ): String {
+            return when (contentType) {
+                "movie" -> {
+                    requireNotNull(streamId) { "streamId must not be null for movie" }
+                    "$KEY_PREFIX_MOVIE$streamId"
+                }
+                "series" -> {
+                    requireNotNull(seriesId) { "seriesId must not be null for series" }
+                    requireNotNull(episodeId) { "episodeId must not be null for series" }
+                    seriesEpisodeKey(seriesId, episodeId)
+                }
+                else -> throw IllegalArgumentException("Unsupported contentType: $contentType")
+            }
         }
 
         internal fun buildSeriesWatchedEntries(
@@ -280,29 +305,6 @@ class WatchedHistoryService @Inject constructor(
     }
 
     /**
-     * Generates a storage key for the given content type and IDs
-     */
-    private fun generateKey(
-        contentType: String,
-        streamId: Int?,
-        seriesId: Int?,
-        episodeId: Int?
-    ): String {
-        return when (contentType) {
-            "movie" -> {
-                requireNotNull(streamId) { "streamId must not be null for movie" }
-                "$KEY_PREFIX_MOVIE$streamId"
-            }
-            "series" -> {
-                requireNotNull(seriesId) { "seriesId must not be null for series" }
-                requireNotNull(episodeId) { "episodeId must not be null for series" }
-                "$KEY_PREFIX_SERIES$seriesId:$episodeId"
-            }
-            else -> throw IllegalArgumentException("Unsupported contentType: $contentType")
-        }
-    }
-
-    /**
      * Marks an item as watched (optimistic update).
      */
     suspend fun markAsWatched(
@@ -501,11 +503,14 @@ class WatchedHistoryService @Inject constructor(
                 .filterKeys { it.startsWith(prefix) }
                 .mapNotNull { (key, item) ->
                     val episodeId = key.removePrefix(prefix).toIntOrNull() ?: return@mapNotNull null
-                    val timestamp = try {
-                        Instant.parse(item.watchedAt).toEpochMilli()
-                    } catch (e: Exception) {
-                        reportWarning(TAG, "Error parsing watchedAt timestamp for episode $episodeId: ${item.watchedAt}", e)
-                        return@mapNotNull null
+                    // Never forget a watched episode because of a malformed timestamp. Try the
+                    // common ISO variants, then fall back to 0 instead of dropping the entry.
+                    val timestamp = parseTimestampMillisOrZero(item.watchedAt) { error ->
+                        reportWarning(
+                            TAG,
+                            "Error parsing watchedAt timestamp for episode $episodeId: ${item.watchedAt}",
+                            error
+                        )
                     }
                     episodeId to timestamp
                 }

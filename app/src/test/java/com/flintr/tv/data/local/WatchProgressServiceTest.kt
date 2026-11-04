@@ -69,6 +69,9 @@ class WatchProgressServiceTest {
         // doppelt, was in deleteProgress (Firestore-Fire-and-forget) zu einer CCE beim
         // result.fold()-Aufruf fuehrt (siehe seedProgress-Kommentar oben fuer denselben Bug).
         coEvery { userRepository.deleteWatchProgress(any(), any()) } coAnswers { Result.success(Unit) }
+        // saveToFirestore ist fire-and-forget; ohne Stub leakt die relaxed Mock-Antwort als
+        // uncaught ClassCastException in nachfolgende Tests.
+        coEvery { userRepository.saveWatchProgress(any(), any()) } coAnswers { Result.success(Unit) }
 
         service = WatchProgressService(
             context = context,
@@ -423,16 +426,31 @@ class WatchProgressServiceTest {
     }
 
     @Test
-    fun `getLastInteraction ignoriert Eintraege mit ungueltiger Dauer oder Zeitstempel`() = runBlocking {
+    fun `getLastInteraction ignoriert Eintraege mit ungueltiger Dauer`() = runBlocking {
         seedProgress(
             mapOf(
-                "series:10:101" to WatchProgress(600_000, 0, "2026-07-15T10:00:00Z", "S1F1"),
-                "series:10:102" to WatchProgress(600_000, 1_200_000, "kein-datum", "S1F2")
+                "series:10:101" to WatchProgress(600_000, 0, "2026-07-15T10:00:00Z", "S1F1")
             )
         )
         coEvery { watchedHistoryService.getLatestWatchedEpisode(10) } returns null
 
         assertNull(service.getLastInteraction(10, seriesFixture()))
+    }
+
+    @Test
+    fun `getLastInteraction behaelt Eintrag mit kaputtem Zeitstempel`() = runBlocking {
+        seedProgress(
+            mapOf(
+                "series:10:101" to WatchProgress(600_000, 1_200_000, "kein-datum", "S1F1")
+            )
+        )
+        coEvery { watchedHistoryService.getLatestWatchedEpisode(10) } returns null
+
+        val interaction = service.getLastInteraction(10, seriesFixture())
+
+        assertEquals(101, interaction?.episodeId)
+        assertEquals(0.5f, interaction!!.progress, 0.001f)
+        assertEquals(0L, interaction.timestamp)
     }
 
     @Test

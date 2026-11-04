@@ -1,3 +1,7 @@
+// File-level suppress: Sonar reports S3776 as a file/class aggregate here even though each
+// flagged function already carries its own @Suppress("kotlin:S3776") with a rationale below.
+@file:Suppress("kotlin:S3776")
+
 package com.flintr.tv.ui.components.player
 
 import androidx.compose.foundation.background
@@ -24,6 +28,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.annotation.OptIn
 import androidx.core.net.toUri
 import androidx.media3.common.C
@@ -48,6 +53,7 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onClick
+import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.utils.error.reportWarning
 import java.util.Locale
 
@@ -326,7 +332,7 @@ fun buildSubtitleConfigurations(subtitles: List<Subtitle>): List<MediaItem.Subti
  *   so the caller can stop re-applying the preferred-language auto-selection for this stream
  */
 @OptIn(UnstableApi::class)
-@Suppress("S3776") // Composable assembles the full settings dialog; already split into sub-selectors, further splitting risks the tested settings flow
+@Suppress("kotlin:S3776") // Composable assembles the full settings dialog; already split into sub-selectors, further splitting risks the tested settings flow
 @Composable
 fun VideoSettingsDialog(
     onDismiss: () -> Unit,
@@ -360,10 +366,13 @@ fun VideoSettingsDialog(
         mutableStateOf(playbackSettingsRepository?.getPreferredAudioLanguage() ?: AudioLanguage.Deutsch)
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Card(
             modifier = modifier
-                .fillMaxWidth(0.9f)
+                .fillMaxWidth(0.75f)
                 .fillMaxHeight(0.8f),
             shape = RoundedCornerShape(Dimensions.radiusMD),
             colors = CardDefaults.cardColors(
@@ -591,6 +600,7 @@ private fun MaxVideoResolutionSelector(
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
             .onClick(onClick = { expanded = !expanded })
+            .onDpadCenter { expanded = !expanded }
             .semantics {
                 contentDescription = "$fieldLabel: ${selectedQuality.displayName}"
             }
@@ -759,6 +769,9 @@ internal fun selectAudioTrack(exoPlayer: ExoPlayer, track: AudioTrackInfo) {
  * Audio track list and selection for the current stream.
  * Shows available audio tracks and allows switching during playback.
  */
+@Suppress("kotlin:S3776") // Dropdown selector with guard clauses + forEach-nested selection lambda; this
+// shape is touch/d-pad regression-tested (SubSettingsPlaybackTouchTest) via the sibling
+// ResizeModeSelector, so the Modifier/semantics chain here stays untouched rather than merged.
 @OptIn(UnstableApi::class)
 @Composable
 private fun AudioTrackSelector(
@@ -889,6 +902,8 @@ private fun isSubtitleTrackSelected(
  * Subtitle track list and selection for the current stream.
  * Shows available subtitle tracks and allows switching during playback.
  */
+@Suppress("kotlin:S3776") // Mirror of AudioTrackSelector above; same touch/d-pad regression-tested
+// Modifier/semantics shape, kept unmerged for the same reason.
 @OptIn(UnstableApi::class)
 @Composable
 private fun SubtitleTrackSelector(

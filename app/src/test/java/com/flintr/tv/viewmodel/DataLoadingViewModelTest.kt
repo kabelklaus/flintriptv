@@ -102,14 +102,15 @@ class DataLoadingViewModelTest {
         }
 
         val seriesSlot = slot<List<Series>>()
-        every {
+        coEvery {
             cacheService.saveCachedData(
                 channels = any(),
                 movies = any(),
                 series = capture(seriesSlot),
                 liveCategories = any(),
                 vodCategories = any(),
-                seriesCategories = any()
+                seriesCategories = any(),
+                onProgress = any()
             )
         } returns true
 
@@ -128,6 +129,31 @@ class DataLoadingViewModelTest {
         assertTrue(seriesSlot.isCaptured)
         assertEquals(2, seriesSlot.captured.size)
         assertTrue(vm.uiState.value.loadingComplete)
+        assertEquals(LoadingStatus.Success, vm.uiState.value.steps[SAVE_STEP_INDEX].status)
+    }
+
+    @Test
+    fun `retryStep schliesst nicht ab wenn das Speichern scheitert`() = runTest {
+        coEvery { repository.loadSeriesFromApi("chris", "pw") } coAnswers {
+            Result.success(listOf(testSeries(seriesId = 1)))
+        }
+        coEvery { repository.getLiveStreams("chris", "pw") } coAnswers { Result.success(listOf(testLiveStream(streamId = 1))) }
+        coEvery { repository.getVodStreams("chris", "pw") } coAnswers { Result.success(listOf(testVodStream(streamId = 1))) }
+        coEvery { repository.loadLiveStreamsFromApi("chris", "pw") } coAnswers { Result.success(listOf(testLiveStream(streamId = 1))) }
+        coEvery { repository.loadVodStreamsFromApi("chris", "pw") } coAnswers { Result.success(listOf(testVodStream(streamId = 1))) }
+        coEvery { cacheService.saveCachedData(any(), any(), any(), any(), any(), any(), any()) } returns false
+
+        val vm = viewModel()
+        vm.retryStep(0)
+        advanceUntilIdle()
+        vm.retryStep(1)
+        advanceUntilIdle()
+        vm.retryStep(2)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(LoadingStatus.Error, state.steps[SAVE_STEP_INDEX].status)
+        assertFalse(state.loadingComplete)
     }
 
     @Test
@@ -143,7 +169,7 @@ class DataLoadingViewModelTest {
 
         assertEquals(LoadingStatus.Error, vm.uiState.value.steps[2].status)
         assertFalse(vm.uiState.value.loadingComplete)
-        coVerify(exactly = 0) { cacheService.saveCachedData(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { cacheService.saveCachedData(any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -168,7 +194,7 @@ class DataLoadingViewModelTest {
 
         assertEquals("Invalid step index: 5", vm.uiState.value.error)
         assertFalse(vm.uiState.value.loadingComplete)
-        coVerify(exactly = 0) { cacheService.saveCachedData(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { cacheService.saveCachedData(any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -317,9 +343,44 @@ class DataLoadingViewModelTest {
         assertEquals(6, state.steps[1].itemCount)
         assertEquals(LoadingStatus.Success, state.steps[2].status)
         assertEquals(8, state.steps[2].itemCount)
+        assertEquals(LoadingStatus.Success, state.steps[SAVE_STEP_INDEX].status)
+        assertEquals(18, state.steps[SAVE_STEP_INDEX].itemCount)
         assertTrue(state.loadingComplete)
         assertFalse(state.isLoading)
         assertEquals(1f, state.overallProgress)
+    }
+
+    @Test
+    fun `loadData zeigt Speicherfortschritt als eigenen Schritt`() = runTest {
+        val progressFlow = flowOf(
+            DataRefreshProgress(step = RefreshStep.CHANNELS, message = "Lade Kanaele..."),
+            DataRefreshProgress(
+                step = RefreshStep.SAVING,
+                message = "Speichere Cache...",
+                itemCounts = ItemCounts(channels = 4, movies = 6, series = 8),
+                itemsToSave = 18
+            ),
+            DataRefreshProgress(
+                step = RefreshStep.SAVING,
+                message = "Speichere Cache... (9 / 18)",
+                itemCounts = ItemCounts(channels = 4, movies = 6, series = 8),
+                savedItems = 9,
+                itemsToSave = 18
+            )
+        )
+        every { dataRefreshUseCase.refreshData("chris", "pw") } returns progressFlow
+
+        val vm = viewModel()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        val saveStep = state.steps[SAVE_STEP_INDEX]
+        assertEquals(4, state.steps.size)
+        assertEquals(LoadingStatus.Loading, saveStep.status)
+        assertEquals(0.5f, saveStep.progress)
+        assertEquals(LoadingStatus.Success, state.steps[2].status)
+        assertEquals(3.5f / 4f, state.overallProgress)
+        assertFalse(state.loadingComplete)
     }
 
     @Test
