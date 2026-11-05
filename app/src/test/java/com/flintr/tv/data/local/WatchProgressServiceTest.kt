@@ -227,6 +227,20 @@ class WatchProgressServiceTest {
     }
 
     @Test
+    fun `getInProgressSeriesCount zaehlt Serien statt Episoden`() = runBlocking {
+        seedProgress(
+            mapOf(
+                "series:10:101" to progress(60_000, 1_200_000),
+                "series:10:102" to progress(60_000, 1_200_000),
+                "series:20:201" to progress(60_000, 1_200_000)
+            )
+        )
+
+        assertEquals(3, service.getInProgressEpisodesCount())
+        assertEquals(2, service.getInProgressSeriesCount())
+    }
+
+    @Test
     fun `syncIfNeeded laedt Fortschritt von Firestore`() = runBlocking {
         coEvery { userRepository.loadWatchProgress("chris") } coAnswers {
             Result.success(mapOf("movie:1" to progress(60_000, 3_600_000)))

@@ -772,6 +772,19 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
+     * Gets the count of distinct series with at least one in-progress episode
+     * (not the episode count - a series with 3 in-progress episodes counts once)
+     */
+    suspend fun getInProgressSeriesCount(): Int = withContext(ioDispatcher) {
+        val progressMap = _watchProgress.value
+        progressMap.keys
+            .filter { it.startsWith(KEY_PREFIX_SERIES) }
+            .mapNotNull { (parseProgressKey(it) as? ParsedProgressKey.Series)?.seriesId }
+            .distinct()
+            .size
+    }
+
+    /**
      * Checks if an item is watched (delegates to WatchedHistoryService)
      */
     suspend fun isWatched(

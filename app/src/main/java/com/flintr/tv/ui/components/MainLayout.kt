@@ -84,7 +84,8 @@ data class MainLayoutParams(
     val onCategorySelected: (String?) -> Unit,
     val onCategoryHidden: (Category) -> Unit,
     val itemCounts: Map<String, Int>? = null,
-    
+    val itemLabelBuilder: (Int) -> String,
+
     // Focus Management
     val navbarFocusRequester: FocusRequester,
     val categorySidebarFocusRequester: FocusRequester,
@@ -132,6 +133,7 @@ fun MainLayout(
                     selectedCategoryId = params.selectedCategoryId,
                     onCategorySelected = params.onCategorySelected,
                     itemCounts = params.itemCounts,
+                    itemLabelBuilder = params.itemLabelBuilder,
                     focusRequester = params.categorySidebarFocusRequester,
                     onNavigateLeft = params.onNavigateToNavbar,
                     onNavigateRight = { params.onNavigateToContentList() },

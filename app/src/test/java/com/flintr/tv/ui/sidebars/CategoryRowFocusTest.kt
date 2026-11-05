@@ -55,6 +55,7 @@ class CategoryRowFocusTest {
                             selectedCategoryId = it
                             onCategorySelected(it)
                         },
+                        itemLabelBuilder = { "Titel" },
                         focusRequester = navbarReturnFocusRequester,
                         onNavigateLeft = {},
                         onNavigateRight = {},

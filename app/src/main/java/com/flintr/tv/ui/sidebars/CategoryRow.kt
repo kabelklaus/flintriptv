@@ -42,7 +42,7 @@ data class CategoryRowParams(
     val selectedCategoryId: String? = null,
     val onCategorySelected: (String?) -> Unit,
     val itemCounts: Map<String, Int>? = null,
-    val itemLabelBuilder: (Int) -> String = { _ -> "Kanäle" },
+    val itemLabelBuilder: (Int) -> String,
     val focusRequester: FocusRequester,
     val onNavigateLeft: () -> Unit,
     val onNavigateRight: () -> Unit,
@@ -53,7 +53,7 @@ data class CategoryRowParams(
 data class CategoryChipParams(
     val category: Category,
     val itemCount: Int = 0,
-    val itemLabelBuilder: (Int) -> String = { _ -> "Kanäle" },
+    val itemLabelBuilder: (Int) -> String,
     val isSelected: Boolean,
     val onClick: () -> Unit,
     val onNavigateLeft: (() -> Unit)? = null,

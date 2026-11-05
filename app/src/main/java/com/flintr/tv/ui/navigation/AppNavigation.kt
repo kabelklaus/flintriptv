@@ -1935,6 +1935,7 @@ private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params
                     selectedCategoryId = selectedCategoryId,
                     onCategorySelected = onCategorySelected,
                     itemCounts = itemCounts,
+                    itemLabelBuilder = { itemLabelForDestination(selectedDestination) },
                     navbarFocusRequester = navbarFocusRequester,
                     categorySidebarFocusRequester = categorySidebarFocusRequester,
                     categoryFocusRequesterMap = categoryFocusRequesterMap,
@@ -2203,7 +2204,7 @@ private fun handleDestinationChangeInternal(
 }
 
 @Composable
-private fun calculateItemCounts(
+internal fun calculateItemCounts(
     selectedDestination: HomeDestination,
     watchProgressService: WatchProgressService
 ): Map<String, Int> {
@@ -2211,7 +2212,9 @@ private fun calculateItemCounts(
     LaunchedEffect(selectedDestination) {
         inProgressCount = when (selectedDestination) {
             is HomeDestination.VOD -> watchProgressService.getInProgressMoviesCount()
-            is HomeDestination.Series -> watchProgressService.getInProgressEpisodesCount()
+            // DISTINCT-Zaehlung der Serien, nicht der angefangenen Episoden (eine Serie mit
+            // mehreren angefangenen Episoden zaehlt nur einmal).
+            is HomeDestination.Series -> watchProgressService.getInProgressSeriesCount()
             else -> 0
         }
     }
@@ -2222,6 +2225,16 @@ private fun calculateItemCounts(
             emptyMap()
         }
     }
+}
+
+/**
+ * Label fuer die Item-Zaehlung pro Destination (z.B. "3 Filme" / "2 Serien" bei
+ * Angefangene Inhalte). Niemals "Kanaele" - das bezeichnet nur echte Live-TV-Sender.
+ */
+internal fun itemLabelForDestination(destination: HomeDestination): String = when (destination) {
+    is HomeDestination.VOD -> "Filme"
+    is HomeDestination.Series -> "Serien"
+    else -> "Titel"
 }
 
 @Composable
