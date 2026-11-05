@@ -1,8 +1,3 @@
-// File-level suppress: Sonar reports S107 here as a file aggregate (no line). The only function
-// over the limit is the CustomPlayerControls composable (8 params, already grouped into state/callback
-// holders); further bundling would pull PlayerScreen.kt into the change without behavioral gain.
-@file:Suppress("kotlin:S107")
-
 package com.flintr.tv.ui.components.player
 
 import androidx.compose.foundation.background
@@ -76,6 +71,15 @@ data class PlayerUtilityCallbacks(
 )
 
 /**
+ * Data class bundling the rating-buttons' display state (grouped to keep
+ * [CustomPlayerControls]'s parameter count within the S107 limit)
+ */
+data class RatingUiState(
+    val ratedThumb: Int? = null,
+    val showRatingButtons: Boolean = true
+)
+
+/**
  * Data class containing button appearance configuration
  */
 private data class ButtonAppearance(
@@ -136,10 +140,11 @@ internal fun formatFinishTimeText(
  * @param utilityCallbacks Utility callbacks
  * @param contentType Current content type (live/movie/series)
  * @param focusedButton Currently focused button
- * @param ratedThumb The persisted rating for the current content (1 = up, 0 = down, null =
- *   none), highlighted independent of focus for as long as the content stays rated
- * @param showRatingButtons Whether the thumbs up/down buttons are rendered and focusable
  * @param modifier Modifier for the controls
+ * @param ratingUiState The rating-buttons' display state: [RatingUiState.ratedThumb] is the
+ *   persisted rating for the current content (1 = up, 0 = down, null = none), highlighted
+ *   independent of focus for as long as the content stays rated; [RatingUiState.showRatingButtons]
+ *   controls whether the thumbs up/down buttons are rendered and focusable at all
  */
 @Composable
 fun CustomPlayerControls(
@@ -148,9 +153,8 @@ fun CustomPlayerControls(
     utilityCallbacks: PlayerUtilityCallbacks,
     contentType: String,
     focusedButton: FocusedButton?,
-    ratedThumb: Int? = null,
-    showRatingButtons: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    ratingUiState: RatingUiState = RatingUiState()
 ) {
     val focusRequesters = remember {
         mapOf(
@@ -250,18 +254,18 @@ fun CustomPlayerControls(
                         focusedButton = focusedButton,
                         focusRequesters = focusRequesters,
                         hasNextEpisode = callbacks.onNextEpisode != null,
-                        showRatingButtons = showRatingButtons
+                        showRatingButtons = ratingUiState.showRatingButtons
                     )
 
                     // Rating buttons (thumbs up/down)
-                    if (showRatingButtons) {
+                    if (ratingUiState.showRatingButtons) {
                         RatingButtons(
                             callbacks = callbacks,
                             utilityCallbacks = utilityCallbacks,
                             focusedButton = focusedButton,
                             focusRequesters = focusRequesters,
                             hasNextEpisode = callbacks.onNextEpisode != null,
-                            ratedThumb = ratedThumb
+                            ratedThumb = ratingUiState.ratedThumb
                         )
                     }
 
@@ -271,7 +275,7 @@ fun CustomPlayerControls(
                         focusedButton = focusedButton,
                         focusRequesters = focusRequesters,
                         hasNextEpisode = callbacks.onNextEpisode != null,
-                        showRatingButtons = showRatingButtons
+                        showRatingButtons = ratingUiState.showRatingButtons
                     )
                 }
 
@@ -299,62 +303,79 @@ fun CustomPlayerControls(
 }
 
 /**
- * Creates navigation handlers for a button based on its position and context
+ * Left-navigation target for a button based on its position and context
+ */
+private fun navigateLeftHandler(
+    button: FocusedButton,
+    hasNextEpisode: Boolean,
+    onFocusChange: (FocusedButton?) -> Unit,
+    showRatingButtons: Boolean = true
+): () -> Unit = when (button) {
+    FocusedButton.PREVIOUS -> { -> onFocusChange(null) }
+    FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.PREVIOUS) }
+    FocusedButton.NEXT -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
+    FocusedButton.NEXT_EPISODE -> { -> onFocusChange(FocusedButton.NEXT) }
+    FocusedButton.THUMBS_UP -> { ->
+        onFocusChange(if (hasNextEpisode) FocusedButton.NEXT_EPISODE else FocusedButton.NEXT)
+    }
+    FocusedButton.THUMBS_DOWN -> { -> onFocusChange(FocusedButton.THUMBS_UP) }
+    FocusedButton.DEBUG -> { ->
+        onFocusChange(
+            if (showRatingButtons) {
+                FocusedButton.THUMBS_DOWN
+            } else if (hasNextEpisode) {
+                FocusedButton.NEXT_EPISODE
+            } else {
+                FocusedButton.NEXT
+            }
+        )
+    }
+    FocusedButton.SETTINGS -> { -> onFocusChange(FocusedButton.DEBUG) }
+}
+
+/**
+ * Right-navigation target for a button based on its position and context
+ */
+private fun navigateRightHandler(
+    button: FocusedButton,
+    hasNextEpisode: Boolean,
+    onFocusChange: (FocusedButton?) -> Unit,
+    showRatingButtons: Boolean = true
+): () -> Unit = when (button) {
+    FocusedButton.PREVIOUS -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
+    FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.NEXT) }
+    FocusedButton.NEXT -> { ->
+        onFocusChange(
+            if (hasNextEpisode) {
+                FocusedButton.NEXT_EPISODE
+            } else if (showRatingButtons) {
+                FocusedButton.THUMBS_UP
+            } else {
+                FocusedButton.DEBUG
+            }
+        )
+    }
+    FocusedButton.NEXT_EPISODE -> { ->
+        onFocusChange(if (showRatingButtons) FocusedButton.THUMBS_UP else FocusedButton.DEBUG)
+    }
+    FocusedButton.THUMBS_UP -> { -> onFocusChange(FocusedButton.THUMBS_DOWN) }
+    FocusedButton.THUMBS_DOWN -> { -> onFocusChange(FocusedButton.DEBUG) }
+    FocusedButton.DEBUG -> { -> onFocusChange(FocusedButton.SETTINGS) }
+    FocusedButton.SETTINGS -> { -> onFocusChange(null) }
+}
+
+/**
+ * Creates the (left, right) navigation handler pair for a button based on its position and context
  */
 private fun createNavigationHandler(
     button: FocusedButton,
     hasNextEpisode: Boolean,
     onFocusChange: (FocusedButton?) -> Unit,
     showRatingButtons: Boolean = true
-): Pair<() -> Unit, () -> Unit> {
-    val onNavigateLeft: () -> Unit = when (button) {
-        FocusedButton.PREVIOUS -> { -> onFocusChange(null) }
-        FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.PREVIOUS) }
-        FocusedButton.NEXT -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
-        FocusedButton.NEXT_EPISODE -> { -> onFocusChange(FocusedButton.NEXT) }
-        FocusedButton.THUMBS_UP -> { ->
-            onFocusChange(if (hasNextEpisode) FocusedButton.NEXT_EPISODE else FocusedButton.NEXT)
-        }
-        FocusedButton.THUMBS_DOWN -> { -> onFocusChange(FocusedButton.THUMBS_UP) }
-        FocusedButton.DEBUG -> { ->
-            onFocusChange(
-                if (showRatingButtons) {
-                    FocusedButton.THUMBS_DOWN
-                } else if (hasNextEpisode) {
-                    FocusedButton.NEXT_EPISODE
-                } else {
-                    FocusedButton.NEXT
-                }
-            )
-        }
-        FocusedButton.SETTINGS -> { -> onFocusChange(FocusedButton.DEBUG) }
-    }
-
-    val onNavigateRight: () -> Unit = when (button) {
-        FocusedButton.PREVIOUS -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
-        FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.NEXT) }
-        FocusedButton.NEXT -> { ->
-            onFocusChange(
-                if (hasNextEpisode) {
-                    FocusedButton.NEXT_EPISODE
-                } else if (showRatingButtons) {
-                    FocusedButton.THUMBS_UP
-                } else {
-                    FocusedButton.DEBUG
-                }
-            )
-        }
-        FocusedButton.NEXT_EPISODE -> { ->
-            onFocusChange(if (showRatingButtons) FocusedButton.THUMBS_UP else FocusedButton.DEBUG)
-        }
-        FocusedButton.THUMBS_UP -> { -> onFocusChange(FocusedButton.THUMBS_DOWN) }
-        FocusedButton.THUMBS_DOWN -> { -> onFocusChange(FocusedButton.DEBUG) }
-        FocusedButton.DEBUG -> { -> onFocusChange(FocusedButton.SETTINGS) }
-        FocusedButton.SETTINGS -> { -> onFocusChange(null) }
-    }
-
-    return Pair(onNavigateLeft, onNavigateRight)
-}
+): Pair<() -> Unit, () -> Unit> = Pair(
+    navigateLeftHandler(button, hasNextEpisode, onFocusChange, showRatingButtons),
+    navigateRightHandler(button, hasNextEpisode, onFocusChange, showRatingButtons)
+)
 
 /**
  * Creates a ButtonConfig with standardized structure

@@ -188,26 +188,18 @@ class SeriesDetailViewModel @Inject constructor(
         }
     }
 
-    private fun requireCredentials(): Credentials? {
-        val credentials = credentialsRepository.getCredentials()
-        if (credentials == null) {
-            _uiState.value = SeriesDetailUiState(
-                isLoading = false,
-                error = "Keine gespeicherten Anmeldedaten gefunden"
-            )
-        }
-        return credentials
+    private fun requireCredentials(): Credentials? = requireCredentialsOrNull(credentialsRepository) {
+        _uiState.value = SeriesDetailUiState(
+            isLoading = false,
+            error = "Keine gespeicherten Anmeldedaten gefunden"
+        )
     }
 
-    private fun requireValidSeriesId(): Int? {
-        if (seriesId <= 0) {
-            _uiState.value = SeriesDetailUiState(
-                isLoading = false,
-                error = "Ungültige Serien-ID"
-            )
-            return null
-        }
-        return seriesId
+    private fun requireValidSeriesId(): Int? = requirePositiveIdOrNull(seriesId) {
+        _uiState.value = SeriesDetailUiState(
+            isLoading = false,
+            error = "Ungültige Serien-ID"
+        )
     }
 
     private suspend fun buildLoadedState(loadedSeries: Series): SeriesDetailUiState {
@@ -247,16 +239,11 @@ class SeriesDetailViewModel @Inject constructor(
     fun toggleWatchlist() {
         val series = _uiState.value.series ?: return
         viewModelScope.launch(ioDispatcher) {
-            val existing = findWatchlistEntry()
-            if (existing != null) {
-                if (watchlistRepository.removeFromWatchlist(existing.id)) {
-                    _uiState.update { it.copy(isInWatchlist = false) }
-                }
-            } else {
-                if (watchlistRepository.addToWatchlist(series.toWatchlistEntry())) {
-                    _uiState.update { it.copy(isInWatchlist = true) }
-                }
-            }
+            toggleWatchlistEntry(
+                watchlistRepository = watchlistRepository,
+                findExisting = ::findWatchlistEntry,
+                buildEntry = { series.toWatchlistEntry() }
+            )?.let { newState -> _uiState.update { it.copy(isInWatchlist = newState) } }
         }
     }
 

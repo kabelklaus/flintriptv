@@ -1,7 +1,3 @@
-// File-level suppress: Sonar reports S3776 as a file/class aggregate here even though each
-// flagged function already carries its own @Suppress("kotlin:S3776") with a rationale below.
-@file:Suppress("kotlin:S3776")
-
 package com.flintr.tv.ui.components.player
 
 import androidx.compose.foundation.background
@@ -332,7 +328,6 @@ fun buildSubtitleConfigurations(subtitles: List<Subtitle>): List<MediaItem.Subti
  *   so the caller can stop re-applying the preferred-language auto-selection for this stream
  */
 @OptIn(UnstableApi::class)
-@Suppress("kotlin:S3776") // Composable assembles the full settings dialog; already split into sub-selectors, further splitting risks the tested settings flow
 @Composable
 fun VideoSettingsDialog(
     onDismiss: () -> Unit,
@@ -413,166 +408,233 @@ fun VideoSettingsDialog(
                 }
                 
                 Spacer(modifier = Modifier.height(Dimensions.spacingLG))
-                
-                // Quality Section
-                SettingsCard(
-                    title = "Qualität",
-                    icon = Icons.Default.HighQuality,
+
+                QualitySettingsSection(
+                    videoQuality = videoQuality,
+                    onQualitySelected = { quality ->
+                        videoQuality = quality
+                        playbackSettingsRepository?.setVideoQuality(quality)
+                        exoPlayer?.let { applyMaxVideoSize(it, quality) }
+                    },
+                    resizeMode = resizeMode,
+                    onResizeModeSelected = { mode ->
+                        resizeMode = mode
+                        playbackSettingsRepository?.setVideoResizeMode(mode)
+                        playerView?.let { applyResizeMode(it, mode) }
+                    },
+                    autoPlay = autoPlay,
+                    onAutoPlayChanged = { enabled ->
+                        autoPlay = enabled
+                        playbackSettingsRepository?.setAutoPlayNextEnabled(enabled)
+                    },
+                    rememberPosition = rememberPosition,
+                    onRememberPositionChanged = { enabled ->
+                        rememberPosition = enabled
+                        playbackSettingsRepository?.setRememberPositionEnabled(enabled)
+                    },
                     colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        // Max video resolution (upper bound) - persists and, when the current
-                        // stream has more than one video track, immediately constrains it
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXXS)
-                        ) {
-                            MaxVideoResolutionSelector(
-                                selectedQuality = videoQuality,
-                                onQualitySelected = { quality ->
-                                    videoQuality = quality
-                                    playbackSettingsRepository?.setVideoQuality(quality)
-                                    exoPlayer?.let { applyMaxVideoSize(it, quality) }
-                                },
-                                colors = colors
-                            )
-                            Text(
-                                text = "Wirkt nur bei Streams mit mehreren Qualitätsstufen",
-                                fontSize = FontSizes.fontSizeXS,
-                                color = colors.textSecondary
-                            )
-                        }
-
-                        // Aspect ratio / resize mode - persists and applies live to the PlayerView
-                        VideoResizeModeSelector(
-                            selectedMode = resizeMode,
-                            onModeSelected = { mode ->
-                                resizeMode = mode
-                                playbackSettingsRepository?.setVideoResizeMode(mode)
-                                playerView?.let { applyResizeMode(it, mode) }
-                            },
-                            colors = colors
-                        )
-
-                        // Auto Play Switch - persists; actual next-item advancing is gated
-                        // on this setting in PlayerScreen/PlayerViewModel
-                        SwitchSetting(
-                            label = "Automatisch abspielen",
-                            checked = autoPlay,
-                            onCheckedChange = { enabled ->
-                                autoPlay = enabled
-                                playbackSettingsRepository?.setAutoPlayNextEnabled(enabled)
-                            },
-                            colors = colors
-                        )
-
-                        // Remember Position Switch - persists; gates watch-progress saving
-                        // in PlayerScreen
-                        SwitchSetting(
-                            label = "Position merken",
-                            checked = rememberPosition,
-                            onCheckedChange = { enabled ->
-                                rememberPosition = enabled
-                                playbackSettingsRepository?.setRememberPositionEnabled(enabled)
-                            },
-                            colors = colors
-                        )
-                    }
-                }
+                )
 
                 Spacer(modifier = Modifier.height(Dimensions.spacingMD))
 
-                // Subtitles Section
-                SettingsCard(
-                    title = "Untertitel",
-                    icon = Icons.Default.ClosedCaption,
-                    colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        // Subtitles enabled switch - persists and immediately enables/disables
-                        // text tracks on the current player
-                        SwitchSetting(
-                            label = "Untertitel aktivieren",
-                            checked = subtitlesEnabled,
-                            onCheckedChange = { enabled ->
-                                subtitlesEnabled = enabled
-                                playbackSettingsRepository?.setSubtitlesEnabled(enabled)
-                                exoPlayer?.let { applySubtitlesEnabled(it, enabled) }
-                            },
-                            colors = colors
-                        )
-
-                        // Preferred subtitle language - persists and, while subtitles are
-                        // enabled, immediately selects the matching track on the current stream
-                        Box(
-                            modifier = Modifier
-                                .alpha(if (subtitlesEnabled) 1f else 0.5f)
-                                .let { base ->
-                                    if (subtitlesEnabled) base else base.focusProperties { canFocus = false }
-                                }
-                        ) {
-                            SubtitleLanguageSelector(
-                                selectedLanguage = subtitleLanguage,
-                                onLanguageSelected = { language ->
-                                    subtitleLanguage = language
-                                    playbackSettingsRepository?.setPreferredSubtitleLanguage(language)
-                                    if (subtitlesEnabled) {
-                                        val tracks = getSubtitleTracksFromPlayer(exoPlayer)
-                                        pickSubtitleTrackByLanguage(tracks, language)?.let { track ->
-                                            exoPlayer?.let { selectSubtitleTrack(it, track) }
-                                        }
-                                    }
-                                },
-                                colors = colors
-                            )
+                SubtitleSettingsSection(
+                    subtitlesEnabled = subtitlesEnabled,
+                    onSubtitlesEnabledChanged = { enabled ->
+                        subtitlesEnabled = enabled
+                        playbackSettingsRepository?.setSubtitlesEnabled(enabled)
+                        exoPlayer?.let { applySubtitlesEnabled(it, enabled) }
+                    },
+                    subtitleLanguage = subtitleLanguage,
+                    onSubtitleLanguageSelected = { language ->
+                        subtitleLanguage = language
+                        playbackSettingsRepository?.setPreferredSubtitleLanguage(language)
+                        if (subtitlesEnabled) {
+                            val tracks = getSubtitleTracksFromPlayer(exoPlayer)
+                            pickSubtitleTrackByLanguage(tracks, language)?.let { track ->
+                                exoPlayer?.let { selectSubtitleTrack(it, track) }
+                            }
                         }
-
-                        // Subtitle track selection (current stream)
-                        SubtitleTrackSelector(
-                            exoPlayer = exoPlayer,
-                            colors = colors
-                        )
-                    }
-                }
+                    },
+                    exoPlayer = exoPlayer,
+                    colors = colors
+                )
 
                 Spacer(modifier = Modifier.height(Dimensions.spacingMD))
 
-                // Audio Section
-                SettingsCard(
-                    title = "Audio",
-                    icon = Icons.Default.VolumeUp,
+                AudioSettingsSection(
+                    audioLanguage = audioLanguage,
+                    onAudioLanguageSelected = { language ->
+                        audioLanguage = language
+                        playbackSettingsRepository?.setPreferredAudioLanguage(language)
+                        val tracks = getAudioTracksFromPlayer(exoPlayer)
+                        pickAudioTrackByLanguage(tracks, language)?.let { track ->
+                            exoPlayer?.let { selectAudioTrack(it, track) }
+                            onAudioTrackOverridden()
+                        }
+                    },
+                    exoPlayer = exoPlayer,
+                    onAudioTrackOverridden = onAudioTrackOverridden,
                     colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        // Preferred audio language - persists and immediately selects the
-                        // matching track on the current stream, if one exists
-                        AudioLanguageSelector(
-                            selectedLanguage = audioLanguage,
-                            onLanguageSelected = { language ->
-                                audioLanguage = language
-                                playbackSettingsRepository?.setPreferredAudioLanguage(language)
-                                val tracks = getAudioTracksFromPlayer(exoPlayer)
-                                pickAudioTrackByLanguage(tracks, language)?.let { track ->
-                                    exoPlayer?.let { selectAudioTrack(it, track) }
-                                    onAudioTrackOverridden()
-                                }
-                            },
-                            colors = colors
-                        )
-                        // Audio track selection (current stream)
-                        AudioTrackSelector(
-                            exoPlayer = exoPlayer,
-                            colors = colors,
-                            onTrackSelected = onAudioTrackOverridden
-                        )
-                    }
-                }
+                )
             }
+        }
+    }
+}
+
+/**
+ * Quality section card: max video resolution, aspect ratio, auto-play and remember-position.
+ */
+@Composable
+private fun QualitySettingsSection(
+    videoQuality: VideoQuality,
+    onQualitySelected: (VideoQuality) -> Unit,
+    resizeMode: VideoResizeMode,
+    onResizeModeSelected: (VideoResizeMode) -> Unit,
+    autoPlay: Boolean,
+    onAutoPlayChanged: (Boolean) -> Unit,
+    rememberPosition: Boolean,
+    onRememberPositionChanged: (Boolean) -> Unit,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    SettingsCard(
+        title = "Qualität",
+        icon = Icons.Default.HighQuality,
+        colors = colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            // Max video resolution (upper bound) - persists and, when the current
+            // stream has more than one video track, immediately constrains it
+            Column(
+                verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXXS)
+            ) {
+                MaxVideoResolutionSelector(
+                    selectedQuality = videoQuality,
+                    onQualitySelected = onQualitySelected,
+                    colors = colors
+                )
+                Text(
+                    text = "Wirkt nur bei Streams mit mehreren Qualitätsstufen",
+                    fontSize = FontSizes.fontSizeXS,
+                    color = colors.textSecondary
+                )
+            }
+
+            // Aspect ratio / resize mode - persists and applies live to the PlayerView
+            VideoResizeModeSelector(
+                selectedMode = resizeMode,
+                onModeSelected = onResizeModeSelected,
+                colors = colors
+            )
+
+            // Auto Play Switch - persists; actual next-item advancing is gated
+            // on this setting in PlayerScreen/PlayerViewModel
+            SwitchSetting(
+                label = "Automatisch abspielen",
+                checked = autoPlay,
+                onCheckedChange = onAutoPlayChanged,
+                colors = colors
+            )
+
+            // Remember Position Switch - persists; gates watch-progress saving
+            // in PlayerScreen
+            SwitchSetting(
+                label = "Position merken",
+                checked = rememberPosition,
+                onCheckedChange = onRememberPositionChanged,
+                colors = colors
+            )
+        }
+    }
+}
+
+/**
+ * Subtitles section card: enabled switch, preferred language and current-stream track selection.
+ */
+@Composable
+private fun SubtitleSettingsSection(
+    subtitlesEnabled: Boolean,
+    onSubtitlesEnabledChanged: (Boolean) -> Unit,
+    subtitleLanguage: SubtitleLanguage,
+    onSubtitleLanguageSelected: (SubtitleLanguage) -> Unit,
+    exoPlayer: ExoPlayer?,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    SettingsCard(
+        title = "Untertitel",
+        icon = Icons.Default.ClosedCaption,
+        colors = colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            // Subtitles enabled switch - persists and immediately enables/disables
+            // text tracks on the current player
+            SwitchSetting(
+                label = "Untertitel aktivieren",
+                checked = subtitlesEnabled,
+                onCheckedChange = onSubtitlesEnabledChanged,
+                colors = colors
+            )
+
+            // Preferred subtitle language - persists and, while subtitles are
+            // enabled, immediately selects the matching track on the current stream
+            Box(
+                modifier = Modifier
+                    .alpha(if (subtitlesEnabled) 1f else 0.5f)
+                    .let { base ->
+                        if (subtitlesEnabled) base else base.focusProperties { canFocus = false }
+                    }
+            ) {
+                SubtitleLanguageSelector(
+                    selectedLanguage = subtitleLanguage,
+                    onLanguageSelected = onSubtitleLanguageSelected,
+                    colors = colors
+                )
+            }
+
+            // Subtitle track selection (current stream)
+            SubtitleTrackSelector(
+                exoPlayer = exoPlayer,
+                colors = colors
+            )
+        }
+    }
+}
+
+/**
+ * Audio section card: preferred language and current-stream track selection.
+ */
+@Composable
+private fun AudioSettingsSection(
+    audioLanguage: AudioLanguage,
+    onAudioLanguageSelected: (AudioLanguage) -> Unit,
+    exoPlayer: ExoPlayer?,
+    onAudioTrackOverridden: () -> Unit,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    SettingsCard(
+        title = "Audio",
+        icon = Icons.Default.VolumeUp,
+        colors = colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            // Preferred audio language - persists and immediately selects the
+            // matching track on the current stream, if one exists
+            AudioLanguageSelector(
+                selectedLanguage = audioLanguage,
+                onLanguageSelected = onAudioLanguageSelected,
+                colors = colors
+            )
+            // Audio track selection (current stream)
+            AudioTrackSelector(
+                exoPlayer = exoPlayer,
+                colors = colors,
+                onTrackSelected = onAudioTrackOverridden
+            )
         }
     }
 }

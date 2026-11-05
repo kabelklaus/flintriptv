@@ -70,8 +70,10 @@ class CustomPlayerControlsRatingButtonsTest {
                         ),
                         contentType = "movie",
                         focusedButton = focusedButton,
-                        ratedThumb = ratedThumb,
-                        showRatingButtons = showRatingButtons
+                        ratingUiState = RatingUiState(
+                            ratedThumb = ratedThumb,
+                            showRatingButtons = showRatingButtons
+                        )
                     )
                 }
             }

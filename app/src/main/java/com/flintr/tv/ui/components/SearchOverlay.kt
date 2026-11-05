@@ -871,7 +871,7 @@ private fun SearchResultItem(
         onDismiss = { showMenu = false },
         onOptionSelected = {
             coroutineScope.launch {
-                handleWatchlistToggle(isInWatchlist, entryId,contentType, watchlistRepository) {
+                handleWatchlistToggle(isInWatchlist, entryId, contentType, watchlistRepository) {
                     isInWatchlist = it
                 }
             }

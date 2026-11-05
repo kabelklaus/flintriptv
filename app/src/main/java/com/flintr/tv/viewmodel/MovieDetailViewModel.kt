@@ -170,26 +170,18 @@ class MovieDetailViewModel @Inject constructor(
         }
     }
 
-    private fun requireCredentials(): Credentials? {
-        val credentials = credentialsRepository.getCredentials()
-        if (credentials == null) {
-            _uiState.value = MovieDetailUiState(
-                isLoading = false,
-                error = "Keine gespeicherten Anmeldedaten gefunden"
-            )
-        }
-        return credentials
+    private fun requireCredentials(): Credentials? = requireCredentialsOrNull(credentialsRepository) {
+        _uiState.value = MovieDetailUiState(
+            isLoading = false,
+            error = "Keine gespeicherten Anmeldedaten gefunden"
+        )
     }
 
-    private fun requireValidVodId(): Int? {
-        if (vodId <= 0) {
-            _uiState.value = MovieDetailUiState(
-                isLoading = false,
-                error = "Ungültige Film-ID"
-            )
-            return null
-        }
-        return vodId
+    private fun requireValidVodId(): Int? = requirePositiveIdOrNull(vodId) {
+        _uiState.value = MovieDetailUiState(
+            isLoading = false,
+            error = "Ungültige Film-ID"
+        )
     }
 
     private fun showCachedBaseStream(catalogMovie: VodStream?) {
@@ -242,16 +234,11 @@ class MovieDetailViewModel @Inject constructor(
     fun toggleWatchlist() {
         val detail = _uiState.value.detail ?: return
         viewModelScope.launch(ioDispatcher) {
-            val existing = findWatchlistEntry()
-            if (existing != null) {
-                if (watchlistRepository.removeFromWatchlist(existing.id)) {
-                    _uiState.update { it.copy(isInWatchlist = false) }
-                }
-            } else {
-                if (watchlistRepository.addToWatchlist(buildWatchlistEntry(detail))) {
-                    _uiState.update { it.copy(isInWatchlist = true) }
-                }
-            }
+            toggleWatchlistEntry(
+                watchlistRepository = watchlistRepository,
+                findExisting = ::findWatchlistEntry,
+                buildEntry = { buildWatchlistEntry(detail) }
+            )?.let { newState -> _uiState.update { it.copy(isInWatchlist = newState) } }
         }
     }
 
