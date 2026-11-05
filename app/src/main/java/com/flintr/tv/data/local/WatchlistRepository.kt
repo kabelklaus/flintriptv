@@ -86,14 +86,15 @@ class WatchlistRepository @Inject constructor(
     /**
      * Loads watchlist entries from Firestore and performs migration if needed.
      * Uses mutex to prevent concurrent loads.
+     * @return true if entries were loaded successfully from Firestore, false otherwise
      */
-    private suspend fun loadFromFirestore() {
-        loadMutex.withLock {
+    private suspend fun loadFromFirestore(): Boolean {
+        return loadMutex.withLock {
             val username = credentialsRepository.getCredentials()?.username
             if (username.isNullOrBlank()) {
                 Log.d(TAG, "No username available, skipping Firestore load due to missing credentials")
                 _entries.value = emptyList()
-                return
+                return@withLock false
             }
 
             // Check if migration is needed
@@ -110,6 +111,7 @@ class WatchlistRepository @Inject constructor(
                     _loadError.value = null
                     syncManager.updateLastSyncTimestamp()
                     Log.d(TAG, "Loaded favorites from Firestore: ${loadedEntries.size} total")
+                    true
                 },
                 onFailure = { exception ->
                     reportError(TAG, "Failed to load favorites from Firestore", exception)
@@ -119,6 +121,7 @@ class WatchlistRepository @Inject constructor(
                         Log.e(TAG, "State is empty after failed Firestore load - user data may be unavailable")
                         _entries.value = emptyList()
                     }
+                    false
                 }
             )
         }
@@ -332,13 +335,14 @@ class WatchlistRepository @Inject constructor(
 
     /**
      * Clear the whole watchlist.
+     * Aborts without touching local or remote state if the Firestore pre-load fails,
+     * so a transient outage can't wipe entries that never made it into the pre-load.
      */
     suspend fun clearWatchlist() {
         // 1. First synchronize to get latest data from Firestore
-        try {
-            loadFromFirestore()
-        } catch (e: Exception) {
-            reportError(TAG, "Failed to load from Firestore before clearing favorites", e)
+        val preLoadSucceeded = loadFromFirestore()
+        if (!preLoadSucceeded) {
+            Log.e(TAG, "Aborting watchlist clear: Firestore pre-load failed, state left untouched")
             return
         }
 

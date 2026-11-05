@@ -209,6 +209,19 @@ class WatchlistRepositoryTest {
     }
 
     @Test
+    fun `clearWatchlist bricht bei fehlgeschlagenem Pre-Load ab und erhaelt Watchlist`() = runBlocking {
+        coEvery { userRepository.loadWatchlist("chris") } coAnswers { Result.success(listOf(entry())) }
+        repository.syncIfNeeded()
+        coEvery { userRepository.loadWatchlist("chris") } coAnswers { Result.failure(Exception("offline")) }
+
+        repository.clearWatchlist()
+
+        assertTrue(repository.isInWatchlist("movie_1"))
+        assertEquals(1, repository.getAllWatchlistEntries().size)
+        coVerify(exactly = 0) { userRepository.saveWatchlist(any(), emptyList()) }
+    }
+
+    @Test
     fun `Migration uebertraegt lokale Watchlist-Eintraege und setzt Flag`() = runBlocking {
         val prefs = context.getSharedPreferences("favorites_prefs", Context.MODE_PRIVATE)
         prefs.edit {
