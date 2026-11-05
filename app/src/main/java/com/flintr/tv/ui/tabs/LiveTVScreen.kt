@@ -17,7 +17,7 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.model.CategoryType
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.ui.components.CardConfig
@@ -69,7 +69,7 @@ data class LiveTVContentParams(
     val viewModel: MainViewModel,
     val selectedCategoryId: String?,
     val focusRequester: FocusRequester,
-    val favoritesRepository: WatchlistRepository,
+    val watchlistRepository: WatchlistRepository,
     val userRepository: UserRepository,
     val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
@@ -87,22 +87,22 @@ fun LiveTVContent(params: LiveTVContentParams) {
     val streams by params.viewModel.liveStreams.collectAsState()
     val uiState by params.viewModel.uiState.collectAsState()
     
-    val isFavoritesCategory = params.selectedCategoryId == WATCHLIST_CATEGORY_ID
+    val isWatchlistCategory = params.selectedCategoryId == WATCHLIST_CATEGORY_ID
     val isNewCategory = params.selectedCategoryId == NEW_CATEGORY_ID
     val isInProgressCategory = params.selectedCategoryId == IN_PROGRESS_CATEGORY_ID
-    
+
     // State for new category filtered streams
     var newCategoryStreams by remember { mutableStateOf<List<LiveStream>>(emptyList()) }
     var isLoadingNewCategory by remember { mutableStateOf(false) }
-    
+
     // Load favorites using the hook
     val favoritesState = useWatchlist<LiveStream>(
-        isFavoritesCategory = isFavoritesCategory,
-        favoritesRepository = params.favoritesRepository,
+        isWatchlistCategory = isWatchlistCategory,
+        watchlistRepository = params.watchlistRepository,
         userRepository = params.userRepository,
         credentialsRepository = params.credentialsRepository,
         cacheService = params.cacheService,
-        favoriteType = FavoriteType.LIVE,
+        favoriteType = WatchlistEntryType.LIVE,
         idSelector = { it.streamId }
     )
     
@@ -121,7 +121,7 @@ fun LiveTVContent(params: LiveTVContentParams) {
                     onStreamsLoaded = { newCategoryStreams = it }
                 )
             }
-            !isFavoritesCategory && !isInProgressCategory && params.selectedCategoryId != null -> {
+            !isWatchlistCategory && !isInProgressCategory && params.selectedCategoryId != null -> {
                 params.viewModel.loadLiveStreams(params.selectedCategoryId)
             }
         }
@@ -134,13 +134,13 @@ fun LiveTVContent(params: LiveTVContentParams) {
     // In-progress category should not be shown in LiveTV (contains only movies/episodes)
     // Show empty list if in-progress category is selected
     val displayStreams = when {
-        isFavoritesCategory -> favoritesState.items
+        isWatchlistCategory -> favoritesState.items
         isNewCategory -> asOwnSourcedItems(newCategoryStreams)
         isInProgressCategory -> emptyList() // In-progress category not applicable for LiveTV
         else -> asOwnSourcedItems(streams)
     }
     val isLoading = when {
-        isFavoritesCategory -> favoritesState.isLoading
+        isWatchlistCategory -> favoritesState.isLoading
         isNewCategory -> isLoadingNewCategory
         isInProgressCategory -> false // No loading needed for empty list
         else -> uiState.isLoading
@@ -162,7 +162,7 @@ fun LiveTVContent(params: LiveTVContentParams) {
                 params = LiveStreamCardParams(
                     stream = stream.item,
                     onClick = { params.onChannelClick(stream.item) },
-                    favoritesRepository = params.favoritesRepository,
+                    watchlistRepository = params.watchlistRepository,
                     config = CardConfig(
                         focusRequester = cardFocusRequester ?: if (index == 0 && displayStreams.isNotEmpty()) params.focusRequester else null,
                         onFocusChanged = onFocusChanged,

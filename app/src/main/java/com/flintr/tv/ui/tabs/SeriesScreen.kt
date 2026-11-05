@@ -18,7 +18,7 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.model.CategoryType
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.ui.components.VODCard
@@ -133,7 +133,7 @@ data class SeriesContentParams(
     val viewModel: MainViewModel,
     val selectedCategoryId: String?,
     val focusRequester: FocusRequester,
-    val favoritesRepository: WatchlistRepository,
+    val watchlistRepository: WatchlistRepository,
     val userRepository: UserRepository,
     val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
@@ -153,21 +153,21 @@ fun SeriesContent(
     val series by params.viewModel.series.collectAsState()
     val uiState by params.viewModel.uiState.collectAsState()
     
-    val isFavoritesCategory = params.selectedCategoryId == WATCHLIST_CATEGORY_ID
+    val isWatchlistCategory = params.selectedCategoryId == WATCHLIST_CATEGORY_ID
     val isNewCategory = params.selectedCategoryId == NEW_CATEGORY_ID
-    
+
     // State for new category filtered series
     var newCategorySeries by remember { mutableStateOf<List<Series>>(emptyList()) }
     var isLoadingNewCategory by remember { mutableStateOf(false) }
-    
+
     // Load favorites using the hook
     val favoritesState = useWatchlist<Series>(
-        isFavoritesCategory = isFavoritesCategory,
-        favoritesRepository = params.favoritesRepository,
+        isWatchlistCategory = isWatchlistCategory,
+        watchlistRepository = params.watchlistRepository,
         userRepository = params.userRepository,
         credentialsRepository = params.credentialsRepository,
         cacheService = params.cacheService,
-        favoriteType = FavoriteType.SERIES,
+        favoriteType = WatchlistEntryType.SERIES,
         idSelector = { it.seriesId }
     )
     
@@ -186,7 +186,7 @@ fun SeriesContent(
                     onSeriesLoaded = { newCategorySeries = it }
                 )
             }
-            !isFavoritesCategory -> {
+            !isWatchlistCategory -> {
                 // selectedCategoryId can legitimately be null (e.g. no category selected yet,
                 // or a stale/foreign category from navigation-state restore that no longer
                 // resolves to a real sidebar entry) - loadSeries(null) still loads all series
@@ -201,12 +201,12 @@ fun SeriesContent(
     // This keeps the focus on the Navbar when the app starts
     
     val displaySeries = when {
-        isFavoritesCategory -> favoritesState.items
+        isWatchlistCategory -> favoritesState.items
         isNewCategory -> asOwnSourcedItems(newCategorySeries)
         else -> asOwnSourcedItems(series)
     }
     val isLoading = when {
-        isFavoritesCategory -> favoritesState.isLoading
+        isWatchlistCategory -> favoritesState.isLoading
         isNewCategory -> isLoadingNewCategory
         else -> uiState.isLoading
     }
@@ -225,7 +225,7 @@ fun SeriesContent(
         content = { seriesItem, _, columnIndex, onFocusChanged, cardFocusRequester ->
             SeriesItem(
                 series = seriesItem.item,
-                favoritesRepository = params.favoritesRepository,
+                watchlistRepository = params.watchlistRepository,
                 onSeriesClick = { params.onSeriesClick(seriesItem.item) },
                 cardConfig = com.flintr.tv.ui.components.CardConfig(
                     isSelected = false,
@@ -247,7 +247,7 @@ fun SeriesContent(
 @Composable
 fun SeriesItem(
     series: Series,
-    favoritesRepository: WatchlistRepository,
+    watchlistRepository: WatchlistRepository,
     onSeriesClick: () -> Unit,
     cardConfig: com.flintr.tv.ui.components.CardConfig = com.flintr.tv.ui.components.CardConfig(),
     sourceBadge: String? = null,
@@ -257,7 +257,7 @@ fun SeriesItem(
         params = VODCardParams(
             series = series,
             onClick = onSeriesClick,
-            favoritesRepository = favoritesRepository,
+            watchlistRepository = watchlistRepository,
             isSelected = cardConfig.isSelected,
             onFocusChanged = cardConfig.onFocusChanged,
             onNavigateLeft = cardConfig.onNavigateLeft,

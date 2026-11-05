@@ -676,7 +676,7 @@ private fun InitialRoutingScreen(
 data class AppNavigationDependencies(
     val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
-    val favoritesRepository: WatchlistRepository,
+    val watchlistRepository: WatchlistRepository,
     val watchProgressService: WatchProgressService,
     val categoryVisibilityService: CategoryVisibilityService,
     val playbackSettingsRepository: PlaybackSettingsRepository,
@@ -937,7 +937,7 @@ private fun MovieDetailRoute(
                 }
             }
         },
-        onToggleFavorite = viewModel::toggleWatchlist,
+        onToggleWatchlist = viewModel::toggleWatchlist,
         onMovieClick = movieRecommendationClickHandler { route -> navController.navigate(route) },
         onRetry = viewModel::retry
     )
@@ -956,7 +956,7 @@ private fun SeriesDetailRoute(
     SeriesDetailScreen(
         uiState = uiState,
         onBackClick = { navController.popBackStack() },
-        onToggleFavorite = viewModel::toggleWatchlist,
+        onToggleWatchlist = viewModel::toggleWatchlist,
         onWatchClick = { episode ->
             val series = uiState.series
             val credentials = dependencies.credentialsRepository.getCredentials()
@@ -1283,7 +1283,7 @@ private fun LiveTVContentSection(params: MainContentBodyParams) {
             viewModel = params.mainViewModel,
             selectedCategoryId = params.selectedCategoryId,
             focusRequester = params.contentListFocusRequester,
-            favoritesRepository = params.dependencies.favoritesRepository,
+            watchlistRepository = params.dependencies.watchlistRepository,
             userRepository = params.dependencies.userRepository,
             credentialsRepository = params.dependencies.credentialsRepository,
             cacheService = params.dependencies.cacheService,
@@ -1306,7 +1306,7 @@ private fun InProgressContentSection(params: MainContentBodyParams) {
     InProgressContent(
         params = InProgressContentParams(
             watchProgressService = params.dependencies.watchProgressService,
-            favoritesRepository = params.dependencies.favoritesRepository,
+            watchlistRepository = params.dependencies.watchlistRepository,
             cacheService = params.dependencies.cacheService,
             focusRequester = params.contentListFocusRequester,
             onNavigateLeft = params.onNavigateToCategorySidebar,
@@ -1345,7 +1345,7 @@ private fun RecommendedVodContentSection(params: MainContentBodyParams) {
                 params = VODCardParams(
                     vod = vod,
                     onClick = { onVodClick(vod) },
-                    favoritesRepository = params.dependencies.favoritesRepository,
+                    watchlistRepository = params.dependencies.watchlistRepository,
                     watchProgressService = params.dependencies.watchProgressService,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = if (columnIndex == 0) {
@@ -1381,7 +1381,7 @@ private fun RecommendedSeriesContentSection(params: MainContentBodyParams) {
         content = { series, _, columnIndex, onFocusChanged, cardFocusRequester ->
             SeriesItem(
                 series = series,
-                favoritesRepository = params.dependencies.favoritesRepository,
+                watchlistRepository = params.dependencies.watchlistRepository,
                 onSeriesClick = { onSeriesClick(series) },
                 cardConfig = com.flintr.tv.ui.components.CardConfig(
                     isSelected = false,
@@ -1413,7 +1413,7 @@ private fun VODContentSection(params: MainContentBodyParams) {
                 viewModel = params.mainViewModel,
                 selectedCategoryId = params.selectedCategoryId,
                 focusRequester = params.contentListFocusRequester,
-                favoritesRepository = params.dependencies.favoritesRepository,
+                watchlistRepository = params.dependencies.watchlistRepository,
                 userRepository = params.dependencies.userRepository,
                 credentialsRepository = params.dependencies.credentialsRepository,
                 cacheService = params.dependencies.cacheService,
@@ -1444,7 +1444,7 @@ private fun SeriesContentSection(params: MainContentBodyParams) {
                 viewModel = params.mainViewModel,
                 selectedCategoryId = params.selectedCategoryId,
                 focusRequester = params.contentListFocusRequester,
-                favoritesRepository = params.dependencies.favoritesRepository,
+                watchlistRepository = params.dependencies.watchlistRepository,
                 userRepository = params.dependencies.userRepository,
                 credentialsRepository = params.dependencies.credentialsRepository,
                 cacheService = params.dependencies.cacheService,
@@ -1988,7 +1988,7 @@ private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params
                         onVodClick = searchClickHandlers.onVodClick,
                         onSeriesClick = searchClickHandlers.onSeriesClick
                     ),
-                    favoritesRepository = dependencies.favoritesRepository
+                    watchlistRepository = dependencies.watchlistRepository
                 )
             }
 

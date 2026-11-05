@@ -321,7 +321,7 @@ object AppModule {
     
     @Provides
     @Singleton
-    @Named("Favorites")
+    @Named("Watchlist")
     fun provideFavoritesSyncManager(): FirestoreSyncManager {
         return FirestoreSyncManager(tag = "FirestoreSyncManager-Favorites")
     }

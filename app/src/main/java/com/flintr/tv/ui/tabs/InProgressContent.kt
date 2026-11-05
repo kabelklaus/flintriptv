@@ -43,7 +43,7 @@ private sealed class InProgressItem {
  */
 data class InProgressContentParams(
     val watchProgressService: WatchProgressService,
-    val favoritesRepository: WatchlistRepository,
+    val watchlistRepository: WatchlistRepository,
     val cacheService: DataCacheService,
     val focusRequester: FocusRequester,
     val onNavigateLeft: () -> Unit,
@@ -329,7 +329,7 @@ private fun RenderInProgressCard(
                 params = VODCardParams(
                     vod = item.vod,
                     onClick = { params.onVodClick(item.vod) },
-                    favoritesRepository = params.favoritesRepository,
+                    watchlistRepository = params.watchlistRepository,
                     watchProgressService = params.watchProgressService,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
@@ -344,7 +344,7 @@ private fun RenderInProgressCard(
                 params = VODCardParams(
                     series = item.series,
                     onClick = { params.onSeriesClick(item.series) },
-                    favoritesRepository = params.favoritesRepository,
+                    watchlistRepository = params.watchlistRepository,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
                     focusRequester = cardFocusRequester

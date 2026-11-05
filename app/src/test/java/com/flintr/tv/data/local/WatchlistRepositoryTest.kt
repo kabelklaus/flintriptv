@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import androidx.test.core.app.ApplicationProvider
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.repository.UserRepository
 import com.squareup.moshi.Moshi
 import io.mockk.coEvery
@@ -60,7 +60,7 @@ class WatchlistRepositoryTest {
         )
     }
 
-    private fun favorite(id: String = "movie_1", type: FavoriteType = FavoriteType.MOVIE, streamId: Int = 1) =
+    private fun favorite(id: String = "movie_1", type: WatchlistEntryType = WatchlistEntryType.MOVIE, streamId: Int = 1) =
         WatchlistEntry(
             id = id,
             type = type,
@@ -74,7 +74,7 @@ class WatchlistRepositoryTest {
     fun `addToWatchlist fuegt neuen Favoriten hinzu und synct atomar`() = runBlocking {
         assertTrue(repository.addToWatchlist(favorite()))
 
-        assertTrue(repository.isFavorite("movie_1"))
+        assertTrue(repository.isInWatchlist("movie_1"))
         assertEquals(1, repository.getAllWatchlistEntries().size)
         coVerify { userRepository.addToWatchlistAtomically("chris", any()) }
     }
@@ -91,7 +91,7 @@ class WatchlistRepositoryTest {
         coEvery { userRepository.addToWatchlistAtomically(any(), any()) } coAnswers { Result.failure(Exception("offline")) }
 
         assertTrue(repository.addToWatchlist(favorite()))
-        assertTrue(repository.isFavorite("movie_1"))
+        assertTrue(repository.isInWatchlist("movie_1"))
     }
 
     @Test
@@ -121,8 +121,8 @@ class WatchlistRepositoryTest {
                 }
             }
 
-            assertTrue("Runde $round: ${favA.id} fehlt", repository.isFavorite(favA.id))
-            assertTrue("Runde $round: ${favB.id} fehlt", repository.isFavorite(favB.id))
+            assertTrue("Runde $round: ${favA.id} fehlt", repository.isInWatchlist(favA.id))
+            assertTrue("Runde $round: ${favB.id} fehlt", repository.isInWatchlist(favB.id))
         }
     }
 
@@ -131,7 +131,7 @@ class WatchlistRepositoryTest {
         repository.addToWatchlist(favorite())
 
         assertTrue(repository.removeFromWatchlist("movie_1"))
-        assertFalse(repository.isFavorite("movie_1"))
+        assertFalse(repository.isInWatchlist("movie_1"))
         coVerify { userRepository.removeFromWatchlistAtomically("chris", "movie_1") }
     }
 
@@ -143,14 +143,14 @@ class WatchlistRepositoryTest {
 
     @Test
     fun `getFavoritesByType und Zaehler filtern korrekt`() = runBlocking {
-        repository.addToWatchlist(favorite(id = "movie_1", type = FavoriteType.MOVIE, streamId = 1))
-        repository.addToWatchlist(favorite(id = "live_2", type = FavoriteType.LIVE, streamId = 2))
-        repository.addToWatchlist(favorite(id = "movie_3", type = FavoriteType.MOVIE, streamId = 3))
+        repository.addToWatchlist(favorite(id = "movie_1", type = WatchlistEntryType.MOVIE, streamId = 1))
+        repository.addToWatchlist(favorite(id = "live_2", type = WatchlistEntryType.LIVE, streamId = 2))
+        repository.addToWatchlist(favorite(id = "movie_3", type = WatchlistEntryType.MOVIE, streamId = 3))
 
-        assertEquals(listOf("movie_1", "movie_3"), repository.getFavoritesByType(FavoriteType.MOVIE).map { it.id })
-        assertEquals(2, repository.getFavoriteCountByType(FavoriteType.MOVIE))
-        assertEquals(1, repository.getFavoriteCountByType(FavoriteType.LIVE))
-        assertEquals(0, repository.getFavoriteCountByType(FavoriteType.SERIES))
+        assertEquals(listOf("movie_1", "movie_3"), repository.getWatchlistEntriesByType(WatchlistEntryType.MOVIE).map { it.id })
+        assertEquals(2, repository.getWatchlistCountByType(WatchlistEntryType.MOVIE))
+        assertEquals(1, repository.getWatchlistCountByType(WatchlistEntryType.LIVE))
+        assertEquals(0, repository.getWatchlistCountByType(WatchlistEntryType.SERIES))
     }
 
     @Test
@@ -158,7 +158,7 @@ class WatchlistRepositoryTest {
         coEvery { userRepository.loadFavorites("chris") } coAnswers { Result.success(listOf(favorite())) }
 
         assertTrue(repository.syncIfNeeded())
-        assertTrue(repository.isFavorite("movie_1"))
+        assertTrue(repository.isInWatchlist("movie_1"))
     }
 
     @Test
@@ -174,7 +174,7 @@ class WatchlistRepositoryTest {
         coEvery { userRepository.loadFavorites("chris") } coAnswers { Result.success(listOf(favorite())) }
         coEvery { userRepository.saveFavorites("chris", emptyList()) } returns Result.success(Unit)
 
-        repository.clearAllFavorites()
+        repository.clearWatchlist()
 
         assertTrue(repository.getAllWatchlistEntries().isEmpty())
         coVerify(timeout = 2_000) { userRepository.saveFavorites("chris", emptyList()) }

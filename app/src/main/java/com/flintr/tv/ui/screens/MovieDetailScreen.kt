@@ -103,7 +103,7 @@ fun MovieDetailScreen(
     modifier: Modifier = Modifier,
     onBackClick: () -> Unit = {},
     onWatchClick: () -> Unit = {},
-    onToggleFavorite: () -> Unit = {},
+    onToggleWatchlist: () -> Unit = {},
     onMovieClick: (Int) -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
@@ -123,7 +123,7 @@ fun MovieDetailScreen(
                 watchProgress = uiState.watchProgress,
                 recommendations = uiState.recommendations,
                 onWatchClick = onWatchClick,
-                onToggleFavorite = onToggleFavorite,
+                onToggleFavorite = onToggleWatchlist,
                 onMovieClick = onMovieClick
             )
         }

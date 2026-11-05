@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.core.content.edit
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.repository.UserRepository
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -30,7 +30,7 @@ class WatchlistRepository @Inject constructor(
     private val moshi: Moshi,
     private val userRepository: UserRepository,
     private val credentialsRepository: CredentialsRepository,
-    @Named("Favorites") private val syncManager: FirestoreSyncManager
+    @Named("Watchlist") private val syncManager: FirestoreSyncManager
 ) {
     // SharedPreferences only for migration flag and reading old data
     private val migrationPrefs: SharedPreferences = context.getSharedPreferences(
@@ -326,14 +326,14 @@ class WatchlistRepository @Inject constructor(
     /**
      * Check if an item is a favorite.
      */
-    fun isFavorite(favoriteId: String): Boolean {
+    fun isInWatchlist(favoriteId: String): Boolean {
         return _favorites.value.any { it.id == favoriteId }
     }
 
     /**
      * Clear all favorites.
      */
-    suspend fun clearAllFavorites() {
+    suspend fun clearWatchlist() {
         // 1. First synchronize to get latest data from Firestore
         try {
             loadFromFirestore()
@@ -341,7 +341,7 @@ class WatchlistRepository @Inject constructor(
             reportError(TAG, "Failed to load from Firestore before clearing favorites", e)
             return
         }
-        
+
         // 2. Clear state and save to Firestore
         _favorites.value = emptyList()
         saveToFirestore(emptyList())
@@ -351,14 +351,14 @@ class WatchlistRepository @Inject constructor(
     /**
      * Get favorites by type.
      */
-    fun getFavoritesByType(type: FavoriteType): List<WatchlistEntry> {
+    fun getWatchlistEntriesByType(type: WatchlistEntryType): List<WatchlistEntry> {
         return _favorites.value.filter { it.type == type }
     }
 
     /**
      * Get favorite count by type.
      */
-    fun getFavoriteCountByType(type: FavoriteType): Int {
+    fun getWatchlistCountByType(type: WatchlistEntryType): Int {
         return _favorites.value.count { it.type == type }
     }
 }

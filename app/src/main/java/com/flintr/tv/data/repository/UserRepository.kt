@@ -3,7 +3,7 @@ package com.flintr.tv.data.repository
 import android.util.Log
 import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.FriendEntry
 import com.flintr.tv.data.model.RatingEntry
 import com.flintr.tv.data.model.WatchProgress
@@ -344,7 +344,7 @@ class UserRepository @Inject constructor() {
                 try {
                     val id = favoriteMap["id"] as? String ?: return@mapNotNull null
                     val typeStr = favoriteMap["type"] as? String ?: return@mapNotNull null
-                    val type = FavoriteType.valueOf(typeStr)
+                    val type = WatchlistEntryType.valueOf(typeStr)
                     val streamId = (favoriteMap["streamId"] as? Number)?.toInt() ?: return@mapNotNull null
                     val name = favoriteMap["name"] as? String ?: return@mapNotNull null
                     @Suppress("UNCHECKED_CAST")
@@ -710,7 +710,7 @@ class UserRepository @Inject constructor() {
                     try {
                         val id = favoriteMap["id"] as? String ?: return@mapNotNull null
                         val typeStr = favoriteMap["type"] as? String ?: return@mapNotNull null
-                        val type = FavoriteType.valueOf(typeStr)
+                        val type = WatchlistEntryType.valueOf(typeStr)
                         val streamId = (favoriteMap["streamId"] as? Number)?.toInt() ?: return@mapNotNull null
                         val name = favoriteMap["name"] as? String ?: return@mapNotNull null
                         @Suppress("UNCHECKED_CAST")

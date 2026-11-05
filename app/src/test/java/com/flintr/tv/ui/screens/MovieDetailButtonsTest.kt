@@ -54,7 +54,7 @@ class MovieDetailButtonsTest {
                         isFavorite = isFavorite
                     ),
                     onWatchClick = onWatchClick,
-                    onToggleFavorite = onToggleFavorite
+                    onToggleWatchlist = onToggleFavorite
                 )
             }
         }

@@ -116,7 +116,7 @@ fun SeriesDetailScreen(
     uiState: SeriesDetailUiState,
     modifier: Modifier = Modifier,
     onBackClick: () -> Unit = {},
-    onToggleFavorite: () -> Unit = {},
+    onToggleWatchlist: () -> Unit = {},
     onWatchClick: (Episode) -> Unit = {},
     onSeasonClick: (Int) -> Unit = {},
     onSeriesClick: (Int) -> Unit = {},
@@ -141,7 +141,7 @@ fun SeriesDetailScreen(
                 watchTarget = uiState.watchTarget,
                 watchLabel = uiState.watchLabel,
                 watchProgress = uiState.watchProgress,
-                onToggleFavorite = onToggleFavorite,
+                onToggleFavorite = onToggleWatchlist,
                 onWatchClick = onWatchClick,
                 onSeasonClick = onSeasonClick,
                 onSeriesClick = onSeriesClick

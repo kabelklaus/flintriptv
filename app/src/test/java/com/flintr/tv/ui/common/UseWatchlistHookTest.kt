@@ -7,7 +7,7 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.FriendEntry
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.testVodStream
@@ -36,7 +36,7 @@ class UseWatchlistHookTest {
     @get:Rule
     val composeTestRule = createComposeRule()
 
-    private lateinit var favoritesRepository: WatchlistRepository
+    private lateinit var watchlistRepository: WatchlistRepository
     private lateinit var userRepository: UserRepository
     private lateinit var credentialsRepository: CredentialsRepository
     private lateinit var cacheService: DataCacheService
@@ -45,13 +45,13 @@ class UseWatchlistHookTest {
 
     @Before
     fun setUp() {
-        favoritesRepository = mockk()
+        watchlistRepository = mockk()
         userRepository = mockk()
         credentialsRepository = mockk()
         cacheService = mockk()
 
-        every { favoritesRepository.favorites } returns ownFavorites
-        coEvery { favoritesRepository.syncIfNeeded() } returns true
+        every { watchlistRepository.favorites } returns ownFavorites
+        coEvery { watchlistRepository.syncIfNeeded() } returns true
         every { credentialsRepository.getCredentials() } returns
             Credentials(serverUrl = "http://srv", username = "chris", password = "pw")
         coEvery { userRepository.loadFriends("chris") } coAnswers { Result.success(emptyList()) }
@@ -60,23 +60,23 @@ class UseWatchlistHookTest {
 
     private fun favorite(id: String, streamId: Int) = WatchlistEntry(
         id = id,
-        type = FavoriteType.MOVIE,
+        type = WatchlistEntryType.MOVIE,
         streamId = streamId,
         name = "Fav $streamId",
         metadata = null,
         addedAt = "2026-07-16T10:00:00Z"
     )
 
-    private fun collectState(isFavoritesCategory: Boolean = true): () -> WatchlistState<SourcedFavoriteItem<VodStream>> {
-        var state: WatchlistState<SourcedFavoriteItem<VodStream>>? = null
+    private fun collectState(isWatchlistCategory: Boolean = true): () -> WatchlistState<SourcedWatchlistItem<VodStream>> {
+        var state: WatchlistState<SourcedWatchlistItem<VodStream>>? = null
         composeTestRule.setContent {
             state = useWatchlist(
-                isFavoritesCategory = isFavoritesCategory,
-                favoritesRepository = favoritesRepository,
+                isWatchlistCategory = isWatchlistCategory,
+                watchlistRepository = watchlistRepository,
                 userRepository = userRepository,
                 credentialsRepository = credentialsRepository,
                 cacheService = cacheService,
-                favoriteType = FavoriteType.MOVIE,
+                favoriteType = WatchlistEntryType.MOVIE,
                 idSelector = { it.streamId }
             )
         }
@@ -88,7 +88,7 @@ class UseWatchlistHookTest {
     fun `ausserhalb der Favoriten-Kategorie bleibt die Liste leer`() {
         ownFavorites.value = listOf(favorite("movie_1", 1))
 
-        val state = collectState(isFavoritesCategory = false)
+        val state = collectState(isWatchlistCategory = false)
 
         assertTrue(state().items.isEmpty())
         assertFalse(state().isLoading)

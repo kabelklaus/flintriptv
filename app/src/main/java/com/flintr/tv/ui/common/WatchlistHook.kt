@@ -12,7 +12,7 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.FriendEntry
 import com.flintr.tv.data.repository.UserRepository
 import kotlinx.coroutines.async
@@ -28,7 +28,7 @@ data class WatchlistState<T>(
     val isLoading: Boolean
 )
 
-data class FavoriteSource(
+data class WatchlistEntrySource(
     val isOwn: Boolean,
     val username: String? = null,
     val alias: String? = null,
@@ -38,10 +38,10 @@ data class FavoriteSource(
         get() = if (isOwn) "own" else "friend_${username ?: "unknown"}"
 
     companion object {
-        fun own(): FavoriteSource = FavoriteSource(isOwn = true)
+        fun own(): WatchlistEntrySource = WatchlistEntrySource(isOwn = true)
 
-        fun friend(entry: FriendEntry): FavoriteSource {
-            return FavoriteSource(
+        fun friend(entry: FriendEntry): WatchlistEntrySource {
+            return WatchlistEntrySource(
                 isOwn = false,
                 username = entry.username,
                 alias = entry.alias,
@@ -51,9 +51,9 @@ data class FavoriteSource(
     }
 }
 
-data class SourcedFavoriteItem<T>(
+data class SourcedWatchlistItem<T>(
     val item: T,
-    val source: FavoriteSource,
+    val source: WatchlistEntrySource,
     val allowFavoriteActions: Boolean
 )
 
@@ -73,16 +73,16 @@ internal fun buildFriendBadge(
 
 internal fun filterFavoritesByType(
     favorites: List<WatchlistEntry>,
-    favoriteType: FavoriteType
+    favoriteType: WatchlistEntryType
 ): List<WatchlistEntry> {
     return favorites.filter { it.type == favoriteType }
 }
 
-internal fun <T> asOwnSourcedItems(items: List<T>): List<SourcedFavoriteItem<T>> {
+internal fun <T> asOwnSourcedItems(items: List<T>): List<SourcedWatchlistItem<T>> {
     return items.map { item ->
-        SourcedFavoriteItem(
+        SourcedWatchlistItem(
             item = item,
-            source = FavoriteSource.own(),
+            source = WatchlistEntrySource.own(),
             allowFavoriteActions = true
         )
     }
@@ -91,12 +91,12 @@ internal fun <T> asOwnSourcedItems(items: List<T>): List<SourcedFavoriteItem<T>>
 internal fun <T> combineSourcedItems(
     ownItems: List<T>,
     friendItems: List<Pair<FriendEntry, List<T>>>
-): List<SourcedFavoriteItem<T>> {
+): List<SourcedWatchlistItem<T>> {
     val sourcedOwnItems = asOwnSourcedItems(ownItems)
     val sourcedFriendItems = friendItems.flatMap { (friend, items) ->
-        val source = FavoriteSource.friend(friend)
+        val source = WatchlistEntrySource.friend(friend)
         items.map { item ->
-            SourcedFavoriteItem(
+            SourcedWatchlistItem(
                 item = item,
                 source = source,
                 allowFavoriteActions = false
@@ -110,7 +110,7 @@ internal fun <T> combineSourcedItems(
 private suspend fun <T : Any> loadFavoriteItems(
     favorites: List<WatchlistEntry>,
     cacheService: DataCacheService,
-    favoriteType: FavoriteType,
+    favoriteType: WatchlistEntryType,
     idSelector: (T) -> Int
 ): List<T> {
     if (favorites.isEmpty()) {
@@ -119,17 +119,17 @@ private suspend fun <T : Any> loadFavoriteItems(
 
     val streamIds = favorites.mapNotNull { it.streamId }
     val items = when (favoriteType) {
-        FavoriteType.LIVE -> {
+        WatchlistEntryType.LIVE -> {
             val channels = cacheService.loadChannelsByIds(streamIds)
             @Suppress("UNCHECKED_CAST")
             (channels ?: emptyList()) as List<T>
         }
-        FavoriteType.MOVIE -> {
+        WatchlistEntryType.MOVIE -> {
             val movies = cacheService.loadMoviesByIds(streamIds)
             @Suppress("UNCHECKED_CAST")
             (movies ?: emptyList()) as List<T>
         }
-        FavoriteType.SERIES -> {
+        WatchlistEntryType.SERIES -> {
             val series = cacheService.loadSeriesByIds(streamIds)
             @Suppress("UNCHECKED_CAST")
             (series ?: emptyList()) as List<T>
@@ -151,7 +151,7 @@ private suspend fun <T : Any> loadFriendFavoriteItems(
     currentUsername: String,
     userRepository: UserRepository,
     cacheService: DataCacheService,
-    favoriteType: FavoriteType,
+    favoriteType: WatchlistEntryType,
     idSelector: (T) -> Int
 ): List<Pair<FriendEntry, List<T>>> {
     val friends = userRepository.loadFriends(currentUsername).getOrElse { error ->
@@ -178,7 +178,7 @@ private suspend fun <T : Any> loadSingleFriendFavoriteItems(
     friend: FriendEntry,
     userRepository: UserRepository,
     cacheService: DataCacheService,
-    favoriteType: FavoriteType,
+    favoriteType: WatchlistEntryType,
     idSelector: (T) -> Int
 ): Pair<FriendEntry, List<T>>? {
     val favorites = userRepository.loadFavorites(friend.username).getOrElse { error ->
@@ -207,14 +207,14 @@ private suspend fun <T : Any> loadSingleFriendFavoriteItems(
 
 @Composable
 fun <T : Any> useWatchlist(
-    isFavoritesCategory: Boolean,
-    favoritesRepository: WatchlistRepository,
+    isWatchlistCategory: Boolean,
+    watchlistRepository: WatchlistRepository,
     userRepository: UserRepository,
     credentialsRepository: CredentialsRepository,
     cacheService: DataCacheService,
-    favoriteType: FavoriteType,
+    favoriteType: WatchlistEntryType,
     idSelector: (T) -> Int
-): WatchlistState<SourcedFavoriteItem<T>> {
+): WatchlistState<SourcedWatchlistItem<T>> {
     var ownItems by remember { mutableStateOf<List<T>>(emptyList()) }
     var friendItems by remember { mutableStateOf<List<Pair<FriendEntry, List<T>>>>(emptyList()) }
     var isLoadingOwnFavorites by remember { mutableStateOf(false) }
@@ -228,17 +228,17 @@ fun <T : Any> useWatchlist(
         }
     }
 
-    LaunchedEffect(isFavoritesCategory, favoriteType) {
-        if (!isFavoritesCategory) {
+    LaunchedEffect(isWatchlistCategory, favoriteType) {
+        if (!isWatchlistCategory) {
             ownItems = emptyList()
             friendItems = emptyList()
             isLoadingOwnFavorites = false
             return@LaunchedEffect
         }
 
-        favoritesRepository.syncIfNeeded()
+        watchlistRepository.syncIfNeeded()
 
-        favoritesRepository.favorites.collect { allFavorites ->
+        watchlistRepository.favorites.collect { allFavorites ->
             isLoadingOwnFavorites = true
             ownItems = loadFavoriteItems(
                 favorites = filterFavoritesByType(allFavorites, favoriteType),
@@ -250,8 +250,8 @@ fun <T : Any> useWatchlist(
         }
     }
 
-    LaunchedEffect(isFavoritesCategory, favoriteType) {
-        if (!isFavoritesCategory) {
+    LaunchedEffect(isWatchlistCategory, favoriteType) {
+        if (!isWatchlistCategory) {
             friendItems = emptyList()
             isLoadingFriendFavorites = false
             return@LaunchedEffect

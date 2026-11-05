@@ -14,7 +14,7 @@ import android.util.Log
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
@@ -38,7 +38,7 @@ private sealed class FavoriteContentItem {
  * Encapsulates all parameters to reduce function parameter count.
  */
 data class WatchlistContentParams(
-    val favoritesRepository: WatchlistRepository,
+    val watchlistRepository: WatchlistRepository,
     val cacheService: DataCacheService,
     val focusRequester: FocusRequester,
     val onNavigateLeft: () -> Unit,
@@ -80,9 +80,9 @@ private suspend fun loadFavoriteData(
     favorites: List<WatchlistEntry>,
     cacheService: DataCacheService
 ): FavoriteData {
-    val liveStreamIds = favorites.filter { it.type == FavoriteType.LIVE }.mapNotNull { it.streamId }
-    val movieStreamIds = favorites.filter { it.type == FavoriteType.MOVIE }.mapNotNull { it.streamId }
-    val seriesIds = favorites.filter { it.type == FavoriteType.SERIES }.mapNotNull { it.streamId }
+    val liveStreamIds = favorites.filter { it.type == WatchlistEntryType.LIVE }.mapNotNull { it.streamId }
+    val movieStreamIds = favorites.filter { it.type == WatchlistEntryType.MOVIE }.mapNotNull { it.streamId }
+    val seriesIds = favorites.filter { it.type == WatchlistEntryType.SERIES }.mapNotNull { it.streamId }
     
     val channels = if (liveStreamIds.isNotEmpty()) {
         cacheService.loadChannelsByIds(liveStreamIds) ?: emptyList()
@@ -113,7 +113,7 @@ private fun matchLiveStreamFavorites(
     channelsMap: Map<Int, LiveStream>
 ): List<FavoriteContentItem.Live> {
     return favorites
-        .filter { it.type == FavoriteType.LIVE }
+        .filter { it.type == WatchlistEntryType.LIVE }
         .mapNotNull { favorite ->
             channelsMap[favorite.streamId]?.let { stream ->
                 FavoriteContentItem.Live(stream, favorite)
@@ -132,7 +132,7 @@ private fun matchMovieFavorites(
     moviesMap: Map<Int, VodStream>
 ): List<FavoriteContentItem.Movie> {
     return favorites
-        .filter { it.type == FavoriteType.MOVIE }
+        .filter { it.type == WatchlistEntryType.MOVIE }
         .mapNotNull { favorite ->
             moviesMap[favorite.streamId]?.let { vod ->
                 FavoriteContentItem.Movie(vod, favorite)
@@ -151,7 +151,7 @@ private fun matchSeriesFavorites(
     seriesMap: Map<Int, Series>
 ): List<FavoriteContentItem.SeriesItem> {
     return favorites
-        .filter { it.type == FavoriteType.SERIES }
+        .filter { it.type == WatchlistEntryType.SERIES }
         .mapNotNull { favorite ->
             seriesMap[favorite.streamId]?.let { seriesItem ->
                 FavoriteContentItem.SeriesItem(seriesItem, favorite)
@@ -200,7 +200,7 @@ private fun FavoriteCard(
                 params = LiveStreamCardParams(
                     stream = item.stream,
                     onClick = { params.onLiveStreamClick(item.stream) },
-                    favoritesRepository = params.favoritesRepository,
+                    watchlistRepository = params.watchlistRepository,
                     config = CardConfig(
                         focusRequester = cardFocusRequester ?: if (index == 0) params.focusRequester else null,
                         onFocusChanged = onFocusChanged,
@@ -214,7 +214,7 @@ private fun FavoriteCard(
                 params = VODCardParams(
                     vod = item.vod,
                     onClick = { params.onVodClick(item.vod) },
-                    favoritesRepository = params.favoritesRepository,
+                    watchlistRepository = params.watchlistRepository,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
                     focusRequester = cardFocusRequester
@@ -226,7 +226,7 @@ private fun FavoriteCard(
                 params = VODCardParams(
                     series = item.series,
                     onClick = { params.onSeriesClick(item.series) },
-                    favoritesRepository = params.favoritesRepository,
+                    watchlistRepository = params.watchlistRepository,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
                     focusRequester = cardFocusRequester
@@ -245,19 +245,19 @@ fun WatchlistContent(
     var favoriteItems by remember { mutableStateOf<List<FavoriteContentItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var retryTrigger by remember { mutableStateOf(0) }
-    val loadError by params.favoritesRepository.loadError.collectAsState()
+    val loadError by params.watchlistRepository.loadError.collectAsState()
 
     // Load favorites; retryTrigger > 0 means the user tapped the error state's retry button
     LaunchedEffect(retryTrigger) {
         if (retryTrigger == 0) {
             // Sync with Firestore before loading (respects cooldown)
-            params.favoritesRepository.syncIfNeeded()
+            params.watchlistRepository.syncIfNeeded()
         } else {
             isLoading = true
             // Explicit user retry: bypass the sync cooldown
-            params.favoritesRepository.retryLoadFromFirestore()
+            params.watchlistRepository.retryLoadFromFirestore()
         }
-        favorites = params.favoritesRepository.getAllWatchlistEntries()
+        favorites = params.watchlistRepository.getAllWatchlistEntries()
         // isLoading bleibt true, bis Matching abgeschlossen ist
         Log.d("FavoritesContent", "Loaded ${favorites.size} favorites")
     }

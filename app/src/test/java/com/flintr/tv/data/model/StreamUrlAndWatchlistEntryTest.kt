@@ -67,9 +67,9 @@ class StreamUrlAndWatchlistEntryTest {
     fun liveStreamToFavoriteCarriesIconMetadata() {
         val stream = testLiveStream(name = "Arte", streamId = 3, streamIcon = "http://icon.png")
 
-        val favorite = stream.toFavorite()
+        val favorite = stream.toWatchlistEntry()
 
-        assertEquals(FavoriteType.LIVE, favorite.type)
+        assertEquals(WatchlistEntryType.LIVE, favorite.type)
         assertEquals(3, favorite.streamId)
         assertEquals("Arte", favorite.name)
         assertEquals("http://icon.png", favorite.metadata?.get("streamIcon"))
@@ -79,9 +79,9 @@ class StreamUrlAndWatchlistEntryTest {
     fun seriesToFavoriteMergesCoverIntoMetadata() {
         val series = testSeries(name = "Dark", seriesId = 12, cover = "http://cover.jpg")
 
-        val favorite = series.toFavorite(metadata = mapOf("genre" to "Mystery"))
+        val favorite = series.toWatchlistEntry(metadata = mapOf("genre" to "Mystery"))
 
-        assertEquals(FavoriteType.SERIES, favorite.type)
+        assertEquals(WatchlistEntryType.SERIES, favorite.type)
         assertEquals("Mystery", favorite.metadata?.get("genre"))
         assertEquals("http://cover.jpg", favorite.metadata?.get("cover"))
     }
@@ -90,7 +90,7 @@ class StreamUrlAndWatchlistEntryTest {
     fun favoriteToFirestoreMapContainsAllFields() {
         val favorite = WatchlistEntry.create(
             id = "live:1:Test",
-            type = FavoriteType.LIVE,
+            type = WatchlistEntryType.LIVE,
             streamId = 1,
             name = "Test"
         )
@@ -109,7 +109,7 @@ class StreamUrlAndWatchlistEntryTest {
     fun favoriteWithoutOptionalMetadataHasNullMetadata() {
         val favorite = WatchlistEntry.create(
             id = "movie:2:Film",
-            type = FavoriteType.MOVIE,
+            type = WatchlistEntryType.MOVIE,
             streamId = 2,
             name = "Film"
         )

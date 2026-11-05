@@ -4,7 +4,7 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import java.time.Instant
 
-enum class FavoriteType {
+enum class WatchlistEntryType {
     @Json(name = "live")
     LIVE,
     @Json(name = "movie")
@@ -18,7 +18,7 @@ data class WatchlistEntry(
     @Json(name = "id")
     val id: String,
     @Json(name = "type")
-    val type: FavoriteType,
+    val type: WatchlistEntryType,
     @Json(name = "streamId")
     val streamId: Int,
     @Json(name = "name")
@@ -31,7 +31,7 @@ data class WatchlistEntry(
     companion object {
         fun create(
             id: String,
-            type: FavoriteType,
+            type: WatchlistEntryType,
             streamId: Int,
             name: String,
             metadata: Map<String, String?>? = null

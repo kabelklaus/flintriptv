@@ -10,7 +10,7 @@ import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.local.imdb.ImdbEnrichment
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.VodInfo
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.WatchProgress
@@ -163,7 +163,7 @@ class MovieDetailViewModelTest {
         every { favoritesRepository.getAllWatchlistEntries() } returns listOf(
             WatchlistEntry.create(
                 id = catalogMovie.toFavoriteId(),
-                type = FavoriteType.MOVIE,
+                type = WatchlistEntryType.MOVIE,
                 streamId = vodId,
                 name = catalogMovie.name
             )
@@ -226,7 +226,7 @@ class MovieDetailViewModelTest {
         vm.toggleWatchlist()
 
         assertTrue(vm.uiState.value.isFavorite)
-        assertEquals(FavoriteType.MOVIE, added.captured.type)
+        assertEquals(WatchlistEntryType.MOVIE, added.captured.type)
         assertEquals(vodId, added.captured.streamId)
         coVerify(exactly = 1) { favoritesRepository.addToWatchlist(any()) }
     }
@@ -236,7 +236,7 @@ class MovieDetailViewModelTest {
         stubHappyPath()
         val favorite = WatchlistEntry.create(
             id = catalogMovie.toFavoriteId(),
-            type = FavoriteType.MOVIE,
+            type = WatchlistEntryType.MOVIE,
             streamId = vodId,
             name = catalogMovie.name
         )

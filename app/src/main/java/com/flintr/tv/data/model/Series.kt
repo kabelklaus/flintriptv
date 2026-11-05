@@ -46,12 +46,12 @@ data class Series(
         return "series:$seriesId:$encodedName"
     }
 
-    fun toFavorite(metadata: Map<String, String?>? = null): WatchlistEntry {
+    fun toWatchlistEntry(metadata: Map<String, String?>? = null): WatchlistEntry {
         val metadataWithCover = metadata?.toMutableMap() ?: mutableMapOf()
         cover?.let { metadataWithCover["cover"] = it }
         return WatchlistEntry.create(
             id = toFavoriteId(),
-            type = FavoriteType.SERIES,
+            type = WatchlistEntryType.SERIES,
             streamId = seriesId,
             name = name,
             metadata = metadataWithCover

@@ -12,7 +12,7 @@ import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.DetailDisplayData
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.mapVodInfoToDetail
@@ -248,7 +248,7 @@ class MovieDetailViewModel @Inject constructor(
                     _uiState.update { it.copy(isFavorite = false) }
                 }
             } else {
-                if (favoritesRepository.addToWatchlist(buildFavorite(detail))) {
+                if (favoritesRepository.addToWatchlist(buildWatchlistEntry(detail))) {
                     _uiState.update { it.copy(isFavorite = true) }
                 }
             }
@@ -256,15 +256,15 @@ class MovieDetailViewModel @Inject constructor(
     }
 
     private fun findWatchlistEntry(): WatchlistEntry? = favoritesRepository.getAllWatchlistEntries()
-        .firstOrNull { it.type == FavoriteType.MOVIE && it.streamId == vodId }
+        .firstOrNull { it.type == WatchlistEntryType.MOVIE && it.streamId == vodId }
 
-    private fun buildFavorite(detail: DetailDisplayData): WatchlistEntry {
+    private fun buildWatchlistEntry(detail: DetailDisplayData): WatchlistEntry {
         val title = detail.title ?: "Film $vodId"
         val name = URLEncoder.encode(title, "UTF-8")
         val metadata = mapOf("cover" to detail.posterUrl)
         return WatchlistEntry.create(
             id = "movie:$vodId:$name",
-            type = FavoriteType.MOVIE,
+            type = WatchlistEntryType.MOVIE,
             streamId = vodId,
             name = title,
             metadata = metadata

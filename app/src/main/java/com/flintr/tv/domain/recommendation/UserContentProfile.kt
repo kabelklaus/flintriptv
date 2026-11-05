@@ -1,7 +1,7 @@
 package com.flintr.tv.domain.recommendation
 
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.RatingEntry
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
@@ -104,19 +104,19 @@ object UserContentProfile {
     ) {
         favorites.forEach { favorite ->
             when (favorite.type) {
-                FavoriteType.MOVIE -> {
+                WatchlistEntryType.MOVIE -> {
                     accumulator.excludedMovieIds += favorite.streamId
                     val vod = moviesById[favorite.streamId] ?: return@forEach
                     addGenreWeights(accumulator.weights, GenreNormalizer.normalize(vod.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt), nowMs)
                     accumulator.coreSignalKeys += "fav_movie_${favorite.streamId}"
                 }
-                FavoriteType.SERIES -> {
+                WatchlistEntryType.SERIES -> {
                     accumulator.excludedSeriesIds += favorite.streamId
                     val show = seriesById[favorite.streamId] ?: return@forEach
                     addGenreWeights(accumulator.weights, GenreNormalizer.normalize(show.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt), nowMs)
                     accumulator.coreSignalKeys += "fav_series_${favorite.streamId}"
                 }
-                FavoriteType.LIVE -> Unit
+                WatchlistEntryType.LIVE -> Unit
             }
         }
     }

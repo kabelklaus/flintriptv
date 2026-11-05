@@ -42,12 +42,12 @@ data class LiveStream(
         return "live:$streamId:$encodedName"
     }
 
-    fun toFavorite(metadata: Map<String, String?>? = null): WatchlistEntry {
+    fun toWatchlistEntry(metadata: Map<String, String?>? = null): WatchlistEntry {
         val metadataWithIcon = metadata?.toMutableMap() ?: mutableMapOf()
         streamIcon?.let { metadataWithIcon["streamIcon"] = it }
         return WatchlistEntry.create(
             id = toFavoriteId(),
-            type = FavoriteType.LIVE,
+            type = WatchlistEntryType.LIVE,
             streamId = streamId,
             name = name,
             metadata = metadataWithIcon

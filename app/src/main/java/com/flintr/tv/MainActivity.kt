@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
     lateinit var cacheService: DataCacheService
 
     @Inject
-    lateinit var favoritesRepository: WatchlistRepository
+    lateinit var watchlistRepository: WatchlistRepository
 
     @Inject
     lateinit var watchProgressService: WatchProgressService
@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
                         dependencies = AppNavigationDependencies(
                             credentialsRepository = credentialsRepository,
                             cacheService = cacheService,
-                            favoritesRepository = favoritesRepository,
+                            watchlistRepository = watchlistRepository,
                             watchProgressService = watchProgressService,
                             categoryVisibilityService = categoryVisibilityService,
                             playbackSettingsRepository = playbackSettingsRepository,

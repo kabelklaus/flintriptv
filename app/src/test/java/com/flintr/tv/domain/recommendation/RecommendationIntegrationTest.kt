@@ -3,7 +3,7 @@ package com.flintr.tv.domain.recommendation
 import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import org.junit.Assert.assertEquals
@@ -89,7 +89,7 @@ class RecommendationIntegrationTest {
         // hand-rolled GenreProfile -- this is the signals-to-profile half of the chain.
         val signalMovies = (901..905).map { testVod(streamId = it, genre = "Drama", name = "Signal$it") }
         val favorites = (901..905).map {
-            WatchlistEntry.create(id = "movie:$it", type = FavoriteType.MOVIE, streamId = it, name = "Signal$it")
+            WatchlistEntry.create(id = "movie:$it", type = WatchlistEntryType.MOVIE, streamId = it, name = "Signal$it")
         }
         val profile = UserContentProfile.build(
             favorites = favorites,
@@ -155,7 +155,7 @@ class RecommendationIntegrationTest {
     fun `cold start yields empty lists from the full chain regardless of rating quality`() {
         val signalMovies = (801..803).map { testVod(streamId = it, genre = "Drama", name = "Signal$it") }
         val favorites = (801..803).map {
-            WatchlistEntry.create(id = "movie:$it", type = FavoriteType.MOVIE, streamId = it, name = "Signal$it")
+            WatchlistEntry.create(id = "movie:$it", type = WatchlistEntryType.MOVIE, streamId = it, name = "Signal$it")
         }
         val profile = UserContentProfile.build(
             favorites = favorites,

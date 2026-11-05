@@ -14,7 +14,7 @@ import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.DetailDisplayData
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.repository.XtreamRepository
@@ -93,7 +93,7 @@ class SeriesDetailViewModel @Inject constructor(
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
     private val imdbEnrichmentService: ImdbEnrichmentService,
-    private val favoritesRepository: WatchlistRepository,
+    private val watchlistRepository: WatchlistRepository,
     private val watchProgressService: WatchProgressService,
     private val cacheService: DataCacheService,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher
@@ -249,19 +249,19 @@ class SeriesDetailViewModel @Inject constructor(
         viewModelScope.launch(ioDispatcher) {
             val existing = findWatchlistEntry()
             if (existing != null) {
-                if (favoritesRepository.removeFromWatchlist(existing.id)) {
+                if (watchlistRepository.removeFromWatchlist(existing.id)) {
                     _uiState.update { it.copy(isFavorite = false) }
                 }
             } else {
-                if (favoritesRepository.addToWatchlist(series.toFavorite())) {
+                if (watchlistRepository.addToWatchlist(series.toWatchlistEntry())) {
                     _uiState.update { it.copy(isFavorite = true) }
                 }
             }
         }
     }
 
-    private fun findWatchlistEntry(): WatchlistEntry? = favoritesRepository.getAllWatchlistEntries()
-        .firstOrNull { it.type == FavoriteType.SERIES && it.streamId == seriesId }
+    private fun findWatchlistEntry(): WatchlistEntry? = watchlistRepository.getAllWatchlistEntries()
+        .firstOrNull { it.type == WatchlistEntryType.SERIES && it.streamId == seriesId }
 
     private fun buildSeasons(
         series: Series,

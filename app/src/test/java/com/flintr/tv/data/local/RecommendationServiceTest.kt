@@ -2,7 +2,7 @@ package com.flintr.tv.data.local
 
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.repository.UserRepository
@@ -105,7 +105,7 @@ class RecommendationServiceTest {
 
     private fun favorite(streamId: Int) = WatchlistEntry.create(
         id = "movie:$streamId:x",
-        type = FavoriteType.MOVIE,
+        type = WatchlistEntryType.MOVIE,
         streamId = streamId,
         name = "Movie$streamId"
     )

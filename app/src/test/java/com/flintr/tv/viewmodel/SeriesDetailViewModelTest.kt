@@ -14,7 +14,7 @@ import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.EpisodeInfo
 import com.flintr.tv.data.model.WatchlistEntry
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.WatchProgress
@@ -46,7 +46,7 @@ class SeriesDetailViewModelTest {
     private val repository = mockk<XtreamRepository>()
     private val credentialsRepository = mockk<CredentialsRepository>()
     private val imdbEnrichmentService = mockk<ImdbEnrichmentService>(relaxed = true)
-    private val favoritesRepository = mockk<WatchlistRepository>(relaxed = true)
+    private val watchlistRepository = mockk<WatchlistRepository>(relaxed = true)
     private val watchProgressService = mockk<WatchProgressService>(relaxed = true)
     private val cacheService = mockk<DataCacheService>(relaxed = true)
 
@@ -139,7 +139,7 @@ class SeriesDetailViewModelTest {
         repository = repository,
         credentialsRepository = credentialsRepository,
         imdbEnrichmentService = imdbEnrichmentService,
-        favoritesRepository = favoritesRepository,
+        watchlistRepository = watchlistRepository,
         watchProgressService = watchProgressService,
         cacheService = cacheService,
         ioDispatcher = mainDispatcherRule.dispatcher
@@ -151,7 +151,7 @@ class SeriesDetailViewModelTest {
         coEvery { repository.getSeriesInfo("chris", "pw", seriesId) } returns Result.success(seriesResult)
         every { imdbEnrichmentService.lookup(any()) } returns
             ImdbEnrichment(rating = 8.1, numVotes = 999, genres = listOf("Drama", "Mystery"))
-        every { favoritesRepository.getAllWatchlistEntries() } returns emptyList()
+        every { watchlistRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchedEpisodeIds(seriesId) } returns emptySet()
         coEvery { watchProgressService.getLastInteraction(seriesId, series) } returns null
         coEvery { watchProgressService.getSmartResumeTarget(seriesId, series) } returns null
@@ -229,10 +229,10 @@ class SeriesDetailViewModelTest {
     @Test
     fun `load erkennt bestehenden Serien-Favoriten`() = runTest {
         stubHappyPath()
-        every { favoritesRepository.getAllWatchlistEntries() } returns listOf(
+        every { watchlistRepository.getAllWatchlistEntries() } returns listOf(
             WatchlistEntry.create(
                 id = series.toFavoriteId(),
-                type = FavoriteType.SERIES,
+                type = WatchlistEntryType.SERIES,
                 streamId = seriesId,
                 name = series.name
             )
@@ -247,16 +247,16 @@ class SeriesDetailViewModelTest {
     fun `toggleWatchlist fuegt Serien-Favorit hinzu`() = runTest {
         stubHappyPath()
         val added = slot<WatchlistEntry>()
-        coEvery { favoritesRepository.addToWatchlist(capture(added)) } returns true
+        coEvery { watchlistRepository.addToWatchlist(capture(added)) } returns true
 
         val vm = viewModel()
         vm.toggleWatchlist()
 
         assertTrue(vm.uiState.value.isFavorite)
-        assertEquals(FavoriteType.SERIES, added.captured.type)
+        assertEquals(WatchlistEntryType.SERIES, added.captured.type)
         assertEquals(seriesId, added.captured.streamId)
         assertEquals(series.toFavoriteId(), added.captured.id)
-        coVerify(exactly = 1) { favoritesRepository.addToWatchlist(any()) }
+        coVerify(exactly = 1) { watchlistRepository.addToWatchlist(any()) }
     }
 
     @Test
@@ -412,7 +412,7 @@ class SeriesDetailViewModelTest {
             Credentials(serverUrl = "http://srv", username = "chris", password = "pw")
         coEvery { repository.getSeriesInfo("chris", "pw", seriesId) } returns
             Result.failure(Exception("kaputt"))
-        every { favoritesRepository.getAllWatchlistEntries() } returns emptyList()
+        every { watchlistRepository.getAllWatchlistEntries() } returns emptyList()
 
         val vm = viewModel()
 
