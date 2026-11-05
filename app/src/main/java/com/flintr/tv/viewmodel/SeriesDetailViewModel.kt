@@ -13,7 +13,7 @@ import com.flintr.tv.data.local.imdb.ImdbEnrichment
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.DetailDisplayData
 import com.flintr.tv.data.model.Episode
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
@@ -260,7 +260,7 @@ class SeriesDetailViewModel @Inject constructor(
         }
     }
 
-    private fun findFavorite(): Favorite? = favoritesRepository.getAllFavorites()
+    private fun findFavorite(): WatchlistEntry? = favoritesRepository.getAllFavorites()
         .firstOrNull { it.type == FavoriteType.SERIES && it.streamId == seriesId }
 
     private fun buildSeasons(

@@ -39,7 +39,7 @@ import androidx.compose.foundation.Image
 import android.util.Log
 import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
@@ -156,21 +156,21 @@ private data class ContentCardData(
 
 private sealed class ContentType {
     abstract fun toFavoriteId(): String
-    abstract fun toFavorite(metadata: Map<String, String?>? = null): Favorite
+    abstract fun toFavorite(metadata: Map<String, String?>? = null): WatchlistEntry
     
     data class Live(val stream: LiveStream) : ContentType() {
         override fun toFavoriteId(): String = stream.toFavoriteId()
-        override fun toFavorite(metadata: Map<String, String?>?): Favorite = stream.toFavorite(metadata)
+        override fun toFavorite(metadata: Map<String, String?>?): WatchlistEntry = stream.toFavorite(metadata)
     }
     
     data class Movie(val vod: VodStream) : ContentType() {
         override fun toFavoriteId(): String = vod.toFavoriteId()
-        override fun toFavorite(metadata: Map<String, String?>?): Favorite = vod.toFavorite(metadata)
+        override fun toFavorite(metadata: Map<String, String?>?): WatchlistEntry = vod.toFavorite(metadata)
     }
     
     data class Series(val seriesData: com.flintr.tv.data.model.Series) : ContentType() {
         override fun toFavoriteId(): String = seriesData.toFavoriteId()
-        override fun toFavorite(metadata: Map<String, String?>?): Favorite = seriesData.toFavorite(metadata)
+        override fun toFavorite(metadata: Map<String, String?>?): WatchlistEntry = seriesData.toFavorite(metadata)
     }
 }
 

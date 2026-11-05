@@ -1,6 +1,6 @@
 package com.flintr.tv.data.local
 
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.WatchedItem
 import com.flintr.tv.data.repository.UserRepository
@@ -62,7 +62,7 @@ class RecommendationService @Inject constructor(
     }
 
     private suspend fun recompute(
-        favorites: List<Favorite>,
+        favorites: List<WatchlistEntry>,
         watchedHistory: Map<String, WatchedItem>,
         watchProgress: Map<String, WatchProgress>
     ) {

@@ -2,7 +2,7 @@ package com.flintr.tv.data.repository
 
 import android.util.Log
 import com.flintr.tv.data.model.CategoryType
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.FriendEntry
 import com.flintr.tv.data.model.RatingEntry
@@ -267,19 +267,19 @@ class UserRepository @Inject constructor() {
      * This method is kept for backward compatibility and migration purposes only.
      * 
      * @param username The username to save favorites for
-     * @param favorites List of Favorite objects
+     * @param favorites List of WatchlistEntry objects
      * @return Result<Unit> - Success if saved, Failure with exception otherwise
      */
     suspend fun saveFavorites(
         username: String,
-        favorites: List<Favorite>
+        favorites: List<WatchlistEntry>
     ): Result<Unit> {
         if (username.isBlank()) {
             return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
         }
         
         return try {
-            // Convert List<Favorite> to Firestore-compatible format (List of Maps)
+            // Convert List<WatchlistEntry> to Firestore-compatible format (List of Maps)
             val firestoreData = hashMapOf(
                 "favorites" to favorites.map { favorite ->
                     hashMapOf(
@@ -311,11 +311,11 @@ class UserRepository @Inject constructor() {
      * Loads favorites for a user from Firestore.
      * 
      * @param username The username to load favorites for
-     * @return Result<List<Favorite>> - Success with favorites list, Failure with exception otherwise
+     * @return Result<List<WatchlistEntry>> - Success with favorites list, Failure with exception otherwise
      */
     suspend fun loadFavorites(
         username: String
-    ): Result<List<Favorite>> {
+    ): Result<List<WatchlistEntry>> {
         if (username.isBlank()) {
             return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
         }
@@ -339,7 +339,7 @@ class UserRepository @Inject constructor() {
                 return Result.success(emptyList())
             }
             
-            // Convert Firestore data back to List<Favorite>
+            // Convert Firestore data back to List<WatchlistEntry>
             val result = favoritesData.mapNotNull { favoriteMap ->
                 try {
                     val id = favoriteMap["id"] as? String ?: return@mapNotNull null
@@ -351,7 +351,7 @@ class UserRepository @Inject constructor() {
                     val metadata = favoriteMap["metadata"] as? Map<String, String?>
                     val addedAt = favoriteMap["addedAt"] as? String ?: return@mapNotNull null
                     
-                    Favorite(
+                    WatchlistEntry(
                         id = id,
                         type = type,
                         streamId = streamId,
@@ -595,7 +595,7 @@ class UserRepository @Inject constructor() {
      */
     suspend fun addFavoriteAtomically(
         username: String,
-        favorite: Favorite
+        favorite: WatchlistEntry
     ): Result<Unit> {
         if (username.isBlank()) {
             return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
@@ -680,12 +680,12 @@ class UserRepository @Inject constructor() {
      * Merges local data with existing Firestore data (if any), preventing duplicates based on favorite.id.
      * 
      * @param username The username to migrate favorites for
-     * @param localFavorites List of Favorite objects from local storage
+     * @param localFavorites List of WatchlistEntry objects from local storage
      * @return Result<Unit> - Success if migrated, Failure with exception otherwise
      */
     suspend fun migrateFavoritesFromLocal(
         username: String,
-        localFavorites: List<Favorite>
+        localFavorites: List<WatchlistEntry>
     ): Result<Unit> {
         if (username.isBlank()) {
             return Result.failure(IllegalArgumentException(ERROR_USERNAME_BLANK))
@@ -717,7 +717,7 @@ class UserRepository @Inject constructor() {
                         val metadata = favoriteMap["metadata"] as? Map<String, String?>
                         val addedAt = favoriteMap["addedAt"] as? String ?: return@mapNotNull null
                         
-                        Favorite(
+                        WatchlistEntry(
                             id = id,
                             type = type,
                             streamId = streamId,

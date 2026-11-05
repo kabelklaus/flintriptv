@@ -14,7 +14,7 @@ enum class FavoriteType {
 }
 
 @JsonClass(generateAdapter = true)
-data class Favorite(
+data class WatchlistEntry(
     @Json(name = "id")
     val id: String,
     @Json(name = "type")
@@ -35,8 +35,8 @@ data class Favorite(
             streamId: Int,
             name: String,
             metadata: Map<String, String?>? = null
-        ): Favorite {
-            return Favorite(
+        ): WatchlistEntry {
+            return WatchlistEntry(
                 id = id,
                 type = type,
                 streamId = streamId,
@@ -49,9 +49,10 @@ data class Favorite(
 }
 
 /**
- * Converts a Favorite to a Firestore-compatible Map format.
+ * Converts a WatchlistEntry to a Firestore-compatible Map format.
  */
-fun Favorite.toFirestoreMap(): Map<String, Any> {
+fun WatchlistEntry.toFirestoreMap(): Map<String, Any> {
+    // wire format stable since v2.x, do not rename keys
     return hashMapOf(
         "id" to id,
         "type" to type.name,

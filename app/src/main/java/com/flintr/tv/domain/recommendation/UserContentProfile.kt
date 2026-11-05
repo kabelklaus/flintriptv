@@ -1,6 +1,6 @@
 package com.flintr.tv.domain.recommendation
 
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.RatingEntry
 import com.flintr.tv.data.model.Series
@@ -59,7 +59,7 @@ object UserContentProfile {
     )
 
     fun build(
-        favorites: List<Favorite>,
+        favorites: List<WatchlistEntry>,
         watchedHistory: Map<String, WatchedItem>,
         watchProgress: Map<String, WatchProgress>,
         ratings: Map<String, RatingEntry>,
@@ -96,7 +96,7 @@ object UserContentProfile {
     }
 
     private fun applyFavoriteSignals(
-        favorites: List<Favorite>,
+        favorites: List<WatchlistEntry>,
         moviesById: Map<Int, VodStream>,
         seriesById: Map<Int, Series>,
         nowMs: Long,

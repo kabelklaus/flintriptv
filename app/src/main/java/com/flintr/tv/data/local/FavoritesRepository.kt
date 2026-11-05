@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import androidx.core.content.edit
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.repository.UserRepository
 import com.squareup.moshi.Moshi
@@ -47,8 +47,8 @@ class FavoritesRepository @Inject constructor(
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // StateFlow for reactive state management
-    private val _favorites = MutableStateFlow<List<Favorite>>(emptyList())
-    val favorites: StateFlow<List<Favorite>> = _favorites.asStateFlow()
+    private val _favorites = MutableStateFlow<List<WatchlistEntry>>(emptyList())
+    val favorites: StateFlow<List<WatchlistEntry>> = _favorites.asStateFlow()
 
     // Non-null after a failed/timed-out Firestore load; cleared on the next successful load.
     // Consumed by FavoritesContent to show an error+retry state instead of a silent empty list.
@@ -62,8 +62,8 @@ class FavoritesRepository @Inject constructor(
     private val updateMutex = Mutex()
 
     // Moshi adapter for local data migration
-    private val listType = Types.newParameterizedType(List::class.java, Favorite::class.java)
-    private val listAdapter = moshi.adapter<List<Favorite>>(listType)
+    private val listType = Types.newParameterizedType(List::class.java, WatchlistEntry::class.java)
+    private val listAdapter = moshi.adapter<List<WatchlistEntry>>(listType)
 
     init {
         // React to credential changes (e.g., user login/logout or user switch)
@@ -193,7 +193,7 @@ class FavoritesRepository @Inject constructor(
     /**
      * Loads old data from SharedPreferences for migration.
      */
-    private fun loadLocalData(): List<Favorite> {
+    private fun loadLocalData(): List<WatchlistEntry> {
         return try {
             val json = migrationPrefs.getString(KEY_FAVORITES, null)
             if (json.isNullOrBlank()) {
@@ -224,7 +224,7 @@ class FavoritesRepository @Inject constructor(
     /**
      * Saves favorites to Firestore asynchronously.
      */
-    private fun saveToFirestore(favorites: List<Favorite>) {
+    private fun saveToFirestore(favorites: List<WatchlistEntry>) {
         val username = credentialsRepository.getCredentials()?.username
         if (username.isNullOrBlank()) {
             Log.w(TAG, "Cannot save to Firestore: no username available")
@@ -249,7 +249,7 @@ class FavoritesRepository @Inject constructor(
     /**
      * Get all favorites from StateFlow.
      */
-    fun getAllFavorites(): List<Favorite> {
+    fun getAllFavorites(): List<WatchlistEntry> {
         return _favorites.value
     }
 
@@ -259,7 +259,7 @@ class FavoritesRepository @Inject constructor(
      * Works offline thanks to Firestore offline persistence.
      * @return true if favorite was added, false if it already exists
      */
-    suspend fun addFavorite(favorite: Favorite): Boolean {
+    suspend fun addFavorite(favorite: WatchlistEntry): Boolean {
         // Optimistic update: Update local state immediately (locked to prevent lost updates)
         val added = updateMutex.withLock {
             val currentFavorites = _favorites.value.toMutableList()
@@ -351,7 +351,7 @@ class FavoritesRepository @Inject constructor(
     /**
      * Get favorites by type.
      */
-    fun getFavoritesByType(type: FavoriteType): List<Favorite> {
+    fun getFavoritesByType(type: FavoriteType): List<WatchlistEntry> {
         return _favorites.value.filter { it.type == type }
     }
 

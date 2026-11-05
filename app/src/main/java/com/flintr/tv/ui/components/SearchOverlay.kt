@@ -48,7 +48,7 @@ import com.flintr.tv.ui.utils.safeRequestFocus
 import androidx.compose.ui.res.stringResource
 import com.flintr.tv.R
 import com.flintr.tv.data.local.FavoritesRepository
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -66,7 +66,7 @@ data class SearchResultCallbacks(
  */
 private sealed class SearchContentType {
     abstract fun toFavoriteId(): String
-    abstract fun toFavorite(): Favorite
+    abstract fun toFavorite(): WatchlistEntry
 
     data class Live(val stream: LiveStream) : SearchContentType() {
         override fun toFavoriteId() = stream.toFavoriteId()

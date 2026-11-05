@@ -11,7 +11,7 @@ import androidx.compose.runtime.setValue
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.FriendEntry
 import com.flintr.tv.data.repository.UserRepository
@@ -72,9 +72,9 @@ internal fun buildFriendBadge(
 }
 
 internal fun filterFavoritesByType(
-    favorites: List<Favorite>,
+    favorites: List<WatchlistEntry>,
     favoriteType: FavoriteType
-): List<Favorite> {
+): List<WatchlistEntry> {
     return favorites.filter { it.type == favoriteType }
 }
 
@@ -108,7 +108,7 @@ internal fun <T> combineSourcedItems(
 }
 
 private suspend fun <T : Any> loadFavoriteItems(
-    favorites: List<Favorite>,
+    favorites: List<WatchlistEntry>,
     cacheService: DataCacheService,
     favoriteType: FavoriteType,
     idSelector: (T) -> Int

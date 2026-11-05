@@ -13,7 +13,7 @@ import androidx.compose.ui.focus.FocusRequester
 import android.util.Log
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.FavoritesRepository
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
@@ -28,9 +28,9 @@ import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 
 // Sealed class to represent different favorite content types
 private sealed class FavoriteContentItem {
-    data class Live(val stream: LiveStream, val favorite: Favorite) : FavoriteContentItem()
-    data class Movie(val vod: VodStream, val favorite: Favorite) : FavoriteContentItem()
-    data class SeriesItem(val series: Series, val favorite: Favorite) : FavoriteContentItem()
+    data class Live(val stream: LiveStream, val favorite: WatchlistEntry) : FavoriteContentItem()
+    data class Movie(val vod: VodStream, val favorite: WatchlistEntry) : FavoriteContentItem()
+    data class SeriesItem(val series: Series, val favorite: WatchlistEntry) : FavoriteContentItem()
 }
 
 /**
@@ -77,7 +77,7 @@ private data class FavoriteData(
  * Loads favorite data (channels, movies, series) based on favorite IDs.
  */
 private suspend fun loadFavoriteData(
-    favorites: List<Favorite>,
+    favorites: List<WatchlistEntry>,
     cacheService: DataCacheService
 ): FavoriteData {
     val liveStreamIds = favorites.filter { it.type == FavoriteType.LIVE }.mapNotNull { it.streamId }
@@ -109,7 +109,7 @@ private suspend fun loadFavoriteData(
  * Matches live stream favorites with loaded channels.
  */
 private fun matchLiveStreamFavorites(
-    favorites: List<Favorite>,
+    favorites: List<WatchlistEntry>,
     channelsMap: Map<Int, LiveStream>
 ): List<FavoriteContentItem.Live> {
     return favorites
@@ -128,7 +128,7 @@ private fun matchLiveStreamFavorites(
  * Matches movie favorites with loaded movies.
  */
 private fun matchMovieFavorites(
-    favorites: List<Favorite>,
+    favorites: List<WatchlistEntry>,
     moviesMap: Map<Int, VodStream>
 ): List<FavoriteContentItem.Movie> {
     return favorites
@@ -147,7 +147,7 @@ private fun matchMovieFavorites(
  * Matches series favorites with loaded series.
  */
 private fun matchSeriesFavorites(
-    favorites: List<Favorite>,
+    favorites: List<WatchlistEntry>,
     seriesMap: Map<Int, Series>
 ): List<FavoriteContentItem.SeriesItem> {
     return favorites
@@ -166,7 +166,7 @@ private fun matchSeriesFavorites(
  * Matches all favorites to content items.
  */
 private suspend fun matchFavoritesToItems(
-    favorites: List<Favorite>,
+    favorites: List<WatchlistEntry>,
     cacheService: DataCacheService
 ): List<FavoriteContentItem> {
     val favoriteData = loadFavoriteData(favorites, cacheService)
@@ -241,7 +241,7 @@ fun FavoritesContent(
     params: FavoritesContentParams,
     modifier: Modifier = Modifier
 ) {
-    var favorites by remember { mutableStateOf<List<Favorite>>(emptyList()) }
+    var favorites by remember { mutableStateOf<List<WatchlistEntry>>(emptyList()) }
     var favoriteItems by remember { mutableStateOf<List<FavoriteContentItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var retryTrigger by remember { mutableStateOf(0) }

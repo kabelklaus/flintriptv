@@ -11,7 +11,7 @@ import com.flintr.tv.data.local.FavoritesRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.DetailDisplayData
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.WatchProgress
@@ -255,14 +255,14 @@ class MovieDetailViewModel @Inject constructor(
         }
     }
 
-    private fun findFavorite(): Favorite? = favoritesRepository.getAllFavorites()
+    private fun findFavorite(): WatchlistEntry? = favoritesRepository.getAllFavorites()
         .firstOrNull { it.type == FavoriteType.MOVIE && it.streamId == vodId }
 
-    private fun buildFavorite(detail: DetailDisplayData): Favorite {
+    private fun buildFavorite(detail: DetailDisplayData): WatchlistEntry {
         val title = detail.title ?: "Film $vodId"
         val name = URLEncoder.encode(title, "UTF-8")
         val metadata = mapOf("cover" to detail.posterUrl)
-        return Favorite.create(
+        return WatchlistEntry.create(
             id = "movie:$vodId:$name",
             type = FavoriteType.MOVIE,
             streamId = vodId,

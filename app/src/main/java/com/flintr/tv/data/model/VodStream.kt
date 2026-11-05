@@ -63,11 +63,11 @@ data class VodStream(
         return "movie:$streamId:$encodedName"
     }
 
-    fun toFavorite(metadata: Map<String, String?>? = null): Favorite {
+    fun toFavorite(metadata: Map<String, String?>? = null): WatchlistEntry {
         val metadataWithCover = metadata?.toMutableMap() ?: mutableMapOf()
         cover?.let { metadataWithCover["cover"] = it }
         streamIcon?.let { metadataWithCover["streamIcon"] = it }
-        return Favorite.create(
+        return WatchlistEntry.create(
             id = toFavoriteId(),
             type = FavoriteType.MOVIE,
             streamId = streamId,
