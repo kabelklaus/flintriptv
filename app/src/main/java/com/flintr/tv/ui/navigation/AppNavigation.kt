@@ -2218,7 +2218,8 @@ internal fun calculateItemCounts(
     credentials: Credentials?
 ): Map<String, Int> {
     var inProgressCount by remember { mutableStateOf(0) }
-    LaunchedEffect(selectedDestination) {
+    val watchProgress by watchProgressService.watchProgress.collectAsState()
+    LaunchedEffect(selectedDestination, watchProgress) {
         inProgressCount = when (selectedDestination) {
             is HomeDestination.VOD, is HomeDestination.Series -> countInProgressItems(
                 destination = selectedDestination,

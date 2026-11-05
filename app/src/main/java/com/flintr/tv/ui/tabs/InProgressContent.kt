@@ -3,6 +3,7 @@ package com.flintr.tv.ui.tabs
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -457,9 +458,10 @@ fun InProgressContent(
 ) {
     var inProgressItems by remember { mutableStateOf<List<InProgressItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    
+    val watchProgress by params.watchProgressService.watchProgress.collectAsState()
+
     // Load in-progress items
-    LaunchedEffect(params.destination) {
+    LaunchedEffect(params.destination, watchProgress) {
         isLoading = true
         
         // Sync with Firestore before loading (respects cooldown)
