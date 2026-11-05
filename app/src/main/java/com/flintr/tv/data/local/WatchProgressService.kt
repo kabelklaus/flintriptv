@@ -746,7 +746,10 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Gets the total count of in-progress items (movies + episodes)
+     * Gets the total count of in-progress items (movies + episodes).
+     * RAW count over the progress map - does not resolve against the catalog, so it may
+     * include entries whose movie/series/episode no longer exists. Not used for UI labels/
+     * counters (see [com.flintr.tv.ui.tabs.countInProgressItems] - Task 10b).
      */
     suspend fun getInProgressCount(): Int = withContext(ioDispatcher) {
         val progressMap = _watchProgress.value
@@ -756,32 +759,13 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Gets the count of in-progress movies only
-     */
-    suspend fun getInProgressMoviesCount(): Int = withContext(ioDispatcher) {
-        val progressMap = _watchProgress.value
-        progressMap.count { it.key.startsWith(KEY_PREFIX_MOVIE) }
-    }
-
-    /**
-     * Gets the count of in-progress episodes only
+     * Gets the count of in-progress episodes only.
+     * RAW count over the progress map - does not resolve against the catalog. Not used for UI
+     * labels/counters (see [com.flintr.tv.ui.tabs.countInProgressItems] - Task 10b).
      */
     suspend fun getInProgressEpisodesCount(): Int = withContext(ioDispatcher) {
         val progressMap = _watchProgress.value
         progressMap.count { it.key.startsWith(KEY_PREFIX_SERIES) }
-    }
-
-    /**
-     * Gets the count of distinct series with at least one in-progress episode
-     * (not the episode count - a series with 3 in-progress episodes counts once)
-     */
-    suspend fun getInProgressSeriesCount(): Int = withContext(ioDispatcher) {
-        val progressMap = _watchProgress.value
-        progressMap.keys
-            .filter { it.startsWith(KEY_PREFIX_SERIES) }
-            .mapNotNull { (parseProgressKey(it) as? ParsedProgressKey.Series)?.seriesId }
-            .distinct()
-            .size
     }
 
     /**

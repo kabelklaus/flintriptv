@@ -222,22 +222,7 @@ class WatchProgressServiceTest {
         assertEquals(setOf("movie:1", "movie:2"), service.getInProgressMovies().keys)
         assertEquals(setOf("series:10:101"), service.getInProgressEpisodes().keys)
         assertEquals(3, service.getInProgressCount())
-        assertEquals(2, service.getInProgressMoviesCount())
         assertEquals(1, service.getInProgressEpisodesCount())
-    }
-
-    @Test
-    fun `getInProgressSeriesCount zaehlt Serien statt Episoden`() = runBlocking {
-        seedProgress(
-            mapOf(
-                "series:10:101" to progress(60_000, 1_200_000),
-                "series:10:102" to progress(60_000, 1_200_000),
-                "series:20:201" to progress(60_000, 1_200_000)
-            )
-        )
-
-        assertEquals(3, service.getInProgressEpisodesCount())
-        assertEquals(2, service.getInProgressSeriesCount())
     }
 
     @Test

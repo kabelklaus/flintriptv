@@ -78,6 +78,7 @@ import com.flintr.tv.ui.tabs.SeriesContent
 import com.flintr.tv.ui.tabs.SeriesContentParams
 import com.flintr.tv.ui.tabs.InProgressContent
 import com.flintr.tv.ui.tabs.InProgressContentParams
+import com.flintr.tv.ui.tabs.countInProgressItems
 import com.flintr.tv.ui.tabs.SeriesItem
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
@@ -2203,18 +2204,29 @@ private fun handleDestinationChangeInternal(
     }
 }
 
+/**
+ * Zaehlt die Sidebar-Zaehler-Zahl ueber dieselbe katalog-aufloesende Pipeline wie die
+ * "Angefangene Inhalte"-Liste ([com.flintr.tv.ui.tabs.loadInProgressItemsCore]), damit der
+ * Zaehler niemals mehr zeigt als tatsaechlich angezeigte Karten (Task 10b).
+ */
 @Composable
 internal fun calculateItemCounts(
     selectedDestination: HomeDestination,
-    watchProgressService: WatchProgressService
+    watchProgressService: WatchProgressService,
+    cacheService: DataCacheService,
+    xtreamRepository: XtreamRepository?,
+    credentials: Credentials?
 ): Map<String, Int> {
     var inProgressCount by remember { mutableStateOf(0) }
     LaunchedEffect(selectedDestination) {
         inProgressCount = when (selectedDestination) {
-            is HomeDestination.VOD -> watchProgressService.getInProgressMoviesCount()
-            // DISTINCT-Zaehlung der Serien, nicht der angefangenen Episoden (eine Serie mit
-            // mehreren angefangenen Episoden zaehlt nur einmal).
-            is HomeDestination.Series -> watchProgressService.getInProgressSeriesCount()
+            is HomeDestination.VOD, is HomeDestination.Series -> countInProgressItems(
+                destination = selectedDestination,
+                watchProgressService = watchProgressService,
+                cacheService = cacheService,
+                xtreamRepository = xtreamRepository,
+                credentials = credentials
+            )
             else -> 0
         }
     }
@@ -2442,7 +2454,10 @@ fun MainContentScreen(
     // Calculate item counts for special categories
     val itemCounts = calculateItemCounts(
         selectedDestination = selectedDestination,
-        watchProgressService = dependencies.watchProgressService
+        watchProgressService = dependencies.watchProgressService,
+        cacheService = dependencies.cacheService,
+        xtreamRepository = dependencies.xtreamRepository,
+        credentials = credentials
     )
     
     // Loading indicator with minimum display duration

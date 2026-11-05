@@ -32,10 +32,12 @@ import com.flintr.tv.utils.error.reportWarning
 private const val API_CALL_DELAY_MS = 100L
 private const val MAX_IN_PROGRESS_SERIES_TO_LOAD = 10
 
-// Sealed class to represent different in-progress content types
-private sealed class InProgressItem {
-    data class Movie(val vod: VodStream, val progress: WatchProgress) : InProgressItem()
-    data class EpisodeItem(val series: Series, val episode: Episode, val progress: WatchProgress) : InProgressItem()
+// Sealed class to represent different in-progress content types.
+// internal (not private): loadInProgressItemsCore()/countInProgressItems() expose it to
+// AppNavigation.kt and tests as the single resolved-item source for both list and counter.
+internal sealed class InProgressItem {
+    internal data class Movie(val vod: VodStream, val progress: WatchProgress) : InProgressItem()
+    internal data class EpisodeItem(val series: Series, val episode: Episode, val progress: WatchProgress) : InProgressItem()
 }
 
 /**
@@ -355,33 +357,38 @@ private fun RenderInProgressCard(
 }
 
 /**
- * Loads all in-progress items based on the destination.
+ * Loads and resolves all in-progress items against the catalog for the given destination.
+ * This is the SINGLE source of truth for "Angefangene Inhalte": both the rendered grid
+ * ([InProgressContent]) and the sidebar counter ([countInProgressItems]) call this same
+ * function, so a progress entry whose series/episode/movie no longer exists in the catalog
+ * is dropped from both consistently (see Task 10b - counter must equal card count).
  */
-private suspend fun loadInProgressItems(
-    params: InProgressContentParams,
+internal suspend fun loadInProgressItemsCore(
+    destination: HomeDestination,
+    cacheService: DataCacheService,
+    xtreamRepository: XtreamRepository?,
+    credentials: Credentials?,
     allProgress: Map<String, WatchProgress>
 ): List<InProgressItem> {
     if (allProgress.isEmpty()) {
         return emptyList()
     }
-    
+
     val parsed = parseProgressKeys(allProgress)
     val itemsList = mutableListOf<InProgressItem>()
-    
+
     // Load movies only for VOD destination
-    if (params.destination is HomeDestination.VOD) {
+    if (destination is HomeDestination.VOD) {
         val movies = loadInProgressMovies(
             allProgress = allProgress,
             movieStreamIds = parsed.movieStreamIds,
-            cacheService = params.cacheService
+            cacheService = cacheService
         )
         itemsList.addAll(movies)
     }
-    
+
     // Load episodes only for Series destination
-    if (params.destination is HomeDestination.Series) {
-        val credentials = params.credentials
-        val xtreamRepository = params.xtreamRepository
+    if (destination is HomeDestination.Series) {
         if (credentials != null && xtreamRepository != null) {
             val episodes = loadInProgressEpisodes(
                 episodeSeriesIds = parsed.episodeSeriesIds,
@@ -394,10 +401,10 @@ private suspend fun loadInProgressItems(
             Log.w("InProgressContent", "Cannot load series info: credentials or repository missing")
         }
     }
-    
+
     // Deduplicate series items (keep only most recent episode per series)
     val deduplicatedItems = deduplicateSeriesItems(itemsList)
-    
+
     // Sort by lastWatched (most recent first)
     return deduplicatedItems.sortedByDescending { item ->
         when (item) {
@@ -405,6 +412,42 @@ private suspend fun loadInProgressItems(
             is InProgressItem.EpisodeItem -> item.progress.lastWatched
         }
     }
+}
+
+/**
+ * Loads all in-progress items based on the destination.
+ */
+private suspend fun loadInProgressItems(
+    params: InProgressContentParams,
+    allProgress: Map<String, WatchProgress>
+): List<InProgressItem> = loadInProgressItemsCore(
+    destination = params.destination,
+    cacheService = params.cacheService,
+    xtreamRepository = params.xtreamRepository,
+    credentials = params.credentials,
+    allProgress = allProgress
+)
+
+/**
+ * Resolved count of in-progress items for the sidebar counter. Resolves against the catalog
+ * via [loadInProgressItemsCore] - the exact pipeline the grid uses - so the count always
+ * matches the number of cards actually shown (dead progress entries don't inflate it).
+ */
+internal suspend fun countInProgressItems(
+    destination: HomeDestination,
+    watchProgressService: WatchProgressService,
+    cacheService: DataCacheService,
+    xtreamRepository: XtreamRepository?,
+    credentials: Credentials?
+): Int {
+    val allProgress = watchProgressService.getAllInProgress()
+    return loadInProgressItemsCore(
+        destination = destination,
+        cacheService = cacheService,
+        xtreamRepository = xtreamRepository,
+        credentials = credentials,
+        allProgress = allProgress
+    ).size
 }
 
 @Composable
