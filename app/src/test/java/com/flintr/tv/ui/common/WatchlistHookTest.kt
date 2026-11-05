@@ -1,6 +1,6 @@
 package com.flintr.tv.ui.common
 
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.FriendEntry
 import org.junit.Assert.assertEquals
@@ -8,7 +8,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class FavoritesHookTest {
+class WatchlistHookTest {
 
     @Test
     fun `build friend badge prefers alias and falls back to username`() {
@@ -53,8 +53,8 @@ class FavoritesHookTest {
         id: String,
         type: FavoriteType,
         streamId: Int
-    ): Favorite {
-        return Favorite(
+    ): WatchlistEntry {
+        return WatchlistEntry(
             id = id,
             type = type,
             streamId = streamId,

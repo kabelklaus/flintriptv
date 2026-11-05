@@ -15,7 +15,7 @@ import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.FavoriteType
@@ -26,10 +26,10 @@ import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.viewmodel.MainViewModel
-import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.UiConstants.WATCHLIST_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.asOwnSourcedItems
-import com.flintr.tv.ui.common.useFavorites
+import com.flintr.tv.ui.common.useWatchlist
 import com.flintr.tv.ui.common.ContentFilterUtils
 import com.flintr.tv.utils.error.reportError
 
@@ -83,7 +83,7 @@ data class VODContentParams(
     val viewModel: MainViewModel,
     val selectedCategoryId: String?,
     val focusRequester: FocusRequester,
-    val favoritesRepository: FavoritesRepository,
+    val favoritesRepository: WatchlistRepository,
     val userRepository: UserRepository,
     val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
@@ -102,7 +102,7 @@ fun VODContent(params: VODContentParams) {
     val streams by params.viewModel.vodStreams.collectAsState()
     val uiState by params.viewModel.uiState.collectAsState()
     
-    val isFavoritesCategory = params.selectedCategoryId == FAVORITES_CATEGORY_ID
+    val isFavoritesCategory = params.selectedCategoryId == WATCHLIST_CATEGORY_ID
     val isNewCategory = params.selectedCategoryId == NEW_CATEGORY_ID
     
     // State for new category filtered streams
@@ -110,7 +110,7 @@ fun VODContent(params: VODContentParams) {
     var isLoadingNewCategory by remember { mutableStateOf(false) }
     
     // Load favorites using the hook
-    val favoritesState = useFavorites<VodStream>(
+    val favoritesState = useWatchlist<VodStream>(
         isFavoritesCategory = isFavoritesCategory,
         favoritesRepository = params.favoritesRepository,
         userRepository = params.userRepository,

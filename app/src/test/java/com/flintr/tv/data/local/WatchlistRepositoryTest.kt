@@ -3,7 +3,7 @@ package com.flintr.tv.data.local
 import android.content.Context
 import androidx.core.content.edit
 import androidx.test.core.app.ApplicationProvider
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.repository.UserRepository
 import com.squareup.moshi.Moshi
@@ -28,7 +28,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
-class FavoritesRepositoryTest {
+class WatchlistRepositoryTest {
 
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val moshi = Moshi.Builder().build()
@@ -36,7 +36,7 @@ class FavoritesRepositoryTest {
 
     private lateinit var userRepository: UserRepository
     private lateinit var credentialsRepository: CredentialsRepository
-    private lateinit var repository: FavoritesRepository
+    private lateinit var repository: WatchlistRepository
 
     @Before
     fun setUp() {
@@ -48,10 +48,10 @@ class FavoritesRepositoryTest {
         credentialsRepository = mockk()
         every { credentialsRepository.credentialsFlow } returns silentCredentialsFlow
         every { credentialsRepository.getCredentials() } returns credentials
-        coEvery { userRepository.addFavoriteAtomically(any(), any()) } returns Result.success(Unit)
-        coEvery { userRepository.removeFavoriteAtomically(any(), any()) } returns Result.success(Unit)
+        coEvery { userRepository.addToWatchlistAtomically(any(), any()) } returns Result.success(Unit)
+        coEvery { userRepository.removeFromWatchlistAtomically(any(), any()) } returns Result.success(Unit)
 
-        repository = FavoritesRepository(
+        repository = WatchlistRepository(
             context = context,
             moshi = moshi,
             userRepository = userRepository,
@@ -61,7 +61,7 @@ class FavoritesRepositoryTest {
     }
 
     private fun favorite(id: String = "movie_1", type: FavoriteType = FavoriteType.MOVIE, streamId: Int = 1) =
-        Favorite(
+        WatchlistEntry(
             id = id,
             type = type,
             streamId = streamId,
@@ -71,36 +71,36 @@ class FavoritesRepositoryTest {
         )
 
     @Test
-    fun `addFavorite fuegt neuen Favoriten hinzu und synct atomar`() = runBlocking {
-        assertTrue(repository.addFavorite(favorite()))
+    fun `addToWatchlist fuegt neuen Favoriten hinzu und synct atomar`() = runBlocking {
+        assertTrue(repository.addToWatchlist(favorite()))
 
         assertTrue(repository.isFavorite("movie_1"))
-        assertEquals(1, repository.getAllFavorites().size)
-        coVerify { userRepository.addFavoriteAtomically("chris", any()) }
+        assertEquals(1, repository.getAllWatchlistEntries().size)
+        coVerify { userRepository.addToWatchlistAtomically("chris", any()) }
     }
 
     @Test
-    fun `addFavorite lehnt Duplikate ab`() = runBlocking {
-        assertTrue(repository.addFavorite(favorite()))
-        assertFalse(repository.addFavorite(favorite()))
-        assertEquals(1, repository.getAllFavorites().size)
+    fun `addToWatchlist lehnt Duplikate ab`() = runBlocking {
+        assertTrue(repository.addToWatchlist(favorite()))
+        assertFalse(repository.addToWatchlist(favorite()))
+        assertEquals(1, repository.getAllWatchlistEntries().size)
     }
 
     @Test
-    fun `addFavorite bleibt bei Firestore-Fehler optimistisch erfolgreich`() = runBlocking {
-        coEvery { userRepository.addFavoriteAtomically(any(), any()) } coAnswers { Result.failure(Exception("offline")) }
+    fun `addToWatchlist bleibt bei Firestore-Fehler optimistisch erfolgreich`() = runBlocking {
+        coEvery { userRepository.addToWatchlistAtomically(any(), any()) } coAnswers { Result.failure(Exception("offline")) }
 
-        assertTrue(repository.addFavorite(favorite()))
+        assertTrue(repository.addToWatchlist(favorite()))
         assertTrue(repository.isFavorite("movie_1"))
     }
 
     @Test
     fun `concurrent favorite mutations do not lose updates`() {
-        // addFavorite hat vor der letzten write-Anweisung keinen Suspension-Point,
+        // addToWatchlist hat vor der letzten write-Anweisung keinen Suspension-Point,
         // daher reicht ein virtueller TestDispatcher nicht aus, um die Race zu
         // provozieren (der zweite Coroutine-Block würde nie mit dem ersten
         // interleaven). Ein CyclicBarrier(2) + echter Dispatchers.Default-Pool
-        // erzwingt einen moeglichst gleichzeitigen Start beider addFavorite-Aufrufe;
+        // erzwingt einen moeglichst gleichzeitigen Start beider addToWatchlist-Aufrufe;
         // ueber mehrere Runden erhoeht das die Trefferwahrscheinlichkeit fuer die Race.
         repeat(15) { round ->
             val startGate = java.util.concurrent.CyclicBarrier(2)
@@ -111,11 +111,11 @@ class FavoritesRepositoryTest {
                 coroutineScope {
                     val jobA = async(Dispatchers.Default) {
                         startGate.await()
-                        repository.addFavorite(favA)
+                        repository.addToWatchlist(favA)
                     }
                     val jobB = async(Dispatchers.Default) {
                         startGate.await()
-                        repository.addFavorite(favB)
+                        repository.addToWatchlist(favB)
                     }
                     awaitAll(jobA, jobB)
                 }
@@ -127,25 +127,25 @@ class FavoritesRepositoryTest {
     }
 
     @Test
-    fun `removeFavorite entfernt vorhandenen Favoriten`() = runBlocking {
-        repository.addFavorite(favorite())
+    fun `removeFromWatchlist entfernt vorhandenen Favoriten`() = runBlocking {
+        repository.addToWatchlist(favorite())
 
-        assertTrue(repository.removeFavorite("movie_1"))
+        assertTrue(repository.removeFromWatchlist("movie_1"))
         assertFalse(repository.isFavorite("movie_1"))
-        coVerify { userRepository.removeFavoriteAtomically("chris", "movie_1") }
+        coVerify { userRepository.removeFromWatchlistAtomically("chris", "movie_1") }
     }
 
     @Test
-    fun `removeFavorite ohne Treffer liefert false ohne Firestore-Aufruf`() = runBlocking {
-        assertFalse(repository.removeFavorite("unbekannt"))
-        coVerify(exactly = 0) { userRepository.removeFavoriteAtomically(any(), any()) }
+    fun `removeFromWatchlist ohne Treffer liefert false ohne Firestore-Aufruf`() = runBlocking {
+        assertFalse(repository.removeFromWatchlist("unbekannt"))
+        coVerify(exactly = 0) { userRepository.removeFromWatchlistAtomically(any(), any()) }
     }
 
     @Test
     fun `getFavoritesByType und Zaehler filtern korrekt`() = runBlocking {
-        repository.addFavorite(favorite(id = "movie_1", type = FavoriteType.MOVIE, streamId = 1))
-        repository.addFavorite(favorite(id = "live_2", type = FavoriteType.LIVE, streamId = 2))
-        repository.addFavorite(favorite(id = "movie_3", type = FavoriteType.MOVIE, streamId = 3))
+        repository.addToWatchlist(favorite(id = "movie_1", type = FavoriteType.MOVIE, streamId = 1))
+        repository.addToWatchlist(favorite(id = "live_2", type = FavoriteType.LIVE, streamId = 2))
+        repository.addToWatchlist(favorite(id = "movie_3", type = FavoriteType.MOVIE, streamId = 3))
 
         assertEquals(listOf("movie_1", "movie_3"), repository.getFavoritesByType(FavoriteType.MOVIE).map { it.id })
         assertEquals(2, repository.getFavoriteCountByType(FavoriteType.MOVIE))
@@ -166,7 +166,7 @@ class FavoritesRepositoryTest {
         coEvery { userRepository.loadFavorites("chris") } coAnswers { Result.failure(Exception("offline")) }
 
         assertTrue(repository.syncIfNeeded())
-        assertTrue(repository.getAllFavorites().isEmpty())
+        assertTrue(repository.getAllWatchlistEntries().isEmpty())
     }
 
     @Test
@@ -176,7 +176,7 @@ class FavoritesRepositoryTest {
 
         repository.clearAllFavorites()
 
-        assertTrue(repository.getAllFavorites().isEmpty())
+        assertTrue(repository.getAllWatchlistEntries().isEmpty())
         coVerify(timeout = 2_000) { userRepository.saveFavorites("chris", emptyList()) }
     }
 

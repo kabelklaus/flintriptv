@@ -41,7 +41,7 @@ class WatchProgressServiceTest {
     private lateinit var userRepository: UserRepository
     private lateinit var credentialsRepository: CredentialsRepository
     private lateinit var watchedHistoryService: WatchedHistoryService
-    private lateinit var favoritesRepository: FavoritesRepository
+    private lateinit var favoritesRepository: WatchlistRepository
     private lateinit var cacheService: DataCacheService
     private lateinit var service: WatchProgressService
 
@@ -153,7 +153,7 @@ class WatchProgressServiceTest {
         assertTrue(result)
         assertNull(service.getProgress("movie", 42, null, null))
         coVerify { watchedHistoryService.markAsWatched("movie", 42, null, null, null, null, null) }
-        coVerify(timeout = 2_000) { favoritesRepository.removeFavorite("movie:42:Film") }
+        coVerify(timeout = 2_000) { favoritesRepository.removeFromWatchlist("movie:42:Film") }
     }
 
     @Test

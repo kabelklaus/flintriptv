@@ -32,7 +32,7 @@ private const val RECOMPUTE_DEBOUNCE_MS = 300L
  */
 @Singleton
 class RecommendationService @Inject constructor(
-    private val favoritesRepository: FavoritesRepository,
+    private val favoritesRepository: WatchlistRepository,
     private val watchedHistoryService: WatchedHistoryService,
     private val watchProgressService: WatchProgressService,
     private val userRepository: UserRepository,

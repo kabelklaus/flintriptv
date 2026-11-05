@@ -13,7 +13,7 @@ import android.util.Log
 import kotlinx.coroutines.delay
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.data.model.Episode
@@ -43,7 +43,7 @@ private sealed class InProgressItem {
  */
 data class InProgressContentParams(
     val watchProgressService: WatchProgressService,
-    val favoritesRepository: FavoritesRepository,
+    val favoritesRepository: WatchlistRepository,
     val cacheService: DataCacheService,
     val focusRequester: FocusRequester,
     val onNavigateLeft: () -> Unit,

@@ -1,7 +1,7 @@
 package com.flintr.tv.data.local
 
 import com.flintr.tv.data.model.Category
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
@@ -30,7 +30,7 @@ class RecommendationServiceTest {
 
     private val credentials = Credentials(serverUrl = "http://server", username = "chris", password = "pw")
 
-    private lateinit var favoritesRepository: FavoritesRepository
+    private lateinit var favoritesRepository: WatchlistRepository
     private lateinit var watchedHistoryService: WatchedHistoryService
     private lateinit var watchProgressService: WatchProgressService
     private lateinit var userRepository: UserRepository
@@ -38,7 +38,7 @@ class RecommendationServiceTest {
     private lateinit var cacheService: DataCacheService
     private lateinit var service: RecommendationService
 
-    private lateinit var favoritesFlow: MutableStateFlow<List<Favorite>>
+    private lateinit var favoritesFlow: MutableStateFlow<List<WatchlistEntry>>
     private lateinit var watchedHistoryFlow: MutableStateFlow<Map<String, com.flintr.tv.data.model.WatchedItem>>
     private lateinit var watchProgressFlow: MutableStateFlow<Map<String, com.flintr.tv.data.model.WatchProgress>>
 
@@ -53,7 +53,7 @@ class RecommendationServiceTest {
 
     @Before
     fun setUp() {
-        favoritesFlow = MutableStateFlow<List<Favorite>>(emptyList())
+        favoritesFlow = MutableStateFlow<List<WatchlistEntry>>(emptyList())
         watchedHistoryFlow = MutableStateFlow<Map<String, com.flintr.tv.data.model.WatchedItem>>(emptyMap())
         watchProgressFlow = MutableStateFlow<Map<String, com.flintr.tv.data.model.WatchProgress>>(emptyMap())
 
@@ -103,7 +103,7 @@ class RecommendationServiceTest {
         runBlocking { scope.coroutineContext[Job]?.cancelAndJoin() }
     }
 
-    private fun favorite(streamId: Int) = Favorite.create(
+    private fun favorite(streamId: Int) = WatchlistEntry.create(
         id = "movie:$streamId:x",
         type = FavoriteType.MOVIE,
         streamId = streamId,

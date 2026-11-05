@@ -56,7 +56,7 @@ data class SmartResumeTarget(
 class WatchProgressService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val moshi: Moshi,
-    private val favoritesRepository: FavoritesRepository,
+    private val favoritesRepository: WatchlistRepository,
     private val watchedHistoryService: WatchedHistoryService,
     private val userRepository: UserRepository,
     private val credentialsRepository: CredentialsRepository,
@@ -495,7 +495,7 @@ class WatchProgressService @Inject constructor(
                 try {
                     val encodedName = URLEncoder.encode(progress.title, "UTF-8")
                     val favoriteId = "$KEY_PREFIX_MOVIE$streamId:$encodedName"
-                    favoritesRepository.removeFavorite(favoriteId)
+                    favoritesRepository.removeFromWatchlist(favoriteId)
                     Log.d(TAG, "Automatically removed completed movie from favorites")
                 } catch (e: Exception) {
                     reportWarning(TAG, "Failed to automatically remove completed movie from favorites", e)

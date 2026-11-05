@@ -136,8 +136,8 @@ fun MainLayout(
                     onNavigateLeft = params.onNavigateToNavbar,
                     onNavigateRight = { params.onNavigateToContentList() },
                     onCategoryHidden = { category ->
-                        // Don't allow hiding favorites category
-                        if (category.categoryId != "__favorites__") {
+                        // Don't allow hiding watchlist category
+                        if (category.categoryId != "__watchlist__") {
                             params.onCategoryHidden(category)
                         }
                     },

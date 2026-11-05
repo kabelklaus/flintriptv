@@ -12,7 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import android.util.Log
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.LiveStream
@@ -34,11 +34,11 @@ private sealed class FavoriteContentItem {
 }
 
 /**
- * Parameters for FavoritesContent composable.
+ * Parameters for WatchlistContent composable.
  * Encapsulates all parameters to reduce function parameter count.
  */
-data class FavoritesContentParams(
-    val favoritesRepository: FavoritesRepository,
+data class WatchlistContentParams(
+    val favoritesRepository: WatchlistRepository,
     val cacheService: DataCacheService,
     val focusRequester: FocusRequester,
     val onNavigateLeft: () -> Unit,
@@ -190,7 +190,7 @@ private fun FavoriteCard(
     item: FavoriteContentItem,
     index: Int,
     columnIndex: Int,
-    params: FavoritesContentParams,
+    params: WatchlistContentParams,
     onFocusChanged: ((Boolean) -> Unit)?,
     cardFocusRequester: androidx.compose.ui.focus.FocusRequester?
 ) {
@@ -237,8 +237,8 @@ private fun FavoriteCard(
 }
 
 @Composable
-fun FavoritesContent(
-    params: FavoritesContentParams,
+fun WatchlistContent(
+    params: WatchlistContentParams,
     modifier: Modifier = Modifier
 ) {
     var favorites by remember { mutableStateOf<List<WatchlistEntry>>(emptyList()) }
@@ -257,7 +257,7 @@ fun FavoritesContent(
             // Explicit user retry: bypass the sync cooldown
             params.favoritesRepository.retryLoadFromFirestore()
         }
-        favorites = params.favoritesRepository.getAllFavorites()
+        favorites = params.favoritesRepository.getAllWatchlistEntries()
         // isLoading bleibt true, bis Matching abgeschlossen ist
         Log.d("FavoritesContent", "Loaded ${favorites.size} favorites")
     }

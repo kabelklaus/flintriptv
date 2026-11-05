@@ -1,6 +1,6 @@
 package com.flintr.tv.domain.recommendation
 
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.RatingEntry
 import com.flintr.tv.data.model.Series
@@ -67,7 +67,7 @@ class UserContentProfileTest {
     fun `favorite series adds weighted genres`() {
         val series = listOf(testSeries(seriesId = 10, genre = "Action, Drama"))
         val favorites = listOf(
-            Favorite.create(id = "series:10:x", type = FavoriteType.SERIES, streamId = 10, name = "Series10")
+            WatchlistEntry.create(id = "series:10:x", type = FavoriteType.SERIES, streamId = 10, name = "Series10")
         )
 
         val profile = UserContentProfile.build(
@@ -231,7 +231,7 @@ class UserContentProfileTest {
         val movies = listOf(testVod(streamId = 1, genre = "Action"))
         val series = listOf(testSeries(seriesId = 10, genre = "Action"))
         val favorites = listOf(
-            Favorite.create(id = "movie:1:x", type = FavoriteType.MOVIE, streamId = 1, name = "Movie1")
+            WatchlistEntry.create(id = "movie:1:x", type = FavoriteType.MOVIE, streamId = 1, name = "Movie1")
         )
         val progress = (1..5).associate { ep ->
             "series:10:$ep" to WatchProgress(position = 500, duration = 1000, lastWatched = agoIso(0), title = "Ep$ep")

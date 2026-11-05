@@ -16,7 +16,7 @@ import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.model.CategoryType
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.Series
@@ -26,10 +26,10 @@ import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.viewmodel.MainViewModel
-import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.UiConstants.WATCHLIST_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.asOwnSourcedItems
-import com.flintr.tv.ui.common.useFavorites
+import com.flintr.tv.ui.common.useWatchlist
 import com.flintr.tv.ui.common.ContentFilterUtils
 import com.flintr.tv.utils.error.reportError
 
@@ -133,7 +133,7 @@ data class SeriesContentParams(
     val viewModel: MainViewModel,
     val selectedCategoryId: String?,
     val focusRequester: FocusRequester,
-    val favoritesRepository: FavoritesRepository,
+    val favoritesRepository: WatchlistRepository,
     val userRepository: UserRepository,
     val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
@@ -153,7 +153,7 @@ fun SeriesContent(
     val series by params.viewModel.series.collectAsState()
     val uiState by params.viewModel.uiState.collectAsState()
     
-    val isFavoritesCategory = params.selectedCategoryId == FAVORITES_CATEGORY_ID
+    val isFavoritesCategory = params.selectedCategoryId == WATCHLIST_CATEGORY_ID
     val isNewCategory = params.selectedCategoryId == NEW_CATEGORY_ID
     
     // State for new category filtered series
@@ -161,7 +161,7 @@ fun SeriesContent(
     var isLoadingNewCategory by remember { mutableStateOf(false) }
     
     // Load favorites using the hook
-    val favoritesState = useFavorites<Series>(
+    val favoritesState = useWatchlist<Series>(
         isFavoritesCategory = isFavoritesCategory,
         favoritesRepository = params.favoritesRepository,
         userRepository = params.userRepository,
@@ -247,7 +247,7 @@ fun SeriesContent(
 @Composable
 fun SeriesItem(
     series: Series,
-    favoritesRepository: FavoritesRepository,
+    favoritesRepository: WatchlistRepository,
     onSeriesClick: () -> Unit,
     cardConfig: com.flintr.tv.ui.components.CardConfig = com.flintr.tv.ui.components.CardConfig(),
     sourceBadge: String? = null,

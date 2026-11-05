@@ -5,8 +5,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.local.WatchlistRepository
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.FriendEntry
 import com.flintr.tv.data.model.VodStream
@@ -26,22 +26,22 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * Verhalten des useFavorites-Hooks als lokale Unit-Tests (Robolectric),
+ * Verhalten des useWatchlist-Hooks als lokale Unit-Tests (Robolectric),
  * damit die Abdeckung in den Jacoco-Report einfließt, den Sonar konsumiert.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], qualifiers = "w1280dp-h720dp-land")
-class UseFavoritesHookTest {
+class UseWatchlistHookTest {
 
     @get:Rule
     val composeTestRule = createComposeRule()
 
-    private lateinit var favoritesRepository: FavoritesRepository
+    private lateinit var favoritesRepository: WatchlistRepository
     private lateinit var userRepository: UserRepository
     private lateinit var credentialsRepository: CredentialsRepository
     private lateinit var cacheService: DataCacheService
 
-    private val ownFavorites = MutableStateFlow<List<Favorite>>(emptyList())
+    private val ownFavorites = MutableStateFlow<List<WatchlistEntry>>(emptyList())
 
     @Before
     fun setUp() {
@@ -58,7 +58,7 @@ class UseFavoritesHookTest {
         coEvery { cacheService.loadMoviesByIds(any()) } returns emptyList()
     }
 
-    private fun favorite(id: String, streamId: Int) = Favorite(
+    private fun favorite(id: String, streamId: Int) = WatchlistEntry(
         id = id,
         type = FavoriteType.MOVIE,
         streamId = streamId,
@@ -67,10 +67,10 @@ class UseFavoritesHookTest {
         addedAt = "2026-07-16T10:00:00Z"
     )
 
-    private fun collectState(isFavoritesCategory: Boolean = true): () -> FavoritesState<SourcedFavoriteItem<VodStream>> {
-        var state: FavoritesState<SourcedFavoriteItem<VodStream>>? = null
+    private fun collectState(isFavoritesCategory: Boolean = true): () -> WatchlistState<SourcedFavoriteItem<VodStream>> {
+        var state: WatchlistState<SourcedFavoriteItem<VodStream>>? = null
         composeTestRule.setContent {
-            state = useFavorites(
+            state = useWatchlist(
                 isFavoritesCategory = isFavoritesCategory,
                 favoritesRepository = favoritesRepository,
                 userRepository = userRepository,

@@ -7,7 +7,7 @@ import org.junit.Test
 /**
  * Stream-URL-Aufbau (Xtream-Codes-Schema) und Favoriten-Konvertierung.
  */
-class StreamUrlAndFavoriteTest {
+class StreamUrlAndWatchlistEntryTest {
 
     private val baseUrl = "http://server:8080"
 
@@ -88,7 +88,7 @@ class StreamUrlAndFavoriteTest {
 
     @Test
     fun favoriteToFirestoreMapContainsAllFields() {
-        val favorite = Favorite.create(
+        val favorite = WatchlistEntry.create(
             id = "live:1:Test",
             type = FavoriteType.LIVE,
             streamId = 1,
@@ -107,7 +107,7 @@ class StreamUrlAndFavoriteTest {
 
     @Test
     fun favoriteWithoutOptionalMetadataHasNullMetadata() {
-        val favorite = Favorite.create(
+        val favorite = WatchlistEntry.create(
             id = "movie:2:Film",
             type = FavoriteType.MOVIE,
             streamId = 2,

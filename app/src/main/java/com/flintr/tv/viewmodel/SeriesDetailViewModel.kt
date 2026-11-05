@@ -7,7 +7,7 @@ import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.local.imdb.ImdbEnrichment
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
@@ -93,7 +93,7 @@ class SeriesDetailViewModel @Inject constructor(
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
     private val imdbEnrichmentService: ImdbEnrichmentService,
-    private val favoritesRepository: FavoritesRepository,
+    private val favoritesRepository: WatchlistRepository,
     private val watchProgressService: WatchProgressService,
     private val cacheService: DataCacheService,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher
@@ -223,7 +223,7 @@ class SeriesDetailViewModel @Inject constructor(
             detail = baseDetail,
             series = loadedSeries,
             seasons = seasons,
-            isFavorite = findFavorite() != null,
+            isFavorite = findWatchlistEntry() != null,
             seasonsHint = if (seasons.isEmpty()) NO_SEASONS_HINT else null,
             recommendations = emptyList(),
             watchTarget = watchTarget,
@@ -244,23 +244,23 @@ class SeriesDetailViewModel @Inject constructor(
         }
     }
 
-    fun toggleFavorite() {
+    fun toggleWatchlist() {
         val series = _uiState.value.series ?: return
         viewModelScope.launch(ioDispatcher) {
-            val existing = findFavorite()
+            val existing = findWatchlistEntry()
             if (existing != null) {
-                if (favoritesRepository.removeFavorite(existing.id)) {
+                if (favoritesRepository.removeFromWatchlist(existing.id)) {
                     _uiState.update { it.copy(isFavorite = false) }
                 }
             } else {
-                if (favoritesRepository.addFavorite(series.toFavorite())) {
+                if (favoritesRepository.addToWatchlist(series.toFavorite())) {
                     _uiState.update { it.copy(isFavorite = true) }
                 }
             }
         }
     }
 
-    private fun findFavorite(): WatchlistEntry? = favoritesRepository.getAllFavorites()
+    private fun findWatchlistEntry(): WatchlistEntry? = favoritesRepository.getAllWatchlistEntries()
         .firstOrNull { it.type == FavoriteType.SERIES && it.streamId == seriesId }
 
     private fun buildSeasons(

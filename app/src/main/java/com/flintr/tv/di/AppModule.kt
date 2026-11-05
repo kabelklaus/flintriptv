@@ -6,7 +6,7 @@ import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.PlaybackSettingsRepository
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.FirestoreSyncManager
 import com.flintr.tv.data.local.WatchedHistoryService
 import com.flintr.tv.data.local.WatchProgressService
@@ -263,7 +263,7 @@ object AppModule {
      * Dependencies container for WatchProgressService to reduce parameter count.
      */
     data class WatchProgressServiceDependencies(
-        val favoritesRepository: FavoritesRepository,
+        val favoritesRepository: WatchlistRepository,
         val watchedHistoryService: WatchedHistoryService,
         val userRepository: UserRepository,
         val credentialsRepository: CredentialsRepository,
@@ -274,7 +274,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideWatchProgressServiceDependencies(
-        favoritesRepository: FavoritesRepository,
+        favoritesRepository: WatchlistRepository,
         watchedHistoryService: WatchedHistoryService,
         userRepository: UserRepository,
         credentialsRepository: CredentialsRepository,

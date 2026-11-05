@@ -7,7 +7,7 @@ import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.DetailDisplayData
@@ -54,7 +54,7 @@ class MovieDetailViewModel @Inject constructor(
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
     private val imdbEnrichmentService: ImdbEnrichmentService,
-    private val favoritesRepository: FavoritesRepository,
+    private val favoritesRepository: WatchlistRepository,
     private val watchProgressService: WatchProgressService,
     private val cacheService: DataCacheService,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher
@@ -203,7 +203,7 @@ class MovieDetailViewModel @Inject constructor(
             isLoading = false,
             baseStream = catalogMovie,
             detail = baseDetail,
-            isFavorite = findFavorite() != null,
+            isFavorite = findWatchlistEntry() != null,
             watchProgress = watchProgressService.getWatchProgress(
                 contentType = "movie",
                 streamId = vodId,
@@ -239,23 +239,23 @@ class MovieDetailViewModel @Inject constructor(
         }
     }
 
-    fun toggleFavorite() {
+    fun toggleWatchlist() {
         val detail = _uiState.value.detail ?: return
         viewModelScope.launch(ioDispatcher) {
-            val existing = findFavorite()
+            val existing = findWatchlistEntry()
             if (existing != null) {
-                if (favoritesRepository.removeFavorite(existing.id)) {
+                if (favoritesRepository.removeFromWatchlist(existing.id)) {
                     _uiState.update { it.copy(isFavorite = false) }
                 }
             } else {
-                if (favoritesRepository.addFavorite(buildFavorite(detail))) {
+                if (favoritesRepository.addToWatchlist(buildFavorite(detail))) {
                     _uiState.update { it.copy(isFavorite = true) }
                 }
             }
         }
     }
 
-    private fun findFavorite(): WatchlistEntry? = favoritesRepository.getAllFavorites()
+    private fun findWatchlistEntry(): WatchlistEntry? = favoritesRepository.getAllWatchlistEntries()
         .firstOrNull { it.type == FavoriteType.MOVIE && it.streamId == vodId }
 
     private fun buildFavorite(detail: DetailDisplayData): WatchlistEntry {

@@ -10,7 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.FriendEntry
@@ -23,7 +23,7 @@ import com.flintr.tv.utils.error.reportError
 
 private const val TAG = "FavoritesHook"
 
-data class FavoritesState<T>(
+data class WatchlistState<T>(
     val items: List<T>,
     val isLoading: Boolean
 )
@@ -206,15 +206,15 @@ private suspend fun <T : Any> loadSingleFriendFavoriteItems(
 }
 
 @Composable
-fun <T : Any> useFavorites(
+fun <T : Any> useWatchlist(
     isFavoritesCategory: Boolean,
-    favoritesRepository: FavoritesRepository,
+    favoritesRepository: WatchlistRepository,
     userRepository: UserRepository,
     credentialsRepository: CredentialsRepository,
     cacheService: DataCacheService,
     favoriteType: FavoriteType,
     idSelector: (T) -> Int
-): FavoritesState<SourcedFavoriteItem<T>> {
+): WatchlistState<SourcedFavoriteItem<T>> {
     var ownItems by remember { mutableStateOf<List<T>>(emptyList()) }
     var friendItems by remember { mutableStateOf<List<Pair<FriendEntry, List<T>>>>(emptyList()) }
     var isLoadingOwnFavorites by remember { mutableStateOf(false) }
@@ -273,7 +273,7 @@ fun <T : Any> useFavorites(
         isLoadingFriendFavorites = false
     }
 
-    return FavoritesState(
+    return WatchlistState(
         items = favoriteItems,
         isLoading = isLoadingOwnFavorites || isLoadingFriendFavorites
     )

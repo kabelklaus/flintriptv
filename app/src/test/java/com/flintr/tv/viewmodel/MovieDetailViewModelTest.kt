@@ -5,11 +5,11 @@ import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.local.imdb.ImdbEnrichment
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.FavoriteType
 import com.flintr.tv.data.model.VodInfo
 import com.flintr.tv.data.model.VodStream
@@ -43,7 +43,7 @@ class MovieDetailViewModelTest {
     private val repository = mockk<XtreamRepository>()
     private val credentialsRepository = mockk<CredentialsRepository>()
     private val imdbEnrichmentService = mockk<ImdbEnrichmentService>(relaxed = true)
-    private val favoritesRepository = mockk<FavoritesRepository>(relaxed = true)
+    private val favoritesRepository = mockk<WatchlistRepository>(relaxed = true)
     private val watchProgressService = mockk<WatchProgressService>(relaxed = true)
     private val cacheService = mockk<DataCacheService>(relaxed = true)
 
@@ -125,7 +125,7 @@ class MovieDetailViewModelTest {
         coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns Result.success(vodInfo)
         every { imdbEnrichmentService.lookup(any()) } returns
             ImdbEnrichment(rating = 8.4, numVotes = 1234, genres = listOf("Action", "Drama"))
-        every { favoritesRepository.getAllFavorites() } returns emptyList()
+        every { favoritesRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchProgress("movie", vodId, null, null) } returns watchProgress
     }
 
@@ -160,8 +160,8 @@ class MovieDetailViewModelTest {
     @Test
     fun `load laedt Favoritenstatus und WatchProgress`() = runTest {
         stubHappyPath()
-        every { favoritesRepository.getAllFavorites() } returns listOf(
-            Favorite.create(
+        every { favoritesRepository.getAllWatchlistEntries() } returns listOf(
+            WatchlistEntry.create(
                 id = catalogMovie.toFavoriteId(),
                 type = FavoriteType.MOVIE,
                 streamId = vodId,
@@ -217,37 +217,37 @@ class MovieDetailViewModelTest {
     }
 
     @Test
-    fun `toggleFavorite fuegt Favorit hinzu und aktualisiert State`() = runTest {
+    fun `toggleWatchlist fuegt Favorit hinzu und aktualisiert State`() = runTest {
         stubHappyPath()
-        val added = slot<Favorite>()
-        coEvery { favoritesRepository.addFavorite(capture(added)) } returns true
+        val added = slot<WatchlistEntry>()
+        coEvery { favoritesRepository.addToWatchlist(capture(added)) } returns true
 
         val vm = viewModel()
-        vm.toggleFavorite()
+        vm.toggleWatchlist()
 
         assertTrue(vm.uiState.value.isFavorite)
         assertEquals(FavoriteType.MOVIE, added.captured.type)
         assertEquals(vodId, added.captured.streamId)
-        coVerify(exactly = 1) { favoritesRepository.addFavorite(any()) }
+        coVerify(exactly = 1) { favoritesRepository.addToWatchlist(any()) }
     }
 
     @Test
-    fun `toggleFavorite entfernt bestehenden Favoriten`() = runTest {
+    fun `toggleWatchlist entfernt bestehenden Favoriten`() = runTest {
         stubHappyPath()
-        val favorite = Favorite.create(
+        val favorite = WatchlistEntry.create(
             id = catalogMovie.toFavoriteId(),
             type = FavoriteType.MOVIE,
             streamId = vodId,
             name = catalogMovie.name
         )
-        every { favoritesRepository.getAllFavorites() } returns listOf(favorite)
-        coEvery { favoritesRepository.removeFavorite(favorite.id) } returns true
+        every { favoritesRepository.getAllWatchlistEntries() } returns listOf(favorite)
+        coEvery { favoritesRepository.removeFromWatchlist(favorite.id) } returns true
 
         val vm = viewModel()
-        vm.toggleFavorite()
+        vm.toggleWatchlist()
 
         assertFalse(vm.uiState.value.isFavorite)
-        coVerify(exactly = 1) { favoritesRepository.removeFavorite(favorite.id) }
+        coVerify(exactly = 1) { favoritesRepository.removeFromWatchlist(favorite.id) }
     }
 
     @Test
@@ -258,7 +258,7 @@ class MovieDetailViewModelTest {
         coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
             Result.failure(Exception("kaputt"))
         every { imdbEnrichmentService.lookup(any()) } returns null
-        every { favoritesRepository.getAllFavorites() } returns emptyList()
+        every { favoritesRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchProgress("movie", vodId, null, null) } returns null
 
         val vm = viewModel()

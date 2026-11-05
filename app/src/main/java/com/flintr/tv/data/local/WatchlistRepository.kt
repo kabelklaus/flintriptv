@@ -25,7 +25,7 @@ import javax.inject.Singleton
 import com.flintr.tv.utils.error.reportError
 
 @Singleton
-class FavoritesRepository @Inject constructor(
+class WatchlistRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val moshi: Moshi,
     private val userRepository: UserRepository,
@@ -51,14 +51,14 @@ class FavoritesRepository @Inject constructor(
     val favorites: StateFlow<List<WatchlistEntry>> = _favorites.asStateFlow()
 
     // Non-null after a failed/timed-out Firestore load; cleared on the next successful load.
-    // Consumed by FavoritesContent to show an error+retry state instead of a silent empty list.
+    // Consumed by WatchlistContent to show an error+retry state instead of a silent empty list.
     private val _loadError = MutableStateFlow<String?>(null)
     val loadError: StateFlow<String?> = _loadError.asStateFlow()
 
     // Mutex to prevent concurrent loadFromFirestore() calls
     private val loadMutex = Mutex()
 
-    // Mutex to prevent lost updates from concurrent addFavorite()/removeFavorite() calls
+    // Mutex to prevent lost updates from concurrent addToWatchlist()/removeFromWatchlist() calls
     private val updateMutex = Mutex()
 
     // Moshi adapter for local data migration
@@ -249,7 +249,7 @@ class FavoritesRepository @Inject constructor(
     /**
      * Get all favorites from StateFlow.
      */
-    fun getAllFavorites(): List<WatchlistEntry> {
+    fun getAllWatchlistEntries(): List<WatchlistEntry> {
         return _favorites.value
     }
 
@@ -259,7 +259,7 @@ class FavoritesRepository @Inject constructor(
      * Works offline thanks to Firestore offline persistence.
      * @return true if favorite was added, false if it already exists
      */
-    suspend fun addFavorite(favorite: WatchlistEntry): Boolean {
+    suspend fun addToWatchlist(favorite: WatchlistEntry): Boolean {
         // Optimistic update: Update local state immediately (locked to prevent lost updates)
         val added = updateMutex.withLock {
             val currentFavorites = _favorites.value.toMutableList()
@@ -279,7 +279,7 @@ class FavoritesRepository @Inject constructor(
             // Try to sync atomically with Firestore (works offline with Firestore persistence)
             val username = credentialsRepository.getCredentials()?.username
             if (!username.isNullOrBlank()) {
-                val result = userRepository.addFavoriteAtomically(username, favorite)
+                val result = userRepository.addToWatchlistAtomically(username, favorite)
                 if (result.isFailure) {
                     Log.w(TAG, "Failed to sync favorite to Firestore, will retry on next sync: ${result.exceptionOrNull()}")
                     // Don't revert local change - Firestore offline persistence will handle it
@@ -297,7 +297,7 @@ class FavoritesRepository @Inject constructor(
      * Works offline thanks to Firestore offline persistence.
      * @return true if favorite was removed, false if it was not found
      */
-    suspend fun removeFavorite(favoriteId: String): Boolean {
+    suspend fun removeFromWatchlist(favoriteId: String): Boolean {
         // Optimistic update (locked to prevent lost updates)
         val removed = updateMutex.withLock {
             val currentFavorites = _favorites.value.toMutableList()
@@ -312,7 +312,7 @@ class FavoritesRepository @Inject constructor(
             // Try to sync atomically
             val username = credentialsRepository.getCredentials()?.username
             if (!username.isNullOrBlank()) {
-                val result = userRepository.removeFavoriteAtomically(username, favoriteId)
+                val result = userRepository.removeFromWatchlistAtomically(username, favoriteId)
                 if (result.isFailure) {
                     Log.w(TAG, "Failed to sync favorite removal to Firestore, will retry on next sync")
                 }

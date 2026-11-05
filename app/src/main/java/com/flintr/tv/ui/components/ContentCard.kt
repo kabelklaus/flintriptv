@@ -37,7 +37,7 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.Image
 import android.util.Log
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.LiveStream
@@ -91,7 +91,7 @@ data class VODCardParams(
     val vod: VodStream? = null,
     val series: Series? = null,
     val onClick: () -> Unit,
-    val favoritesRepository: FavoritesRepository,
+    val favoritesRepository: WatchlistRepository,
     val watchProgressService: WatchProgressService? = null,
     val modifier: Modifier = Modifier,
     val isSelected: Boolean = false,
@@ -106,7 +106,7 @@ data class VODCardParams(
 data class LiveStreamCardParams(
     val stream: LiveStream,
     val onClick: () -> Unit,
-    val favoritesRepository: FavoritesRepository,
+    val favoritesRepository: WatchlistRepository,
     val modifier: Modifier = Modifier,
     val config: CardConfig = CardConfig(),
     val sourceBadge: String? = null,
@@ -323,7 +323,7 @@ private fun Modifier.buildCardModifier(
 private fun ContentCardInternal(
     cardData: ContentCardData,
     onClick: () -> Unit,
-    favoritesRepository: FavoritesRepository,
+    favoritesRepository: WatchlistRepository,
     modifier: Modifier = Modifier,
     config: CardConfig = CardConfig()
 ) {
@@ -548,7 +548,7 @@ private fun createMenuOptionSelectedHandler(
     favoriteId: String?,
     isFavorite: Boolean,
     title: String,
-    favoritesRepository: FavoritesRepository,
+    favoritesRepository: WatchlistRepository,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     setIsFavorite: (Boolean) -> Unit
 ): (Int) -> Unit {
@@ -557,12 +557,12 @@ private fun createMenuOptionSelectedHandler(
         if (contentType != null && favoriteId != null) {
             coroutineScope.launch {
                 if (isFavorite) {
-                    favoritesRepository.removeFavorite(favoriteId)
+                    favoritesRepository.removeFromWatchlist(favoriteId)
                     setIsFavorite(false)
                     Log.d("ContentCard", "[ContentCard] Favorit entfernt: $favoriteId")
                 } else {
                     val favorite = contentType.toFavorite()
-                    favoritesRepository.addFavorite(favorite)
+                    favoritesRepository.addToWatchlist(favorite)
                     setIsFavorite(true)
                     Log.d("ContentCard", "[ContentCard] Favorit hinzugefügt: $favoriteId")
                 }
@@ -576,7 +576,7 @@ private fun createMenuOptionSelectedHandler(
 private fun useFavoriteState(
     favoriteId: String?,
     showMenu: Boolean,
-    favoritesRepository: FavoritesRepository
+    favoritesRepository: WatchlistRepository
 ): Pair<Boolean, (Boolean) -> Unit> {
     var isFavorite by remember { mutableStateOf(false) }
     

@@ -263,7 +263,7 @@ class UserRepository @Inject constructor() {
      * Saves favorites for a user to Firestore.
      * 
      * WARNING: This method overwrites the entire favorites array and is susceptible to race conditions.
-     * Use addFavoriteAtomically() or removeFavoriteAtomically() for individual operations instead.
+     * Use addToWatchlistAtomically() or removeFromWatchlistAtomically() for individual operations instead.
      * This method is kept for backward compatibility and migration purposes only.
      * 
      * @param username The username to save favorites for
@@ -593,7 +593,7 @@ class UserRepository @Inject constructor() {
      * @param favorite The favorite to add
      * @return Result<Unit> - Success if added, Failure with exception otherwise
      */
-    suspend fun addFavoriteAtomically(
+    suspend fun addToWatchlistAtomically(
         username: String,
         favorite: WatchlistEntry
     ): Result<Unit> {
@@ -636,7 +636,7 @@ class UserRepository @Inject constructor() {
      * @param favoriteId The ID of the favorite to remove
      * @return Result<Unit> - Success if removed, Failure with exception otherwise
      */
-    suspend fun removeFavoriteAtomically(
+    suspend fun removeFromWatchlistAtomically(
         username: String,
         favoriteId: String
     ): Result<Unit> {

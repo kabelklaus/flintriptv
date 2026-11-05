@@ -48,7 +48,7 @@ import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.RecommendationService
 import com.flintr.tv.data.local.WatchProgressService
@@ -97,7 +97,7 @@ import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
 import com.flintr.tv.ui.components.SearchOverlay
 import com.flintr.tv.ui.components.SearchResultCallbacks
-import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.UiConstants.WATCHLIST_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.RECOMMENDED_CATEGORY_ID
@@ -676,7 +676,7 @@ private fun InitialRoutingScreen(
 data class AppNavigationDependencies(
     val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
-    val favoritesRepository: FavoritesRepository,
+    val favoritesRepository: WatchlistRepository,
     val watchProgressService: WatchProgressService,
     val categoryVisibilityService: CategoryVisibilityService,
     val playbackSettingsRepository: PlaybackSettingsRepository,
@@ -937,7 +937,7 @@ private fun MovieDetailRoute(
                 }
             }
         },
-        onToggleFavorite = viewModel::toggleFavorite,
+        onToggleFavorite = viewModel::toggleWatchlist,
         onMovieClick = movieRecommendationClickHandler { route -> navController.navigate(route) },
         onRetry = viewModel::retry
     )
@@ -956,7 +956,7 @@ private fun SeriesDetailRoute(
     SeriesDetailScreen(
         uiState = uiState,
         onBackClick = { navController.popBackStack() },
-        onToggleFavorite = viewModel::toggleFavorite,
+        onToggleFavorite = viewModel::toggleWatchlist,
         onWatchClick = { episode ->
             val series = uiState.series
             val credentials = dependencies.credentialsRepository.getCredentials()
@@ -1589,19 +1589,19 @@ private fun filterHiddenCategories(
 }
 
 /**
- * Creates special categories. Fixed order: favorites, in-progress, recommended, new.
+ * Creates special categories. Fixed order: watchlist, in-progress, recommended, new.
  */
 internal fun createSpecialCategories(
     destination: HomeDestination,
     sortedCategories: List<Category>,
-    favoritesCategoryName: String,
+    watchlistCategoryName: String,
     newCategoryName: String,
     inProgressCategoryName: String,
     recommendedCategoryName: String
 ): List<Category> {
     if (!destination.supportsCategories()) return sortedCategories
 
-    val favoritesCategory = Category(FAVORITES_CATEGORY_ID, favoritesCategoryName, 0)
+    val favoritesCategory = Category(WATCHLIST_CATEGORY_ID, watchlistCategoryName, 0)
     val newCategory = Category(NEW_CATEGORY_ID, newCategoryName, 0)
 
     return if (destination.supportsInProgress()) {
@@ -1629,13 +1629,13 @@ private fun useCategoryManagement(
     val filteredCategories = filterHiddenCategories(rawCategories, categoryType, hiddenCategories)
     val sortedCategories = filteredCategories.sortedBy { it.categoryName }
 
-    val favoritesCategoryName = stringResource(R.string.watchlist)
+    val watchlistCategoryName = stringResource(R.string.watchlist)
     val newCategoryName = stringResource(R.string.new_category)
     val inProgressCategoryName = stringResource(R.string.in_progress_category)
     val recommendedCategoryName = stringResource(R.string.recommended_for_you)
 
-    val categoriesWithSpecial = remember(sortedCategories, selectedDestination, favoritesCategoryName, newCategoryName, inProgressCategoryName, recommendedCategoryName) {
-        createSpecialCategories(selectedDestination, sortedCategories, favoritesCategoryName, newCategoryName, inProgressCategoryName, recommendedCategoryName)
+    val categoriesWithSpecial = remember(sortedCategories, selectedDestination, watchlistCategoryName, newCategoryName, inProgressCategoryName, recommendedCategoryName) {
+        createSpecialCategories(selectedDestination, sortedCategories, watchlistCategoryName, newCategoryName, inProgressCategoryName, recommendedCategoryName)
     }
 
     return CategoryManagementResult(
