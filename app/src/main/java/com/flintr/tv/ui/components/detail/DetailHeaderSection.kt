@@ -387,7 +387,7 @@ private fun DetailActionButtonRow(
 
         DetailWatchlistButton(
             isInWatchlist = data.isInWatchlist,
-            testTag = "$testTagPrefix-favorite",
+            testTag = "$testTagPrefix-watchlist",
             focusRequester = watchlistFocusRequester,
             onLeft = {
                 requestButtonFocus(watchlistIndex - 1)
@@ -659,7 +659,7 @@ private fun DetailWatchlistButton(
     ) {
         Icon(
             imageVector = if (isInWatchlist) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-            contentDescription = if (isInWatchlist) "Favorit" else "Zu Favoriten",
+            contentDescription = if (isInWatchlist) "Watchlist" else "Zur Watchlist",
             tint = Color.White,
             modifier = Modifier.size(Dimensions.iconSizeMD)
         )

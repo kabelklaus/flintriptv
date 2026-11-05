@@ -24,7 +24,7 @@ class PopupMenuTest {
     @get:Rule
     val composeTestRule = createComposeRule()
 
-    private val options = listOf("Als gesehen markieren", "Zu Favoriten", "Abbrechen")
+    private val options = listOf("Als gesehen markieren", "Zur Watchlist hinzufügen", "Abbrechen")
 
     private fun setMenu(
         isOpen: Boolean = true,
@@ -73,7 +73,7 @@ class PopupMenuTest {
         composeTestRule.mainClock.advanceTimeBy(600L)
         composeTestRule.waitForIdle()
 
-        composeTestRule.onNodeWithText("Zu Favoriten").performClick()
+        composeTestRule.onNodeWithText("Zur Watchlist hinzufügen").performClick()
 
         assertEquals(1, selectedIndex)
         assertTrue(dismissed)

@@ -806,7 +806,7 @@ private fun WatchlistBadge(
         ) {
             Icon(
                 imageVector = Icons.Default.Star,
-                contentDescription = "Favorit",
+                contentDescription = "Watchlist",
                 modifier = Modifier.size(Dimensions.contentCardRatingIconSize),
                 tint = SharedColors.contentCardRatingIconColor
             )

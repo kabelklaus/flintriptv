@@ -77,7 +77,7 @@ class MovieDetailButtonsTest {
         var toggles = 0
         setContent(onToggleWatchlist = { toggles++ })
 
-        composeTestRule.onNodeWithTag("movie-detail-favorite").performClick()
+        composeTestRule.onNodeWithTag("movie-detail-watchlist").performClick()
 
         assertEquals(1, toggles)
     }
@@ -86,8 +86,8 @@ class MovieDetailButtonsTest {
     fun watchlistLabelZeigtAktivenZustand() {
         setContent(isInWatchlist = true)
 
-        composeTestRule.onNodeWithTag("movie-detail-favorite")
-            .assertContentDescriptionEquals("Favorit")
+        composeTestRule.onNodeWithTag("movie-detail-watchlist")
+            .assertContentDescriptionEquals("Watchlist")
     }
 
     @Test

@@ -260,7 +260,7 @@ private fun SettingsMainScreen(
         item {
                 SettingsCategoryCard(
                     title = "Freunde",
-                    subtitle = "Benutzernamen hinzufügen und Favoriten teilen",
+                    subtitle = "Benutzernamen hinzufügen und Watchlist teilen",
                     icon = Icons.Default.Group,
                     onClick = {
                         Log.i("SettingsNav", "➡️ NAVIGATE: SettingsMainScreen -> SettingsFriends")

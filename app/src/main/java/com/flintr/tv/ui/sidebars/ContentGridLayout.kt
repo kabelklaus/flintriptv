@@ -98,7 +98,7 @@ data class ContentGridLayoutParams<T>(
     val contentIdSelector: ((T) -> String)? = null,
     val focusRequesterMap: MutableMap<String, FocusRequester>? = null,
     val onItemsRendered: (() -> Unit)? = null,
-    /** Shown when [items] is empty and there is no [errorMessage] (e.g. "Noch keine Favoriten"). */
+    /** Shown when [items] is empty and there is no [errorMessage] (e.g. "Noch keine Watchlist-Einträge"). */
     val emptyStateText: String = "Keine Inhalte geladen",
     /** Overrides [emptyStateText] and switches the empty state to its error styling. */
     val errorMessage: String? = null,

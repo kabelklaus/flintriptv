@@ -113,7 +113,7 @@ class WatchlistRepository @Inject constructor(
                 },
                 onFailure = { exception ->
                     reportError(TAG, "Failed to load favorites from Firestore", exception)
-                    _loadError.value = "Fehler beim Laden der Favoriten"
+                    _loadError.value = "Fehler beim Laden der Watchlist"
                     // Keep current state or use empty list
                     if (_entries.value.isEmpty()) {
                         Log.e(TAG, "State is empty after failed Firestore load - user data may be unavailable")

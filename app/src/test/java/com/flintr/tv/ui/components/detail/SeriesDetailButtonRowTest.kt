@@ -69,14 +69,14 @@ class SeriesDetailButtonRowTest {
 
         val watchBounds = composeTestRule.onNodeWithTag("detail-watch").getUnclippedBoundsInRoot()
         val trailerBounds = composeTestRule.onNodeWithTag("detail-trailer").getUnclippedBoundsInRoot()
-        val watchlistBounds = composeTestRule.onNodeWithTag("detail-favorite").getUnclippedBoundsInRoot()
+        val watchlistBounds = composeTestRule.onNodeWithTag("detail-watchlist").getUnclippedBoundsInRoot()
 
         assertTrue(
             "Watch/Trailer sind nicht mehr in einer Reihe: watchTop=${watchBounds.top} trailerTop=${trailerBounds.top}",
             watchBounds.top == trailerBounds.top
         )
         assertTrue(
-            "Trailer/Favorit sind nicht mehr in einer Reihe: trailerTop=${trailerBounds.top} favoriteTop=${watchlistBounds.top}",
+            "Trailer/Watchlist sind nicht mehr in einer Reihe: trailerTop=${trailerBounds.top} watchlistTop=${watchlistBounds.top}",
             trailerBounds.top == watchlistBounds.top
         )
         assertTrue(
@@ -105,7 +105,7 @@ class SeriesDetailButtonRowTest {
     fun watchlistButton_wirdAuchOhneTrailerImmerGerendert() {
         header(trailerAvailable = false)
 
-        composeTestRule.onNodeWithTag("detail-favorite").assertExists()
+        composeTestRule.onNodeWithTag("detail-watchlist").assertExists()
         composeTestRule.onNodeWithTag("detail-trailer").assertDoesNotExist()
     }
 

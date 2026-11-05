@@ -311,7 +311,7 @@ fun WatchlistContent(
             },
             // Not an error state — an empty watchlist is expected, so it must not
             // read like ContentGridLayout's default "failed to load" message.
-            emptyStateText = "Noch keine Favoriten",
+            emptyStateText = "Noch keine Watchlist-Einträge",
             errorMessage = loadError,
             // Only offer retry for an actual load error, not for a legitimately empty list.
             onRetry = loadError?.let { { retryTrigger++ } }

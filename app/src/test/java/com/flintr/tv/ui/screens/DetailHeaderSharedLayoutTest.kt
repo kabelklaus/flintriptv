@@ -140,7 +140,7 @@ class DetailHeaderSharedLayoutTest {
         val genres = tree.indexOf("$prefix-genres")
         val overview = tree.indexOf("$prefix-overview")
         val watch = tree.indexOf("$prefix-watch")
-        val watchlist = tree.indexOf("$prefix-favorite")
+        val watchlist = tree.indexOf("$prefix-watchlist")
 
         assertTrue("$prefix-poster fehlt", poster >= 0)
         assertTrue("$prefix-title fehlt", title >= 0)
@@ -148,14 +148,14 @@ class DetailHeaderSharedLayoutTest {
         assertTrue("$prefix-genres fehlt", genres >= 0)
         assertTrue("$prefix-overview fehlt", overview >= 0)
         assertTrue("$prefix-watch fehlt", watch >= 0)
-        assertTrue("$prefix-favorite fehlt", watchlist >= 0)
+        assertTrue("$prefix-watchlist fehlt", watchlist >= 0)
 
         assertTrue("Poster muss vor Titel stehen ($prefix)", poster < title)
         assertTrue("Titel muss vor Rating stehen ($prefix)", title < rating)
         assertTrue("Rating muss vor Genres stehen ($prefix)", rating < genres)
         assertTrue("Genres muessen vor Overview stehen ($prefix)", genres < overview)
         assertTrue("Overview muss vor Ansehen stehen ($prefix)", overview < watch)
-        assertTrue("Ansehen muss vor Favorit stehen ($prefix)", watch < watchlist)
+        assertTrue("Ansehen muss vor Watchlist stehen ($prefix)", watch < watchlist)
     }
 
     @OptIn(ExperimentalTestApi::class)
