@@ -76,8 +76,8 @@ internal suspend fun toggleWatchlistEntry(
 ): Boolean? {
     val existing = findExisting()
     return if (existing != null) {
-        if (watchlistRepository.removeFromWatchlist(existing.id)) false else null
+        false.takeIf { watchlistRepository.removeFromWatchlist(existing.id) }
     } else {
-        if (watchlistRepository.addToWatchlist(buildEntry())) true else null
+        true.takeIf { watchlistRepository.addToWatchlist(buildEntry()) }
     }
 }
