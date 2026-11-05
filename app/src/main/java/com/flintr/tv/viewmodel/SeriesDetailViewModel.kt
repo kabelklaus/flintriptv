@@ -68,7 +68,7 @@ data class SeriesDetailUiState(
     val detail: DetailDisplayData? = null,
     val series: Series? = null,
     val seasons: List<SeasonUiModel> = emptyList(),
-    val isFavorite: Boolean = false,
+    val isInWatchlist: Boolean = false,
     val seasonsHint: String? = null,
     val recommendations: List<Series> = emptyList(),
     val watchTarget: WatchTargetUiModel? = null,
@@ -79,7 +79,7 @@ data class SeriesDetailUiState(
 
 /**
  * Loads a series' detail metadata (get_series_info), aggregates its seasons with watched counts
- * and resolves favorite state.
+ * and resolves watchlist state.
  *
  * Genre/rating are IMDb-only, exactly like MovieDetail: without an enrichment match both stay
  * null and the UI hides them; the Xtream `genre`/`rating` strings are never used as a fallback.
@@ -223,7 +223,7 @@ class SeriesDetailViewModel @Inject constructor(
             detail = baseDetail,
             series = loadedSeries,
             seasons = seasons,
-            isFavorite = findWatchlistEntry() != null,
+            isInWatchlist = findWatchlistEntry() != null,
             seasonsHint = if (seasons.isEmpty()) NO_SEASONS_HINT else null,
             recommendations = emptyList(),
             watchTarget = watchTarget,
@@ -250,11 +250,11 @@ class SeriesDetailViewModel @Inject constructor(
             val existing = findWatchlistEntry()
             if (existing != null) {
                 if (watchlistRepository.removeFromWatchlist(existing.id)) {
-                    _uiState.update { it.copy(isFavorite = false) }
+                    _uiState.update { it.copy(isInWatchlist = false) }
                 }
             } else {
                 if (watchlistRepository.addToWatchlist(series.toWatchlistEntry())) {
-                    _uiState.update { it.copy(isFavorite = true) }
+                    _uiState.update { it.copy(isInWatchlist = true) }
                 }
             }
         }

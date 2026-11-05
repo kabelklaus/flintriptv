@@ -39,7 +39,7 @@ class WatchlistRepository @Inject constructor(
     )
 
     companion object {
-        private const val KEY_FAVORITES = "iptv_favorites"
+        private const val KEY_WATCHLIST = "iptv_favorites"
         private const val KEY_MIGRATION_COMPLETE = "favorites_migrated"
         private const val TAG = "FavoritesRepository"
     }
@@ -47,8 +47,8 @@ class WatchlistRepository @Inject constructor(
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // StateFlow for reactive state management
-    private val _favorites = MutableStateFlow<List<WatchlistEntry>>(emptyList())
-    val favorites: StateFlow<List<WatchlistEntry>> = _favorites.asStateFlow()
+    private val _entries = MutableStateFlow<List<WatchlistEntry>>(emptyList())
+    val entries: StateFlow<List<WatchlistEntry>> = _entries.asStateFlow()
 
     // Non-null after a failed/timed-out Firestore load; cleared on the next successful load.
     // Consumed by WatchlistContent to show an error+retry state instead of a silent empty list.
@@ -75,7 +75,7 @@ class WatchlistRepository @Inject constructor(
                     loadFromFirestore()
                 } else {
                     // Clear state when logged out
-                    _favorites.value = emptyList()
+                    _entries.value = emptyList()
                     _loadError.value = null
                     Log.d(TAG, "Credentials cleared, resetting favorites")
                 }
@@ -84,7 +84,7 @@ class WatchlistRepository @Inject constructor(
     }
 
     /**
-     * Loads favorites from Firestore and performs migration if needed.
+     * Loads watchlist entries from Firestore and performs migration if needed.
      * Uses mutex to prevent concurrent loads.
      */
     private suspend fun loadFromFirestore() {
@@ -92,7 +92,7 @@ class WatchlistRepository @Inject constructor(
             val username = credentialsRepository.getCredentials()?.username
             if (username.isNullOrBlank()) {
                 Log.d(TAG, "No username available, skipping Firestore load due to missing credentials")
-                _favorites.value = emptyList()
+                _entries.value = emptyList()
                 return
             }
 
@@ -103,21 +103,21 @@ class WatchlistRepository @Inject constructor(
             }
 
             // Load from Firestore
-            val result = userRepository.loadFavorites(username)
+            val result = userRepository.loadWatchlist(username)
             result.fold(
-                onSuccess = { favorites ->
-                    _favorites.value = favorites
+                onSuccess = { loadedEntries ->
+                    _entries.value = loadedEntries
                     _loadError.value = null
                     syncManager.updateLastSyncTimestamp()
-                    Log.d(TAG, "Loaded favorites from Firestore: ${favorites.size} total")
+                    Log.d(TAG, "Loaded favorites from Firestore: ${loadedEntries.size} total")
                 },
                 onFailure = { exception ->
                     reportError(TAG, "Failed to load favorites from Firestore", exception)
                     _loadError.value = "Fehler beim Laden der Favoriten"
                     // Keep current state or use empty list
-                    if (_favorites.value.isEmpty()) {
+                    if (_entries.value.isEmpty()) {
                         Log.e(TAG, "State is empty after failed Firestore load - user data may be unavailable")
-                        _favorites.value = emptyList()
+                        _entries.value = emptyList()
                     }
                 }
             )
@@ -125,7 +125,7 @@ class WatchlistRepository @Inject constructor(
     }
 
     /**
-     * Synchronizes favorites from Firestore if enough time has passed since last sync.
+     * Synchronizes the watchlist from Firestore if enough time has passed since last sync.
      * This prevents excessive Firestore reads when users switch tabs quickly.
      *
      * @return true if sync was performed, false if skipped due to cooldown
@@ -137,7 +137,7 @@ class WatchlistRepository @Inject constructor(
     }
 
     /**
-     * Retries loading favorites from Firestore, bypassing the sync cooldown.
+     * Retries loading the watchlist from Firestore, bypassing the sync cooldown.
      * Used by the UI's explicit retry action after a failed/timed-out load.
      */
     suspend fun retryLoadFromFirestore() {
@@ -151,25 +151,25 @@ class WatchlistRepository @Inject constructor(
      */
     private suspend fun performMigration(username: String) {
         Log.d(TAG, "Starting favorites migration from local storage to Firestore")
-        
+
         try {
             // Load old data from SharedPreferences
             val localData = loadLocalData()
-            
+
             if (localData.isNotEmpty()) {
                 // Migrate to Firestore
-                val migrationResult = userRepository.migrateFavoritesFromLocal(username, localData)
-                
+                val migrationResult = userRepository.migrateWatchlistFromLocal(username, localData)
+
                 migrationResult.fold(
                     onSuccess = {
                         // Mark migration as complete
                         migrationPrefs.edit {
                             putBoolean(KEY_MIGRATION_COMPLETE, true)
                         }
-                        
+
                         // Clear old local data
                         clearLocalData()
-                        
+
                         Log.d(TAG, "Migration completed successfully")
                     },
                     onFailure = { exception ->
@@ -195,7 +195,7 @@ class WatchlistRepository @Inject constructor(
      */
     private fun loadLocalData(): List<WatchlistEntry> {
         return try {
-            val json = migrationPrefs.getString(KEY_FAVORITES, null)
+            val json = migrationPrefs.getString(KEY_WATCHLIST, null)
             if (json.isNullOrBlank()) {
                 emptyList()
             } else {
@@ -213,7 +213,7 @@ class WatchlistRepository @Inject constructor(
     private fun clearLocalData() {
         try {
             migrationPrefs.edit {
-                remove(KEY_FAVORITES)
+                remove(KEY_WATCHLIST)
             }
             Log.d(TAG, "Cleared old local data after migration")
         } catch (e: Exception) {
@@ -222,9 +222,9 @@ class WatchlistRepository @Inject constructor(
     }
 
     /**
-     * Saves favorites to Firestore asynchronously.
+     * Saves watchlist entries to Firestore asynchronously.
      */
-    private fun saveToFirestore(favorites: List<WatchlistEntry>) {
+    private fun saveToFirestore(entriesToSave: List<WatchlistEntry>) {
         val username = credentialsRepository.getCredentials()?.username
         if (username.isNullOrBlank()) {
             Log.w(TAG, "Cannot save to Firestore: no username available")
@@ -232,7 +232,7 @@ class WatchlistRepository @Inject constructor(
         }
 
         serviceScope.launch {
-            val result = userRepository.saveFavorites(username, favorites)
+            val result = userRepository.saveWatchlist(username, entriesToSave)
             result.fold(
                 onSuccess = {
                     Log.d(TAG, "Successfully saved favorites to Firestore")
@@ -247,30 +247,30 @@ class WatchlistRepository @Inject constructor(
     }
 
     /**
-     * Get all favorites from StateFlow.
+     * Get all watchlist entries from StateFlow.
      */
     fun getAllWatchlistEntries(): List<WatchlistEntry> {
-        return _favorites.value
+        return _entries.value
     }
 
     /**
-     * Add a favorite.
+     * Add a watchlist entry.
      * Uses optimistic updates: updates local state immediately and syncs atomically with Firestore.
      * Works offline thanks to Firestore offline persistence.
-     * @return true if favorite was added, false if it already exists
+     * @return true if the entry was added, false if it already exists
      */
-    suspend fun addToWatchlist(favorite: WatchlistEntry): Boolean {
+    suspend fun addToWatchlist(entry: WatchlistEntry): Boolean {
         // Optimistic update: Update local state immediately (locked to prevent lost updates)
         val added = updateMutex.withLock {
-            val currentFavorites = _favorites.value.toMutableList()
+            val currentEntries = _entries.value.toMutableList()
 
-            // Check if favorite already exists locally
-            if (currentFavorites.any { it.id == favorite.id }) {
-                Log.d(TAG, "Favorite with id ${favorite.id} already exists locally")
+            // Check if the entry already exists locally
+            if (currentEntries.any { it.id == entry.id }) {
+                Log.d(TAG, "Favorite with id ${entry.id} already exists locally")
                 false
             } else {
-                currentFavorites.add(favorite)
-                _favorites.value = currentFavorites
+                currentEntries.add(entry)
+                _entries.value = currentEntries
                 true
             }
         }
@@ -279,31 +279,31 @@ class WatchlistRepository @Inject constructor(
             // Try to sync atomically with Firestore (works offline with Firestore persistence)
             val username = credentialsRepository.getCredentials()?.username
             if (!username.isNullOrBlank()) {
-                val result = userRepository.addToWatchlistAtomically(username, favorite)
+                val result = userRepository.addToWatchlistAtomically(username, entry)
                 if (result.isFailure) {
                     Log.w(TAG, "Failed to sync favorite to Firestore, will retry on next sync: ${result.exceptionOrNull()}")
                     // Don't revert local change - Firestore offline persistence will handle it
                 }
             }
 
-            Log.d(TAG, "Favorite added: id=${favorite.id}, type=${favorite.type}")
+            Log.d(TAG, "Favorite added: id=${entry.id}, type=${entry.type}")
         }
         return added
     }
 
     /**
-     * Remove a favorite.
+     * Remove a watchlist entry.
      * Uses optimistic updates: updates local state immediately and syncs atomically with Firestore.
      * Works offline thanks to Firestore offline persistence.
-     * @return true if favorite was removed, false if it was not found
+     * @return true if the entry was removed, false if it was not found
      */
-    suspend fun removeFromWatchlist(favoriteId: String): Boolean {
+    suspend fun removeFromWatchlist(entryId: String): Boolean {
         // Optimistic update (locked to prevent lost updates)
         val removed = updateMutex.withLock {
-            val currentFavorites = _favorites.value.toMutableList()
-            val didRemove = currentFavorites.removeAll { it.id == favoriteId }
+            val currentEntries = _entries.value.toMutableList()
+            val didRemove = currentEntries.removeAll { it.id == entryId }
             if (didRemove) {
-                _favorites.value = currentFavorites
+                _entries.value = currentEntries
             }
             didRemove
         }
@@ -312,26 +312,26 @@ class WatchlistRepository @Inject constructor(
             // Try to sync atomically
             val username = credentialsRepository.getCredentials()?.username
             if (!username.isNullOrBlank()) {
-                val result = userRepository.removeFromWatchlistAtomically(username, favoriteId)
+                val result = userRepository.removeFromWatchlistAtomically(username, entryId)
                 if (result.isFailure) {
                     Log.w(TAG, "Failed to sync favorite removal to Firestore, will retry on next sync")
                 }
             }
-            
-            Log.d(TAG, "Favorite removed: id=$favoriteId")
+
+            Log.d(TAG, "Favorite removed: id=$entryId")
         }
         return removed
     }
 
     /**
-     * Check if an item is a favorite.
+     * Check if an item is in the watchlist.
      */
-    fun isInWatchlist(favoriteId: String): Boolean {
-        return _favorites.value.any { it.id == favoriteId }
+    fun isInWatchlist(entryId: String): Boolean {
+        return _entries.value.any { it.id == entryId }
     }
 
     /**
-     * Clear all favorites.
+     * Clear the whole watchlist.
      */
     suspend fun clearWatchlist() {
         // 1. First synchronize to get latest data from Firestore
@@ -343,22 +343,22 @@ class WatchlistRepository @Inject constructor(
         }
 
         // 2. Clear state and save to Firestore
-        _favorites.value = emptyList()
+        _entries.value = emptyList()
         saveToFirestore(emptyList())
         Log.d(TAG, "All favorites cleared")
     }
 
     /**
-     * Get favorites by type.
+     * Get watchlist entries by type.
      */
     fun getWatchlistEntriesByType(type: WatchlistEntryType): List<WatchlistEntry> {
-        return _favorites.value.filter { it.type == type }
+        return _entries.value.filter { it.type == type }
     }
 
     /**
-     * Get favorite count by type.
+     * Get watchlist entry count by type.
      */
     fun getWatchlistCountByType(type: WatchlistEntryType): Int {
-        return _favorites.value.count { it.type == type }
+        return _entries.value.count { it.type == type }
     }
 }

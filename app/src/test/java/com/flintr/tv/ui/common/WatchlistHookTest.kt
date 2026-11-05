@@ -18,14 +18,14 @@ class WatchlistHookTest {
     }
 
     @Test
-    fun `filter favorites by type keeps only matching items`() {
-        val favorites = listOf(
-            favorite("live_1", WatchlistEntryType.LIVE, 1),
-            favorite("movie_2", WatchlistEntryType.MOVIE, 2),
-            favorite("series_3", WatchlistEntryType.SERIES, 3)
+    fun `filter watchlist by type keeps only matching items`() {
+        val entries = listOf(
+            entry("live_1", WatchlistEntryType.LIVE, 1),
+            entry("movie_2", WatchlistEntryType.MOVIE, 2),
+            entry("series_3", WatchlistEntryType.SERIES, 3)
         )
 
-        val filtered = filterFavoritesByType(favorites, WatchlistEntryType.MOVIE)
+        val filtered = filterWatchlistByType(entries,WatchlistEntryType.MOVIE)
 
         assertEquals(1, filtered.size)
         assertEquals("movie_2", filtered.first().id)
@@ -46,10 +46,10 @@ class WatchlistHookTest {
         assertFalse(combined[2].source.isOwn)
         assertEquals("Th", combined[2].source.badge)
         assertEquals("An", combined[3].source.badge)
-        assertFalse(combined[2].allowFavoriteActions)
+        assertFalse(combined[2].allowWatchlistActions)
     }
 
-    private fun favorite(
+    private fun entry(
         id: String,
         type: WatchlistEntryType,
         streamId: Int

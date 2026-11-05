@@ -41,7 +41,7 @@ data class Series(
     @Json(name = "seasons")
     val seasons: List<Season>?
 ) {
-    fun toFavoriteId(): String {
+    fun toWatchlistEntryId(): String {
         val encodedName = URLEncoder.encode(name, "UTF-8")
         return "series:$seriesId:$encodedName"
     }
@@ -50,7 +50,7 @@ data class Series(
         val metadataWithCover = metadata?.toMutableMap() ?: mutableMapOf()
         cover?.let { metadataWithCover["cover"] = it }
         return WatchlistEntry.create(
-            id = toFavoriteId(),
+            id = toWatchlistEntryId(),
             type = WatchlistEntryType.SERIES,
             streamId = seriesId,
             name = name,

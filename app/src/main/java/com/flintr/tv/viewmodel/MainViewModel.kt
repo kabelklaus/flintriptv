@@ -328,10 +328,10 @@ class MainViewModel @Inject constructor(
     }
 
     /**
-     * Shows a series from favorites by loading its info and the series list for its category.
+     * Shows a series from the watchlist by loading its info and the series list for its category.
      * Returns the categoryId that should be selected in the UI, or null if the category was not found.
      */
-    fun showSeriesFromFavorites(series: Series): String? {
+    fun showSeriesFromWatchlist(series: Series): String? {
         // Load series info to show episodes
         loadSeriesInfo(series.seriesId)
         
@@ -545,7 +545,7 @@ class MainViewModel @Inject constructor(
     /**
      * Reads the currently pending navigation-restore state without consuming it.
      * Used to carry the originating sidebar category (which may be a synthetic
-     * pseudo-category like "Neu"/Favorites that never matches any Series.categoryId)
+     * pseudo-category like "Neu"/Watchlist that never matches any Series.categoryId)
      * across a deeper navigation step (episode -> Player) within the same series,
      * instead of falling back to the series' own backend category.
      */

@@ -58,7 +58,7 @@ data class VodStream(
         return "$baseUrl/movie/$username/$password/$streamId.$extension"
     }
 
-    fun toFavoriteId(): String {
+    fun toWatchlistEntryId(): String {
         val encodedName = URLEncoder.encode(name, "UTF-8")
         return "movie:$streamId:$encodedName"
     }
@@ -68,7 +68,7 @@ data class VodStream(
         cover?.let { metadataWithCover["cover"] = it }
         streamIcon?.let { metadataWithCover["streamIcon"] = it }
         return WatchlistEntry.create(
-            id = toFavoriteId(),
+            id = toWatchlistEntryId(),
             type = WatchlistEntryType.MOVIE,
             streamId = streamId,
             name = name,

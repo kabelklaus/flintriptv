@@ -383,7 +383,7 @@ private fun com.flintr.tv.data.model.DestinationType.toHomeDestination(): HomeDe
         com.flintr.tv.data.model.DestinationType.VOD -> HomeDestination.VOD
         com.flintr.tv.data.model.DestinationType.SERIES -> HomeDestination.Series
         com.flintr.tv.data.model.DestinationType.UNKNOWN -> HomeDestination.LiveTV // Default fallback
-        else -> HomeDestination.LiveTV // Default fallback for FAVORITES and other types
+        else -> HomeDestination.LiveTV // Default fallback for WATCHLIST and other types
     }
 }
 
@@ -892,7 +892,7 @@ fun AppNavigation(
  *
  * The saved [pendingNavigationState] (from entering this series via the Series tab) reflects
  * the sidebar category the user actually had selected, which may be a synthetic pseudo-category
- * ("Neu"/Favorites) that never matches [seriesCategoryId] (the series' own backend category).
+ * ("Neu"/Watchlist) that never matches [seriesCategoryId] (the series' own backend category).
  * Falling back to [seriesCategoryId] only when no pending state exists (e.g. entering via search
  * or a deep link, which don't save one) avoids restoreCategory() silently switching the sidebar
  * selection away from a pseudo-category on return - see bugfix-series-empty-report.md.
@@ -1601,15 +1601,15 @@ internal fun createSpecialCategories(
 ): List<Category> {
     if (!destination.supportsCategories()) return sortedCategories
 
-    val favoritesCategory = Category(WATCHLIST_CATEGORY_ID, watchlistCategoryName, 0)
+    val watchlistCategory = Category(WATCHLIST_CATEGORY_ID, watchlistCategoryName, 0)
     val newCategory = Category(NEW_CATEGORY_ID, newCategoryName, 0)
 
     return if (destination.supportsInProgress()) {
         val recommendedCategory = Category(RECOMMENDED_CATEGORY_ID, recommendedCategoryName, 0)
         val inProgressCategory = Category(IN_PROGRESS_CATEGORY_ID, inProgressCategoryName, 0)
-        listOf(favoritesCategory, inProgressCategory, recommendedCategory, newCategory) + sortedCategories
+        listOf(watchlistCategory, inProgressCategory, recommendedCategory, newCategory) + sortedCategories
     } else {
-        listOf(favoritesCategory, newCategory) + sortedCategories
+        listOf(watchlistCategory, newCategory) + sortedCategories
     }
 }
 

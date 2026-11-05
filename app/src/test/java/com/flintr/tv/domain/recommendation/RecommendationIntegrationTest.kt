@@ -85,14 +85,14 @@ class RecommendationIntegrationTest {
 
     @Test
     fun `genre matched merged-cache movies outrank a higher-rated genre-foreign movie`() {
-        // Signals come from real favorites, resolved through UserContentProfile.build, not a
+        // Signals come from real watchlist entries, resolved through UserContentProfile.build, not a
         // hand-rolled GenreProfile -- this is the signals-to-profile half of the chain.
         val signalMovies = (901..905).map { testVod(streamId = it, genre = "Drama", name = "Signal$it") }
-        val favorites = (901..905).map {
+        val entries = (901..905).map {
             WatchlistEntry.create(id = "movie:$it", type = WatchlistEntryType.MOVIE, streamId = it, name = "Signal$it")
         }
         val profile = UserContentProfile.build(
-            favorites = favorites,
+            watchlistEntries = entries,
             watchedHistory = emptyMap(),
             watchProgress = emptyMap(),
             ratings = emptyMap(),
@@ -154,11 +154,11 @@ class RecommendationIntegrationTest {
     @Test
     fun `cold start yields empty lists from the full chain regardless of rating quality`() {
         val signalMovies = (801..803).map { testVod(streamId = it, genre = "Drama", name = "Signal$it") }
-        val favorites = (801..803).map {
+        val entries = (801..803).map {
             WatchlistEntry.create(id = "movie:$it", type = WatchlistEntryType.MOVIE, streamId = it, name = "Signal$it")
         }
         val profile = UserContentProfile.build(
-            favorites = favorites,
+            watchlistEntries = entries,
             watchedHistory = emptyMap(),
             watchProgress = emptyMap(),
             ratings = emptyMap(),

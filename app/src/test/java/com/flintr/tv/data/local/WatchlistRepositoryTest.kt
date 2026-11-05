@@ -60,7 +60,7 @@ class WatchlistRepositoryTest {
         )
     }
 
-    private fun favorite(id: String = "movie_1", type: WatchlistEntryType = WatchlistEntryType.MOVIE, streamId: Int = 1) =
+    private fun entry(id: String = "movie_1", type: WatchlistEntryType = WatchlistEntryType.MOVIE, streamId: Int = 1) =
         WatchlistEntry(
             id = id,
             type = type,
@@ -71,8 +71,8 @@ class WatchlistRepositoryTest {
         )
 
     @Test
-    fun `addToWatchlist fuegt neuen Favoriten hinzu und synct atomar`() = runBlocking {
-        assertTrue(repository.addToWatchlist(favorite()))
+    fun `addToWatchlist fuegt neuen Watchlist-Eintrag hinzu und synct atomar`() = runBlocking {
+        assertTrue(repository.addToWatchlist(entry()))
 
         assertTrue(repository.isInWatchlist("movie_1"))
         assertEquals(1, repository.getAllWatchlistEntries().size)
@@ -81,8 +81,8 @@ class WatchlistRepositoryTest {
 
     @Test
     fun `addToWatchlist lehnt Duplikate ab`() = runBlocking {
-        assertTrue(repository.addToWatchlist(favorite()))
-        assertFalse(repository.addToWatchlist(favorite()))
+        assertTrue(repository.addToWatchlist(entry()))
+        assertFalse(repository.addToWatchlist(entry()))
         assertEquals(1, repository.getAllWatchlistEntries().size)
     }
 
@@ -90,12 +90,12 @@ class WatchlistRepositoryTest {
     fun `addToWatchlist bleibt bei Firestore-Fehler optimistisch erfolgreich`() = runBlocking {
         coEvery { userRepository.addToWatchlistAtomically(any(), any()) } coAnswers { Result.failure(Exception("offline")) }
 
-        assertTrue(repository.addToWatchlist(favorite()))
+        assertTrue(repository.addToWatchlist(entry()))
         assertTrue(repository.isInWatchlist("movie_1"))
     }
 
     @Test
-    fun `concurrent favorite mutations do not lose updates`() {
+    fun `concurrent watchlist mutations do not lose updates`() {
         // addToWatchlist hat vor der letzten write-Anweisung keinen Suspension-Point,
         // daher reicht ein virtueller TestDispatcher nicht aus, um die Race zu
         // provozieren (der zweite Coroutine-Block würde nie mit dem ersten
@@ -104,31 +104,31 @@ class WatchlistRepositoryTest {
         // ueber mehrere Runden erhoeht das die Trefferwahrscheinlichkeit fuer die Race.
         repeat(15) { round ->
             val startGate = java.util.concurrent.CyclicBarrier(2)
-            val favA = favorite(id = "movie_a$round", streamId = round * 2)
-            val favB = favorite(id = "movie_b$round", streamId = round * 2 + 1)
+            val entryA = entry(id = "movie_a$round", streamId = round * 2)
+            val entryB = entry(id = "movie_b$round", streamId = round * 2 + 1)
 
             runBlocking {
                 coroutineScope {
                     val jobA = async(Dispatchers.Default) {
                         startGate.await()
-                        repository.addToWatchlist(favA)
+                        repository.addToWatchlist(entryA)
                     }
                     val jobB = async(Dispatchers.Default) {
                         startGate.await()
-                        repository.addToWatchlist(favB)
+                        repository.addToWatchlist(entryB)
                     }
                     awaitAll(jobA, jobB)
                 }
             }
 
-            assertTrue("Runde $round: ${favA.id} fehlt", repository.isInWatchlist(favA.id))
-            assertTrue("Runde $round: ${favB.id} fehlt", repository.isInWatchlist(favB.id))
+            assertTrue("Runde $round: ${entryA.id} fehlt", repository.isInWatchlist(entryA.id))
+            assertTrue("Runde $round: ${entryB.id} fehlt", repository.isInWatchlist(entryB.id))
         }
     }
 
     @Test
-    fun `removeFromWatchlist entfernt vorhandenen Favoriten`() = runBlocking {
-        repository.addToWatchlist(favorite())
+    fun `removeFromWatchlist entfernt vorhandenen Watchlist-Eintrag`() = runBlocking {
+        repository.addToWatchlist(entry())
 
         assertTrue(repository.removeFromWatchlist("movie_1"))
         assertFalse(repository.isInWatchlist("movie_1"))
@@ -142,10 +142,10 @@ class WatchlistRepositoryTest {
     }
 
     @Test
-    fun `getFavoritesByType und Zaehler filtern korrekt`() = runBlocking {
-        repository.addToWatchlist(favorite(id = "movie_1", type = WatchlistEntryType.MOVIE, streamId = 1))
-        repository.addToWatchlist(favorite(id = "live_2", type = WatchlistEntryType.LIVE, streamId = 2))
-        repository.addToWatchlist(favorite(id = "movie_3", type = WatchlistEntryType.MOVIE, streamId = 3))
+    fun `getWatchlistEntriesByType und Zaehler filtern korrekt`() = runBlocking {
+        repository.addToWatchlist(entry(id = "movie_1", type = WatchlistEntryType.MOVIE, streamId = 1))
+        repository.addToWatchlist(entry(id = "live_2", type = WatchlistEntryType.LIVE, streamId = 2))
+        repository.addToWatchlist(entry(id = "movie_3", type = WatchlistEntryType.MOVIE, streamId = 3))
 
         assertEquals(listOf("movie_1", "movie_3"), repository.getWatchlistEntriesByType(WatchlistEntryType.MOVIE).map { it.id })
         assertEquals(2, repository.getWatchlistCountByType(WatchlistEntryType.MOVIE))
@@ -154,8 +154,8 @@ class WatchlistRepositoryTest {
     }
 
     @Test
-    fun `syncIfNeeded laedt Favoriten von Firestore`() = runBlocking {
-        coEvery { userRepository.loadFavorites("chris") } coAnswers { Result.success(listOf(favorite())) }
+    fun `syncIfNeeded laedt Watchlist von Firestore`() = runBlocking {
+        coEvery { userRepository.loadWatchlist("chris") } coAnswers { Result.success(listOf(entry())) }
 
         assertTrue(repository.syncIfNeeded())
         assertTrue(repository.isInWatchlist("movie_1"))
@@ -163,25 +163,25 @@ class WatchlistRepositoryTest {
 
     @Test
     fun `fehlgeschlagenes Laden laesst Liste leer`() = runBlocking {
-        coEvery { userRepository.loadFavorites("chris") } coAnswers { Result.failure(Exception("offline")) }
+        coEvery { userRepository.loadWatchlist("chris") } coAnswers { Result.failure(Exception("offline")) }
 
         assertTrue(repository.syncIfNeeded())
         assertTrue(repository.getAllWatchlistEntries().isEmpty())
     }
 
     @Test
-    fun `clearAllFavorites leert Liste und speichert nach Firestore`() = runBlocking {
-        coEvery { userRepository.loadFavorites("chris") } coAnswers { Result.success(listOf(favorite())) }
-        coEvery { userRepository.saveFavorites("chris", emptyList()) } returns Result.success(Unit)
+    fun `clearWatchlist leert Liste und speichert nach Firestore`() = runBlocking {
+        coEvery { userRepository.loadWatchlist("chris") } coAnswers { Result.success(listOf(entry())) }
+        coEvery { userRepository.saveWatchlist("chris", emptyList()) } returns Result.success(Unit)
 
         repository.clearWatchlist()
 
         assertTrue(repository.getAllWatchlistEntries().isEmpty())
-        coVerify(timeout = 2_000) { userRepository.saveFavorites("chris", emptyList()) }
+        coVerify(timeout = 2_000) { userRepository.saveWatchlist("chris", emptyList()) }
     }
 
     @Test
-    fun `Migration uebertraegt lokale Favoriten und setzt Flag`() = runBlocking {
+    fun `Migration uebertraegt lokale Watchlist-Eintraege und setzt Flag`() = runBlocking {
         val prefs = context.getSharedPreferences("favorites_prefs", Context.MODE_PRIVATE)
         prefs.edit {
             putBoolean("favorites_migrated", false)
@@ -190,13 +190,13 @@ class WatchlistRepositoryTest {
                 """[{"id":"movie_7","type":"movie","streamId":7,"name":"Alt","addedAt":"2026-07-16T10:00:00Z"}]"""
             )
         }
-        coEvery { userRepository.migrateFavoritesFromLocal("chris", any()) } coAnswers { Result.success(Unit) }
-        coEvery { userRepository.loadFavorites("chris") } coAnswers { Result.success(emptyList()) }
+        coEvery { userRepository.migrateWatchlistFromLocal("chris", any()) } coAnswers { Result.success(Unit) }
+        coEvery { userRepository.loadWatchlist("chris") } coAnswers { Result.success(emptyList()) }
 
         assertTrue(repository.syncIfNeeded())
 
         coVerify {
-            userRepository.migrateFavoritesFromLocal("chris", match { it.size == 1 && it.first().id == "movie_7" })
+            userRepository.migrateWatchlistFromLocal("chris", match { it.size == 1 && it.first().id == "movie_7" })
         }
         assertTrue(prefs.getBoolean("favorites_migrated", false))
         assertNull(prefs.getString("iptv_favorites", null))
@@ -212,8 +212,8 @@ class WatchlistRepositoryTest {
                 """[{"id":"movie_7","type":"movie","streamId":7,"name":"Alt","addedAt":"2026-07-16T10:00:00Z"}]"""
             )
         }
-        coEvery { userRepository.migrateFavoritesFromLocal("chris", any()) } coAnswers { Result.failure(Exception("offline")) }
-        coEvery { userRepository.loadFavorites("chris") } coAnswers { Result.success(emptyList()) }
+        coEvery { userRepository.migrateWatchlistFromLocal("chris", any()) } coAnswers { Result.failure(Exception("offline")) }
+        coEvery { userRepository.loadWatchlist("chris") } coAnswers { Result.success(emptyList()) }
 
         assertTrue(repository.syncIfNeeded())
 

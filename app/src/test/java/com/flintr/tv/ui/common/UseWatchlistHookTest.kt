@@ -41,7 +41,7 @@ class UseWatchlistHookTest {
     private lateinit var credentialsRepository: CredentialsRepository
     private lateinit var cacheService: DataCacheService
 
-    private val ownFavorites = MutableStateFlow<List<WatchlistEntry>>(emptyList())
+    private val ownWatchlist = MutableStateFlow<List<WatchlistEntry>>(emptyList())
 
     @Before
     fun setUp() {
@@ -50,7 +50,7 @@ class UseWatchlistHookTest {
         credentialsRepository = mockk()
         cacheService = mockk()
 
-        every { watchlistRepository.favorites } returns ownFavorites
+        every { watchlistRepository.entries } returns ownWatchlist
         coEvery { watchlistRepository.syncIfNeeded() } returns true
         every { credentialsRepository.getCredentials() } returns
             Credentials(serverUrl = "http://srv", username = "chris", password = "pw")
@@ -58,7 +58,7 @@ class UseWatchlistHookTest {
         coEvery { cacheService.loadMoviesByIds(any()) } returns emptyList()
     }
 
-    private fun favorite(id: String, streamId: Int) = WatchlistEntry(
+    private fun entry(id: String, streamId: Int) = WatchlistEntry(
         id = id,
         type = WatchlistEntryType.MOVIE,
         streamId = streamId,
@@ -76,7 +76,7 @@ class UseWatchlistHookTest {
                 userRepository = userRepository,
                 credentialsRepository = credentialsRepository,
                 cacheService = cacheService,
-                favoriteType = WatchlistEntryType.MOVIE,
+                watchlistEntryType =WatchlistEntryType.MOVIE,
                 idSelector = { it.streamId }
             )
         }
@@ -85,8 +85,8 @@ class UseWatchlistHookTest {
     }
 
     @Test
-    fun `ausserhalb der Favoriten-Kategorie bleibt die Liste leer`() {
-        ownFavorites.value = listOf(favorite("movie_1", 1))
+    fun `ausserhalb der Watchlist-Kategorie bleibt die Liste leer`() {
+        ownWatchlist.value = listOf(entry("movie_1", 1))
 
         val state = collectState(isWatchlistCategory = false)
 
@@ -95,8 +95,8 @@ class UseWatchlistHookTest {
     }
 
     @Test
-    fun `eigene Favoriten werden aus dem Cache aufgeloest`() {
-        ownFavorites.value = listOf(favorite("movie_1", 1), favorite("movie_2", 2))
+    fun `eigene Watchlist-Eintraege werden aus dem Cache aufgeloest`() {
+        ownWatchlist.value = listOf(entry("movie_1", 1), entry("movie_2", 2))
         coEvery { cacheService.loadMoviesByIds(listOf(1, 2)) } returns listOf(
             testVodStream(name = "Film 1", streamId = 1),
             testVodStream(name = "Film 2", streamId = 2)
@@ -105,12 +105,12 @@ class UseWatchlistHookTest {
         val state = collectState()
 
         assertEquals(listOf(1, 2), state().items.map { it.item.streamId })
-        assertTrue(state().items.all { it.source.isOwn && it.allowFavoriteActions })
+        assertTrue(state().items.all { it.source.isOwn && it.allowWatchlistActions })
     }
 
     @Test
-    fun `fehlender Cache liefert leere Favoritenliste`() {
-        ownFavorites.value = listOf(favorite("movie_1", 1))
+    fun `fehlender Cache liefert leere Watchlist`() {
+        ownWatchlist.value = listOf(entry("movie_1", 1))
         coEvery { cacheService.loadMoviesByIds(any()) } returns null
 
         val state = collectState()
@@ -119,14 +119,14 @@ class UseWatchlistHookTest {
     }
 
     @Test
-    fun `Freundes-Favoriten werden mit Badge angehaengt`() {
-        ownFavorites.value = listOf(favorite("movie_1", 1))
+    fun `Freundes-Watchlist-Eintraege werden mit Badge angehaengt`() {
+        ownWatchlist.value = listOf(entry("movie_1", 1))
         coEvery { cacheService.loadMoviesByIds(listOf(1)) } returns listOf(testVodStream(name = "Eigener", streamId = 1))
         coEvery { userRepository.loadFriends("chris") } coAnswers {
             Result.success(listOf(FriendEntry(username = "thomas", alias = "Tom", addedAt = "2026-07-16T10:00:00Z")))
         }
-        coEvery { userRepository.loadFavorites("thomas") } coAnswers {
-            Result.success(listOf(favorite("movie_9", 9)))
+        coEvery { userRepository.loadWatchlist("thomas") } coAnswers {
+            Result.success(listOf(entry("movie_9", 9)))
         }
         coEvery { cacheService.loadMoviesByIds(listOf(9)) } returns listOf(testVodStream(name = "Fremder", streamId = 9))
 
@@ -135,13 +135,13 @@ class UseWatchlistHookTest {
         assertEquals(listOf(1, 9), state().items.map { it.item.streamId })
         val friendItem = state().items.last()
         assertFalse(friendItem.source.isOwn)
-        assertFalse(friendItem.allowFavoriteActions)
+        assertFalse(friendItem.allowWatchlistActions)
         assertEquals("To", friendItem.source.badge)
     }
 
     @Test
-    fun `Fehler beim Laden der Freunde liefert nur eigene Favoriten`() {
-        ownFavorites.value = listOf(favorite("movie_1", 1))
+    fun `Fehler beim Laden der Freunde liefert nur eigene Watchlist-Eintraege`() {
+        ownWatchlist.value = listOf(entry("movie_1", 1))
         coEvery { cacheService.loadMoviesByIds(listOf(1)) } returns listOf(testVodStream(streamId = 1))
         coEvery { userRepository.loadFriends("chris") } coAnswers { Result.failure(Exception("offline")) }
 
@@ -152,11 +152,11 @@ class UseWatchlistHookTest {
     }
 
     @Test
-    fun `Freunde ohne passende Favoriten werden uebersprungen`() {
+    fun `Freunde ohne passende Watchlist-Eintraege werden uebersprungen`() {
         coEvery { userRepository.loadFriends("chris") } coAnswers {
             Result.success(listOf(FriendEntry(username = "anna", alias = null, addedAt = "2026-07-16T10:00:00Z")))
         }
-        coEvery { userRepository.loadFavorites("anna") } coAnswers { Result.success(emptyList()) }
+        coEvery { userRepository.loadWatchlist("anna") } coAnswers { Result.success(emptyList()) }
 
         val state = collectState()
 
@@ -166,7 +166,7 @@ class UseWatchlistHookTest {
     @Test
     fun `ohne aktiven Nutzer werden keine Freunde geladen`() {
         every { credentialsRepository.getCredentials() } returns null
-        ownFavorites.value = listOf(favorite("movie_1", 1))
+        ownWatchlist.value = listOf(entry("movie_1", 1))
         coEvery { cacheService.loadMoviesByIds(listOf(1)) } returns listOf(testVodStream(streamId = 1))
 
         val state = collectState()

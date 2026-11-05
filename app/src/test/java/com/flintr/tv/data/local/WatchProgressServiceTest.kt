@@ -41,7 +41,7 @@ class WatchProgressServiceTest {
     private lateinit var userRepository: UserRepository
     private lateinit var credentialsRepository: CredentialsRepository
     private lateinit var watchedHistoryService: WatchedHistoryService
-    private lateinit var favoritesRepository: WatchlistRepository
+    private lateinit var watchlistRepository: WatchlistRepository
     private lateinit var cacheService: DataCacheService
     private lateinit var service: WatchProgressService
 
@@ -55,7 +55,7 @@ class WatchProgressServiceTest {
         userRepository = mockk(relaxed = true)
         credentialsRepository = mockk()
         watchedHistoryService = mockk(relaxed = true)
-        favoritesRepository = mockk(relaxed = true)
+        watchlistRepository = mockk(relaxed = true)
         cacheService = mockk(relaxed = true)
 
         // Init-Collect bleibt inert (null-Credentials); Laden wird explizit über syncIfNeeded getrieben
@@ -76,7 +76,7 @@ class WatchProgressServiceTest {
         service = WatchProgressService(
             context = context,
             moshi = moshi,
-            favoritesRepository = favoritesRepository,
+            watchlistRepository = watchlistRepository,
             watchedHistoryService = watchedHistoryService,
             userRepository = userRepository,
             credentialsRepository = credentialsRepository,
@@ -153,7 +153,7 @@ class WatchProgressServiceTest {
         assertTrue(result)
         assertNull(service.getProgress("movie", 42, null, null))
         coVerify { watchedHistoryService.markAsWatched("movie", 42, null, null, null, null, null) }
-        coVerify(timeout = 2_000) { favoritesRepository.removeFromWatchlist("movie:42:Film") }
+        coVerify(timeout = 2_000) { watchlistRepository.removeFromWatchlist("movie:42:Film") }
     }
 
     @Test

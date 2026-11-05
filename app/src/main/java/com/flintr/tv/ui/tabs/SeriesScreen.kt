@@ -160,14 +160,14 @@ fun SeriesContent(
     var newCategorySeries by remember { mutableStateOf<List<Series>>(emptyList()) }
     var isLoadingNewCategory by remember { mutableStateOf(false) }
 
-    // Load favorites using the hook
-    val favoritesState = useWatchlist<Series>(
+    // Load watchlist entries using the hook
+    val watchlistState = useWatchlist<Series>(
         isWatchlistCategory = isWatchlistCategory,
         watchlistRepository = params.watchlistRepository,
         userRepository = params.userRepository,
         credentialsRepository = params.credentialsRepository,
         cacheService = params.cacheService,
-        favoriteType = WatchlistEntryType.SERIES,
+        watchlistEntryType =WatchlistEntryType.SERIES,
         idSelector = { it.seriesId }
     )
     
@@ -201,12 +201,12 @@ fun SeriesContent(
     // This keeps the focus on the Navbar when the app starts
     
     val displaySeries = when {
-        isWatchlistCategory -> favoritesState.items
+        isWatchlistCategory -> watchlistState.items
         isNewCategory -> asOwnSourcedItems(newCategorySeries)
         else -> asOwnSourcedItems(series)
     }
     val isLoading = when {
-        isWatchlistCategory -> favoritesState.isLoading
+        isWatchlistCategory -> watchlistState.isLoading
         isNewCategory -> isLoadingNewCategory
         else -> uiState.isLoading
     }
@@ -238,7 +238,7 @@ fun SeriesContent(
                     focusRequester = cardFocusRequester
                 ),
                 sourceBadge = seriesItem.source.badge,
-                allowFavoriteActions = seriesItem.allowFavoriteActions
+                allowWatchlistActions = seriesItem.allowWatchlistActions
             )
         }
     )
@@ -251,7 +251,7 @@ fun SeriesItem(
     onSeriesClick: () -> Unit,
     cardConfig: com.flintr.tv.ui.components.CardConfig = com.flintr.tv.ui.components.CardConfig(),
     sourceBadge: String? = null,
-    allowFavoriteActions: Boolean = true
+    allowWatchlistActions: Boolean = true
 ) {
     VODCard(
         params = VODCardParams(
@@ -263,7 +263,7 @@ fun SeriesItem(
             onNavigateLeft = cardConfig.onNavigateLeft,
             focusRequester = cardConfig.focusRequester,
             sourceBadge = sourceBadge,
-            allowFavoriteActions = allowFavoriteActions
+            allowWatchlistActions = allowWatchlistActions
         )
     )
 }

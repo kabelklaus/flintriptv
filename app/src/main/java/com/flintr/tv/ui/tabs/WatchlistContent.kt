@@ -26,11 +26,11 @@ import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 
-// Sealed class to represent different favorite content types
-private sealed class FavoriteContentItem {
-    data class Live(val stream: LiveStream, val favorite: WatchlistEntry) : FavoriteContentItem()
-    data class Movie(val vod: VodStream, val favorite: WatchlistEntry) : FavoriteContentItem()
-    data class SeriesItem(val series: Series, val favorite: WatchlistEntry) : FavoriteContentItem()
+// Sealed class to represent different watchlist content types
+private sealed class WatchlistContentItem {
+    data class Live(val stream: LiveStream, val entry: WatchlistEntry) : WatchlistContentItem()
+    data class Movie(val vod: VodStream, val entry: WatchlistEntry) : WatchlistContentItem()
+    data class SeriesItem(val series: Series, val entry: WatchlistEntry) : WatchlistContentItem()
 }
 
 /**
@@ -65,129 +65,129 @@ private fun createOnNavigateLeft(
 }
 
 /**
- * Data class to hold loaded favorite data.
+ * Data class to hold loaded watchlist data.
  */
-private data class FavoriteData(
+private data class WatchlistData(
     val channels: List<LiveStream>,
     val movies: List<VodStream>,
     val series: List<Series>
 )
 
 /**
- * Loads favorite data (channels, movies, series) based on favorite IDs.
+ * Loads watchlist data (channels, movies, series) based on watchlist entry IDs.
  */
-private suspend fun loadFavoriteData(
-    favorites: List<WatchlistEntry>,
+private suspend fun loadWatchlistData(
+    entries: List<WatchlistEntry>,
     cacheService: DataCacheService
-): FavoriteData {
-    val liveStreamIds = favorites.filter { it.type == WatchlistEntryType.LIVE }.mapNotNull { it.streamId }
-    val movieStreamIds = favorites.filter { it.type == WatchlistEntryType.MOVIE }.mapNotNull { it.streamId }
-    val seriesIds = favorites.filter { it.type == WatchlistEntryType.SERIES }.mapNotNull { it.streamId }
-    
+): WatchlistData {
+    val liveStreamIds = entries.filter { it.type == WatchlistEntryType.LIVE }.mapNotNull { it.streamId }
+    val movieStreamIds = entries.filter { it.type == WatchlistEntryType.MOVIE }.mapNotNull { it.streamId }
+    val seriesIds = entries.filter { it.type == WatchlistEntryType.SERIES }.mapNotNull { it.streamId }
+
     val channels = if (liveStreamIds.isNotEmpty()) {
         cacheService.loadChannelsByIds(liveStreamIds) ?: emptyList()
     } else {
         emptyList()
     }
-    
+
     val movies = if (movieStreamIds.isNotEmpty()) {
         cacheService.loadMoviesByIds(movieStreamIds) ?: emptyList()
     } else {
         emptyList()
     }
-    
+
     val series = if (seriesIds.isNotEmpty()) {
         cacheService.loadSeriesByIds(seriesIds) ?: emptyList()
     } else {
         emptyList()
     }
-    
-    return FavoriteData(channels, movies, series)
+
+    return WatchlistData(channels, movies, series)
 }
 
 /**
- * Matches live stream favorites with loaded channels.
+ * Matches live stream watchlist entries with loaded channels.
  */
-private fun matchLiveStreamFavorites(
-    favorites: List<WatchlistEntry>,
+private fun matchLiveStreamEntries(
+    entries: List<WatchlistEntry>,
     channelsMap: Map<Int, LiveStream>
-): List<FavoriteContentItem.Live> {
-    return favorites
+): List<WatchlistContentItem.Live> {
+    return entries
         .filter { it.type == WatchlistEntryType.LIVE }
-        .mapNotNull { favorite ->
-            channelsMap[favorite.streamId]?.let { stream ->
-                FavoriteContentItem.Live(stream, favorite)
+        .mapNotNull { entry ->
+            channelsMap[entry.streamId]?.let { stream ->
+                WatchlistContentItem.Live(stream, entry)
             } ?: run {
-                Log.w("FavoritesContent", "LiveStream not found for favorite: ${favorite.id}")
+                Log.w("FavoritesContent", "LiveStream not found for favorite: ${entry.id}")
                 null
             }
         }
 }
 
 /**
- * Matches movie favorites with loaded movies.
+ * Matches movie watchlist entries with loaded movies.
  */
-private fun matchMovieFavorites(
-    favorites: List<WatchlistEntry>,
+private fun matchMovieEntries(
+    entries: List<WatchlistEntry>,
     moviesMap: Map<Int, VodStream>
-): List<FavoriteContentItem.Movie> {
-    return favorites
+): List<WatchlistContentItem.Movie> {
+    return entries
         .filter { it.type == WatchlistEntryType.MOVIE }
-        .mapNotNull { favorite ->
-            moviesMap[favorite.streamId]?.let { vod ->
-                FavoriteContentItem.Movie(vod, favorite)
+        .mapNotNull { entry ->
+            moviesMap[entry.streamId]?.let { vod ->
+                WatchlistContentItem.Movie(vod, entry)
             } ?: run {
-                Log.w("FavoritesContent", "VodStream not found for favorite: ${favorite.id}")
+                Log.w("FavoritesContent", "VodStream not found for favorite: ${entry.id}")
                 null
             }
         }
 }
 
 /**
- * Matches series favorites with loaded series.
+ * Matches series watchlist entries with loaded series.
  */
-private fun matchSeriesFavorites(
-    favorites: List<WatchlistEntry>,
+private fun matchSeriesEntries(
+    entries: List<WatchlistEntry>,
     seriesMap: Map<Int, Series>
-): List<FavoriteContentItem.SeriesItem> {
-    return favorites
+): List<WatchlistContentItem.SeriesItem> {
+    return entries
         .filter { it.type == WatchlistEntryType.SERIES }
-        .mapNotNull { favorite ->
-            seriesMap[favorite.streamId]?.let { seriesItem ->
-                FavoriteContentItem.SeriesItem(seriesItem, favorite)
+        .mapNotNull { entry ->
+            seriesMap[entry.streamId]?.let { seriesItem ->
+                WatchlistContentItem.SeriesItem(seriesItem, entry)
             } ?: run {
-                Log.w("FavoritesContent", "Series not found for favorite: ${favorite.id}")
+                Log.w("FavoritesContent", "Series not found for favorite: ${entry.id}")
                 null
             }
         }
 }
 
 /**
- * Matches all favorites to content items.
+ * Matches all watchlist entries to content items.
  */
-private suspend fun matchFavoritesToItems(
-    favorites: List<WatchlistEntry>,
+private suspend fun matchEntriesToItems(
+    entries: List<WatchlistEntry>,
     cacheService: DataCacheService
-): List<FavoriteContentItem> {
-    val favoriteData = loadFavoriteData(favorites, cacheService)
-    
-    val channelsMap = favoriteData.channels.associateBy { it.streamId }
-    val moviesMap = favoriteData.movies.associateBy { it.streamId }
-    val seriesMap = favoriteData.series.associateBy { it.seriesId }
-    
-    val liveItems = matchLiveStreamFavorites(favorites, channelsMap)
-    val movieItems = matchMovieFavorites(favorites, moviesMap)
-    val seriesItems = matchSeriesFavorites(favorites, seriesMap)
-    
+): List<WatchlistContentItem> {
+    val watchlistData = loadWatchlistData(entries, cacheService)
+
+    val channelsMap = watchlistData.channels.associateBy { it.streamId }
+    val moviesMap = watchlistData.movies.associateBy { it.streamId }
+    val seriesMap = watchlistData.series.associateBy { it.seriesId }
+
+    val liveItems = matchLiveStreamEntries(entries, channelsMap)
+    val movieItems = matchMovieEntries(entries, moviesMap)
+    val seriesItems = matchSeriesEntries(entries, seriesMap)
+
     return liveItems + movieItems + seriesItems
 }
 
 /**
- * Renders a favorite content item as a card.
+ * Renders a watchlist content item as a card.
  */
 @Composable
-private fun FavoriteCard(
-    item: FavoriteContentItem,
+private fun WatchlistCard(
+    item: WatchlistContentItem,
     index: Int,
     columnIndex: Int,
     params: WatchlistContentParams,
@@ -195,7 +195,7 @@ private fun FavoriteCard(
     cardFocusRequester: androidx.compose.ui.focus.FocusRequester?
 ) {
     when (item) {
-        is FavoriteContentItem.Live -> {
+        is WatchlistContentItem.Live -> {
             LiveStreamCard(
                 params = LiveStreamCardParams(
                     stream = item.stream,
@@ -209,7 +209,7 @@ private fun FavoriteCard(
                 )
             )
         }
-        is FavoriteContentItem.Movie -> {
+        is WatchlistContentItem.Movie -> {
             VODCard(
                 params = VODCardParams(
                     vod = item.vod,
@@ -221,7 +221,7 @@ private fun FavoriteCard(
                 )
             )
         }
-        is FavoriteContentItem.SeriesItem -> {
+        is WatchlistContentItem.SeriesItem -> {
             VODCard(
                 params = VODCardParams(
                     series = item.series,
@@ -241,13 +241,13 @@ fun WatchlistContent(
     params: WatchlistContentParams,
     modifier: Modifier = Modifier
 ) {
-    var favorites by remember { mutableStateOf<List<WatchlistEntry>>(emptyList()) }
-    var favoriteItems by remember { mutableStateOf<List<FavoriteContentItem>>(emptyList()) }
+    var entries by remember { mutableStateOf<List<WatchlistEntry>>(emptyList()) }
+    var watchlistItems by remember { mutableStateOf<List<WatchlistContentItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var retryTrigger by remember { mutableStateOf(0) }
     val loadError by params.watchlistRepository.loadError.collectAsState()
 
-    // Load favorites; retryTrigger > 0 means the user tapped the error state's retry button
+    // Load watchlist entries; retryTrigger > 0 means the user tapped the error state's retry button
     LaunchedEffect(retryTrigger) {
         if (retryTrigger == 0) {
             // Sync with Firestore before loading (respects cooldown)
@@ -257,51 +257,51 @@ fun WatchlistContent(
             // Explicit user retry: bypass the sync cooldown
             params.watchlistRepository.retryLoadFromFirestore()
         }
-        favorites = params.watchlistRepository.getAllWatchlistEntries()
+        entries = params.watchlistRepository.getAllWatchlistEntries()
         // isLoading bleibt true, bis Matching abgeschlossen ist
-        Log.d("FavoritesContent", "Loaded ${favorites.size} favorites")
+        Log.d("FavoritesContent", "Loaded ${entries.size} favorites")
     }
-    
-    // Load only needed streams/series and match favorites on background thread.
+
+    // Load only needed streams/series and match watchlist entries on background thread.
     // Keyed on retryTrigger too: if a retry still yields an empty (structurally equal)
-    // list, "favorites" alone wouldn't change and this effect wouldn't rerun, leaving
+    // list, "entries" alone wouldn't change and this effect wouldn't rerun, leaving
     // isLoading stuck at true from the retry branch above.
-    LaunchedEffect(favorites, retryTrigger) {
-        if (favorites.isEmpty()) {
-            favoriteItems = emptyList()
-            isLoading = false // Keine Favoriten = fertig
+    LaunchedEffect(entries, retryTrigger) {
+        if (entries.isEmpty()) {
+            watchlistItems = emptyList()
+            isLoading = false // Keine Watchlist-Eintraege = fertig
             return@LaunchedEffect
         }
-        
-        val items = matchFavoritesToItems(favorites, params.cacheService)
-        
-        favoriteItems = items
-        Log.d("FavoritesContent", "Matched ${items.size} favorites with cached data (loaded ${favorites.size} favorites)")
-        
+
+        val items = matchEntriesToItems(entries, params.cacheService)
+
+        watchlistItems = items
+        Log.d("FavoritesContent", "Matched ${items.size} favorites with cached data (loaded ${entries.size} favorites)")
+
         // Set isLoading to false immediately after data is ready
         // The loading indicator will be hidden when items are actually rendered (via onItemsRendered)
         isLoading = false
     }
-    
+
     ContentGridLayout(
         params = ContentGridLayoutParams(
-            items = favoriteItems,
+            items = watchlistItems,
             isLoading = isLoading,
             focusRequester = params.focusRequester,
             modifier = modifier,
             lazyGridState = params.lazyGridState,
             keySelector = { item ->
                 when (item) {
-                    is FavoriteContentItem.Live -> item.favorite.id
-                    is FavoriteContentItem.Movie -> item.favorite.id
-                    is FavoriteContentItem.SeriesItem -> item.favorite.id
+                    is WatchlistContentItem.Live -> item.entry.id
+                    is WatchlistContentItem.Movie -> item.entry.id
+                    is WatchlistContentItem.SeriesItem -> item.entry.id
                 }
             },
             contentIdSelector = { item ->
                 when (item) {
-                    is FavoriteContentItem.Live -> "live_${item.stream.streamId}"
-                    is FavoriteContentItem.Movie -> "vod_${item.vod.streamId}"
-                    is FavoriteContentItem.SeriesItem -> "series_${item.series.seriesId}"
+                    is WatchlistContentItem.Live -> "live_${item.stream.streamId}"
+                    is WatchlistContentItem.Movie -> "vod_${item.vod.streamId}"
+                    is WatchlistContentItem.SeriesItem -> "series_${item.series.seriesId}"
                 }
             },
             focusRequesterMap = params.focusRequesterMap,
@@ -309,7 +309,7 @@ fun WatchlistContent(
                 // Items are now rendered, loading is complete
                 Log.d("FavoritesContent", "Items rendered, loading complete")
             },
-            // Not an error state — an empty favorites list is expected, so it must not
+            // Not an error state — an empty watchlist is expected, so it must not
             // read like ContentGridLayout's default "failed to load" message.
             emptyStateText = "Noch keine Favoriten",
             errorMessage = loadError,
@@ -317,7 +317,7 @@ fun WatchlistContent(
             onRetry = loadError?.let { { retryTrigger++ } }
         ),
         content = { item, index, columnIndex, onFocusChanged, cardFocusRequester ->
-            FavoriteCard(
+            WatchlistCard(
                 item = item,
                 index = index,
                 columnIndex = columnIndex,

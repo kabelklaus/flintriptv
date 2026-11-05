@@ -66,14 +66,14 @@ data class DetailHeaderData(
     val meta: String?,
     val genres: List<String>?,
     val overview: String?,
-    val isFavorite: Boolean,
+    val isInWatchlist: Boolean,
     val trailerAvailable: Boolean,
     val watchLabel: String = "Ansehen",
     /** Playback progress (0-100) of the concrete watch target; null/0 hides the in-button bar. */
     val watchProgress: Float? = null,
     val onWatch: () -> Unit,
     val onTrailer: () -> Unit,
-    val onFavorite: () -> Unit
+    val onToggleWatchlist: () -> Unit
 )
 
 /**
@@ -93,7 +93,7 @@ fun DetailHeaderSection(
     testTagPrefix: String,
     watchFocusRequester: FocusRequester,
     trailerFocusRequester: FocusRequester,
-    favoriteFocusRequester: FocusRequester,
+    watchlistFocusRequester: FocusRequester,
     onButtonRowDown: (() -> Boolean)? = null,
     scrollState: ScrollState? = null,
     modifier: Modifier = Modifier
@@ -123,7 +123,7 @@ fun DetailHeaderSection(
         buildList {
             add(watchFocusRequester)
             if (data.trailerAvailable) add(trailerFocusRequester)
-            add(favoriteFocusRequester)
+            add(watchlistFocusRequester)
         }
     }
 
@@ -210,10 +210,10 @@ fun DetailHeaderSection(
                 testTagPrefix = testTagPrefix,
                 watchFocusRequester = watchFocusRequester,
                 trailerFocusRequester = trailerFocusRequester,
-                favoriteFocusRequester = favoriteFocusRequester,
+                watchlistFocusRequester = watchlistFocusRequester,
                 watchIndex = focusOrder.indexOf(watchFocusRequester),
                 trailerIndex = focusOrder.indexOf(trailerFocusRequester),
-                favoriteIndex = focusOrder.indexOf(favoriteFocusRequester),
+                watchlistIndex = focusOrder.indexOf(watchlistFocusRequester),
                 onButtonRowDown = onButtonRowDown,
                 onButtonUp = onButtonUp,
                 requestButtonFocus = ::requestButtonFocus,
@@ -327,7 +327,7 @@ private fun SkeletonBlock(
 }
 
 /**
- * Watch/Trailer/Favorite row, content-width, single line - streamflix `content_*_tv.xml` 1:1.
+ * Watch/Trailer/Watchlist row, content-width, single line - streamflix `content_*_tv.xml` 1:1.
  */
 @Composable
 private fun DetailActionButtonRow(
@@ -335,10 +335,10 @@ private fun DetailActionButtonRow(
     testTagPrefix: String,
     watchFocusRequester: FocusRequester,
     trailerFocusRequester: FocusRequester,
-    favoriteFocusRequester: FocusRequester,
+    watchlistFocusRequester: FocusRequester,
     watchIndex: Int,
     trailerIndex: Int,
-    favoriteIndex: Int,
+    watchlistIndex: Int,
     onButtonRowDown: (() -> Boolean)?,
     onButtonUp: () -> Boolean,
     requestButtonFocus: (Int) -> Unit,
@@ -385,17 +385,17 @@ private fun DetailActionButtonRow(
             Box(modifier = Modifier.width(20.dp))
         }
 
-        DetailFavoriteButton(
-            isFavorite = data.isFavorite,
+        DetailWatchlistButton(
+            isInWatchlist = data.isInWatchlist,
             testTag = "$testTagPrefix-favorite",
-            focusRequester = favoriteFocusRequester,
+            focusRequester = watchlistFocusRequester,
             onLeft = {
-                requestButtonFocus(favoriteIndex - 1)
+                requestButtonFocus(watchlistIndex - 1)
                 true
             },
             onUp = onButtonUp,
             onDown = onButtonRowDown,
-            onClick = data.onFavorite
+            onClick = data.onToggleWatchlist
         )
     }
 }
@@ -628,8 +628,8 @@ private fun DetailActionButtonContent(icon: ImageVector, label: String) {
 }
 
 @Composable
-private fun DetailFavoriteButton(
-    isFavorite: Boolean,
+private fun DetailWatchlistButton(
+    isInWatchlist: Boolean,
     testTag: String,
     focusRequester: FocusRequester,
     onLeft: (() -> Boolean)? = null,
@@ -658,8 +658,8 @@ private fun DetailFavoriteButton(
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-            contentDescription = if (isFavorite) "Favorit" else "Zu Favoriten",
+            imageVector = if (isInWatchlist) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            contentDescription = if (isInWatchlist) "Favorit" else "Zu Favoriten",
             tint = Color.White,
             modifier = Modifier.size(Dimensions.iconSizeMD)
         )

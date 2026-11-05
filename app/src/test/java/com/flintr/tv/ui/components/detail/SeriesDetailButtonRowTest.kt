@@ -17,7 +17,7 @@ import org.robolectric.annotation.Config
 
 /**
  * Guards the detail button row at its original content-width size: one row, Watch/Trailer/
- * Favorite at natural size, Favorite always rendered, and the in-button progress indicator
+ * Watchlist at natural size, Watchlist always rendered, and the in-button progress indicator
  * kept minimal (not tied to the button's full width).
  */
 @RunWith(AndroidJUnit4::class)
@@ -35,7 +35,7 @@ class SeriesDetailButtonRowTest {
         composeTestRule.setContent {
             val watchFocus = remember { FocusRequester() }
             val trailerFocus = remember { FocusRequester() }
-            val favoriteFocus = remember { FocusRequester() }
+            val watchlistFocus = remember { FocusRequester() }
             FlintRTVTheme {
                 DetailHeaderSection(
                     data = DetailHeaderData(
@@ -45,39 +45,39 @@ class SeriesDetailButtonRowTest {
                         meta = "2021",
                         genres = listOf("Drama"),
                         overview = null,
-                        isFavorite = false,
+                        isInWatchlist = false,
                         trailerAvailable = trailerAvailable,
                         watchLabel = watchLabel,
                         watchProgress = watchProgress,
                         onWatch = {},
                         onTrailer = {},
-                        onFavorite = {}
+                        onToggleWatchlist = {}
                     ),
                     testTagPrefix = "detail",
                     watchFocusRequester = watchFocus,
                     trailerFocusRequester = trailerFocus,
-                    favoriteFocusRequester = favoriteFocus
+                    watchlistFocusRequester = watchlistFocus
                 )
             }
         }
     }
 
     @Test
-    fun tvBreite_bleibtEinzeiligContentBreitMitTrailerUndFavorit() {
+    fun tvBreite_bleibtEinzeiligContentBreitMitTrailerUndWatchlist() {
         val watchLabel = "S3 E1 fortsetzen"
         header(watchLabel = watchLabel)
 
         val watchBounds = composeTestRule.onNodeWithTag("detail-watch").getUnclippedBoundsInRoot()
         val trailerBounds = composeTestRule.onNodeWithTag("detail-trailer").getUnclippedBoundsInRoot()
-        val favoriteBounds = composeTestRule.onNodeWithTag("detail-favorite").getUnclippedBoundsInRoot()
+        val watchlistBounds = composeTestRule.onNodeWithTag("detail-favorite").getUnclippedBoundsInRoot()
 
         assertTrue(
             "Watch/Trailer sind nicht mehr in einer Reihe: watchTop=${watchBounds.top} trailerTop=${trailerBounds.top}",
             watchBounds.top == trailerBounds.top
         )
         assertTrue(
-            "Trailer/Favorit sind nicht mehr in einer Reihe: trailerTop=${trailerBounds.top} favoriteTop=${favoriteBounds.top}",
-            trailerBounds.top == favoriteBounds.top
+            "Trailer/Favorit sind nicht mehr in einer Reihe: trailerTop=${trailerBounds.top} favoriteTop=${watchlistBounds.top}",
+            trailerBounds.top == watchlistBounds.top
         )
         assertTrue(
             "Ansehen steht rechts von Trailer statt links davon: watchLeft=${watchBounds.left} trailerLeft=${trailerBounds.left}",
@@ -102,7 +102,7 @@ class SeriesDetailButtonRowTest {
     }
 
     @Test
-    fun favoritButton_wirdAuchOhneTrailerImmerGerendert() {
+    fun watchlistButton_wirdAuchOhneTrailerImmerGerendert() {
         header(trailerAvailable = false)
 
         composeTestRule.onNodeWithTag("detail-favorite").assertExists()

@@ -100,7 +100,7 @@ data class VODCardParams(
     val focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     val isWatched: Boolean = false,
     val sourceBadge: String? = null,
-    val allowFavoriteActions: Boolean = true
+    val allowWatchlistActions: Boolean = true
 )
 
 data class LiveStreamCardParams(
@@ -110,7 +110,7 @@ data class LiveStreamCardParams(
     val modifier: Modifier = Modifier,
     val config: CardConfig = CardConfig(),
     val sourceBadge: String? = null,
-    val allowFavoriteActions: Boolean = true
+    val allowWatchlistActions: Boolean = true
 )
 
 private data class CardVisualState(
@@ -151,25 +151,25 @@ private data class ContentCardData(
     val contentType: ContentType? = null,
     val watchState: WatchState = WatchState(),
     val sourceBadge: String? = null,
-    val allowFavoriteActions: Boolean = true
+    val allowWatchlistActions: Boolean = true
 )
 
 private sealed class ContentType {
-    abstract fun toFavoriteId(): String
+    abstract fun toWatchlistEntryId(): String
     abstract fun toWatchlistEntry(metadata: Map<String, String?>? = null): WatchlistEntry
 
     data class Live(val stream: LiveStream) : ContentType() {
-        override fun toFavoriteId(): String = stream.toFavoriteId()
+        override fun toWatchlistEntryId(): String = stream.toWatchlistEntryId()
         override fun toWatchlistEntry(metadata: Map<String, String?>?): WatchlistEntry = stream.toWatchlistEntry(metadata)
     }
 
     data class Movie(val vod: VodStream) : ContentType() {
-        override fun toFavoriteId(): String = vod.toFavoriteId()
+        override fun toWatchlistEntryId(): String = vod.toWatchlistEntryId()
         override fun toWatchlistEntry(metadata: Map<String, String?>?): WatchlistEntry = vod.toWatchlistEntry(metadata)
     }
 
     data class Series(val seriesData: com.flintr.tv.data.model.Series) : ContentType() {
-        override fun toFavoriteId(): String = seriesData.toFavoriteId()
+        override fun toWatchlistEntryId(): String = seriesData.toWatchlistEntryId()
         override fun toWatchlistEntry(metadata: Map<String, String?>?): WatchlistEntry = seriesData.toWatchlistEntry(metadata)
     }
 }
@@ -229,7 +229,7 @@ fun VODCard(params: VODCardParams) {
                 remainingMinutes = remainingMinutes
             ),
             sourceBadge = params.sourceBadge,
-            allowFavoriteActions = params.allowFavoriteActions
+            allowWatchlistActions = params.allowWatchlistActions
         ),
         onClick = params.onClick,
         modifier = params.modifier,
@@ -334,16 +334,16 @@ private fun ContentCardInternal(
     val coroutineScope = rememberCoroutineScope()
     val contentInfo = cardData.contentInfo
     
-    val effectiveContentType = remember(cardData.contentType, cardData.allowFavoriteActions) {
-        if (cardData.allowFavoriteActions) cardData.contentType else null
+    val effectiveContentType = remember(cardData.contentType, cardData.allowWatchlistActions) {
+        if (cardData.allowWatchlistActions) cardData.contentType else null
     }
 
-    val favoriteId = remember(effectiveContentType) {
-        effectiveContentType?.toFavoriteId()
+    val entryId = remember(effectiveContentType) {
+        effectiveContentType?.toWatchlistEntryId()
     }
     
-    val (isInWatchlist, setIsInWatchlist) = useFavoriteState(
-        favoriteId = favoriteId,
+    val (isInWatchlist, setIsInWatchlist) = useWatchlistState(
+        entryId = entryId,
         showMenu = showMenu,
         watchlistRepository = watchlistRepository
     )
@@ -414,12 +414,12 @@ private fun ContentCardInternal(
         ),
         onOptionSelected = createMenuOptionSelectedHandler(
             contentType = effectiveContentType,
-            favoriteId = favoriteId,
-            isFavorite = isInWatchlist,
+            entryId = entryId,
+            isInWatchlist = isInWatchlist,
             title = contentInfo.title,
             watchlistRepository = watchlistRepository,
             coroutineScope = coroutineScope,
-            setIsFavorite = setIsInWatchlist
+            setIsInWatchlist = setIsInWatchlist
         )
     )
 }
@@ -437,7 +437,7 @@ fun LiveStreamCard(
             ),
             contentType = ContentType.Live(params.stream),
             sourceBadge = params.sourceBadge,
-            allowFavoriteActions = params.allowFavoriteActions
+            allowWatchlistActions = params.allowWatchlistActions
         ),
         onClick = params.onClick,
         watchlistRepository = params.watchlistRepository,
@@ -516,15 +516,15 @@ private fun createMenuOptions(
     contentType: ContentType?,
     isInWatchlist: Boolean
 ): List<String> {
-    val removeFromFavoritesText = stringResource(R.string.remove_from_watchlist)
-    val addToFavoritesText = stringResource(R.string.add_to_watchlist)
+    val removeFromWatchlistText = stringResource(R.string.remove_from_watchlist)
+    val addToWatchlistText = stringResource(R.string.add_to_watchlist)
 
-    return remember(contentType, isInWatchlist, removeFromFavoritesText, addToFavoritesText) {
+    return remember(contentType, isInWatchlist, removeFromWatchlistText, addToWatchlistText) {
         if (contentType != null) {
             if (isInWatchlist) {
-                listOf(removeFromFavoritesText)
+                listOf(removeFromWatchlistText)
             } else {
-                listOf(addToFavoritesText)
+                listOf(addToWatchlistText)
             }
         } else {
             emptyList()
@@ -545,26 +545,26 @@ private fun createMenuDismissHandler(
 
 private fun createMenuOptionSelectedHandler(
     contentType: ContentType?,
-    favoriteId: String?,
-    isFavorite: Boolean,
+    entryId: String?,
+    isInWatchlist: Boolean,
     title: String,
     watchlistRepository: WatchlistRepository,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
-    setIsFavorite: (Boolean) -> Unit
+    setIsInWatchlist: (Boolean) -> Unit
 ): (Int) -> Unit {
     return { index ->
         Log.d("ContentCard", "[ContentCard] Card '$title' - Option $index wurde ausgewählt")
-        if (contentType != null && favoriteId != null) {
+        if (contentType != null && entryId != null) {
             coroutineScope.launch {
-                if (isFavorite) {
-                    watchlistRepository.removeFromWatchlist(favoriteId)
-                    setIsFavorite(false)
-                    Log.d("ContentCard", "[ContentCard] Favorit entfernt: $favoriteId")
+                if (isInWatchlist) {
+                    watchlistRepository.removeFromWatchlist(entryId)
+                    setIsInWatchlist(false)
+                    Log.d("ContentCard", "[ContentCard] Favorit entfernt: $entryId")
                 } else {
-                    val favorite = contentType.toWatchlistEntry()
-                    watchlistRepository.addToWatchlist(favorite)
-                    setIsFavorite(true)
-                    Log.d("ContentCard", "[ContentCard] Favorit hinzugefügt: $favoriteId")
+                    val entry = contentType.toWatchlistEntry()
+                    watchlistRepository.addToWatchlist(entry)
+                    setIsInWatchlist(true)
+                    Log.d("ContentCard", "[ContentCard] Favorit hinzugefügt: $entryId")
                 }
             }
         }
@@ -573,17 +573,17 @@ private fun createMenuOptionSelectedHandler(
 
 // State Management Functions
 @Composable
-private fun useFavoriteState(
-    favoriteId: String?,
+private fun useWatchlistState(
+    entryId: String?,
     showMenu: Boolean,
     watchlistRepository: WatchlistRepository
 ): Pair<Boolean, (Boolean) -> Unit> {
     var isInWatchlist by remember { mutableStateOf(false) }
 
-    LaunchedEffect(favoriteId, showMenu) {
-        if (favoriteId != null) {
+    LaunchedEffect(entryId, showMenu) {
+        if (entryId != null) {
             // Re-fetch when card changes or when menu is about to be shown
-            isInWatchlist = watchlistRepository.isInWatchlist(favoriteId)
+            isInWatchlist = watchlistRepository.isInWatchlist(entryId)
         }
     }
 
@@ -728,7 +728,7 @@ private fun BoxScope.CardBadges(
             modifier = Modifier.align(Alignment.TopStart)
         )
     } else if (isInWatchlist) {
-        FavoriteBadge(
+        WatchlistBadge(
             modifier = Modifier.align(Alignment.TopStart)
         )
     }
@@ -782,7 +782,7 @@ private fun SourceBadge(
 }
 
 @Composable
-private fun FavoriteBadge(
+private fun WatchlistBadge(
     modifier: Modifier = Modifier
 ) {
     Box(

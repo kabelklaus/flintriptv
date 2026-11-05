@@ -95,14 +95,14 @@ fun LiveTVContent(params: LiveTVContentParams) {
     var newCategoryStreams by remember { mutableStateOf<List<LiveStream>>(emptyList()) }
     var isLoadingNewCategory by remember { mutableStateOf(false) }
 
-    // Load favorites using the hook
-    val favoritesState = useWatchlist<LiveStream>(
+    // Load watchlist entries using the hook
+    val watchlistState = useWatchlist<LiveStream>(
         isWatchlistCategory = isWatchlistCategory,
         watchlistRepository = params.watchlistRepository,
         userRepository = params.userRepository,
         credentialsRepository = params.credentialsRepository,
         cacheService = params.cacheService,
-        favoriteType = WatchlistEntryType.LIVE,
+        watchlistEntryType =WatchlistEntryType.LIVE,
         idSelector = { it.streamId }
     )
     
@@ -134,13 +134,13 @@ fun LiveTVContent(params: LiveTVContentParams) {
     // In-progress category should not be shown in LiveTV (contains only movies/episodes)
     // Show empty list if in-progress category is selected
     val displayStreams = when {
-        isWatchlistCategory -> favoritesState.items
+        isWatchlistCategory -> watchlistState.items
         isNewCategory -> asOwnSourcedItems(newCategoryStreams)
         isInProgressCategory -> emptyList() // In-progress category not applicable for LiveTV
         else -> asOwnSourcedItems(streams)
     }
     val isLoading = when {
-        isWatchlistCategory -> favoritesState.isLoading
+        isWatchlistCategory -> watchlistState.isLoading
         isNewCategory -> isLoadingNewCategory
         isInProgressCategory -> false // No loading needed for empty list
         else -> uiState.isLoading
@@ -173,7 +173,7 @@ fun LiveTVContent(params: LiveTVContentParams) {
                         }
                     ),
                     sourceBadge = stream.source.badge,
-                    allowFavoriteActions = stream.allowFavoriteActions
+                    allowWatchlistActions = stream.allowWatchlistActions
                 )
             )
         }

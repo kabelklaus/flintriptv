@@ -71,7 +71,7 @@ class WatchProgressServiceCacheLookupTest {
         service = WatchProgressService(
             context = context,
             moshi = Moshi.Builder().build(),
-            favoritesRepository = mockk(relaxed = true),
+            watchlistRepository =mockk(relaxed = true),
             watchedHistoryService = watchedHistoryService,
             userRepository = userRepository,
             credentialsRepository = credentialsRepository,

@@ -109,14 +109,14 @@ fun VODContent(params: VODContentParams) {
     var newCategoryStreams by remember { mutableStateOf<List<VodStream>>(emptyList()) }
     var isLoadingNewCategory by remember { mutableStateOf(false) }
 
-    // Load favorites using the hook
-    val favoritesState = useWatchlist<VodStream>(
+    // Load watchlist entries using the hook
+    val watchlistState = useWatchlist<VodStream>(
         isWatchlistCategory = isWatchlistCategory,
         watchlistRepository = params.watchlistRepository,
         userRepository = params.userRepository,
         credentialsRepository = params.credentialsRepository,
         cacheService = params.cacheService,
-        favoriteType = WatchlistEntryType.MOVIE,
+        watchlistEntryType =WatchlistEntryType.MOVIE,
         idSelector = { it.streamId }
     )
     
@@ -141,7 +141,7 @@ fun VODContent(params: VODContentParams) {
                 )
             }
             isWatchlistCategory -> {
-                // For favorites, load all watched VODs (category filtering not needed)
+                // For the watchlist, load all watched VODs (category filtering not needed)
                 loadWatchedVodIds(
                     watchProgressService = params.watchProgressService,
                     categoryId = null,
@@ -165,12 +165,12 @@ fun VODContent(params: VODContentParams) {
     // This keeps the focus on the Navbar when the app starts
     
     val displayStreams = when {
-        isWatchlistCategory -> favoritesState.items
+        isWatchlistCategory -> watchlistState.items
         isNewCategory -> asOwnSourcedItems(newCategoryStreams)
         else -> asOwnSourcedItems(streams)
     }
     val isLoading = when {
-        isWatchlistCategory -> favoritesState.isLoading
+        isWatchlistCategory -> watchlistState.isLoading
         isNewCategory -> isLoadingNewCategory
         else -> uiState.isLoading
     }
@@ -202,7 +202,7 @@ fun VODContent(params: VODContentParams) {
                     focusRequester = cardFocusRequester,
                     isWatched = vod.item.streamId in watchedVodIds,
                     sourceBadge = vod.source.badge,
-                    allowFavoriteActions = vod.allowFavoriteActions
+                    allowWatchlistActions = vod.allowWatchlistActions
                 )
             )
         }

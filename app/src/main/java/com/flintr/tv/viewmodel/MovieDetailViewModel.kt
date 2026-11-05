@@ -35,7 +35,7 @@ data class MovieDetailUiState(
     val isLoading: Boolean = true,
     val baseStream: VodStream? = null,
     val detail: DetailDisplayData? = null,
-    val isFavorite: Boolean = false,
+    val isInWatchlist: Boolean = false,
     val watchProgress: WatchProgress? = null,
     val recommendations: List<VodStream> = emptyList(),
     val error: String? = null
@@ -43,7 +43,7 @@ data class MovieDetailUiState(
 
 /**
  * Loads one movie's detail metadata (get_vod_info), its IMDb-only genre/rating enrichment,
- * favorite state, watch progress and a similar-movie row.
+ * watchlist state, watch progress and a similar-movie row.
  *
  * The screen does not navigate itself: the movie id arrives through the navigation route's
  * [SavedStateHandle], and the Phase-4 route owns all navigation callbacks.
@@ -54,7 +54,7 @@ class MovieDetailViewModel @Inject constructor(
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
     private val imdbEnrichmentService: ImdbEnrichmentService,
-    private val favoritesRepository: WatchlistRepository,
+    private val watchlistRepository: WatchlistRepository,
     private val watchProgressService: WatchProgressService,
     private val cacheService: DataCacheService,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher
@@ -203,7 +203,7 @@ class MovieDetailViewModel @Inject constructor(
             isLoading = false,
             baseStream = catalogMovie,
             detail = baseDetail,
-            isFavorite = findWatchlistEntry() != null,
+            isInWatchlist = findWatchlistEntry() != null,
             watchProgress = watchProgressService.getWatchProgress(
                 contentType = "movie",
                 streamId = vodId,
@@ -244,18 +244,18 @@ class MovieDetailViewModel @Inject constructor(
         viewModelScope.launch(ioDispatcher) {
             val existing = findWatchlistEntry()
             if (existing != null) {
-                if (favoritesRepository.removeFromWatchlist(existing.id)) {
-                    _uiState.update { it.copy(isFavorite = false) }
+                if (watchlistRepository.removeFromWatchlist(existing.id)) {
+                    _uiState.update { it.copy(isInWatchlist = false) }
                 }
             } else {
-                if (favoritesRepository.addToWatchlist(buildWatchlistEntry(detail))) {
-                    _uiState.update { it.copy(isFavorite = true) }
+                if (watchlistRepository.addToWatchlist(buildWatchlistEntry(detail))) {
+                    _uiState.update { it.copy(isInWatchlist = true) }
                 }
             }
         }
     }
 
-    private fun findWatchlistEntry(): WatchlistEntry? = favoritesRepository.getAllWatchlistEntries()
+    private fun findWatchlistEntry(): WatchlistEntry? = watchlistRepository.getAllWatchlistEntries()
         .firstOrNull { it.type == WatchlistEntryType.MOVIE && it.streamId == vodId }
 
     private fun buildWatchlistEntry(detail: DetailDisplayData): WatchlistEntry {

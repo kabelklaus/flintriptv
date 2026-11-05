@@ -56,7 +56,7 @@ data class SmartResumeTarget(
 class WatchProgressService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val moshi: Moshi,
-    private val favoritesRepository: WatchlistRepository,
+    private val watchlistRepository: WatchlistRepository,
     private val watchedHistoryService: WatchedHistoryService,
     private val userRepository: UserRepository,
     private val credentialsRepository: CredentialsRepository,
@@ -490,16 +490,16 @@ class WatchProgressService @Inject constructor(
                 Log.w(TAG, "Cannot delete from Firestore: no username available")
             }
 
-            // Automatically remove movie from favorites when progress is deleted
+            // Automatically remove movie from watchlist when progress is deleted
             if (contentType == "movie" && streamId != null && progress != null) {
                 try {
                     val encodedName = URLEncoder.encode(progress.title, "UTF-8")
-                    val favoriteId = "$KEY_PREFIX_MOVIE$streamId:$encodedName"
-                    favoritesRepository.removeFromWatchlist(favoriteId)
+                    val entryId = "$KEY_PREFIX_MOVIE$streamId:$encodedName"
+                    watchlistRepository.removeFromWatchlist(entryId)
                     Log.d(TAG, "Automatically removed completed movie from favorites")
                 } catch (e: Exception) {
                     reportWarning(TAG, "Failed to automatically remove completed movie from favorites", e)
-                    // Don't fail the progress deletion if favorite removal fails
+                    // Don't fail the progress deletion if watchlist removal fails
                 }
             }
 

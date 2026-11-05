@@ -227,11 +227,11 @@ class SeriesDetailViewModelTest {
     }
 
     @Test
-    fun `load erkennt bestehenden Serien-Favoriten`() = runTest {
+    fun `load erkennt bestehenden Serien-Watchlist-Eintrag`() = runTest {
         stubHappyPath()
         every { watchlistRepository.getAllWatchlistEntries() } returns listOf(
             WatchlistEntry.create(
-                id = series.toFavoriteId(),
+                id = series.toWatchlistEntryId(),
                 type = WatchlistEntryType.SERIES,
                 streamId = seriesId,
                 name = series.name
@@ -240,11 +240,11 @@ class SeriesDetailViewModelTest {
 
         val vm = viewModel()
 
-        assertTrue(vm.uiState.value.isFavorite)
+        assertTrue(vm.uiState.value.isInWatchlist)
     }
 
     @Test
-    fun `toggleWatchlist fuegt Serien-Favorit hinzu`() = runTest {
+    fun `toggleWatchlist fuegt Serien-Watchlist-Eintrag hinzu`() = runTest {
         stubHappyPath()
         val added = slot<WatchlistEntry>()
         coEvery { watchlistRepository.addToWatchlist(capture(added)) } returns true
@@ -252,10 +252,10 @@ class SeriesDetailViewModelTest {
         val vm = viewModel()
         vm.toggleWatchlist()
 
-        assertTrue(vm.uiState.value.isFavorite)
+        assertTrue(vm.uiState.value.isInWatchlist)
         assertEquals(WatchlistEntryType.SERIES, added.captured.type)
         assertEquals(seriesId, added.captured.streamId)
-        assertEquals(series.toFavoriteId(), added.captured.id)
+        assertEquals(series.toWatchlistEntryId(), added.captured.id)
         coVerify(exactly = 1) { watchlistRepository.addToWatchlist(any()) }
     }
 

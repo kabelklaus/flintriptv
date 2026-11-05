@@ -263,7 +263,7 @@ object AppModule {
      * Dependencies container for WatchProgressService to reduce parameter count.
      */
     data class WatchProgressServiceDependencies(
-        val favoritesRepository: WatchlistRepository,
+        val watchlistRepository: WatchlistRepository,
         val watchedHistoryService: WatchedHistoryService,
         val userRepository: UserRepository,
         val credentialsRepository: CredentialsRepository,
@@ -274,7 +274,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideWatchProgressServiceDependencies(
-        favoritesRepository: WatchlistRepository,
+        watchlistRepository: WatchlistRepository,
         watchedHistoryService: WatchedHistoryService,
         userRepository: UserRepository,
         credentialsRepository: CredentialsRepository,
@@ -282,7 +282,7 @@ object AppModule {
         @Named("WatchProgress") syncManager: FirestoreSyncManager
     ): WatchProgressServiceDependencies {
         return WatchProgressServiceDependencies(
-            favoritesRepository,
+            watchlistRepository,
             watchedHistoryService,
             userRepository,
             credentialsRepository,
@@ -302,7 +302,7 @@ object AppModule {
         return WatchProgressService(
             context,
             moshi,
-            dependencies.favoritesRepository,
+            dependencies.watchlistRepository,
             dependencies.watchedHistoryService,
             dependencies.userRepository,
             dependencies.credentialsRepository,
@@ -322,7 +322,7 @@ object AppModule {
     @Provides
     @Singleton
     @Named("Watchlist")
-    fun provideFavoritesSyncManager(): FirestoreSyncManager {
+    fun provideWatchlistSyncManager(): FirestoreSyncManager {
         return FirestoreSyncManager(tag = "FirestoreSyncManager-Favorites")
     }
     

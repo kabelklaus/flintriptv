@@ -245,7 +245,7 @@ class SeriesDetailScreenTest {
     }
 
     @Test
-    fun aktionsButtonsErscheinenInReihenfolgeAnsehenTrailerFavorit() {
+    fun aktionsButtonsErscheinenInReihenfolgeAnsehenTrailerWatchlist() {
         setContent(
             SeriesDetailUiState(
                 isLoading = false,
@@ -256,13 +256,13 @@ class SeriesDetailScreenTest {
         val tree = composeTestRule.onRoot().printToString()
         val watchIndex = tree.indexOf("series-detail-watch")
         val trailerIndex = tree.indexOf("series-detail-trailer")
-        val favoriteIndex = tree.indexOf("series-detail-favorite")
+        val watchlistIndex = tree.indexOf("series-detail-favorite")
 
         assertTrue("Ansehen-Button fehlt", watchIndex >= 0)
         assertTrue("Trailer-Button fehlt", trailerIndex >= 0)
-        assertTrue("Favorit-Button fehlt", favoriteIndex >= 0)
+        assertTrue("Favorit-Button fehlt", watchlistIndex >= 0)
         assertTrue("Ansehen muss vor Trailer stehen", watchIndex < trailerIndex)
-        assertTrue("Trailer muss vor Favorit stehen", trailerIndex < favoriteIndex)
+        assertTrue("Trailer muss vor Favorit stehen", trailerIndex < watchlistIndex)
     }
 
     @Test

@@ -42,7 +42,7 @@ private fun createNavbarOnNavigateRight(
     return if (showCategories) {
         { onNavigateToCategorySidebar() }
     } else {
-        null // Favorites, EPG, Settings haben keine Kategorien
+        null // Watchlist, EPG, Settings haben keine Kategorien
     }
 }
 

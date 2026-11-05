@@ -64,14 +64,14 @@ private fun agoIso(days: Long): String = Instant.now().minusSeconds(days * 86_40
 class UserContentProfileTest {
 
     @Test
-    fun `favorite series adds weighted genres`() {
+    fun `watchlist series adds weighted genres`() {
         val series = listOf(testSeries(seriesId = 10, genre = "Action, Drama"))
-        val favorites = listOf(
+        val entries = listOf(
             WatchlistEntry.create(id = "series:10:x", type = WatchlistEntryType.SERIES, streamId = 10, name = "Series10")
         )
 
         val profile = UserContentProfile.build(
-            favorites = favorites,
+            watchlistEntries = entries,
             watchedHistory = emptyMap(),
             watchProgress = emptyMap(),
             ratings = emptyMap(),
@@ -92,7 +92,7 @@ class UserContentProfileTest {
         }
 
         val profile = UserContentProfile.build(
-            favorites = emptyList(),
+            watchlistEntries = emptyList(),
             watchedHistory = emptyMap(),
             watchProgress = progress,
             ratings = emptyMap(),
@@ -112,7 +112,7 @@ class UserContentProfileTest {
         }
 
         val profile = UserContentProfile.build(
-            favorites = emptyList(),
+            watchlistEntries = emptyList(),
             watchedHistory = emptyMap(),
             watchProgress = progress,
             ratings = emptyMap(),
@@ -131,7 +131,7 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            favorites = emptyList(),
+            watchlistEntries = emptyList(),
             watchedHistory = emptyMap(),
             watchProgress = progress,
             ratings = emptyMap(),
@@ -151,7 +151,7 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            favorites = emptyList(),
+            watchlistEntries = emptyList(),
             watchedHistory = emptyMap(),
             watchProgress = progress,
             ratings = emptyMap(),
@@ -176,7 +176,7 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            favorites = emptyList(),
+            watchlistEntries = emptyList(),
             watchedHistory = watchedHistory,
             watchProgress = progress,
             ratings = emptyMap(),
@@ -195,7 +195,7 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            favorites = emptyList(),
+            watchlistEntries = emptyList(),
             watchedHistory = emptyMap(),
             watchProgress = emptyMap(),
             ratings = ratings,
@@ -214,7 +214,7 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            favorites = emptyList(),
+            watchlistEntries = emptyList(),
             watchedHistory = emptyMap(),
             watchProgress = progress,
             ratings = emptyMap(),
@@ -230,7 +230,7 @@ class UserContentProfileTest {
     fun `mixed signals on the same genre accumulate`() {
         val movies = listOf(testVod(streamId = 1, genre = "Action"))
         val series = listOf(testSeries(seriesId = 10, genre = "Action"))
-        val favorites = listOf(
+        val entries = listOf(
             WatchlistEntry.create(id = "movie:1:x", type = WatchlistEntryType.MOVIE, streamId = 1, name = "Movie1")
         )
         val progress = (1..5).associate { ep ->
@@ -238,7 +238,7 @@ class UserContentProfileTest {
         }
 
         val profile = UserContentProfile.build(
-            favorites = favorites,
+            watchlistEntries = entries,
             watchedHistory = emptyMap(),
             watchProgress = progress,
             ratings = emptyMap(),
@@ -246,7 +246,7 @@ class UserContentProfileTest {
             series = series
         )
 
-        // +3.0 (favorite movie) + 2.5 (active series) = 5.5
+        // +3.0 (watchlist movie) + 2.5 (active series) = 5.5
         assertEquals(5.5, profile.weights["action"]!!, 0.001)
     }
 
@@ -258,7 +258,7 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            favorites = emptyList(),
+            watchlistEntries = emptyList(),
             watchedHistory = emptyMap(),
             watchProgress = progress,
             ratings = emptyMap(),

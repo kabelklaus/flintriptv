@@ -62,24 +62,24 @@ data class SearchResultCallbacks(
 )
 
 /**
- * Sealed class for type-safe search content handling with favorite support
+ * Sealed class for type-safe search content handling with watchlist support
  */
 private sealed class SearchContentType {
-    abstract fun toFavoriteId(): String
+    abstract fun toWatchlistEntryId(): String
     abstract fun toWatchlistEntry(): WatchlistEntry
 
     data class Live(val stream: LiveStream) : SearchContentType() {
-        override fun toFavoriteId() = stream.toFavoriteId()
+        override fun toWatchlistEntryId() = stream.toWatchlistEntryId()
         override fun toWatchlistEntry() = stream.toWatchlistEntry()
     }
 
     data class Movie(val vod: VodStream) : SearchContentType() {
-        override fun toFavoriteId() = vod.toFavoriteId()
+        override fun toWatchlistEntryId() = vod.toWatchlistEntryId()
         override fun toWatchlistEntry() = vod.toWatchlistEntry()
     }
 
     data class Series(val series: com.flintr.tv.data.model.Series) : SearchContentType() {
-        override fun toFavoriteId() = series.toFavoriteId()
+        override fun toWatchlistEntryId() = series.toWatchlistEntryId()
         override fun toWatchlistEntry() = series.toWatchlistEntry()
     }
 }
@@ -779,22 +779,22 @@ private fun handleSearchResultKeyEvent(
 }
 
 /**
- * Handles favorite toggle action
+ * Handles watchlist toggle action
  */
-private suspend fun handleFavoriteToggle(
-    isFavorite: Boolean,
-    favoriteId: String,
+private suspend fun handleWatchlistToggle(
+    isInWatchlist: Boolean,
+    entryId: String,
     contentType: SearchContentType,
     watchlistRepository: WatchlistRepository,
-    onFavoriteChanged: (Boolean) -> Unit
+    onWatchlistChanged: (Boolean) -> Unit
 ) {
-    if (isFavorite) {
-        watchlistRepository.removeFromWatchlist(favoriteId)
-        onFavoriteChanged(false)
+    if (isInWatchlist) {
+        watchlistRepository.removeFromWatchlist(entryId)
+        onWatchlistChanged(false)
     } else {
-        val favorite = contentType.toWatchlistEntry()
-        watchlistRepository.addToWatchlist(favorite)
-        onFavoriteChanged(true)
+        val entry = contentType.toWatchlistEntry()
+        watchlistRepository.addToWatchlist(entry)
+        onWatchlistChanged(true)
     }
 }
 
@@ -811,11 +811,11 @@ private fun SearchResultItem(
     var showMenu by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
-    val favoriteId = remember(contentType) { contentType.toFavoriteId() }
+    val entryId = remember(contentType) { contentType.toWatchlistEntryId() }
     var isInWatchlist by remember { mutableStateOf(false) }
 
-    LaunchedEffect(favoriteId, showMenu) {
-        isInWatchlist = watchlistRepository.isInWatchlist(favoriteId)
+    LaunchedEffect(entryId, showMenu) {
+        isInWatchlist = watchlistRepository.isInWatchlist(entryId)
     }
 
     LaunchedEffect(focus.focusRequester) {
@@ -834,10 +834,10 @@ private fun SearchResultItem(
         label = "borderColor"
     )
 
-    val removeFromFavoritesText = stringResource(R.string.remove_from_watchlist)
-    val addToFavoritesText = stringResource(R.string.add_to_watchlist)
-    val menuOptions = remember(isInWatchlist, removeFromFavoritesText, addToFavoritesText) {
-        if (isInWatchlist) listOf(removeFromFavoritesText) else listOf(addToFavoritesText)
+    val removeFromWatchlistText = stringResource(R.string.remove_from_watchlist)
+    val addToWatchlistText = stringResource(R.string.add_to_watchlist)
+    val menuOptions = remember(isInWatchlist, removeFromWatchlistText, addToWatchlistText) {
+        if (isInWatchlist) listOf(removeFromWatchlistText) else listOf(addToWatchlistText)
     }
 
     val itemShape = RoundedCornerShape(Dimensions.radiusSM)
@@ -871,7 +871,7 @@ private fun SearchResultItem(
         onDismiss = { showMenu = false },
         onOptionSelected = {
             coroutineScope.launch {
-                handleFavoriteToggle(isInWatchlist, favoriteId, contentType, watchlistRepository) {
+                handleWatchlistToggle(isInWatchlist, entryId,contentType, watchlistRepository) {
                     isInWatchlist = it
                 }
             }

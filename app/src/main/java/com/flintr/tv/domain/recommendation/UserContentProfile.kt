@@ -14,7 +14,7 @@ import kotlin.math.max
 
 /**
  * Genre-weight map built from a user's signals, plus the content IDs that must never be
- * recommended because the user already knows them (favorited, finished, or in progress).
+ * recommended because the user already knows them (on the watchlist, finished, or in progress).
  */
 data class GenreProfile(
     val weights: Map<String, Double>,
@@ -24,11 +24,11 @@ data class GenreProfile(
 )
 
 /**
- * Builds a [GenreProfile] from favorites, watch progress, watched history and ratings,
+ * Builds a [GenreProfile] from watchlist entries, watch progress, watched history and ratings,
  * per the scoring spec in .hermes-plan/task_plan.md.
  */
 object UserContentProfile {
-    private const val WEIGHT_FAVORITE = 3.0
+    private const val WEIGHT_WATCHLIST = 3.0
     private const val WEIGHT_SERIES_ACTIVE = 2.5
     private const val WEIGHT_SERIES_STARTED = 1.0
     private const val WEIGHT_MOVIE_COMPLETED = 1.5
@@ -48,7 +48,7 @@ object UserContentProfile {
     private const val MS_PER_DAY = 24.0 * 60.0 * 60.0 * 1000.0
 
     /**
-     * Bundles [applyFavoriteSignals]'s mutable accumulators (same backing collections as the
+     * Bundles [applyWatchlistSignals]'s mutable accumulators (same backing collections as the
      * caller's locals) so the function stays under the parameter-count limit.
      */
     private data class ProfileAccumulator(
@@ -59,7 +59,7 @@ object UserContentProfile {
     )
 
     fun build(
-        favorites: List<WatchlistEntry>,
+        watchlistEntries: List<WatchlistEntry>,
         watchedHistory: Map<String, WatchedItem>,
         watchProgress: Map<String, WatchProgress>,
         ratings: Map<String, RatingEntry>,
@@ -75,8 +75,8 @@ object UserContentProfile {
         val excludedMovieIds = mutableSetOf<Int>()
         val excludedSeriesIds = mutableSetOf<Int>()
 
-        applyFavoriteSignals(
-            favorites,
+        applyWatchlistSignals(
+            watchlistEntries,
             moviesById,
             seriesById,
             nowMs,
@@ -95,26 +95,26 @@ object UserContentProfile {
         )
     }
 
-    private fun applyFavoriteSignals(
-        favorites: List<WatchlistEntry>,
+    private fun applyWatchlistSignals(
+        watchlistEntries: List<WatchlistEntry>,
         moviesById: Map<Int, VodStream>,
         seriesById: Map<Int, Series>,
         nowMs: Long,
         accumulator: ProfileAccumulator
     ) {
-        favorites.forEach { favorite ->
-            when (favorite.type) {
+        watchlistEntries.forEach { entry ->
+            when (entry.type) {
                 WatchlistEntryType.MOVIE -> {
-                    accumulator.excludedMovieIds += favorite.streamId
-                    val vod = moviesById[favorite.streamId] ?: return@forEach
-                    addGenreWeights(accumulator.weights, GenreNormalizer.normalize(vod.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt), nowMs)
-                    accumulator.coreSignalKeys += "fav_movie_${favorite.streamId}"
+                    accumulator.excludedMovieIds += entry.streamId
+                    val vod = moviesById[entry.streamId] ?: return@forEach
+                    addGenreWeights(accumulator.weights, GenreNormalizer.normalize(vod.genre), WEIGHT_WATCHLIST, parseInstantMs(entry.addedAt), nowMs)
+                    accumulator.coreSignalKeys += "fav_movie_${entry.streamId}"
                 }
                 WatchlistEntryType.SERIES -> {
-                    accumulator.excludedSeriesIds += favorite.streamId
-                    val show = seriesById[favorite.streamId] ?: return@forEach
-                    addGenreWeights(accumulator.weights, GenreNormalizer.normalize(show.genre), WEIGHT_FAVORITE, parseInstantMs(favorite.addedAt), nowMs)
-                    accumulator.coreSignalKeys += "fav_series_${favorite.streamId}"
+                    accumulator.excludedSeriesIds += entry.streamId
+                    val show = seriesById[entry.streamId] ?: return@forEach
+                    addGenreWeights(accumulator.weights, GenreNormalizer.normalize(show.genre), WEIGHT_WATCHLIST, parseInstantMs(entry.addedAt), nowMs)
+                    accumulator.coreSignalKeys += "fav_series_${entry.streamId}"
                 }
                 WatchlistEntryType.LIVE -> Unit
             }
