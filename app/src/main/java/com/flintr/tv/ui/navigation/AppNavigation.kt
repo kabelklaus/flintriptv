@@ -78,7 +78,9 @@ import com.flintr.tv.ui.tabs.SeriesContent
 import com.flintr.tv.ui.tabs.SeriesContentParams
 import com.flintr.tv.ui.tabs.InProgressContent
 import com.flintr.tv.ui.tabs.InProgressContentParams
-import com.flintr.tv.ui.tabs.countInProgressItems
+import com.flintr.tv.ui.tabs.InProgressItem
+import com.flintr.tv.ui.tabs.InProgressItemsState
+import com.flintr.tv.ui.tabs.rememberInProgressItems
 import com.flintr.tv.ui.tabs.SeriesItem
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
@@ -1106,7 +1108,8 @@ private data class MainContentBodyParams(
     val focusRequesterMap: MutableMap<String, FocusRequester>,
     val onNavigateToCategorySidebar: () -> Unit,
     val onNavigateToNavbar: () -> Unit,
-    val dependencies: AppNavigationDependencies
+    val dependencies: AppNavigationDependencies,
+    val inProgressItems: InProgressItemsState
 )
 
 /**
@@ -1306,19 +1309,16 @@ private fun InProgressContentSection(params: MainContentBodyParams) {
     val (onVodClick, onSeriesClick, onEpisodeClick) = createInProgressClickHandlers(params)
     InProgressContent(
         params = InProgressContentParams(
+            itemsState = params.inProgressItems,
             watchProgressService = params.dependencies.watchProgressService,
             watchlistRepository = params.dependencies.watchlistRepository,
-            cacheService = params.dependencies.cacheService,
             focusRequester = params.contentListFocusRequester,
             onNavigateLeft = params.onNavigateToCategorySidebar,
             onVodClick = onVodClick,
             onSeriesClick = onSeriesClick,
             onEpisodeClick = onEpisodeClick,
             lazyGridState = params.lazyGridState,
-            focusRequesterMap = params.focusRequesterMap,
-            destination = params.destination,
-            xtreamRepository = params.dependencies.xtreamRepository,
-            credentials = params.credentials
+            focusRequesterMap = params.focusRequesterMap
         )
     )
 }
@@ -1854,6 +1854,7 @@ private data class MainContentScaffoldParams(
     val selectedCategoryId: String?,
     val onCategorySelected: (String?) -> Unit,
     val itemCounts: Map<String, Int>,
+    val inProgressItems: InProgressItemsState,
     val navbarFocusRequester: FocusRequester,
     val categorySidebarFocusRequester: FocusRequester,
     val categoryFocusRequesterMap: MutableMap<String, FocusRequester>,
@@ -1936,7 +1937,7 @@ private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params
                     selectedCategoryId = selectedCategoryId,
                     onCategorySelected = onCategorySelected,
                     itemCounts = itemCounts,
-                    itemLabelBuilder = { itemLabelForDestination(selectedDestination) },
+                    itemLabelBuilder = { count -> itemLabelForDestination(selectedDestination, count) },
                     navbarFocusRequester = navbarFocusRequester,
                     categorySidebarFocusRequester = categorySidebarFocusRequester,
                     categoryFocusRequesterMap = categoryFocusRequesterMap,
@@ -1963,7 +1964,8 @@ private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params
                             focusRequesterMap = focusRequesterMap,
                             onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
                             onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
-                            dependencies = dependencies
+                            dependencies = dependencies,
+                            inProgressItems = inProgressItems
                         )
                     )
                 }
@@ -2205,48 +2207,27 @@ private fun handleDestinationChangeInternal(
 }
 
 /**
- * Zaehlt die Sidebar-Zaehler-Zahl ueber dieselbe katalog-aufloesende Pipeline wie die
- * "Angefangene Inhalte"-Liste ([com.flintr.tv.ui.tabs.loadInProgressItemsCore]), damit der
- * Zaehler niemals mehr zeigt als tatsaechlich angezeigte Karten (Task 10b).
+ * Sidebar-Zaehler = Anzahl der Karten, die die "Angefangene Inhalte"-Liste rendert: Aufrufer
+ * uebergibt [InProgressItemsState.items] - dieselbe Liste, die das Grid anzeigt (Task 10b). Keine
+ * eigene Aufloesung - Zaehler und Liste koennen dadurch nie auseinanderlaufen.
  */
-@Composable
-internal fun calculateItemCounts(
-    selectedDestination: HomeDestination,
-    watchProgressService: WatchProgressService,
-    cacheService: DataCacheService,
-    xtreamRepository: XtreamRepository?,
-    credentials: Credentials?
-): Map<String, Int> {
-    var inProgressCount by remember { mutableStateOf(0) }
-    val watchProgress by watchProgressService.watchProgress.collectAsState()
-    LaunchedEffect(selectedDestination, watchProgress) {
-        inProgressCount = when (selectedDestination) {
-            is HomeDestination.VOD, is HomeDestination.Series -> countInProgressItems(
-                destination = selectedDestination,
-                watchProgressService = watchProgressService,
-                cacheService = cacheService,
-                xtreamRepository = xtreamRepository,
-                credentials = credentials
-            )
-            else -> 0
-        }
-    }
-    return remember(inProgressCount) {
-        if (inProgressCount > 0) {
-            mapOf(IN_PROGRESS_CATEGORY_ID to inProgressCount)
-        } else {
-            emptyMap()
-        }
+internal fun calculateItemCounts(inProgressItems: List<InProgressItem>): Map<String, Int> {
+    val inProgressCount = inProgressItems.size
+    return if (inProgressCount > 0) {
+        mapOf(IN_PROGRESS_CATEGORY_ID to inProgressCount)
+    } else {
+        emptyMap()
     }
 }
 
 /**
- * Label fuer die Item-Zaehlung pro Destination (z.B. "3 Filme" / "2 Serien" bei
- * Angefangene Inhalte). Niemals "Kanaele" - das bezeichnet nur echte Live-TV-Sender.
+ * Label fuer die Item-Zaehlung pro Destination (z.B. "1 Film" / "3 Filme", "1 Serie" /
+ * "2 Serien" bei Angefangene Inhalte). Niemals "Kanaele" - das bezeichnet nur echte
+ * Live-TV-Sender.
  */
-internal fun itemLabelForDestination(destination: HomeDestination): String = when (destination) {
-    is HomeDestination.VOD -> "Filme"
-    is HomeDestination.Series -> "Serien"
+internal fun itemLabelForDestination(destination: HomeDestination, count: Int): String = when (destination) {
+    is HomeDestination.VOD -> if (count == 1) "Film" else "Filme"
+    is HomeDestination.Series -> if (count == 1) "Serie" else "Serien"
     else -> "Titel"
 }
 
@@ -2452,14 +2433,15 @@ fun MainContentScreen(
     // String resources
     val categoryHiddenMessage = stringResource(R.string.category_hidden)
     
-    // Calculate item counts for special categories
-    val itemCounts = calculateItemCounts(
-        selectedDestination = selectedDestination,
+    // Single in-progress pipeline: feeds the "Angefangene Inhalte" grid AND its sidebar counter
+    val inProgressItems = rememberInProgressItems(
+        destination = selectedDestination,
         watchProgressService = dependencies.watchProgressService,
         cacheService = dependencies.cacheService,
         xtreamRepository = dependencies.xtreamRepository,
         credentials = credentials
     )
+    val itemCounts = calculateItemCounts(inProgressItems.items)
     
     // Loading indicator with minimum display duration
     var loadingStartTime by remember { mutableStateOf(0L) }
@@ -2490,6 +2472,7 @@ fun MainContentScreen(
             selectedCategoryId = selectedCategoryId,
             onCategorySelected = { selectedCategoryId = it },
             itemCounts = itemCounts,
+            inProgressItems = inProgressItems,
             navbarFocusRequester = navbarFocusRequester,
             categorySidebarFocusRequester = categorySidebarFocusRequester,
             categoryFocusRequesterMap = categoryFocusRequesterMap,

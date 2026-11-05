@@ -311,6 +311,33 @@ class WatchProgressServiceTest {
     }
 
     @Test
+    fun `cleanupCompletedProgress Grenze - 89 Prozent bleibt, 90 Prozent wird bereinigt`() = runBlocking {
+        seedProgress(
+            mapOf(
+                "movie:89" to progress(890_000, 1_000_000),
+                "movie:90" to progress(900_000, 1_000_000)
+            )
+        )
+
+        assertEquals(1, service.cleanupCompletedProgress())
+
+        assertEquals(890_000L, service.getProgress("movie", 89, null, null))
+        assertNull(service.getProgress("movie", 90, null, null))
+        coVerify { watchedHistoryService.markAsWatched("movie", 90, null, null, null, null, null) }
+        coVerify(exactly = 0) { watchedHistoryService.markAsWatched("movie", 89, any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `saveProgress Grenze - 89 Prozent speichert, 90 Prozent gilt als fertig`() = runBlocking {
+        assertTrue(service.saveProgress("movie", 1, null, null, 890_000, 1_000_000, "Film"))
+        assertEquals(890_000L, service.getProgress("movie", 1, null, null))
+
+        assertTrue(service.saveProgress("movie", 1, null, null, 900_000, 1_000_000, "Film"))
+        assertNull(service.getProgress("movie", 1, null, null))
+        coVerify { watchedHistoryService.markAsWatched("movie", 1, null, null, null, null, null) }
+    }
+
+    @Test
     fun `cleanupCompletedProgress ohne Eintraege liefert 0`() = runBlocking {
         assertEquals(0, service.cleanupCompletedProgress())
     }

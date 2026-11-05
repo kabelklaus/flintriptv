@@ -2,13 +2,14 @@ package com.flintr.tv.ui.tabs
 
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.testEpisode
 import com.flintr.tv.data.model.testSeason
 import com.flintr.tv.data.model.testSeries
 import com.flintr.tv.data.model.testVodStream
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
+import com.flintr.tv.ui.navigation.calculateItemCounts
 import com.flintr.tv.ui.screens.HomeDestination
 import io.mockk.coEvery
 import io.mockk.mockk
@@ -19,10 +20,11 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * Task 10b: countInProgressItems() muss immer dieselbe Zahl liefern wie
- * loadInProgressItemsCore().size, weil beide dieselbe Pipeline aufrufen. Ein Progress-Eintrag,
- * dessen Serie/Episode/Film nicht mehr im Katalog existiert, wird aus BEIDEN verworfen - aber
- * nicht geloescht, die Rohdaten (WatchProgress) bleiben erhalten.
+ * Task 10b: Der Sidebar-Zaehler (calculateItemCounts) muss immer dieselbe Zahl liefern wie die
+ * Liste Karten hat, weil er aus derselben Item-Liste (InProgressItemsState.items) abgeleitet
+ * wird, die loadInProgressItemsCore() liefert. Ein Progress-Eintrag, dessen Serie/Episode/Film nicht mehr
+ * im Katalog existiert, wird aus BEIDEN verworfen - aber nicht geloescht, die Rohdaten
+ * (WatchProgress) bleiben erhalten.
  */
 @RunWith(RobolectricTestRunner::class)
 class InProgressContentCountTest {
@@ -35,6 +37,9 @@ class InProgressContentCountTest {
         lastWatched = "2026-01-01T00:00:00Z",
         title = "Folge"
     )
+
+    private fun counterFor(items: List<InProgressItem>): Int? =
+        calculateItemCounts(items)[IN_PROGRESS_CATEGORY_ID]
 
     @Test
     fun `Serien - toter Katalogeintrag wird aus Liste UND Zaehler verworfen`() = runBlocking {
@@ -64,21 +69,9 @@ class InProgressContentCountTest {
             credentials = credentials,
             allProgress = allProgress
         )
+
         assertEquals(2, resolvedItems.size)
-
-        val watchProgressService: WatchProgressService = mockk()
-        coEvery { watchProgressService.getAllInProgress() } returns allProgress
-
-        val count = countInProgressItems(
-            destination = HomeDestination.Series,
-            watchProgressService = watchProgressService,
-            cacheService = mockk(relaxed = true),
-            xtreamRepository = xtreamRepository,
-            credentials = credentials
-        )
-
-        assertEquals(resolvedItems.size, count)
-        assertEquals(2, count)
+        assertEquals(resolvedItems.size, counterFor(resolvedItems))
     }
 
     @Test
@@ -103,20 +96,13 @@ class InProgressContentCountTest {
             credentials = null,
             allProgress = allProgress
         )
+
         assertEquals(2, resolvedItems.size)
+        assertEquals(resolvedItems.size, counterFor(resolvedItems))
+    }
 
-        val watchProgressService: WatchProgressService = mockk()
-        coEvery { watchProgressService.getAllInProgress() } returns allProgress
-
-        val count = countInProgressItems(
-            destination = HomeDestination.VOD,
-            watchProgressService = watchProgressService,
-            cacheService = cacheService,
-            xtreamRepository = null,
-            credentials = null
-        )
-
-        assertEquals(resolvedItems.size, count)
-        assertEquals(2, count)
+    @Test
+    fun `leere Liste blendet den Zaehler aus`() {
+        assertEquals(null, counterFor(emptyList()))
     }
 }

@@ -127,6 +127,34 @@ class WatchlistRepositoryTest {
     }
 
     @Test
+    fun `gleichzeitiges Doppel-Hinzufuegen desselben Eintrags legt genau einen an`() {
+        // Gleiches Muster wie oben (CyclicBarrier + Dispatchers.Default), aber DERSELBE Entry:
+        // genau ein Aufruf darf gewinnen, kein Duplikat, nur ein Firestore-Sync pro Runde.
+        repeat(15) { round ->
+            val startGate = java.util.concurrent.CyclicBarrier(2)
+            val same = entry(id = "movie_same$round", streamId = round)
+
+            val results = runBlocking {
+                coroutineScope {
+                    val jobA = async(Dispatchers.Default) {
+                        startGate.await()
+                        repository.addToWatchlist(same)
+                    }
+                    val jobB = async(Dispatchers.Default) {
+                        startGate.await()
+                        repository.addToWatchlist(same)
+                    }
+                    awaitAll(jobA, jobB)
+                }
+            }
+
+            assertEquals("Runde $round: Ergebnisse $results", 1, results.count { it })
+            assertEquals("Runde $round: Duplikat", 1, runBlocking { repository.getAllWatchlistEntries() }.count { it.id == same.id })
+            coVerify(exactly = 1) { userRepository.addToWatchlistAtomically("chris", same) }
+        }
+    }
+
+    @Test
     fun `removeFromWatchlist entfernt vorhandenen Watchlist-Eintrag`() = runBlocking {
         repository.addToWatchlist(entry())
 
