@@ -834,8 +834,8 @@ private fun SearchResultItem(
         label = "borderColor"
     )
 
-    val removeFromFavoritesText = stringResource(R.string.remove_from_favorites)
-    val addToFavoritesText = stringResource(R.string.add_to_favorites)
+    val removeFromFavoritesText = stringResource(R.string.remove_from_watchlist)
+    val addToFavoritesText = stringResource(R.string.add_to_watchlist)
     val menuOptions = remember(isFavorite, removeFromFavoritesText, addToFavoritesText) {
         if (isFavorite) listOf(removeFromFavoritesText) else listOf(addToFavoritesText)
     }

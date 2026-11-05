@@ -516,8 +516,8 @@ private fun createMenuOptions(
     contentType: ContentType?,
     isFavorite: Boolean
 ): List<String> {
-    val removeFromFavoritesText = stringResource(R.string.remove_from_favorites)
-    val addToFavoritesText = stringResource(R.string.add_to_favorites)
+    val removeFromFavoritesText = stringResource(R.string.remove_from_watchlist)
+    val addToFavoritesText = stringResource(R.string.add_to_watchlist)
     
     return remember(contentType, isFavorite, removeFromFavoritesText, addToFavoritesText) {
         if (contentType != null) {

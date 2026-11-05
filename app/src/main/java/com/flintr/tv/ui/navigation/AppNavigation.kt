@@ -1629,7 +1629,7 @@ private fun useCategoryManagement(
     val filteredCategories = filterHiddenCategories(rawCategories, categoryType, hiddenCategories)
     val sortedCategories = filteredCategories.sortedBy { it.categoryName }
 
-    val favoritesCategoryName = stringResource(R.string.favorites)
+    val favoritesCategoryName = stringResource(R.string.watchlist)
     val newCategoryName = stringResource(R.string.new_category)
     val inProgressCategoryName = stringResource(R.string.in_progress_category)
     val recommendedCategoryName = stringResource(R.string.recommended_for_you)
