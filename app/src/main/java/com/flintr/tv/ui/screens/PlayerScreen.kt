@@ -159,8 +159,8 @@ private fun createExoPlayer(
             1500,  // bufferForPlaybackMs
             5000   // bufferForPlaybackAfterRebufferMs
         )
-        .setTargetBufferBytes(2 * 1024 * 1024) // 2MB target buffer
-        .setPrioritizeTimeOverSizeThresholds(true)
+        .setTargetBufferBytes(20 * 1024 * 1024) // 20MB target buffer
+        .setPrioritizeTimeOverSizeThresholds(false)
         .build()
 
     // Configure RenderersFactory based on audio decoder setting.
