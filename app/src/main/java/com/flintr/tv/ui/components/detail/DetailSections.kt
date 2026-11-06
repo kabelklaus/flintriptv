@@ -31,15 +31,19 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.flintr.tv.data.model.Series
+import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.theme.DarkColors
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.theme.tvFocusRing
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
+import java.text.Normalizer
 
 /**
  * Shared cast row (Movie/Series detail) - identical layout, only the root testTag differs;
@@ -114,6 +118,12 @@ fun <T> DetailRecommendationsSection(
     cardTestTag: (T) -> String,
     onItemClick: (T) -> Unit
 ) {
+    // The backend may return the same film under several language/quality variants
+    // (e.g. "Apollo 13", "Apollo 13 DE", "Apollo 13 4K"). Collapse those on the UI
+    // side until the recommendation service can own the catalog-level dedup.
+    val visibleRecommendations = remember(recommendations, title) {
+        deduplicateRecommendations(recommendations, title)
+    }
     Column(
         modifier = Modifier
             .padding(top = Dimensions.spacingLG, start = Dimensions.spacingXL, end = Dimensions.spacingXL)
@@ -130,7 +140,7 @@ fun <T> DetailRecommendationsSection(
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
         ) {
-            itemsIndexed(items = recommendations, key = { _, item -> key(item) }) { index, item ->
+            itemsIndexed(items = visibleRecommendations, key = { _, item -> key(item) }) { index, item ->
                 DetailRecommendationCard(
                     posterUrl = posterUrl(item),
                     title = title(item),
@@ -141,6 +151,58 @@ fun <T> DetailRecommendationsSection(
                 )
             }
         }
+    }
+}
+
+/** Quality/language markers that Xtream appends to otherwise identical title variants. */
+private val RecommendationTitleNoiseSuffixes = setOf(
+    "4k", "uhd", "hdr", "fhd", "sd", "uv",
+    "de", "en", "ger", "eng", "german", "english"
+)
+
+private val RecommendationYearPattern = Regex("""(19|20)\d{2}""")
+
+internal fun normalizeRecommendationTitle(raw: String): String {
+    val withoutDiacritics = Normalizer.normalize(raw, Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+    val tokens = withoutDiacritics
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+        .split(' ')
+        .filter { it.isNotBlank() }
+        .toMutableList()
+    // Only trailing markers are dropped so titles that legitimately contain a marker
+    // word in the middle keep their meaning.
+    while (tokens.isNotEmpty() && tokens.last() in RecommendationTitleNoiseSuffixes) {
+        tokens.removeAt(tokens.lastIndex)
+    }
+    return tokens.joinToString(" ")
+}
+
+private fun recommendationYear(item: Any?, title: String): Int? {
+    val releaseDate = when (item) {
+        is VodStream -> item.releaseDate
+        is Series -> item.releaseDate
+        else -> null
+    }
+    return RecommendationYearPattern.find(releaseDate.orEmpty())?.value?.toIntOrNull()
+        ?: RecommendationYearPattern.find(title)?.value?.toIntOrNull()
+}
+
+/**
+ * Keeps the first occurrence per normalized title + year. Series/movie are the only
+ * recommendation models in this app, so the year lookup stays local to this UI helper.
+ */
+internal fun <T> deduplicateRecommendations(
+    items: List<T>,
+    title: (T) -> String
+): List<T> {
+    val seen = mutableSetOf<String>()
+    return items.filter { item ->
+        val itemTitle = title(item)
+        val dedupKey = "${normalizeRecommendationTitle(itemTitle)}#${recommendationYear(item, itemTitle) ?: ""}"
+        seen.add(dedupKey)
     }
 }
 
@@ -180,12 +242,25 @@ private fun DetailRecommendationCard(
                 .clip(RoundedCornerShape(Dimensions.radiusMD))
                 .background(colors.bgCard)
         ) {
-            if (posterUrl != null) {
+            if (!posterUrl.isNullOrBlank()) {
                 AsyncImage(
                     model = posterUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    text = title,
+                    color = DarkColors.textPrimary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(Dimensions.spacingSM)
                 )
             }
         }
