@@ -9,6 +9,7 @@ import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.utils.isConnectivityError
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -21,6 +22,7 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 import com.flintr.tv.utils.error.reportError
 import com.flintr.tv.utils.error.reportHandled
@@ -75,7 +77,8 @@ enum class RefreshStep {
 @Singleton
 class DataRefreshUseCase @Inject constructor(
     private val repository: XtreamRepository,
-    private val cacheService: DataCacheService
+    private val cacheService: DataCacheService,
+    @Named("IO") private val refreshDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     companion object {
         private const val TAG = "DataRefreshUseCase"
@@ -238,7 +241,7 @@ class DataRefreshUseCase @Inject constructor(
         // withContext(ioDispatcher) coroutines, and flow{}'s SafeCollector rejects any
         // emit whose context differs from the collector's ("Flow invariant is violated").
         FlowCollector<DataRefreshProgress> { send(it) }.refresh(username, password)
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(refreshDispatcher)
 
     private suspend fun FlowCollector<DataRefreshProgress>.refresh(username: String, password: String) {
         try {
