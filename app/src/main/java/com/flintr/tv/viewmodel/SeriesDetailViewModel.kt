@@ -264,7 +264,11 @@ class SeriesDetailViewModel @Inject constructor(
                     season = season,
                     title = season.name.takeIf { it.isNotBlank() } ?: "Staffel ${season.seasonNumber}",
                     posterUrl = season.cover?.takeIf { it.isNotBlank() }
-                        ?: series.cover?.takeIf { it.isNotBlank() },
+                        ?: series.cover?.takeIf { it.isNotBlank() }
+                        ?: episodes.firstNotNullOfOrNull { episode ->
+                            episode.info?.movieImage?.takeIf { it.isNotBlank() }
+                        }
+                        ?: series.backdropPath?.firstOrNull { it.isNotBlank() },
                     episodeCount = episodes.size,
                     watchedCount = watchedCount,
                     isFullyWatched = episodes.isNotEmpty() && watchedCount >= episodes.size

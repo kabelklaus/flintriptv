@@ -176,6 +176,36 @@ class SeriesDetailViewModelTest {
     }
 
     @Test
+    fun `ohne Staffel- und Serien-Cover faellt Poster auf erstes Episoden-Still zurueck`() = runTest {
+        val stilllessEpisode = episode(31, 1)
+        val stillEpisode = episode(32, 2).let {
+            it.copy(info = it.info!!.copy(movieImage = "https://img/still-32.jpg"))
+        }
+        val blankSeason = season(1, listOf(stilllessEpisode, stillEpisode)).copy(cover = " ")
+        stubHappyPath(series.copy(cover = null, seasons = listOf(blankSeason)))
+
+        val vm = viewModel()
+
+        assertEquals("https://img/still-32.jpg", vm.uiState.value.seasons[0].posterUrl)
+    }
+
+    @Test
+    fun `ohne Cover und Episoden-Stills faellt Poster auf Serien-Backdrop zurueck`() = runTest {
+        val blankSeason = season(1, listOf(episode(31, 1))).copy(cover = null)
+        stubHappyPath(
+            series.copy(
+                cover = "",
+                backdropPath = listOf("", "https://img/backdrop-2.jpg"),
+                seasons = listOf(blankSeason)
+            )
+        )
+
+        val vm = viewModel()
+
+        assertEquals("https://img/backdrop-2.jpg", vm.uiState.value.seasons[0].posterUrl)
+    }
+
+    @Test
     fun `watched count und Ribbon werden aus WatchProgress berechnet`() = runTest {
         stubHappyPath()
         coEvery { watchProgressService.getWatchedEpisodeIds(seriesId) } returns
