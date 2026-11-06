@@ -188,6 +188,48 @@ fun Modifier.onClick(
     }
 }
 
+private const val DOUBLE_CLICK_DEBOUNCE_MS = 300L
+
+/**
+ * Generic guard against duplicate confirm/click events from D-Pad, touch and key-repeat paths.
+ *
+ * A TV remote can deliver the same confirm twice within a few frames (key repeat plus touch
+ * synthesis), which previously toggled a state and immediately toggled it back. This debouncer
+ * accepts the first event and ignores every further event within [debounceMillis] (default
+ * [DOUBLE_CLICK_DEBOUNCE_MS]).
+ *
+ * This is deliberately additive: [safeRequestFocus] and the existing [Modifier.onClick] /
+ * [Modifier.onLongPress] handling are unchanged, so no current call site changes behaviour.
+ * Future consumers that benefit: the central play/pause toggle in `PlayerScreen` and the
+ * `FocusedButton.PLAY_PAUSE` control in `CustomPlayerControls`, where a duplicated confirm
+ * currently produces a visible play -> pause -> play flicker.
+ *
+ * @param debounceMillis Minimum time between two accepted events.
+ * @param clock Time source, injectable for tests.
+ */
+class ClickDebouncer(
+    private val debounceMillis: Long = DOUBLE_CLICK_DEBOUNCE_MS,
+    private val clock: () -> Long = { System.currentTimeMillis() }
+) {
+    private var lastAcceptedAt: Long? = null
+
+    /**
+     * @return true if this event should be handled, false if it falls inside the debounce window.
+     */
+    fun tryAccept(now: Long = clock()): Boolean {
+        val last = lastAcceptedAt
+        if (last != null && now - last < debounceMillis) {
+            return false
+        }
+        lastAcceptedAt = now
+        return true
+    }
+
+    fun reset() {
+        lastAcceptedAt = null
+    }
+}
+
 /**
  * Data class for D-Pad direction handlers
  */
