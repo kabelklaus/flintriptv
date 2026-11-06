@@ -1,6 +1,7 @@
 package com.flintr.tv
 
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -69,7 +70,20 @@ class FlintRTVApplication : Application(), ImageLoaderFactory {
         }
     }
     
-    override fun newImageLoader(): ImageLoader = buildFlintrImageLoader(this)
+    private var imageLoader: ImageLoader? = null
+
+    override fun newImageLoader(): ImageLoader =
+        imageLoader ?: buildFlintrImageLoader(this).also { imageLoader = it }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+            level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
+            level == ComponentCallbacks2.TRIM_MEMORY_COMPLETE
+        ) {
+            imageLoader?.memoryCache?.clear()
+        }
+    }
 
     companion object {
         private const val TAG = "FlintRTVApplication"
@@ -92,7 +106,7 @@ internal const val IMAGE_DECODE_PARALLELISM = 2
 @OptIn(ExperimentalCoroutinesApi::class)
 internal fun buildFlintrImageLoader(context: Context): ImageLoader =
     ImageLoader.Builder(context)
-        .memoryCache { MemoryCache.Builder(context).maxSizePercent(0.25).build() }
+        .memoryCache { MemoryCache.Builder(context).maxSizePercent(0.15).build() }
         .diskCache {
             DiskCache.Builder()
                 .directory(context.cacheDir.resolve("images"))
