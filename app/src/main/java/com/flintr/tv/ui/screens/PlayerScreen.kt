@@ -1534,6 +1534,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         )
     )
 
+    // Flush the coalesced Firestore write when the player leaves the composition (exit path),
+    // bypassing the 60s cooldown exactly once.
+    DisposableEffect(exoPlayer, watchProgressService) {
+        onDispose {
+            watchProgressService.flushPendingSync()
+        }
+    }
+
     // Detect completion (>= 90%) and trigger immediate save
     CompletionDetectionEffect(
         position = state.currentPosition,
