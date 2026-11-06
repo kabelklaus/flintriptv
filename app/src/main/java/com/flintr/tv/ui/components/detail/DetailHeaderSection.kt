@@ -17,8 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -368,7 +368,7 @@ private fun DetailActionButtonRow(
                 label = "Trailer",
                 testTag = "$testTagPrefix-trailer",
                 primary = false,
-                icon = Icons.Filled.Star,
+                icon = Icons.Filled.Movie,
                 focusRequester = trailerFocusRequester,
                 onLeft = {
                     requestButtonFocus(trailerIndex - 1)
