@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -73,32 +74,46 @@ data class AudioTrackInfo(
 @OptIn(UnstableApi::class)
 fun getAudioTracksFromPlayer(player: ExoPlayer?): List<AudioTrackInfo> {
     if (player == null) return emptyList()
-    val tracks = player.currentTracks
     val result = mutableListOf<AudioTrackInfo>()
-    tracks.groups
+    player.currentTracks.groups
         .filter { it.type == C.TRACK_TYPE_AUDIO }
         .forEachIndexed { groupIndex, group ->
-            for (i in 0 until group.length) {
-                val format = group.getTrackFormat(i)
-                val codecs = format.codecs
-                val channels = if (format.channelCount != Format.NO_VALUE) format.channelCount else 0
-                val rate = if (format.sampleRate != Format.NO_VALUE) format.sampleRate else 0
-                val lang = format.language?.takeIf { s -> s.isNotEmpty() }
-                val label = buildAudioTrackLabel(codecs, channels, rate, lang, result.size + 1)
-                result.add(
-                    AudioTrackInfo(
-                        groupIndex = groupIndex,
-                        trackIndex = i,
-                        codecs = codecs,
-                        channelCount = channels,
-                        sampleRate = rate,
-                        language = lang,
-                        displayLabel = label
-                    )
-                )
-            }
+            result.addAll(collectAudioTracksFromGroup(group, groupIndex, result.size))
         }
     return result
+}
+
+/**
+ * Builds the [AudioTrackInfo] entries for a single track group. [fallbackOffset] is the
+ * count of tracks already collected from earlier groups, so the "Track N" fallback label
+ * keeps numbering sequentially across all groups.
+ */
+private fun buildAudioTrackInfo(format: Format, groupIndex: Int, trackIndex: Int, fallbackIndex: Int): AudioTrackInfo {
+    val codecs = format.codecs
+    val channels = if (format.channelCount != Format.NO_VALUE) format.channelCount else 0
+    val rate = if (format.sampleRate != Format.NO_VALUE) format.sampleRate else 0
+    val lang = format.language?.takeIf { s -> s.isNotEmpty() }
+    return AudioTrackInfo(
+        groupIndex = groupIndex,
+        trackIndex = trackIndex,
+        codecs = codecs,
+        channelCount = channels,
+        sampleRate = rate,
+        language = lang,
+        displayLabel = buildAudioTrackLabel(codecs, channels, rate, lang, fallbackIndex)
+    )
+}
+
+private fun collectAudioTracksFromGroup(
+    group: androidx.media3.common.Tracks.Group,
+    groupIndex: Int,
+    fallbackOffset: Int
+): List<AudioTrackInfo> {
+    val tracks = mutableListOf<AudioTrackInfo>()
+    for (i in 0 until group.length) {
+        tracks.add(buildAudioTrackInfo(group.getTrackFormat(i), groupIndex, i, fallbackOffset + tracks.size + 1))
+    }
+    return tracks
 }
 
 /**
@@ -109,18 +124,18 @@ fun getAudioTracksFromPlayer(player: ExoPlayer?): List<AudioTrackInfo> {
 fun pickAudioTrackByLanguage(tracks: List<AudioTrackInfo>, language: AudioLanguage): AudioTrackInfo? =
     tracks.find { normalizeLanguageCode(it.language) == language.value }
 
+private fun channelsLabel(channels: Int): String = when (channels) {
+    1 -> "Mono"
+    2 -> "Stereo"
+    6 -> "5.1"
+    8 -> "7.1"
+    else -> "${channels}ch"
+}
+
 private fun buildAudioTrackLabel(codecs: String?, channels: Int, sampleRate: Int, language: String?, fallbackIndex: Int): String {
     val parts = mutableListOf<String>()
     if (!codecs.isNullOrEmpty()) parts.add(codecs)
-    if (channels > 0) {
-        parts.add(when (channels) {
-            1 -> "Mono"
-            2 -> "Stereo"
-            6 -> "5.1"
-            8 -> "7.1"
-            else -> "${channels}ch"
-        })
-    }
+    if (channels > 0) parts.add(channelsLabel(channels))
     if (sampleRate > 0) parts.add("${sampleRate}Hz")
     if (!language.isNullOrEmpty()) parts.add(language)
     return if (parts.isNotEmpty()) parts.joinToString(" ") else "Track $fallbackIndex"
@@ -143,25 +158,33 @@ data class SubtitleTrackInfo(
 @OptIn(UnstableApi::class)
 fun getSubtitleTracksFromPlayer(player: ExoPlayer?): List<SubtitleTrackInfo> {
     if (player == null) return emptyList()
-    val tracks = player.currentTracks
     val result = mutableListOf<SubtitleTrackInfo>()
-    tracks.groups
+    player.currentTracks.groups
         .filter { it.type == C.TRACK_TYPE_TEXT }
         .forEachIndexed { groupIndex, group ->
-            for (i in 0 until group.length) {
-                val format = group.getTrackFormat(i)
-                val lang = format.language?.takeIf { s -> s.isNotEmpty() }
-                result.add(
-                    SubtitleTrackInfo(
-                        groupIndex = groupIndex,
-                        trackIndex = i,
-                        language = lang,
-                        displayLabel = buildSubtitleTrackLabel(lang, result.size + 1)
-                    )
-                )
-            }
+            result.addAll(collectSubtitleTracksFromGroup(group, groupIndex, result.size))
         }
     return result
+}
+
+private fun collectSubtitleTracksFromGroup(
+    group: androidx.media3.common.Tracks.Group,
+    groupIndex: Int,
+    fallbackOffset: Int
+): List<SubtitleTrackInfo> {
+    val tracks = mutableListOf<SubtitleTrackInfo>()
+    for (i in 0 until group.length) {
+        val lang = group.getTrackFormat(i).language?.takeIf { s -> s.isNotEmpty() }
+        tracks.add(
+            SubtitleTrackInfo(
+                groupIndex = groupIndex,
+                trackIndex = i,
+                language = lang,
+                displayLabel = buildSubtitleTrackLabel(lang, fallbackOffset + tracks.size + 1)
+            )
+        )
+    }
+    return tracks
 }
 
 private fun buildSubtitleTrackLabel(language: String?, fallbackIndex: Int): String {
@@ -632,6 +655,20 @@ private fun AudioSettingsSection(
 }
 
 /**
+ * Shared visuals for the dropdown selectors below ([MaxVideoResolutionSelector],
+ * [TrackDropdownField]), pulled out of their DropdownMenu/trailingIcon lambdas so those
+ * stay flat (no branching nested inside the forEach/DropdownMenuItem structure).
+ */
+private fun dropdownBorderColor(focused: Boolean, colors: com.flintr.tv.ui.theme.AppColors): Color =
+    if (focused) colors.accentColor else colors.cardBorder
+
+private fun dropdownExpandIcon(expanded: Boolean) =
+    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore
+
+private fun dropdownItemTextColor(selected: Boolean, colors: com.flintr.tv.ui.theme.AppColors): Color =
+    if (selected) colors.accentColor else colors.textPrimary
+
+/**
  * Max video resolution (upper bound) dropdown for the current stream.
  */
 @Composable
@@ -644,7 +681,7 @@ private fun MaxVideoResolutionSelector(
     var focused by remember { mutableStateOf(false) }
     val fieldLabel = "Max. Videoauflösung"
     val borderColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (focused) colors.accentColor else colors.cardBorder,
+        targetValue = dropdownBorderColor(focused, colors),
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
         label = "borderColor"
     )
@@ -673,7 +710,7 @@ private fun MaxVideoResolutionSelector(
                 },
             trailingIcon = {
                 Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    imageVector = dropdownExpandIcon(expanded),
                     contentDescription = null
                 )
             },
@@ -695,7 +732,7 @@ private fun MaxVideoResolutionSelector(
                         expanded = false
                     },
                     colors = MenuDefaults.itemColors(
-                        textColor = if (selectedQuality == quality) colors.accentColor else colors.textPrimary
+                        textColor = dropdownItemTextColor(selectedQuality == quality, colors)
                     )
                 )
             }
@@ -766,7 +803,7 @@ private fun <T> TrackDropdownField(
     var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
     val borderColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (focused) colors.accentColor else colors.cardBorder,
+        targetValue = dropdownBorderColor(focused, colors),
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
         label = "borderColor"
     )
@@ -794,7 +831,7 @@ private fun <T> TrackDropdownField(
                 },
             trailingIcon = {
                 Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    imageVector = dropdownExpandIcon(expanded),
                     contentDescription = null
                 )
             },
@@ -816,7 +853,7 @@ private fun <T> TrackDropdownField(
                         expanded = false
                     },
                     colors = MenuDefaults.itemColors(
-                        textColor = if (isSelected(track, index)) colors.accentColor else colors.textPrimary
+                        textColor = dropdownItemTextColor(isSelected(track, index), colors)
                     )
                 )
             }
