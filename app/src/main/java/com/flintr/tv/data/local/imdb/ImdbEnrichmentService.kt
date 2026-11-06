@@ -1,8 +1,9 @@
 package com.flintr.tv.data.local.imdb
 
 import android.content.Context
-import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteDoneException
+import android.database.sqlite.SQLiteStatement
 import com.flintr.tv.BuildConfig
 import com.flintr.tv.data.model.GitHubAsset
 import com.flintr.tv.data.model.GitHubRelease
@@ -74,7 +75,12 @@ class ImdbEnrichmentService @Inject constructor(
             "imdb_enrichment.json.gz.tmp",
             "imdb-enrichment.json.gz"
         )
-        private const val LOOKUP_SQL = "SELECT rating, numvotes, genres FROM enrich WHERE key = ?"
+        // SQLiteStatement can only return scalar values, so the three match columns
+        // are combined in SQL and split without a Cursor or result-row allocations.
+        private const val LOOKUP_SQL =
+            "SELECT ifnull(rating, '') || char(31) || ifnull(numvotes, '') || char(31) || " +
+                "ifnull(genres, '') FROM enrich WHERE key = ?"
+        private const val LOOKUP_FIELD_SEPARATOR = '\u001F'
         private const val COPY_BUFFER_SIZE = 64 * 1024
         private val STALE_THRESHOLD: Duration = Duration.ofDays(14)
     }
@@ -83,32 +89,64 @@ class ImdbEnrichmentService @Inject constructor(
     private val releaseAdapter = moshi.adapter(GitHubRelease::class.java)
     private val metaAdapter = moshi.adapter(ImdbEnrichmentMeta::class.java)
 
+    private class OpenDatabase(
+        val database: SQLiteDatabase,
+        val lookup: SQLiteStatement
+    )
+
     @Volatile
-    private var database: SQLiteDatabase? = null
+    private var openedDatabase: OpenDatabase? = null
 
     /** `true`, sobald die Enrichment-DB erfolgreich geoeffnet ist. */
     val isAvailable: Boolean
-        get() = database != null
+        get() = openedDatabase != null
 
     /**
-     * Stellt sicher, dass die Enrichment-DB geoeffnet ist: laedt neu, wenn die
-     * DB-Datei fehlt, `built_at` aelter als 14 Tage ist, oder `force = true`
-     * gesetzt ist. Scheitert Download, Entpacken oder Oeffnen, bleibt der
-     * Service unavailable -- ohne Crash und ohne automatischen Retry-Loop.
+     * Legacy-Kombi aus Oeffnen und Refresh: laedt neu, wenn die DB-Datei fehlt,
+     * `built_at` aelter als 14 Tage ist, oder `force = true` gesetzt ist.
+     * `withRefresh = false` oeffnet nur eine bereits vorhandene DB (kein Netz).
+     * Neue Aufrufer sollen [openIfAvailable] und [refreshIfStale] getrennt nutzen.
      */
-    suspend fun ensureLoaded(force: Boolean = false): Unit = withContext(ioDispatcher) {
-        loadMutex.withLock {
-            try {
-                loadLocked(force)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (t: Throwable) {
-                reportHandled("$TAG.ensureLoaded", t)
+    suspend fun ensureLoaded(force: Boolean = false, withRefresh: Boolean = true): Unit =
+        withLoadLock("$TAG.ensureLoaded") {
+            if (withRefresh) refreshLocked(force) else openIfAvailableLocked()
+        }
+
+    /** Oeffnet eine vorhandene DB-Datei ohne Netzwerk/Download und ohne TTL-Pruefung. */
+    suspend fun openIfAvailable(): Unit =
+        withLoadLock("$TAG.openIfAvailable") { openIfAvailableLocked() }
+
+    /** Refresht nur bei fehlender/staler DB oder `force = true`; oeffnet danach neu. */
+    suspend fun refreshIfStale(force: Boolean = false): Unit =
+        withLoadLock("$TAG.refreshIfStale") { refreshLocked(force) }
+
+    private suspend fun withLoadLock(reportTag: String, block: () -> Unit) =
+        withContext(ioDispatcher) {
+            loadMutex.withLock {
+                try {
+                    block()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    reportHandled(reportTag, t)
+                }
             }
+        }
+
+    private fun openIfAvailableLocked() {
+        if (openedDatabase != null) return
+        val dbFile = File(context.filesDir, DB_FILE_NAME)
+        if (!dbFile.exists()) return
+        openedDatabase = try {
+            openDatabase(dbFile)
+        } catch (t: Throwable) {
+            reportHandled("$TAG.openIfAvailable.open", t)
+            if (!dbFile.delete()) dbFile.deleteOnExit()
+            null
         }
     }
 
-    private fun loadLocked(force: Boolean) {
+    private fun refreshLocked(force: Boolean) {
         deleteLegacyFiles()
         val dbFile = File(context.filesDir, DB_FILE_NAME)
         val metaFile = File(context.filesDir, META_FILE_NAME)
@@ -121,16 +159,16 @@ class ImdbEnrichmentService @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (t: Throwable) {
-                reportHandled("$TAG.ensureLoaded.download", t)
+                reportHandled("$TAG.refresh.download", t)
                 false
             }
         }
 
-        if (refreshed || (database == null && dbFile.exists())) {
-            database = try {
+        if (refreshed || (openedDatabase == null && dbFile.exists())) {
+            openedDatabase = try {
                 openDatabase(dbFile)
             } catch (t: Throwable) {
-                reportHandled("$TAG.ensureLoaded.open", t)
+                reportHandled("$TAG.refresh.open", t)
                 if (!dbFile.delete()) dbFile.deleteOnExit()
                 null
             }
@@ -144,18 +182,29 @@ class ImdbEnrichmentService @Inject constructor(
      * oder wenn der Service unavailable ist.
      */
     fun lookup(rawName: String): ImdbEnrichment? {
-        val db = database ?: return null
+        val open = openedDatabase ?: return null
         val (clean, year) = ImdbKeyNormalizer.normalize(rawName)
         if (clean.isBlank()) return null
 
         return try {
-            val words = clean.split(" ")
-            for (position in words.indices) {
-                val variant = words.subList(0, words.size - position).joinToString(" ")
-                for (key in keyCandidates(variant, year)) {
-                    db.rawQuery(LOOKUP_SQL, arrayOf(key)).use { cursor ->
-                        if (cursor.moveToFirst()) return toEnrichment(cursor)
+            val wordCount = clean.count { it == ' ' } + 1
+            var variant = clean
+            synchronized(open) {
+                repeat(wordCount) {
+                    val candidateCount = if (year == null) 1 else 4
+                    for (index in 0 until candidateCount) {
+                        val key = ImdbKeyNormalizer.makeKey(variant, candidateYear(year, index))
+                        open.lookup.clearBindings()
+                        open.lookup.bindString(1, key)
+                        val row = try {
+                            open.lookup.simpleQueryForString()
+                        } catch (e: SQLiteDoneException) {
+                            null
+                        } ?: continue
+                        return toEnrichment(row)
                     }
+                    // Naechste, um das letzte Wort gekuerzte Variante (wie subList+joinToString).
+                    variant = variant.substringBeforeLast(' ', "")
                 }
             }
             null
@@ -165,21 +214,26 @@ class ImdbEnrichmentService @Inject constructor(
         }
     }
 
-    private fun keyCandidates(clean: String, year: Int?): List<String> {
-        if (year == null) return listOf(ImdbKeyNormalizer.makeKey(clean, null))
-        return listOf(
-            ImdbKeyNormalizer.makeKey(clean, year),
-            ImdbKeyNormalizer.makeKey(clean, year - 1),
-            ImdbKeyNormalizer.makeKey(clean, year + 1),
-            ImdbKeyNormalizer.makeKey(clean, null)
-        )
+    private fun candidateYear(year: Int?, index: Int): Int? = when (index) {
+        0 -> year
+        1 -> year?.minus(1)
+        2 -> year?.plus(1)
+        else -> null
     }
 
-    private fun toEnrichment(cursor: Cursor): ImdbEnrichment? {
-        if (cursor.isNull(0) || cursor.isNull(1)) return null
-        val rating = cursor.getDouble(0)
-        val numVotes = cursor.getInt(1)
-        val genres = cursor.getString(2).orEmpty().split(",").filter { it.isNotBlank() }
+    private fun toEnrichment(row: String): ImdbEnrichment? {
+        val firstSeparator = row.indexOf(LOOKUP_FIELD_SEPARATOR)
+        if (firstSeparator < 0) return null
+        val secondSeparator = row.indexOf(LOOKUP_FIELD_SEPARATOR, firstSeparator + 1)
+        if (secondSeparator < 0) return null
+
+        val ratingText = row.substring(0, firstSeparator)
+        val votesText = row.substring(firstSeparator + 1, secondSeparator)
+        if (ratingText.isEmpty() || votesText.isEmpty()) return null
+
+        val rating = ratingText.toDoubleOrNull() ?: return null
+        val numVotes = votesText.toIntOrNull() ?: return null
+        val genres = row.substring(secondSeparator + 1).split(",").filter { it.isNotBlank() }
         return ImdbEnrichment(rating, numVotes, genres)
     }
 
@@ -267,7 +321,7 @@ class ImdbEnrichmentService @Inject constructor(
         }
     }
 
-    private fun openDatabase(dbFile: File): SQLiteDatabase {
+    private fun openDatabase(dbFile: File): OpenDatabase {
         val db = SQLiteDatabase.openDatabase(
             dbFile.path,
             null,
@@ -275,18 +329,30 @@ class ImdbEnrichmentService @Inject constructor(
         )
         try {
             // SQLite prueft Header und Schema erst bei der ersten Query.
-            db.rawQuery("SELECT key FROM enrich LIMIT 1", null).use { it.moveToFirst() }
+            db.compileStatement("SELECT key FROM enrich LIMIT 1").use {
+                try {
+                    it.simpleQueryForString()
+                } catch (e: SQLiteDoneException) {
+                    // Leere, aber schema-gueltige Enrichment-DB ist weiterhin nutzbar.
+                }
+            }
+            return OpenDatabase(db, db.compileStatement(LOOKUP_SQL))
         } catch (t: Throwable) {
             db.close()
             throw t
         }
-        return db
     }
 
     private fun closeDatabase() {
-        val db = database ?: return
-        database = null
-        db.close()
+        val open = openedDatabase ?: return
+        openedDatabase = null
+        synchronized(open) {
+            try {
+                open.lookup.close()
+            } finally {
+                open.database.close()
+            }
+        }
     }
 
     private fun writeAtomically(target: File, bytes: ByteArray) {

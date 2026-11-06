@@ -1199,6 +1199,9 @@ private fun createSeriesClickHandler(
             )
         )
         val route = seriesDetailRoute(series.seriesId)
+        // The detail destination creates its own ViewModel; stage the clicked object so the
+        // loading placeholder can show poster/title before getSeriesInfo returns.
+        SeriesDetailViewModel.seedNextDetail(series)
         params.navController.logAndNavigate(route, "AppNavigation") {
             "📺 Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
         }
@@ -1248,6 +1251,7 @@ private fun createInProgressClickHandlers(
             )
         )
         val route = seriesDetailRoute(series.seriesId)
+        SeriesDetailViewModel.seedNextDetail(series)
         params.navController.logAndNavigate(route, "AppNavigation") {
             "📺 InProgress Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
         }
@@ -2183,6 +2187,7 @@ private fun createSearchClickHandlers(
         },
         onSeriesClick = { series ->
             val route = seriesDetailRoute(series.seriesId)
+            SeriesDetailViewModel.seedNextDetail(series)
             mainViewModel.clearSearch()
             onDismiss()
             navController.logAndNavigate(route, "AppNavigation") {

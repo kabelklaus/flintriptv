@@ -22,7 +22,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -36,7 +35,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
-import com.flintr.tv.R
 import com.flintr.tv.data.local.SmartResumeTarget
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.Episode
@@ -44,6 +42,7 @@ import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.ui.components.PopupMenu
 import com.flintr.tv.ui.components.WatchedBadge
+import com.flintr.tv.ui.components.formatRemainingLabel
 import com.flintr.tv.ui.components.detail.formatDate
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
@@ -1352,7 +1351,7 @@ internal fun EpisodeThumbnail(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = stringResource(R.string.remaining_minutes, minutes),
+                            text = formatRemainingLabel(minutes),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.9f)
                         )

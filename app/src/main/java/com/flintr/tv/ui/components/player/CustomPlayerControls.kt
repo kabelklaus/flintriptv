@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,8 +18,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.flintr.tv.BuildConfig
 import com.flintr.tv.R
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
@@ -157,23 +161,29 @@ fun CustomPlayerControls(
     modifier: Modifier = Modifier,
     ratingUiState: RatingUiState = RatingUiState()
 ) {
+    val isLive = contentType == "live"
     val focusRequesters = remember {
-        mapOf(
-            FocusedButton.PREVIOUS to FocusRequester(),
-            FocusedButton.PLAY_PAUSE to FocusRequester(),
-            FocusedButton.NEXT to FocusRequester(),
-            FocusedButton.NEXT_EPISODE to FocusRequester(),
-            FocusedButton.THUMBS_UP to FocusRequester(),
-            FocusedButton.THUMBS_DOWN to FocusRequester(),
-            FocusedButton.DEBUG to FocusRequester(),
-            FocusedButton.SETTINGS to FocusRequester()
-        )
+        buildMap {
+            put(FocusedButton.PREVIOUS, FocusRequester())
+            put(FocusedButton.PLAY_PAUSE, FocusRequester())
+            put(FocusedButton.NEXT, FocusRequester())
+            put(FocusedButton.NEXT_EPISODE, FocusRequester())
+            put(FocusedButton.THUMBS_UP, FocusRequester())
+            put(FocusedButton.THUMBS_DOWN, FocusRequester())
+            // Release builds have no Debug button, so they must not know its requester either.
+            if (BuildConfig.DEBUG) put(FocusedButton.DEBUG, FocusRequester())
+            put(FocusedButton.SETTINGS, FocusRequester())
+        }
     }
-    
-    // Request focus when focusedButton changes
-    LaunchedEffect(focusedButton) {
-        focusRequesters[focusedButton]?.safeRequestFocus(
-            targetName = "PlayerControl_${focusedButton?.name ?: "none"}",
+
+    // Live controls omit the ±10s seek buttons, but PlayerScreen still seeds PREVIOUS when the
+    // overlay opens. Redirect that seed to the first visible control instead of losing focus.
+    val focusTarget = resolveEffectiveFocusedButton(focusedButton, isLive)
+
+    // Request focus when the effective target changes
+    LaunchedEffect(focusTarget) {
+        focusRequesters[focusTarget]?.safeRequestFocus(
+            targetName = "PlayerControl_${focusTarget?.name ?: "none"}",
             initialDelayMs = 0
         )
     }
@@ -224,21 +234,23 @@ fun CustomPlayerControls(
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = Dimensions.spacingMD, vertical = Dimensions.spacingSM)
         ) {
-            // Progress bar
-            VideoProgressBar(
-                progress = state.progress,
-                bufferedProgress = if (state.duration > 0) {
-                    (state.bufferedPosition.toFloat() / state.duration).coerceIn(0f, 1f)
-                } else {
-                    0f
-                },
-                isDragging = callbacks.isDragging,
-                onSeek = callbacks.onSeek,
-                dragCallbacks = callbacks.dragCallbacks,
-                modifier = Modifier.fillMaxWidth()
-            )
-            
-            Spacer(modifier = Modifier.height(Dimensions.spacingMD))
+            // Progress bar - omitted for live TV: the buffered window is not a real duration.
+            if (!isLive) {
+                VideoProgressBar(
+                    progress = state.progress,
+                    bufferedProgress = if (state.duration > 0) {
+                        (state.bufferedPosition.toFloat() / state.duration).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    },
+                    isDragging = callbacks.isDragging,
+                    onSeek = callbacks.onSeek,
+                    dragCallbacks = callbacks.dragCallbacks,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(Dimensions.spacingMD))
+            }
             
             // Controls bar
             Row(
@@ -258,7 +270,8 @@ fun CustomPlayerControls(
                         focusedButton = focusedButton,
                         focusRequesters = focusRequesters,
                         hasNextEpisode = callbacks.onNextEpisode != null,
-                        showRatingButtons = ratingUiState.showRatingButtons
+                        showRatingButtons = ratingUiState.showRatingButtons,
+                        isLive = isLive
                     )
 
                     // Rating buttons (thumbs up/down)
@@ -269,7 +282,8 @@ fun CustomPlayerControls(
                             focusedButton = focusedButton,
                             focusRequesters = focusRequesters,
                             hasNextEpisode = callbacks.onNextEpisode != null,
-                            ratedThumb = ratingUiState.ratedThumb
+                            ratedThumb = ratingUiState.ratedThumb,
+                            isLive = isLive
                         )
                     }
 
@@ -279,7 +293,8 @@ fun CustomPlayerControls(
                         focusedButton = focusedButton,
                         focusRequesters = focusRequesters,
                         hasNextEpisode = callbacks.onNextEpisode != null,
-                        showRatingButtons = ratingUiState.showRatingButtons
+                        showRatingButtons = ratingUiState.showRatingButtons,
+                        isLive = isLive
                     )
                 }
 
@@ -287,23 +302,108 @@ fun CustomPlayerControls(
 
                 // Time block fixed at the right side
                 Column(horizontalAlignment = Alignment.End) {
-                    if (finishTime != null) {
+                    if (isLive) {
+                        LiveBadge()
+                    } else {
+                        if (finishTime != null) {
+                            Text(
+                                text = stringResource(R.string.finish_time_at, finishTime),
+                                fontSize = FontSizes.fontSizeMD,
+                                color = Color.White.copy(alpha = 0.85f)
+                            )
+                        }
+
                         Text(
-                            text = stringResource(R.string.finish_time_at, finishTime),
-                            fontSize = FontSizes.fontSizeMD,
-                            color = Color.White.copy(alpha = 0.85f)
+                            text = "${formatTime(state.currentPosition)} / ${formatTime(state.duration)}",
+                            fontSize = FontSizes.fontSizeLG,
+                            color = Color.White
                         )
                     }
-
-                    Text(
-                        text = "${formatTime(state.currentPosition)} / ${formatTime(state.duration)}",
-                        fontSize = FontSizes.fontSizeLG,
-                        color = Color.White
-                    )
                 }
             }
         }
     }
+}
+
+/**
+ * The visible D-Pad order of the control bar. Live TV drops the ±10s seek buttons and the
+ * progress bar; release builds drop the Debug button. Navigation and rendering both derive
+ * from this list, so the focus loop can never target an invisible control.
+ */
+internal fun playerControlFocusOrder(
+    hasNextEpisode: Boolean,
+    showRatingButtons: Boolean,
+    isLive: Boolean = false,
+    debugEnabled: Boolean = BuildConfig.DEBUG
+): List<FocusedButton> = buildList {
+    if (!isLive) {
+        add(FocusedButton.PREVIOUS)
+        add(FocusedButton.PLAY_PAUSE)
+        add(FocusedButton.NEXT)
+    } else {
+        add(FocusedButton.PLAY_PAUSE)
+    }
+    if (hasNextEpisode) add(FocusedButton.NEXT_EPISODE)
+    if (showRatingButtons) {
+        add(FocusedButton.THUMBS_UP)
+        add(FocusedButton.THUMBS_DOWN)
+    }
+    if (debugEnabled) add(FocusedButton.DEBUG)
+    add(FocusedButton.SETTINGS)
+}
+
+/**
+ * Live TV has no seek buttons, but the player seeds [FocusedButton.PREVIOUS] when the overlay
+ * opens. Map that seed onto the first visible control.
+ */
+internal fun resolveEffectiveFocusedButton(
+    focusedButton: FocusedButton?,
+    isLive: Boolean
+): FocusedButton? = when {
+    isLive && focusedButton in setOf(FocusedButton.PREVIOUS, FocusedButton.NEXT) ->
+        FocusedButton.PLAY_PAUSE
+    else -> focusedButton
+}
+
+/**
+ * Live indicator shown in place of the elapsed/total time. Uses the existing player label
+ * typography; the dot carries the live state, the text stays readable over the scrim.
+ */
+@Composable
+internal fun LiveBadge(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .testTag("player-live-badge"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(SharedColors.red, CircleShape)
+        )
+        Spacer(modifier = Modifier.width(Dimensions.spacingXS))
+        // Inline label: strings.xml is outside the T8 file scope. Keep it identical to the
+        // badge wording ("LIVE") instead of inventing a localised variant here.
+        Text(
+            text = "LIVE",
+            fontSize = FontSizes.fontSizeLG,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White
+        )
+    }
+}
+
+private fun navigateToNeighbour(
+    button: FocusedButton,
+    offset: Int,
+    hasNextEpisode: Boolean,
+    onFocusChange: (FocusedButton?) -> Unit,
+    showRatingButtons: Boolean,
+    isLive: Boolean
+): () -> Unit = {
+    val order = playerControlFocusOrder(hasNextEpisode, showRatingButtons, isLive)
+    val index = order.indexOf(button)
+    onFocusChange(if (index >= 0) order.getOrNull(index + offset) else null)
 }
 
 /**
@@ -313,29 +413,11 @@ private fun navigateLeftHandler(
     button: FocusedButton,
     hasNextEpisode: Boolean,
     onFocusChange: (FocusedButton?) -> Unit,
-    showRatingButtons: Boolean = true
-): () -> Unit = when (button) {
-    FocusedButton.PREVIOUS -> { -> onFocusChange(null) }
-    FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.PREVIOUS) }
-    FocusedButton.NEXT -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
-    FocusedButton.NEXT_EPISODE -> { -> onFocusChange(FocusedButton.NEXT) }
-    FocusedButton.THUMBS_UP -> { ->
-        onFocusChange(if (hasNextEpisode) FocusedButton.NEXT_EPISODE else FocusedButton.NEXT)
-    }
-    FocusedButton.THUMBS_DOWN -> { -> onFocusChange(FocusedButton.THUMBS_UP) }
-    FocusedButton.DEBUG -> { ->
-        onFocusChange(
-            if (showRatingButtons) {
-                FocusedButton.THUMBS_DOWN
-            } else if (hasNextEpisode) {
-                FocusedButton.NEXT_EPISODE
-            } else {
-                FocusedButton.NEXT
-            }
-        )
-    }
-    FocusedButton.SETTINGS -> { -> onFocusChange(FocusedButton.DEBUG) }
-}
+    showRatingButtons: Boolean = true,
+    isLive: Boolean = false
+): () -> Unit = navigateToNeighbour(
+    button, -1, hasNextEpisode, onFocusChange, showRatingButtons, isLive
+)
 
 /**
  * Right-navigation target for a button based on its position and context
@@ -344,29 +426,11 @@ private fun navigateRightHandler(
     button: FocusedButton,
     hasNextEpisode: Boolean,
     onFocusChange: (FocusedButton?) -> Unit,
-    showRatingButtons: Boolean = true
-): () -> Unit = when (button) {
-    FocusedButton.PREVIOUS -> { -> onFocusChange(FocusedButton.PLAY_PAUSE) }
-    FocusedButton.PLAY_PAUSE -> { -> onFocusChange(FocusedButton.NEXT) }
-    FocusedButton.NEXT -> { ->
-        onFocusChange(
-            if (hasNextEpisode) {
-                FocusedButton.NEXT_EPISODE
-            } else if (showRatingButtons) {
-                FocusedButton.THUMBS_UP
-            } else {
-                FocusedButton.DEBUG
-            }
-        )
-    }
-    FocusedButton.NEXT_EPISODE -> { ->
-        onFocusChange(if (showRatingButtons) FocusedButton.THUMBS_UP else FocusedButton.DEBUG)
-    }
-    FocusedButton.THUMBS_UP -> { -> onFocusChange(FocusedButton.THUMBS_DOWN) }
-    FocusedButton.THUMBS_DOWN -> { -> onFocusChange(FocusedButton.DEBUG) }
-    FocusedButton.DEBUG -> { -> onFocusChange(FocusedButton.SETTINGS) }
-    FocusedButton.SETTINGS -> { -> onFocusChange(null) }
-}
+    showRatingButtons: Boolean = true,
+    isLive: Boolean = false
+): () -> Unit = navigateToNeighbour(
+    button, 1, hasNextEpisode, onFocusChange, showRatingButtons, isLive
+)
 
 /**
  * Creates the (left, right) navigation handler pair for a button based on its position and context
@@ -375,10 +439,11 @@ private fun createNavigationHandler(
     button: FocusedButton,
     hasNextEpisode: Boolean,
     onFocusChange: (FocusedButton?) -> Unit,
-    showRatingButtons: Boolean = true
+    showRatingButtons: Boolean = true,
+    isLive: Boolean = false
 ): Pair<() -> Unit, () -> Unit> = Pair(
-    navigateLeftHandler(button, hasNextEpisode, onFocusChange, showRatingButtons),
-    navigateRightHandler(button, hasNextEpisode, onFocusChange, showRatingButtons)
+    navigateLeftHandler(button, hasNextEpisode, onFocusChange, showRatingButtons, isLive),
+    navigateRightHandler(button, hasNextEpisode, onFocusChange, showRatingButtons, isLive)
 )
 
 /**
@@ -418,34 +483,39 @@ private fun NavigationButtons(
     focusedButton: FocusedButton?,
     focusRequesters: Map<FocusedButton, FocusRequester>,
     hasNextEpisode: Boolean,
-    showRatingButtons: Boolean = true
+    showRatingButtons: Boolean = true,
+    isLive: Boolean = false
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Previous button (10s back)
-        PlayerControlButton(
-            config = createButtonConfig(
-                appearance = ButtonAppearance(
-                    icon = Icons.Default.Replay10,
-                    iconSize = 28.dp,
-                    contentDescription = "10 Sekunden zurück"
-                ),
-                focusConfig = ButtonFocusConfig(
-                    focusedButton = focusedButton,
-                    targetButton = FocusedButton.PREVIOUS,
-                    focusRequester = focusRequesters[FocusedButton.PREVIOUS]!!,
-                    onFocusChange = utilityCallbacks.onFocusChange
-                ),
-                onClick = callbacks.onPrevious,
-                navigationHandler = createNavigationHandler(
-                    FocusedButton.PREVIOUS,
-                    hasNextEpisode,
-                    utilityCallbacks.onFocusChange
+        // Previous button (10s back) - live TV is not seekable
+        if (!isLive) {
+            PlayerControlButton(
+                config = createButtonConfig(
+                    appearance = ButtonAppearance(
+                        icon = Icons.Default.Replay10,
+                        iconSize = 28.dp,
+                        contentDescription = "10 Sekunden zurück"
+                    ),
+                    focusConfig = ButtonFocusConfig(
+                        focusedButton = focusedButton,
+                        targetButton = FocusedButton.PREVIOUS,
+                        focusRequester = focusRequesters[FocusedButton.PREVIOUS]!!,
+                        onFocusChange = utilityCallbacks.onFocusChange
+                    ),
+                    onClick = callbacks.onPrevious,
+                    navigationHandler = createNavigationHandler(
+                        FocusedButton.PREVIOUS,
+                        hasNextEpisode,
+                        utilityCallbacks.onFocusChange,
+                        showRatingButtons,
+                        isLive
+                    )
                 )
             )
-        )
+        }
         
         // Play/Pause button
         PlayerControlButton(
@@ -465,34 +535,39 @@ private fun NavigationButtons(
                 navigationHandler = createNavigationHandler(
                     FocusedButton.PLAY_PAUSE,
                     hasNextEpisode,
-                    utilityCallbacks.onFocusChange
+                    utilityCallbacks.onFocusChange,
+                    showRatingButtons,
+                    isLive
                 )
             )
         )
         
-        // Next button (10s forward)
-        PlayerControlButton(
-            config = createButtonConfig(
-                appearance = ButtonAppearance(
-                    icon = Icons.Default.Forward10,
-                    iconSize = 28.dp,
-                    contentDescription = "10 Sekunden vor"
-                ),
-                focusConfig = ButtonFocusConfig(
-                    focusedButton = focusedButton,
-                    targetButton = FocusedButton.NEXT,
-                    focusRequester = focusRequesters[FocusedButton.NEXT]!!,
-                    onFocusChange = utilityCallbacks.onFocusChange
-                ),
-                onClick = callbacks.onNext,
-                navigationHandler = createNavigationHandler(
-                    FocusedButton.NEXT,
-                    hasNextEpisode,
-                    utilityCallbacks.onFocusChange,
-                    showRatingButtons
+        // Next button (10s forward) - live TV is not seekable
+        if (!isLive) {
+            PlayerControlButton(
+                config = createButtonConfig(
+                    appearance = ButtonAppearance(
+                        icon = Icons.Default.Forward10,
+                        iconSize = 28.dp,
+                        contentDescription = "10 Sekunden vor"
+                    ),
+                    focusConfig = ButtonFocusConfig(
+                        focusedButton = focusedButton,
+                        targetButton = FocusedButton.NEXT,
+                        focusRequester = focusRequesters[FocusedButton.NEXT]!!,
+                        onFocusChange = utilityCallbacks.onFocusChange
+                    ),
+                    onClick = callbacks.onNext,
+                    navigationHandler = createNavigationHandler(
+                        FocusedButton.NEXT,
+                        hasNextEpisode,
+                        utilityCallbacks.onFocusChange,
+                        showRatingButtons,
+                        isLive
+                    )
                 )
             )
-        )
+        }
 
         // Next Episode button (only shown if next episode is available)
         if (hasNextEpisode && callbacks.onNextEpisode != null) {
@@ -514,7 +589,8 @@ private fun NavigationButtons(
                         FocusedButton.NEXT_EPISODE,
                         hasNextEpisode,
                         utilityCallbacks.onFocusChange,
-                        showRatingButtons
+                        showRatingButtons,
+                        isLive
                     )
                 )
             )
@@ -534,7 +610,8 @@ private fun RatingButtons(
     focusedButton: FocusedButton?,
     focusRequesters: Map<FocusedButton, FocusRequester>,
     hasNextEpisode: Boolean,
-    ratedThumb: Int?
+    ratedThumb: Int?,
+    isLive: Boolean = false
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
@@ -558,7 +635,9 @@ private fun RatingButtons(
                 navigationHandler = createNavigationHandler(
                     FocusedButton.THUMBS_UP,
                     hasNextEpisode,
-                    utilityCallbacks.onFocusChange
+                    utilityCallbacks.onFocusChange,
+                    showRatingButtons = true,
+                    isLive = isLive
                 ),
                 isHighlighted = ratedThumb == 1
             )
@@ -582,7 +661,9 @@ private fun RatingButtons(
                 navigationHandler = createNavigationHandler(
                     FocusedButton.THUMBS_DOWN,
                     hasNextEpisode,
-                    utilityCallbacks.onFocusChange
+                    utilityCallbacks.onFocusChange,
+                    showRatingButtons = true,
+                    isLive = isLive
                 ),
                 isHighlighted = ratedThumb == 0
             )
@@ -599,35 +680,39 @@ private fun UtilityButtons(
     focusedButton: FocusedButton?,
     focusRequesters: Map<FocusedButton, FocusRequester>,
     hasNextEpisode: Boolean,
-    showRatingButtons: Boolean = true
+    showRatingButtons: Boolean = true,
+    isLive: Boolean = false
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Debug button
-        PlayerControlButton(
-            config = createButtonConfig(
-                appearance = ButtonAppearance(
-                    icon = Icons.Default.BugReport,
-                    iconSize = 24.dp,
-                    contentDescription = "Debug"
-                ),
-                focusConfig = ButtonFocusConfig(
-                    focusedButton = focusedButton,
-                    targetButton = FocusedButton.DEBUG,
-                    focusRequester = focusRequesters[FocusedButton.DEBUG]!!,
-                    onFocusChange = utilityCallbacks.onFocusChange
-                ),
-                onClick = utilityCallbacks.onDebug,
-                navigationHandler = createNavigationHandler(
-                    FocusedButton.DEBUG,
-                    hasNextEpisode,
-                    utilityCallbacks.onFocusChange,
-                    showRatingButtons
+        // Debug button - debug builds only; release builds must not render or focus it.
+        if (BuildConfig.DEBUG) {
+            PlayerControlButton(
+                config = createButtonConfig(
+                    appearance = ButtonAppearance(
+                        icon = Icons.Default.BugReport,
+                        iconSize = 24.dp,
+                        contentDescription = "Debug"
+                    ),
+                    focusConfig = ButtonFocusConfig(
+                        focusedButton = focusedButton,
+                        targetButton = FocusedButton.DEBUG,
+                        focusRequester = focusRequesters[FocusedButton.DEBUG]!!,
+                        onFocusChange = utilityCallbacks.onFocusChange
+                    ),
+                    onClick = utilityCallbacks.onDebug,
+                    navigationHandler = createNavigationHandler(
+                        FocusedButton.DEBUG,
+                        hasNextEpisode,
+                        utilityCallbacks.onFocusChange,
+                        showRatingButtons,
+                        isLive
+                    )
                 )
             )
-        )
+        }
         
         // Settings button
         PlayerControlButton(
@@ -647,7 +732,9 @@ private fun UtilityButtons(
                 navigationHandler = createNavigationHandler(
                     FocusedButton.SETTINGS,
                     hasNextEpisode,
-                    utilityCallbacks.onFocusChange
+                    utilityCallbacks.onFocusChange,
+                    showRatingButtons,
+                    isLive
                 )
             )
         )
