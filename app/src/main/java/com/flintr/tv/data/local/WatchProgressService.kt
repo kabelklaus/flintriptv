@@ -16,6 +16,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,6 +80,7 @@ class WatchProgressService @Inject constructor(
         private const val COMPLETION_THRESHOLD = 0.9 // 90%
         private const val KEY_PREFIX_MOVIE = "movie:"
         private const val KEY_PREFIX_SERIES = "series:"
+        private const val FIRESTORE_SYNC_MIN_INTERVAL_MS = 60_000L
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -91,6 +94,12 @@ class WatchProgressService @Inject constructor(
     
     // Mutex to prevent concurrent StateFlow updates
     private val updateMutex = Mutex()
+
+    // Serializes Firestore writes/deletes so a delayed full-map save cannot resurrect a deleted key.
+    private val firestoreWriteMutex = Mutex()
+
+    // CONFLATED: while a write is cooling down, only the newest pending save request matters.
+    private val syncRequests = Channel<Unit>(Channel.CONFLATED)
 
     private val mapType = Types.newParameterizedType(
         Map::class.java,
@@ -112,6 +121,40 @@ class WatchProgressService @Inject constructor(
                     // Clear state when logged out
                     _watchProgress.value = emptyMap()
                     Log.d(TAG, "Credentials cleared, resetting watch progress")
+                }
+            }
+        }
+
+        // Coalesced writer: at most one full-map Firestore write per interval, always with the
+        // latest local state. Continuous playback therefore syncs at most ~60s behind.
+        serviceScope.launch {
+            var lastWriteAtMs = 0L
+            while (true) {
+                syncRequests.receive()
+                val waitMs = (lastWriteAtMs + FIRESTORE_SYNC_MIN_INTERVAL_MS - System.currentTimeMillis())
+                    .coerceAtLeast(0L)
+                if (waitMs > 0) {
+                    delay(waitMs)
+                }
+                firestoreWriteMutex.withLock {
+                    val username = credentialsRepository.getCredentials()?.username
+                    if (username.isNullOrBlank()) {
+                        Log.w(TAG, "Cannot save to Firestore: no username available")
+                        return@withLock
+                    }
+
+                    lastWriteAtMs = System.currentTimeMillis()
+                    val result = userRepository.saveWatchProgress(username, _watchProgress.value)
+                    result.fold(
+                        onSuccess = {
+                            Log.d(TAG, "Successfully saved watch progress to Firestore")
+                        },
+                        onFailure = { exception ->
+                            reportError(TAG, "Failed to save watch progress to Firestore", exception)
+                            // StateFlow already updated, so UI will reflect the change
+                            // Firestore will sync when connection is restored
+                        }
+                    )
                 }
             }
         }
@@ -244,28 +287,17 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Saves watch progress to Firestore asynchronously.
+     * Requests an asynchronous, throttled Firestore sync of the current progress map.
+     * The writer coalesces bursts and always persists [_watchProgress] at write time.
      */
-    private fun saveToFirestore(progress: Map<String, WatchProgress>) {
+    private fun requestFirestoreSync() {
         val username = credentialsRepository.getCredentials()?.username
         if (username.isNullOrBlank()) {
             Log.w(TAG, "Cannot save to Firestore: no username available")
             return
         }
 
-        serviceScope.launch {
-            val result = userRepository.saveWatchProgress(username, progress)
-            result.fold(
-                onSuccess = {
-                    Log.d(TAG, "Successfully saved watch progress to Firestore")
-                },
-                onFailure = { exception ->
-                    reportError(TAG, "Failed to save watch progress to Firestore", exception)
-                    // StateFlow already updated, so UI will reflect the change
-                    // Firestore will sync when connection is restored
-                }
-            )
-        }
+        syncRequests.trySend(Unit)
     }
 
     /**
@@ -383,15 +415,12 @@ class WatchProgressService @Inject constructor(
         )
         
         // Optimistic update: Update StateFlow atomically
-        val updatedMap = updateMutex.withLock {
-            val currentMap = _watchProgress.value
-            val updated = currentMap + (key to progress)
-            _watchProgress.value = updated
-            updated
+        updateMutex.withLock {
+            _watchProgress.value = _watchProgress.value + (key to progress)
         }
-        
-        // Save to Firestore asynchronously
-        saveToFirestore(updatedMap)
+
+        // Save to Firestore asynchronously (throttled)
+        requestFirestoreSync()
     }
 
     /**
@@ -474,17 +503,24 @@ class WatchProgressService @Inject constructor(
             val username = credentialsRepository.getCredentials()?.username
             if (!username.isNullOrBlank()) {
                 serviceScope.launch {
-                    val result = userRepository.deleteWatchProgress(username, key)
-                    result.fold(
-                        onSuccess = {
-                            Log.d(TAG, "Successfully deleted watch progress from Firestore")
-                        },
-                        onFailure = { exception ->
-                            reportError(TAG, "Failed to delete watch progress from Firestore", exception)
-                            // StateFlow already updated, so UI will reflect the change
-                            // Firestore will sync when connection is restored
+                    firestoreWriteMutex.withLock {
+                        val currentUsername = credentialsRepository.getCredentials()?.username
+                        if (currentUsername.isNullOrBlank()) {
+                            Log.w(TAG, "Cannot delete from Firestore: no username available")
+                            return@withLock
                         }
-                    )
+                        val result = userRepository.deleteWatchProgress(currentUsername, key)
+                        result.fold(
+                            onSuccess = {
+                                Log.d(TAG, "Successfully deleted watch progress from Firestore")
+                            },
+                            onFailure = { exception ->
+                                reportError(TAG, "Failed to delete watch progress from Firestore", exception)
+                                // StateFlow already updated, so UI will reflect the change
+                                // Firestore will sync when connection is restored
+                            }
+                        )
+                    }
                 }
             } else {
                 Log.w(TAG, "Cannot delete from Firestore: no username available")
