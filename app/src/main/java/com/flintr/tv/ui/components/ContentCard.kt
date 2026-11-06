@@ -7,10 +7,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
@@ -39,10 +42,12 @@ import androidx.compose.foundation.Image
 import android.util.Log
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
+import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
+import com.flintr.tv.ui.components.detail.formatRuntime
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
@@ -68,6 +73,12 @@ private val ContentCardTitleFontSize = 14.sp
 private val ContentCardTitleMaxLines = 2
 private val ContentCardTitleGradientAlpha = 0.7f
 private val ContentCardTitleBgAlpha = 0.75f
+
+// Friend/watchlist badges share the card's existing rating-badge footprint so the title overlay
+// keeps its full width.
+private val ContentCardAvatarBadgeSize = Dimensions.iconSizeMD
+private val ContentCardAvatarBadgeFontSize = 11.sp
+private val ContentCardBadgeSpacing = 3.dp
 
 // Content Card Colors (from Flutter AppTheme)
 private val ContentCardTextColor = Color.White
@@ -100,7 +111,10 @@ data class VODCardParams(
     val focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     val isWatched: Boolean = false,
     val sourceBadge: String? = null,
-    val allowWatchlistActions: Boolean = true
+    val allowWatchlistActions: Boolean = true,
+    /** Progress resolved from the grid's reactive map; avoids a per-card suspend lookup. */
+    val watchProgress: WatchProgress? = null,
+    val watchProgressResolved: Boolean = false
 )
 
 data class LiveStreamCardParams(
@@ -196,38 +210,45 @@ fun VODCard(params: VODCardParams) {
         else -> throw IllegalArgumentException("Either vod or series must be provided")
     }
 
-    // Load progress asynchronously for movies (VOD) only
-    var progressPercent by remember { mutableStateOf(0f) }
-    var remainingMinutes by remember { mutableStateOf<Int?>(null) }
+    // Grids can resolve progress reactively and hand it down; otherwise fall back to one suspend
+    // lookup per card (existing behaviour for call sites outside the VOD grid).
+    val resolvedWatchState = remember(
+        params.watchProgress,
+        params.isWatched,
+        params.watchProgressResolved
+    ) {
+        if (params.watchProgressResolved) {
+            params.watchProgress.toWatchState(params.isWatched)
+        } else {
+            WatchState(isWatched = params.isWatched)
+        }
+    }
+    var loadedWatchState by remember { mutableStateOf(resolvedWatchState) }
 
-    if (params.vod != null && params.watchProgressService != null && !params.isWatched) {
-        LaunchedEffect(params.vod.streamId) {
-            val watchProgress = params.watchProgressService.getWatchProgress(
+    LaunchedEffect(params.vod?.streamId, params.isWatched, params.watchProgressResolved) {
+        if (!params.watchProgressResolved &&
+            params.vod != null &&
+            params.watchProgressService != null &&
+            !params.isWatched
+        ) {
+            loadedWatchState = params.watchProgressService.getWatchProgress(
                 contentType = "movie",
                 streamId = params.vod.streamId,
                 seriesId = null,
                 episodeId = null
-            )
-            if (watchProgress != null && watchProgress.duration > 0) {
-                val percent = watchProgress.position.toFloat() / watchProgress.duration.toFloat()
-                if (percent > 0f && percent < WATCH_PROGRESS_DISPLAY_THRESHOLD) {
-                    progressPercent = percent
-                    val remainingMs = watchProgress.duration - watchProgress.position
-                    remainingMinutes = (remainingMs / 60000).toInt()
-                }
-            }
+            ).toWatchState(isWatched = false)
+        } else {
+            loadedWatchState = WatchState(isWatched = params.isWatched)
         }
     }
+
+    val watchState = if (params.watchProgressResolved) resolvedWatchState else loadedWatchState
 
     ContentCardInternal(
         cardData = ContentCardData(
             contentInfo = contentInfo,
             contentType = contentType,
-            watchState = WatchState(
-                isWatched = params.isWatched,
-                progressPercent = progressPercent,
-                remainingMinutes = remainingMinutes
-            ),
+            watchState = watchState,
             sourceBadge = params.sourceBadge,
             allowWatchlistActions = params.allowWatchlistActions
         ),
@@ -241,6 +262,21 @@ fun VODCard(params: VODCardParams) {
         ),
         watchlistRepository = params.watchlistRepository
     )
+}
+
+private fun WatchProgress?.toWatchState(isWatched: Boolean): WatchState {
+    if (this == null || duration <= 0L) return WatchState(isWatched = isWatched)
+    if (isWatched) return WatchState(isWatched = true)
+    val percent = position.toFloat() / duration.toFloat()
+    return if (percent > 0f && percent < WATCH_PROGRESS_DISPLAY_THRESHOLD) {
+        WatchState(
+            isWatched = false,
+            progressPercent = percent,
+            remainingMinutes = ((duration - position) / 60000).toInt()
+        )
+    } else {
+        WatchState(isWatched = false)
+    }
 }
 
 private fun Modifier.shadowModifier(
@@ -338,8 +374,10 @@ private fun ContentCardInternal(
         if (cardData.allowWatchlistActions) cardData.contentType else null
     }
 
-    val entryId = remember(effectiveContentType) {
-        effectiveContentType?.toWatchlistEntryId()
+    val entryId = remember(cardData.contentType) {
+        // Watchlist status is the viewer's own, even on friend-sourced cards; only the
+        // add/remove actions are gated by allowWatchlistActions (effectiveContentType).
+        cardData.contentType?.toWatchlistEntryId()
     }
     
     val (isInWatchlist, setIsInWatchlist) = useWatchlistState(
@@ -702,11 +740,16 @@ private fun CardImageWithOverlays(
             ) {
                 if (overlayParams.watchState.progressPercent > 0f && !overlayParams.watchState.isWatched) {
                     Box(modifier = Modifier.padding(horizontal = 4.dp)) {
-                        InProgressIndicator(
-                            progressPercent = overlayParams.watchState.progressPercent,
-                            remainingMinutes = overlayParams.watchState.remainingMinutes,
-                            colors = overlayParams.colors
-                        )
+                        Column {
+                            InProgressIndicator(
+                                progressPercent = overlayParams.watchState.progressPercent,
+                                remainingMinutes = null,
+                                colors = overlayParams.colors
+                            )
+                            overlayParams.watchState.remainingMinutes?.let { minutes ->
+                                CardRemainingTimeLabel(minutes = minutes)
+                            }
+                        }
                     }
                 }
                 TitleOverlay(title = title)
@@ -722,15 +765,24 @@ private fun BoxScope.CardBadges(
     rating: String?,
     isWatched: Boolean
 ) {
-    if (!sourceBadge.isNullOrBlank()) {
-        SourceBadge(
-            badge = sourceBadge,
-            modifier = Modifier.align(Alignment.TopStart)
-        )
-    } else if (isInWatchlist) {
-        WatchlistBadge(
-            modifier = Modifier.align(Alignment.TopStart)
-        )
+    if (!sourceBadge.isNullOrBlank() || isInWatchlist) {
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(
+                    top = Dimensions.contentCardRatingBadgeTop,
+                    start = Dimensions.contentCardRatingBadgeRight
+                ),
+            horizontalArrangement = Arrangement.spacedBy(ContentCardBadgeSpacing),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (!sourceBadge.isNullOrBlank()) {
+                SourceBadge(badge = sourceBadge)
+            }
+            if (isInWatchlist) {
+                WatchlistBadge()
+            }
+        }
     }
     
     if (rating != null) {
@@ -754,30 +806,20 @@ private fun SourceBadge(
 ) {
     Box(
         modifier = modifier
-            .padding(
-                top = Dimensions.contentCardRatingBadgeTop,
-                start = Dimensions.contentCardRatingBadgeRight
-            )
+            .size(ContentCardAvatarBadgeSize)
+            .background(
+                color = SharedColors.avatarAccentBg.copy(alpha = Dimensions.contentCardRatingBgAlpha),
+                shape = CircleShape
+            ),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .background(
-                    color = SharedColors.avatarAccentBg.copy(alpha = Dimensions.contentCardRatingBgAlpha),
-                    shape = RoundedCornerShape(Dimensions.radiusSM)
-                )
-                .padding(
-                    horizontal = Dimensions.contentCardRatingBadgePaddingH,
-                    vertical = Dimensions.contentCardRatingBadgePaddingV
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = badge,
-                fontSize = ContentCardTitleFontSize,
-                color = SharedColors.avatarAccentText,
-                fontWeight = ContentCardTextFontWeight
-            )
-        }
+        Text(
+            text = badge,
+            fontSize = ContentCardAvatarBadgeFontSize,
+            color = SharedColors.avatarAccentText,
+            fontWeight = ContentCardTextFontWeight,
+            maxLines = 1
+        )
     }
 }
 
@@ -787,30 +829,19 @@ private fun WatchlistBadge(
 ) {
     Box(
         modifier = modifier
-            .padding(
-                top = Dimensions.contentCardRatingBadgeTop,
-                start = Dimensions.contentCardRatingBadgeRight
-            )
+            .size(ContentCardAvatarBadgeSize)
+            .background(
+                color = ContentCardBgColor.copy(alpha = Dimensions.contentCardRatingBgAlpha),
+                shape = RoundedCornerShape(Dimensions.radiusSM)
+            ),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .background(
-                    color = ContentCardBgColor.copy(alpha = Dimensions.contentCardRatingBgAlpha),
-                    shape = RoundedCornerShape(Dimensions.radiusSM)
-                )
-                .padding(
-                    horizontal = Dimensions.contentCardRatingBadgePaddingH,
-                    vertical = Dimensions.contentCardRatingBadgePaddingV
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.Star,
-                contentDescription = "Watchlist",
-                modifier = Modifier.size(Dimensions.contentCardRatingIconSize),
-                tint = SharedColors.contentCardRatingIconColor
-            )
-        }
+        Icon(
+            imageVector = Icons.Default.Favorite,
+            contentDescription = "Watchlist",
+            modifier = Modifier.size(Dimensions.contentCardRatingIconSize),
+            tint = SharedColors.contentCardRatingIconColor
+        )
     }
 }
 
@@ -925,6 +956,34 @@ private fun BuildTextFallback(
 }
 
 @Composable
+private fun CardRemainingTimeLabel(minutes: Int) {
+    val label = remember(minutes) { formatRemainingLabel(minutes) }
+    if (label.isNotBlank()) {
+        Box(
+            modifier = Modifier
+                .padding(top = 4.dp)
+                .background(
+                    color = Color.Black.copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(Dimensions.radiusSM)
+                )
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.9f)
+            )
+        }
+    }
+}
+
+/** One unit spelling for card and detail: [formatRuntime] plus the card's "übrig" suffix. */
+private fun formatRemainingLabel(minutes: Int): String {
+    val runtime = formatRuntime(minutes.toString())
+    return if (runtime.isBlank()) "" else "$runtime übrig"
+}
+
+@Composable
 private fun CardFallbackWithOverlays(
     title: String,
     overlayParams: CardOverlayParams
@@ -933,7 +992,7 @@ private fun CardFallbackWithOverlays(
         // Text-Fallback als Hintergrund
         BuildTextFallback(title, overlayParams.colors)
 
-        // Badges (Stern, Rating, Watched)
+        // Badges (Freund-Avatar, Watchlist-Herz, Rating, Watched)
         CardBadges(
             isInWatchlist = overlayParams.isInWatchlist,
             sourceBadge = overlayParams.sourceBadge,
@@ -947,11 +1006,16 @@ private fun CardFallbackWithOverlays(
         ) {
             if (overlayParams.watchState.progressPercent > 0f && !overlayParams.watchState.isWatched) {
                 Box(modifier = Modifier.padding(horizontal = 4.dp)) {
-                    InProgressIndicator(
-                        progressPercent = overlayParams.watchState.progressPercent,
-                        remainingMinutes = overlayParams.watchState.remainingMinutes,
-                        colors = overlayParams.colors
-                    )
+                    Column {
+                        InProgressIndicator(
+                            progressPercent = overlayParams.watchState.progressPercent,
+                            remainingMinutes = null,
+                            colors = overlayParams.colors
+                        )
+                        overlayParams.watchState.remainingMinutes?.let { minutes ->
+                            CardRemainingTimeLabel(minutes = minutes)
+                        }
+                    }
                 }
             }
             TitleOverlay(title = title)

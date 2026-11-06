@@ -28,6 +28,7 @@ import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.ui.common.UiConstants.WATCHLIST_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
+import com.flintr.tv.ui.common.UiConstants.PROGRESS_KEY_MOVIE_PREFIX
 import com.flintr.tv.ui.common.asOwnSourcedItems
 import com.flintr.tv.ui.common.useWatchlist
 import com.flintr.tv.ui.common.ContentFilterUtils
@@ -101,6 +102,8 @@ data class VODContentParams(
 fun VODContent(params: VODContentParams) {
     val streams by params.viewModel.vodStreams.collectAsState()
     val uiState by params.viewModel.uiState.collectAsState()
+    // One reactive map in the grid - cards only do a local lookup instead of per-card IO.
+    val watchProgressByKey by params.watchProgressService.watchProgress.collectAsState()
     
     val isWatchlistCategory = params.selectedCategoryId == WATCHLIST_CATEGORY_ID
     val isNewCategory = params.selectedCategoryId == NEW_CATEGORY_ID
@@ -166,8 +169,8 @@ fun VODContent(params: VODContentParams) {
     
     val displayStreams = when {
         isWatchlistCategory -> watchlistState.items
-        isNewCategory -> asOwnSourcedItems(newCategoryStreams)
-        else -> asOwnSourcedItems(streams)
+        isNewCategory -> remember(newCategoryStreams) { asOwnSourcedItems(newCategoryStreams) }
+        else -> remember(streams) { asOwnSourcedItems(streams) }
     }
     val isLoading = when {
         isWatchlistCategory -> watchlistState.isLoading
@@ -202,7 +205,11 @@ fun VODContent(params: VODContentParams) {
                     focusRequester = cardFocusRequester,
                     isWatched = vod.item.streamId in watchedVodIds,
                     sourceBadge = vod.source.badge,
-                    allowWatchlistActions = vod.allowWatchlistActions
+                    allowWatchlistActions = vod.allowWatchlistActions,
+                    watchProgress = watchProgressByKey[
+                        PROGRESS_KEY_MOVIE_PREFIX + vod.item.streamId
+                    ],
+                    watchProgressResolved = true
                 )
             )
         }
