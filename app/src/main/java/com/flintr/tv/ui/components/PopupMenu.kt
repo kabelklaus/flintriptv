@@ -21,6 +21,7 @@ import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onClick
+import com.flintr.tv.ui.utils.safeRequestFocus
 import kotlinx.coroutines.delay
 
 /**
@@ -57,7 +58,7 @@ private suspend fun handleMenuOpening(
     debugLog { "[Focus] Menü ist jetzt bereit - setze isMenuReady = true" }
     debugLog { "[Focus] Setze Focus auf erstes Item (Index 0) nach Delay" }
     onStateChange(true, true)
-    focusRequesters.firstOrNull()?.requestFocus()
+    focusRequesters.firstOrNull()?.safeRequestFocus(targetName = "PopupMenuFirstItem")
     // Grace period: ignore key events for 500ms after menu opens to prevent
     // the key event that triggered the long press from immediately selecting an option
     delay(500)

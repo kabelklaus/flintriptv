@@ -415,7 +415,7 @@ fun SearchOverlay(
     // Request focus on search field when overlay opens
     LaunchedEffect(Unit) {
         delay(16) // Small delay to ensure component is ready
-        searchFieldFocusRequester.requestFocus()
+        searchFieldFocusRequester.safeRequestFocus(targetName = "SearchField")
     }
 
     LaunchedEffect(pendingFocusTarget, searchState.results.totalCount) {

@@ -2,6 +2,7 @@ package com.flintr.tv.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import androidx.core.content.edit
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.*
@@ -13,6 +14,14 @@ import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import okio.buffer
@@ -20,8 +29,13 @@ import okio.sink
 import okio.source
 import java.io.File
 import java.io.IOException
-import java.text.SimpleDateFormat
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.time.OffsetDateTime
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.*
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.coroutineContext
 import javax.inject.Inject
 import javax.inject.Named
@@ -52,10 +66,23 @@ class DataCacheService @Inject constructor(
     )
 
     // Memoized parsed catalog: avoids re-parsing multi-MB JSON on every
-    // category navigation. @Volatile is enough — a duplicate parse on a
-    // race is harmless (both results are valid).
+    // category navigation. Parsing is single-flight via [parseMutex]: concurrent
+    // callers would otherwise each hold a full 57k-item copy at once.
     @Volatile
     private var memoizedCache: CachedData? = null
+    private val parseMutex = Mutex()
+
+    // Bumped by save/clear so a parse that raced with them cannot memoize stale files.
+    private val cacheGeneration = AtomicInteger(0)
+
+    private val backgroundScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+
+    // Serializes the IMDb DB enrichment phase of saveCachedData against the background
+    // >14d refresh's ensureLoaded(): without this, a refresh can close/reopen the DB
+    // mid-enrichment of the next save, making lookups return null. A Mutex (rather than
+    // tracking/joining the refresh Job) keeps both sides symmetric and lets an
+    // unrelated save proceed immediately when no refresh is in flight.
+    private val imdbDbMutex = Mutex()
 
     // Catalog lists are streamed to files instead of SharedPreferences: a
     // 57k-movie list as one String OOMs the 256 MB heap, and prefs keep every
@@ -63,17 +90,43 @@ class DataCacheService @Inject constructor(
     private val cacheDir: File get() = File(context.filesDir, CACHE_DIR_NAME)
 
     init {
-        // Pre-file cache format stored the lists as prefs strings. Drop them so the
-        // ~50 MB prefs XML stops being loaded on startup; the next refresh rewrites
-        // the catalog in file form.
+        // A process killed mid-save leaves its temp file behind; nothing else ever removes it.
+        cacheDir.listFiles { file -> file.name.endsWith(TMP_SUFFIX) }?.forEach { it.delete() }
+
+        // Version 0 stored the lists as prefs strings. Drop them so the ~50 MB prefs
+        // XML stops being loaded on startup; the next refresh rewrites the catalog in
+        // file form.
         if (LEGACY_JSON_KEYS.any { sharedPreferences.contains(it) }) {
             sharedPreferences.edit {
                 LEGACY_JSON_KEYS.forEach { remove(it) }
             }
         }
+
+        // Installs without a stored version already write the version-1 file format.
+        val storedVersion = sharedPreferences.getInt(KEY_CACHE_VERSION, CACHE_VERSION)
+        if (storedVersion != CACHE_VERSION) {
+            android.util.Log.i("DataCacheService", "Cache version $storedVersion -> $CACHE_VERSION, discarding cached catalog")
+            cacheDir.deleteRecursively()
+            sharedPreferences.edit {
+                remove(KEY_CACHE_TIMESTAMP)
+                remove(KEY_CACHE_CHANNELS_COUNT)
+                remove(KEY_CACHE_MOVIES_COUNT)
+                remove(KEY_CACHE_SERIES_COUNT)
+                putInt(KEY_CACHE_VERSION, CACHE_VERSION)
+            }
+        }
     }
 
     companion object {
+        /**
+         * Format version of the files in [CACHE_DIR_NAME]. Bump it whenever a change makes
+         * existing cache files unreadable or semantically wrong (field renames, changed
+         * enrichment rules, a different container format): on startup a stored version that
+         * differs from this one deletes the cache files and their prefs metadata, forcing a
+         * full resync. Version 0 was the prefs-string format, handled by [LEGACY_JSON_KEYS].
+         */
+        internal const val CACHE_VERSION = 1
+        internal const val KEY_CACHE_VERSION = "iptv_cache_version"
         private const val KEY_CACHE_TIMESTAMP = "iptv_cache_timestamp"
         private val LEGACY_JSON_KEYS = listOf(
             "iptv_cache_channels",
@@ -91,12 +144,14 @@ class DataCacheService @Inject constructor(
         internal const val FILE_VOD_CATEGORIES = "vod_categories.json"
         internal const val FILE_SERIES_CATEGORIES = "series_categories.json"
         internal const val SAVE_CHUNK_SIZE = 2_000
+        internal const val CANCEL_CHECK_INTERVAL_ITEMS = 5_000
+        private const val TMP_SUFFIX = ".tmp"
         private const val KEY_CACHE_CHANNELS_COUNT = "iptv_cache_channels_count"
         private const val KEY_CACHE_MOVIES_COUNT = "iptv_cache_movies_count"
         private const val KEY_CACHE_SERIES_COUNT = "iptv_cache_series_count"
         private const val KEY_FALLBACK_COOLDOWN_TIMESTAMP = "iptv_fallback_cooldown_timestamp"
         private const val CACHE_VALIDITY_DURATION = 24 * 60 * 60 * 1000L // 24 hours in milliseconds
-        private val ISO8601_FORMAT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US)
+        private val ISO8601_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US)
 
         internal fun hasUsableFallbackCacheData(
             channelsFile: File?,
@@ -142,7 +197,7 @@ class DataCacheService @Inject constructor(
             ?: return false
 
         val timestamp = try {
-            ISO8601_FORMAT.parse(timestampString)?.time ?: return false
+            OffsetDateTime.parse(timestampString, ISO8601_FORMAT).toInstant().toEpochMilli()
         } catch (e: Exception) {
             reportHandled("DataCacheService.isCacheValid", e)
             return false
@@ -184,8 +239,8 @@ class DataCacheService @Inject constructor(
             return false
         }
         try {
-            val enricher = imdbEnricher()
-            val timestamp = ISO8601_FORMAT.format(Date())
+            val imdbWasOpen = imdbEnrichmentService.isAvailable
+            val timestamp = ZonedDateTime.now().format(ISO8601_FORMAT)
 
             var savedItems = 0
             val onChunkWritten: suspend (Int) -> Unit = { written ->
@@ -193,8 +248,14 @@ class DataCacheService @Inject constructor(
                 onProgress(savedItems)
             }
             writeListChunked(FILE_CHANNELS, LiveStream::class.java, channels, transform = null, onChunkWritten)
-            val enrichedMovies = writeListChunked(FILE_MOVIES, VodStream::class.java, movies, enricher?.let { it::enrichMovie }, onChunkWritten)
-            val enrichedSeries = writeListChunked(FILE_SERIES, Series::class.java, series, enricher?.let { it::enrichSeries }, onChunkWritten)
+            // Held for the whole enrichment phase so a concurrent background refresh
+            // (see imdbDbMutex) can't close/reopen the DB mid-lookup.
+            val (enrichedMovies, enrichedSeries) = imdbDbMutex.withLock {
+                val enricher = imdbEnricher()
+                val enrichedMovies = writeListChunked(FILE_MOVIES, VodStream::class.java, movies, enricher?.let { it::enrichMovie }, onChunkWritten)
+                val enrichedSeries = writeListChunked(FILE_SERIES, Series::class.java, series, enricher?.let { it::enrichSeries }, onChunkWritten)
+                enrichedMovies to enrichedSeries
+            }
 
             withContext(ioDispatcher) {
                 val categoryAdapter = listAdapter(Category::class.java)
@@ -208,9 +269,16 @@ class DataCacheService @Inject constructor(
                 putInt(KEY_CACHE_CHANNELS_COUNT, channels.size)
                 putInt(KEY_CACHE_MOVIES_COUNT, enrichedMovies.size)
                 putInt(KEY_CACHE_SERIES_COUNT, enrichedSeries.size)
+                putInt(KEY_CACHE_VERSION, CACHE_VERSION)
             }
+            cacheGeneration.incrementAndGet()
             memoizedCache = CachedData(channels, enrichedMovies, enrichedSeries, liveCategories, vodCategories, seriesCategories)
             android.util.Log.d("DataCacheService", "Cache saved successfully: $timestamp | Channels: ${channels.size}, Movies: ${enrichedMovies.size}, Series: ${enrichedSeries.size}")
+            // The >14d IMDb refresh is a multi-MB download. With a DB already open this save
+            // used it as-is; the refresh runs afterwards so it neither delays the save nor
+            // closes the DB mid-enrichment. The next save picks up the new DB. imdbDbMutex
+            // keeps this refresh from overlapping that next save's own enrichment phase.
+            if (imdbWasOpen) backgroundScope.launch { imdbDbMutex.withLock { imdbEnrichmentService.ensureLoaded() } }
             return true
         } catch (e: CancellationException) {
             throw e
@@ -228,7 +296,7 @@ class DataCacheService @Inject constructor(
      * unveraendert -- nur ein versuchter Lookup ohne Treffer nullt die Felder.
      */
     private suspend fun imdbEnricher(): ImdbEnricher? {
-        imdbEnrichmentService.ensureLoaded()
+        if (!imdbEnrichmentService.isAvailable) imdbEnrichmentService.ensureLoaded()
         if (!imdbEnrichmentService.isAvailable) {
             android.util.Log.d("DataCacheService", "IMDb enrichment unavailable, keeping Xtream genre/rating values")
             return null
@@ -309,63 +377,82 @@ class DataCacheService @Inject constructor(
 
     private inline fun writeAtomically(fileName: String, write: (JsonWriter) -> Unit) {
         cacheDir.mkdirs()
-        val tmp = File(cacheDir, "$fileName.tmp")
+        val tmp = File(cacheDir, "$fileName$TMP_SUFFIX")
         val target = File(cacheDir, fileName)
         JsonWriter.of(tmp.sink().buffer()).use { writer -> write(writer) }
-        if (!tmp.renameTo(target)) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            } else if (!tmp.renameTo(target)) {
+                throw IOException("rename failed: $fileName")
+            }
+        } catch (e: IOException) {
             if (!tmp.delete()) tmp.deleteOnExit()
-            throw IOException("rename failed: $fileName")
+            throw e
         }
     }
 
-    private fun <T> readList(fileName: String, adapter: JsonAdapter<List<T>>): List<T>? {
+    /**
+     * Streams the JSON array in [fileName] element by element, so callers decide what to keep
+     * instead of always materializing the whole list. Checks for cancellation every
+     * [CANCEL_CHECK_INTERVAL_ITEMS] items. Returns false if the file does not exist.
+     */
+    private suspend fun <T> readEach(fileName: String, itemClass: Class<T>, onItem: (T) -> Unit): Boolean {
         val file = File(cacheDir, fileName)
-        if (!file.exists()) return null
-        return file.source().buffer().use { adapter.fromJson(it) }
+        if (!file.exists()) return false
+        val adapter = moshi.adapter(itemClass)
+        file.source().buffer().use { source ->
+            val reader = JsonReader.of(source)
+            reader.beginArray()
+            var count = 0
+            while (reader.hasNext()) {
+                adapter.fromJson(reader)?.let(onItem)
+                if (++count % CANCEL_CHECK_INTERVAL_ITEMS == 0) currentCoroutineContext().ensureActive()
+            }
+            reader.endArray()
+        }
+        return true
     }
 
-    /**
-     * Internal helper function that loads cached data from the cache files.
-     * This contains the common logic used by both loadCachedData() and loadCachedDataAsync().
-     */
-    private fun loadCachedDataInternal(): CachedData? {
-        memoizedCache?.let { return it }
-        try {
-            val channels = readList(FILE_CHANNELS, listAdapter(LiveStream::class.java)) ?: return null
-            val movies = readList(FILE_MOVIES, listAdapter(VodStream::class.java)) ?: return null
-            val series = readList(FILE_SERIES, listAdapter(Series::class.java)) ?: return null
+    private suspend fun <T> readList(fileName: String, itemClass: Class<T>): List<T>? {
+        val items = ArrayList<T>()
+        return if (readEach(fileName, itemClass) { items.add(it) }) items else null
+    }
 
-            val categoryAdapter = listAdapter(Category::class.java)
-            val liveCategories = readList(FILE_LIVE_CATEGORIES, categoryAdapter) ?: emptyList()
-            val vodCategories = readList(FILE_VOD_CATEGORIES, categoryAdapter) ?: emptyList()
-            val seriesCategories = readList(FILE_SERIES_CATEGORIES, categoryAdapter) ?: emptyList()
+    private suspend fun parseCachedData(): CachedData? {
+        val generation = cacheGeneration.get()
+        try {
+            val channels = readList(FILE_CHANNELS, LiveStream::class.java) ?: return null
+            val movies = readList(FILE_MOVIES, VodStream::class.java) ?: return null
+            val series = readList(FILE_SERIES, Series::class.java) ?: return null
 
             val data = CachedData(
                 channels = channels,
                 movies = movies,
                 series = series,
-                liveCategories = liveCategories,
-                vodCategories = vodCategories,
-                seriesCategories = seriesCategories
+                liveCategories = readList(FILE_LIVE_CATEGORIES, Category::class.java) ?: emptyList(),
+                vodCategories = readList(FILE_VOD_CATEGORIES, Category::class.java) ?: emptyList(),
+                seriesCategories = readList(FILE_SERIES_CATEGORIES, Category::class.java) ?: emptyList()
             )
-            memoizedCache = data
+            if (generation == cacheGeneration.get()) memoizedCache = data
             return data
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             reportError("DataCacheService", "Failed to load cache", e)
             return null
         }
     }
 
-    fun loadCachedData(): CachedData? {
-        return loadCachedDataInternal()
-    }
+    /** Blocking variant of [loadCachedDataAsync]; never call it from the main thread. */
+    fun loadCachedData(): CachedData? = runBlocking { loadCachedDataAsync() }
 
     /**
-     * Loads cached data asynchronously on a background thread.
-     * Use this instead of loadCachedData() to avoid blocking the main thread.
+     * Returns the memoized catalog or parses the cache files on [ioDispatcher]. Concurrent
+     * callers share a single parse: whoever waits on [parseMutex] gets the memoized result.
      */
     suspend fun loadCachedDataAsync(): CachedData? = withContext(ioDispatcher) {
-        loadCachedDataInternal()
+        memoizedCache ?: parseMutex.withLock { memoizedCache ?: parseCachedData() }
     }
 
     fun hasCacheData(): Boolean {
@@ -423,19 +510,27 @@ class DataCacheService @Inject constructor(
     }
 
     fun clearCache() {
-        memoizedCache = null
+        // Take parseMutex so an in-flight parse can neither repopulate memoizedCache after
+        // the invalidation below nor read the files while they are being deleted.
+        runBlocking {
+            parseMutex.withLock {
+                cacheGeneration.incrementAndGet()
+                memoizedCache = null
+            }
+        }
         sharedPreferences.edit { clear() }
         cacheDir.deleteRecursively()
     }
 
     /**
-     * Generic helper to load specific items by their IDs from a cached JSON list.
-     * This is more memory-efficient than loading all items when only a few are needed.
+     * Loads specific items by their IDs: filtered from the memoized catalog when present,
+     * otherwise streamed from [fileName] keeping only the matches, so a lookup never
+     * materializes the full list.
      *
-     * @param T The type of item to load (e.g., LiveStream, VodStream, Series).
      * @param fileName The cache file holding the JSON list.
      * @param ids The list of IDs to load.
      * @param itemClass The class of the item, for Moshi type creation.
+     * @param memoSelector The list in the memoized catalog that mirrors [fileName].
      * @param idSelector A function to extract the ID from an item.
      * @return A list of items matching the IDs, or null if the cache is invalid.
      */
@@ -443,6 +538,7 @@ class DataCacheService @Inject constructor(
         fileName: String,
         ids: List<Int>,
         itemClass: Class<T>,
+        memoSelector: (CachedData) -> List<T>,
         idSelector: (T) -> Int
     ): List<T>? = withContext(ioDispatcher) {
         if (ids.isEmpty()) {
@@ -450,14 +546,27 @@ class DataCacheService @Inject constructor(
         }
 
         try {
-            val allItems = readList(fileName, listAdapter(itemClass)) ?: return@withContext null
-
-            // Use a map for efficient O(1) lookup instead of filtering
-            val itemsById = allItems.associateBy(idSelector)
+            val wanted = ids.toHashSet()
+            val itemsById = HashMap<Int, T>()
+            var total = 0
+            val keepIfWanted: (T) -> Unit = { item ->
+                total++
+                val id = idSelector(item)
+                if (id in wanted) itemsById[id] = item
+            }
+            val memoItems = memoizedCache?.let(memoSelector)
+            if (memoItems != null) {
+                memoItems.forEach(keepIfWanted)
+            } else if (!readEach(fileName, itemClass, keepIfWanted)) {
+                return@withContext null
+            }
             val filteredItems = ids.mapNotNull { itemsById[it] }
+            val origin = if (memoItems != null) "memo" else "file"
 
-            android.util.Log.d("DataCacheService", "Loaded ${filteredItems.size} ${itemClass.simpleName}s from ${allItems.size} total (requested ${ids.size} IDs)")
+            android.util.Log.d("DataCacheService", "Loaded ${filteredItems.size} ${itemClass.simpleName}s from $total total (requested ${ids.size} IDs, from $origin)")
             return@withContext filteredItems
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             reportError("DataCacheService", "Failed to load ${itemClass.simpleName}s by IDs from $fileName", e)
             return@withContext null
@@ -472,7 +581,7 @@ class DataCacheService @Inject constructor(
      * @return List of LiveStream objects matching the IDs, or null if cache is invalid
      */
     suspend fun loadChannelsByIds(streamIds: List<Int>): List<LiveStream>? =
-        loadItemsByIds(FILE_CHANNELS, streamIds, LiveStream::class.java) { it.streamId }
+        loadItemsByIds(FILE_CHANNELS, streamIds, LiveStream::class.java, CachedData::channels) { it.streamId }
 
     /**
      * Loads only specific movies by their stream IDs from cache.
@@ -482,7 +591,7 @@ class DataCacheService @Inject constructor(
      * @return List of VodStream objects matching the IDs, or null if cache is invalid
      */
     suspend fun loadMoviesByIds(streamIds: List<Int>): List<VodStream>? =
-        loadItemsByIds(FILE_MOVIES, streamIds, VodStream::class.java) { it.streamId }
+        loadItemsByIds(FILE_MOVIES, streamIds, VodStream::class.java, CachedData::movies) { it.streamId }
 
     /**
      * Loads only specific series by their series IDs from cache.
@@ -492,5 +601,5 @@ class DataCacheService @Inject constructor(
      * @return List of Series objects matching the IDs, or null if cache is invalid
      */
     suspend fun loadSeriesByIds(seriesIds: List<Int>): List<Series>? =
-        loadItemsByIds(FILE_SERIES, seriesIds, Series::class.java) { it.seriesId }
+        loadItemsByIds(FILE_SERIES, seriesIds, Series::class.java, CachedData::series) { it.seriesId }
 }
