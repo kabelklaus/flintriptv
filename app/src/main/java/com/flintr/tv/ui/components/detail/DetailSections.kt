@@ -5,6 +5,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -64,7 +65,10 @@ fun DetailCastSection(cast: List<String>, testTag: String) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = Dimensions.spacingSM)
         )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM),
+            contentPadding = PaddingValues(horizontal = Dimensions.spacingXS)
+        ) {
             itemsIndexed(items = cast) { index, name ->
                 Column(
                     modifier = Modifier
@@ -92,7 +96,10 @@ fun DetailCastSection(cast: List<String>, testTag: String) {
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = Dimensions.spacingXS)
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = Dimensions.spacingXS, start = 2.dp, end = 2.dp)
                     )
                 }
             }

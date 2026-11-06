@@ -303,7 +303,7 @@ fun CustomPlayerControls(
                 // Time block fixed at the right side
                 Column(horizontalAlignment = Alignment.End) {
                     if (isLive) {
-                        LiveBadge()
+                        LiveBadge(isPlaying = state.isPlaying)
                     } else {
                         if (finishTime != null) {
                             Text(
@@ -368,9 +368,16 @@ internal fun resolveEffectiveFocusedButton(
 /**
  * Live indicator shown in place of the elapsed/total time. Uses the existing player label
  * typography; the dot carries the live state, the text stays readable over the scrim.
+ *
+ * [isPlaying] is the live-stream play state: while a live stream is paused the dot turns grey
+ * instead of red, so the badge does not claim an active live feed. The label stays "LIVE" to
+ * avoid touching the out-of-scope string resources.
  */
 @Composable
-internal fun LiveBadge(modifier: Modifier = Modifier) {
+internal fun LiveBadge(
+    isPlaying: Boolean = true,
+    modifier: Modifier = Modifier
+) {
     Row(
         modifier = modifier
             .testTag("player-live-badge"),
@@ -379,7 +386,10 @@ internal fun LiveBadge(modifier: Modifier = Modifier) {
         Box(
             modifier = Modifier
                 .size(8.dp)
-                .background(SharedColors.red, CircleShape)
+                .background(
+                    color = if (isPlaying) SharedColors.red else Color.Gray,
+                    shape = CircleShape
+                )
         )
         Spacer(modifier = Modifier.width(Dimensions.spacingXS))
         // Inline label: strings.xml is outside the T8 file scope. Keep it identical to the
