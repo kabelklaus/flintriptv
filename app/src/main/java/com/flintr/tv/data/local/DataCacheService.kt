@@ -509,6 +509,18 @@ class DataCacheService @Inject constructor(
         }
     }
 
+    /**
+     * Verwirft nur das im RAM gepinnte [CachedData]; Cache-Dateien und Prefs bleiben
+     * unangetastet, sodass der naechste Zugriff sie neu einliest. [cacheGeneration] sorgt
+     * dafuer, dass ein bereits laufender Parse sein Ergebnis nicht mehr memoisiert. Bewusst
+     * ohne [parseMutex], damit der Aufruf aus onTrimMemory nicht auf einen multi-MB-Parse
+     * warten muss.
+     */
+    fun trimCachedCatalog() {
+        cacheGeneration.incrementAndGet()
+        memoizedCache = null
+    }
+
     fun clearCache() {
         // Take parseMutex so an in-flight parse can neither repopulate memoizedCache after
         // the invalidation below nor read the files while they are being deleted.
