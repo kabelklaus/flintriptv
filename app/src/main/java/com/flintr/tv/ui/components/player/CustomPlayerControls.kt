@@ -172,7 +172,10 @@ fun CustomPlayerControls(
     
     // Request focus when focusedButton changes
     LaunchedEffect(focusedButton) {
-        focusRequesters[focusedButton]?.safeRequestFocus(targetName = "PlayerControl_${focusedButton?.name ?: "none"}")
+        focusRequesters[focusedButton]?.safeRequestFocus(
+            targetName = "PlayerControl_${focusedButton?.name ?: "none"}",
+            initialDelayMs = 0
+        )
     }
 
     var minuteTickMillis by remember { mutableStateOf(System.currentTimeMillis()) }

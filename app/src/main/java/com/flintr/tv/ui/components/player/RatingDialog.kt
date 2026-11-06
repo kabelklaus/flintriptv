@@ -120,7 +120,7 @@ fun RatingDialog(
                             .onDpadDirection(
                                 onRight = {
                                     coroutineScope.launch {
-                                        thumbsDownFocusRequester.safeRequestFocus(targetName = "RATING_DIALOG_THUMBS_DOWN")
+                                        thumbsDownFocusRequester.safeRequestFocus(targetName = "RATING_DIALOG_THUMBS_DOWN", initialDelayMs = 0)
                                     }
                                     true
                                 }
@@ -145,7 +145,7 @@ fun RatingDialog(
                             .onDpadDirection(
                                 onLeft = {
                                     coroutineScope.launch {
-                                        thumbsUpFocusRequester.safeRequestFocus(targetName = "RATING_DIALOG_THUMBS_UP")
+                                        thumbsUpFocusRequester.safeRequestFocus(targetName = "RATING_DIALOG_THUMBS_UP", initialDelayMs = 0)
                                     }
                                     true
                                 }

@@ -126,9 +126,9 @@ fun SettingsConnection(
                         playlistNameFocusRequester = playlistNameFocusRequester,
                         colors = colors,
                         onBack = onBack,
-                        onServerUrlDpadDown = { coroutineScope.launch { playlistNameFocusRequester.safeRequestFocus(targetName = "PlaylistNameField") } },
-                        onPlaylistNameDpadUp = { coroutineScope.launch { serverUrlFocusRequester.safeRequestFocus(targetName = "ServerUrlField") } },
-                        onPlaylistNameDpadDown = { coroutineScope.launch { usernameFocusRequester.safeRequestFocus(targetName = "UsernameField") } }
+                        onServerUrlDpadDown = { coroutineScope.launch { playlistNameFocusRequester.safeRequestFocus(targetName = "PlaylistNameField", initialDelayMs = 0) } },
+                        onPlaylistNameDpadUp = { coroutineScope.launch { serverUrlFocusRequester.safeRequestFocus(targetName = "ServerUrlField", initialDelayMs = 0) } },
+                        onPlaylistNameDpadDown = { coroutineScope.launch { usernameFocusRequester.safeRequestFocus(targetName = "UsernameField", initialDelayMs = 0) } }
                     )
                 )
 
@@ -141,10 +141,10 @@ fun SettingsConnection(
                         usernameFocusRequester = usernameFocusRequester,
                         passwordFocusRequester = passwordFocusRequester,
                         colors = colors,
-                        onUsernameDpadUp = { coroutineScope.launch { playlistNameFocusRequester.safeRequestFocus(targetName = "PlaylistNameField") } },
-                        onUsernameDpadDown = { coroutineScope.launch { passwordFocusRequester.safeRequestFocus(targetName = "PasswordField") } },
-                        onPasswordDpadUp = { coroutineScope.launch { usernameFocusRequester.safeRequestFocus(targetName = "UsernameField") } },
-                        onPasswordDpadDown = { coroutineScope.launch { testButtonFocusRequester.safeRequestFocus(targetName = "TestConnectionButton") } }
+                        onUsernameDpadUp = { coroutineScope.launch { playlistNameFocusRequester.safeRequestFocus(targetName = "PlaylistNameField", initialDelayMs = 0) } },
+                        onUsernameDpadDown = { coroutineScope.launch { passwordFocusRequester.safeRequestFocus(targetName = "PasswordField", initialDelayMs = 0) } },
+                        onPasswordDpadUp = { coroutineScope.launch { usernameFocusRequester.safeRequestFocus(targetName = "UsernameField", initialDelayMs = 0) } },
+                        onPasswordDpadDown = { coroutineScope.launch { testButtonFocusRequester.safeRequestFocus(targetName = "TestConnectionButton", initialDelayMs = 0) } }
                     )
                 )
                 

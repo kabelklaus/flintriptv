@@ -310,7 +310,7 @@ private fun RowScope.UpdateButton(
                 onRight = {
                     if (isDialogReady) {
                         coroutineScope.launch {
-                            laterButtonFocusRequester.safeRequestFocus(targetName = "LaterButton")
+                            laterButtonFocusRequester.safeRequestFocus(targetName = "LaterButton", initialDelayMs = 0)
                         }
                         true
                     } else {
@@ -362,7 +362,7 @@ private fun RowScope.LaterButton(
                 onLeft = {
                     if (isDialogReady) {
                         coroutineScope.launch {
-                            updateButtonFocusRequester.safeRequestFocus(targetName = "UpdateNowButton")
+                            updateButtonFocusRequester.safeRequestFocus(targetName = "UpdateNowButton", initialDelayMs = 0)
                         }
                         true
                     } else {
