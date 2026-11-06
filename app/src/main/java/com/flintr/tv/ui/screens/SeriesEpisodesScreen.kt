@@ -58,7 +58,6 @@ import com.flintr.tv.utils.ContentParser
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import com.flintr.tv.utils.error.reportHandled
-import com.flintr.tv.utils.error.reportControlFlow
 
 // Navigation direction enum
 private enum class NavigationDirection {
@@ -855,12 +854,7 @@ private fun SeasonButton(
     LaunchedEffect(isSelected, suppressAutoFocus) {
         if (isSelected && !suppressAutoFocus) {
             kotlinx.coroutines.delay(50)
-            try {
-                actualFocusRequester.requestFocus()
-            } catch (e: IllegalStateException) {
-                reportHandled("SeriesEpisodesScreen.SeasonButton", e)
-                // FocusRequester might not be ready yet
-            }
+            actualFocusRequester.safeRequestFocus(targetName = "SeasonButton")
         }
     }
     
@@ -1014,25 +1008,6 @@ private fun Modifier.conditionalBorder(
     }
 }
 
-/**
- * Requests focus and retries once because the FocusRequester may not be attached yet.
- */
-private suspend fun requestFocusWithRetry(focusRequester: FocusRequester) {
-    try {
-        focusRequester.requestFocus()
-    } catch (e: IllegalStateException) {
-        reportControlFlow("requestFocusWithRetry.firstAttempt", e)
-        // FocusRequester might not be ready yet, retry after short delay
-        kotlinx.coroutines.delay(50)
-        try {
-            focusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            reportControlFlow("requestFocusWithRetry.retry", e)
-            // Ignore if still not ready
-        }
-    }
-}
-
 @Composable
 private fun EpisodeDetailCard(
     config: EpisodeCardConfig,
@@ -1088,7 +1063,7 @@ private fun EpisodeDetailCard(
     // Request focus when isFocused changes
     LaunchedEffect(isFocused) {
         if (isFocused) {
-            requestFocusWithRetry(cardFocusRequester)
+            cardFocusRequester.safeRequestFocus(targetName = "EpisodeCard")
         }
     }
     

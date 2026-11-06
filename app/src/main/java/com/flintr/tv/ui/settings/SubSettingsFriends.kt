@@ -46,6 +46,7 @@ import com.flintr.tv.data.model.FriendEntry
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
+import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.viewmodel.SettingsFriendsViewModel
 import kotlinx.coroutines.delay
 
@@ -71,7 +72,7 @@ fun SettingsFriends(
     val copyButtonFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
-        usernameFocusRequester.requestFocus()
+        usernameFocusRequester.safeRequestFocus(targetName = "FriendUsernameField")
     }
 
     LaunchedEffect(uiState.successMessage) {
