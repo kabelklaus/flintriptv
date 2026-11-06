@@ -11,12 +11,11 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -29,6 +28,7 @@ import org.robolectric.RobolectricTestRunner
 class RecommendationServiceTest {
 
     private val credentials = Credentials(serverUrl = "http://server", username = "chris", password = "pw")
+    private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var watchlistRepository: WatchlistRepository
     private lateinit var watchedHistoryService: WatchedHistoryService
@@ -91,7 +91,7 @@ class RecommendationServiceTest {
             userRepository = userRepository,
             credentialsRepository = credentialsRepository,
             cacheService = cacheService,
-            ioDispatcher = Dispatchers.Unconfined
+            ioDispatcher = testDispatcher
         )
     }
 
@@ -100,7 +100,8 @@ class RecommendationServiceTest {
         val field = RecommendationService::class.java.getDeclaredField("serviceScope")
         field.isAccessible = true
         val scope = field.get(service) as CoroutineScope
-        runBlocking { scope.coroutineContext[Job]?.cancelAndJoin() }
+        scope.cancel()
+        testDispatcher.scheduler.advanceUntilIdle()
     }
 
     private fun entry(streamId: Int) = WatchlistEntry.create(
@@ -111,12 +112,12 @@ class RecommendationServiceTest {
     )
 
     @Test
-    fun `adding watchlist entries recomputes recommendations`() = runBlocking {
-        delay(400)
+    fun `adding watchlist entries recomputes recommendations`() = runTest(testDispatcher) {
+        advanceUntilIdle()
         assertTrue(service.recommendations.value.movies.isEmpty())
 
         watchlistFlow.value = (1..5).map { entry(it) }
-        delay(400)
+        advanceUntilIdle()
 
         val recommendedIds = service.recommendations.value.movies.map { it.streamId }
         assertEquals(setOf(101, 102), recommendedIds.toSet())
