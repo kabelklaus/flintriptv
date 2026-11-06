@@ -37,6 +37,7 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.viewmodel.MainViewModel
 
 /**
@@ -158,7 +159,7 @@ fun SubSettingsHiddenCategories(
     // Set initial focus
     LaunchedEffect(Unit) {
         if (hiddenCategoryItems.isNotEmpty()) {
-            firstItemFocusRequester.requestFocus()
+            firstItemFocusRequester.safeRequestFocus(targetName = "FirstHiddenCategoryItem")
         }
     }
     
@@ -395,7 +396,7 @@ private fun ConfirmUnhideCategoryDialog(
     val cancelButtonFocusRequester = remember { FocusRequester() }
     
     LaunchedEffect(Unit) {
-        confirmButtonFocusRequester.requestFocus()
+        confirmButtonFocusRequester.safeRequestFocus(targetName = "ConfirmUnhideCategoryButton")
     }
     
     BackHandler(enabled = true) {
