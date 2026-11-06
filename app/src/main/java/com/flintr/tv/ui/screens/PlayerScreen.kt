@@ -69,6 +69,7 @@ import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.createVerticalSwipeGestureModifier
+import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.RatingEntry
 import com.flintr.tv.data.model.Subtitle
@@ -1788,14 +1789,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     val playerFocusRequester = remember { FocusRequester() }
     
     LaunchedEffect(Unit) {
-        playerFocusRequester.requestFocus()
+        playerFocusRequester.safeRequestFocus(targetName = "PlayerSurface")
     }
 
     val isControlsFocusActive = state.showControls && state.focusedButton != null
     val isOverlayWithoutControlFocus = state.showControls && state.focusedButton == null
     val exitControlsFocus: () -> Boolean = {
         state.focusedButton = null
-        playerFocusRequester.requestFocus()
+        coroutineScope.launch { playerFocusRequester.safeRequestFocus(targetName = "PlayerSurface") }
         resetControlsTimer()
         true
     }

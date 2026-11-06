@@ -115,15 +115,18 @@ private const val FOCUS_REQUEST_RETRY_DELAY_MS = 50L
  *
  * @param logTag Tag for logging (default: "TVFocus")
  * @param targetName Name of the target component for logging purposes
+ * @param initialDelayMs Delay before the first attempt; pass 0 for already-composed targets that
+ * need synchronous timing (e.g. focus loops between visible buttons).
  * @return true if focus was successfully requested, false if every attempt failed (e.g. the
  * target node never attached - callers that must not leave the screen without any focused
  * element should fall back to a different, known-composed target when this returns false).
  */
 suspend fun FocusRequester.safeRequestFocus(
     logTag: String = "TVFocus",
-    targetName: String
+    targetName: String,
+    initialDelayMs: Long = FOCUS_REQUEST_DELAY_MS
 ): Boolean {
-    delay(FOCUS_REQUEST_DELAY_MS)
+    delay(initialDelayMs)
     repeat(FOCUS_REQUEST_MAX_ATTEMPTS) { attempt ->
         try {
             requestFocus()
