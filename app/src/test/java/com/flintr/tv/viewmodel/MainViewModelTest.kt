@@ -22,12 +22,14 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -36,6 +38,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.net.UnknownHostException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 class MainViewModelTest {
@@ -83,13 +87,14 @@ class MainViewModelTest {
         coEvery { cacheService.loadCachedDataAsync() } returns cachedData()
     }
 
-    private fun viewModel() = MainViewModel(
+    private fun viewModel(ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = mainDispatcherRule.dispatcher) = MainViewModel(
         savedStateHandle = savedStateHandle,
         repository = repository,
         credentialsRepository = credentialsRepository,
         userRepository = userRepository,
         cacheService = cacheService,
-        categoryVisibilityService = categoryVisibilityService
+        categoryVisibilityService = categoryVisibilityService,
+        ioDispatcher = ioDispatcher
     )
 
     @Test
@@ -101,6 +106,34 @@ class MainViewModelTest {
         assertEquals(listOf("Serien DE"), vm.seriesCategories.value.map { it.categoryName })
         assertFalse(vm.uiState.value.isLoading)
         coVerify(exactly = 0) { repository.getLiveCategories(any(), any()) }
+    }
+
+    @Test
+    fun `init ruft getCredentials nicht auf dem Main-Thread auf`() {
+        // Regressionswaechter fuer den ANR-Fix: wird ioDispatcher wieder durch Dispatchers.Main
+        // ersetzt (oder getCredentials() direkt synchron aufgerufen), laeuft die Stub-Antwort auf
+        // demselben Thread wie dieser Testmethoden-Aufruf - genau das muss fehlschlagen.
+        val mainThread = Thread.currentThread()
+        var callingThread: Thread? = null
+        val calledLatch = CountDownLatch(1)
+
+        every { credentialsRepository.getCredentials() } answers {
+            callingThread = Thread.currentThread()
+            calledLatch.countDown()
+            credentials
+        }
+
+        viewModel(ioDispatcher = Dispatchers.IO)
+
+        assertTrue(
+            "getCredentials() wurde nicht innerhalb des Timeouts aufgerufen",
+            calledLatch.await(5, TimeUnit.SECONDS)
+        )
+        assertNotEquals(
+            "getCredentials() wurde auf dem Main-Thread aufgerufen",
+            mainThread,
+            callingThread
+        )
     }
 
     @Test
