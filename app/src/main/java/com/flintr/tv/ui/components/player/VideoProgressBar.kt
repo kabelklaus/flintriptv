@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.awaitHorizontalDragOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,7 +20,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.flintr.tv.ui.theme.Dimensions
+import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.SharedColors
 import kotlinx.coroutines.withTimeout
 import com.flintr.tv.utils.error.reportControlFlow
@@ -128,6 +133,8 @@ private suspend fun AwaitPointerEventScope.handleDragGesture(
  * @param bufferedProgress Buffered progress value between 0.0 and 1.0 (accent blue, 50% alpha)
  * @param isDragging Whether the user is currently dragging the scrubber
  * @param dragCallbacks Callbacks for drag gestures (start, progress, end)
+ * @param isLive Live streams have no meaningful position/duration window, so the bar,
+ *   its scrubber and all seek gestures are omitted.
  */
 // Lint false positive: awaitPointerEventScope is entered exactly once and loops
 // forever (while(true) inside the scope), so no pointer events can be dropped
@@ -140,8 +147,12 @@ fun VideoProgressBar(
     modifier: Modifier = Modifier,
     bufferedProgress: Float = 0f,
     isDragging: Boolean = false,
-    dragCallbacks: DragCallbacks = DragCallbacks()
+    dragCallbacks: DragCallbacks = DragCallbacks(),
+    isLive: Boolean = false
 ) {
+    // Live TV only exposes a buffered glimpse of the stream; a progress bar would suggest a
+    // seekable 1-minute clip. The caller renders [LiveBadge] instead.
+    if (isLive) return
     val progressHeight = 4.dp
     val scrubberSize by animateDpAsState(
         targetValue = if (isDragging) 18.dp else 12.dp,
@@ -236,6 +247,34 @@ fun VideoProgressBar(
                     }
                 )
                 .background(SharedColors.accent, CircleShape)
+        )
+    }
+}
+
+/**
+ * Live indicator shown in place of the elapsed/total time. Uses the existing player label
+ * typography; the dot carries the live state, the text stays readable over the scrim.
+ */
+@Composable
+internal fun LiveBadge(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .testTag("player-live-badge"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(SharedColors.red, CircleShape)
+        )
+        Spacer(modifier = Modifier.width(Dimensions.spacingXS))
+        // Inline label: strings.xml is outside the T8 file scope. Keep it identical to the
+        // badge wording ("LIVE") instead of inventing a localised variant here.
+        Text(
+            text = "LIVE",
+            fontSize = FontSizes.fontSizeLG,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White
         )
     }
 }
