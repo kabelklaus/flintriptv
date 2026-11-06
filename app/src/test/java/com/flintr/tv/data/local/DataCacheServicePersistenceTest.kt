@@ -9,11 +9,21 @@ import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.testLiveStream
 import com.flintr.tv.data.model.testSeries
 import com.flintr.tv.data.model.testVodStream
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import java.lang.reflect.Type
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -369,5 +379,144 @@ class DataCacheServicePersistenceTest {
 
         assertFalse(cacheDir.exists())
         assertTrue(prefs().all.isEmpty())
+    }
+
+    @Test
+    fun `init loescht verwaiste Temp-Dateien`() {
+        assertTrue(saveDefaults())
+        val orphan = File(cacheDir, "movies.json.tmp").apply { writeText("[") }
+
+        DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+
+        assertFalse(orphan.exists())
+        assertTrue(File(cacheDir, "movies.json").isFile)
+    }
+
+    @Test
+    fun `Versionssprung verwirft den alten Cache explizit`() {
+        assertTrue(saveDefaults())
+        assertEquals(DataCacheService.CACHE_VERSION, prefs().getInt(DataCacheService.KEY_CACHE_VERSION, -1))
+        prefs().edit { putInt(DataCacheService.KEY_CACHE_VERSION, DataCacheService.CACHE_VERSION - 1) }
+
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+
+        assertFalse(cacheDir.exists())
+        assertFalse(fresh.hasCacheData())
+        assertNull(fresh.loadCachedData())
+        assertEquals(DataCacheService.CACHE_VERSION, prefs().getInt(DataCacheService.KEY_CACHE_VERSION, -1))
+    }
+
+    @Test
+    fun `Installationen ohne gespeicherte Version behalten ihren Datei-Cache`() {
+        assertTrue(saveDefaults())
+        prefs().edit { remove(DataCacheService.KEY_CACHE_VERSION) }
+
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+
+        assertEquals(listOf(1), fresh.loadCachedData()?.movies?.map { it.streamId })
+    }
+
+    /** Records which threads (de)serialize VodStreams and how many were parsed. */
+    private class VodStreamProbe : JsonAdapter.Factory {
+        val threads: MutableSet<String> = ConcurrentHashMap.newKeySet()
+        val parsed = AtomicInteger()
+
+        // Coroutine debug mode appends " @coroutine#N" to the thread name.
+        private fun record() {
+            threads += Thread.currentThread().name.substringBefore(" @coroutine#")
+        }
+
+        override fun create(type: Type, annotations: Set<Annotation>, moshi: Moshi): JsonAdapter<*>? {
+            if (type != VodStream::class.java) return null
+            val delegate = moshi.nextAdapter<VodStream>(this, type, annotations)
+            return object : JsonAdapter<VodStream>() {
+                override fun fromJson(reader: JsonReader): VodStream? {
+                    record()
+                    parsed.incrementAndGet()
+                    return delegate.fromJson(reader)
+                }
+
+                override fun toJson(writer: JsonWriter, value: VodStream?) {
+                    record()
+                    delegate.toJson(writer, value)
+                }
+            }
+        }
+    }
+
+    // Unconfined (used above) runs everything on the test thread, so a dropped
+    // withContext(ioDispatcher) would go unnoticed there. A named IO pool makes it fail.
+    @Test
+    fun `Cache-Read und -Write laufen nie auf dem aufrufenden Main-Thread`() {
+        val probe = VodStreamProbe()
+        val probedMoshi = Moshi.Builder().add(probe).build()
+        val executor = Executors.newFixedThreadPool(2) { Thread(it, "cache-io-test") }
+        val io = executor.asCoroutineDispatcher()
+        val callerThread = Thread.currentThread().name
+        try {
+            runBlocking {
+                val writer = DataCacheService(context, probedMoshi, io, newImdbEnrichmentService())
+                assertTrue(
+                    writer.saveCachedData(channels, movies, series, categories, emptyList(), emptyList())
+                )
+                val reader = DataCacheService(context, probedMoshi, io, newImdbEnrichmentService())
+                assertEquals(listOf(1), reader.loadMoviesByIds(listOf(1))?.map { it.streamId })
+                assertEquals(listOf(1), reader.loadCachedDataAsync()?.movies?.map { it.streamId })
+            }
+        } finally {
+            executor.shutdownNow()
+        }
+
+        assertTrue("no VodStream was (de)serialized", probe.threads.isNotEmpty())
+        assertFalse("cache I/O ran on $callerThread", callerThread in probe.threads)
+        assertEquals(setOf("cache-io-test"), probe.threads.toSet())
+    }
+
+    @Test
+    fun `57k Filme - Parse, ById-Filter und Memo-Pfad ohne erneuten Full-Parse`() = runBlocking {
+        val probe = VodStreamProbe()
+        val probedMoshi = Moshi.Builder().add(probe).build()
+        val manyMovies = (1..57_000).map { testVodStream(name = "Film $it", streamId = it) }
+        val writer = DataCacheService(context, probedMoshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        assertTrue(writer.saveCachedData(channels, manyMovies, series, categories, emptyList(), emptyList()))
+
+        val reader = DataCacheService(context, probedMoshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        val wanted = listOf(57_000, 1, 28_500, 99_999)
+
+        // No memo yet: streamed from the file, only the matches are kept.
+        assertEquals(listOf(57_000, 1, 28_500), reader.loadMoviesByIds(wanted)?.map { it.streamId })
+        assertEquals(57_000, probe.parsed.get())
+
+        val cached = reader.loadCachedDataAsync()
+        assertEquals(manyMovies.map { it.streamId }, cached?.movies?.map { it.streamId })
+        assertEquals(114_000, probe.parsed.get())
+
+        assertEquals(listOf(57_000, 1, 28_500), reader.loadMoviesByIds(wanted)?.map { it.streamId })
+        assertEquals(listOf(100), reader.loadChannelsByIds(listOf(100))?.map { it.streamId })
+        assertTrue(cached === reader.loadCachedDataAsync())
+        assertEquals("memo path must not parse the file again", 114_000, probe.parsed.get())
+    }
+
+    @Test
+    fun `parallele Erst-Loads teilen sich einen Parse`() {
+        val probe = VodStreamProbe()
+        val probedMoshi = Moshi.Builder().add(probe).build()
+        val manyMovies = (1..5_000).map { testVodStream(name = "Film $it", streamId = it) }
+        runBlocking {
+            DataCacheService(context, probedMoshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+                .saveCachedData(channels, manyMovies, series, categories, emptyList(), emptyList())
+        }
+        val executor = Executors.newFixedThreadPool(4)
+        val reader = DataCacheService(context, probedMoshi, executor.asCoroutineDispatcher(), newImdbEnrichmentService())
+        probe.parsed.set(0)
+        try {
+            val results = runBlocking {
+                (1..4).map { async { reader.loadCachedDataAsync() } }.awaitAll()
+            }
+            assertTrue(results.all { it != null && it === results.first() })
+        } finally {
+            executor.shutdownNow()
+        }
+        assertEquals(manyMovies.size, probe.parsed.get())
     }
 }
