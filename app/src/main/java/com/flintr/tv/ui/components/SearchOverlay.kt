@@ -472,77 +472,104 @@ fun SearchOverlay(
                 ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Search input field
-            OutlinedTextField(
-                value = searchState.query,
-                onValueChange = onQueryChange,
-                placeholder = { 
-                    Text(
-                        text = "Suchen...",
-                        fontSize = FontSizes.fontSizeLG,
-                        color = colors.textSecondary
-                    )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = null,
-                        tint = colors.iconColor
-                    )
-                },
-                trailingIcon = {
-                    if (searchState.isSearching) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = colors.accentColor
-                        )
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(searchFieldFocusRequester)
-                    .onFocusChanged {
-                        if (it.isFocused) {
-                            currentFocusTarget = SearchOverlayFocusTarget.SearchField
-                        }
-                    }
-                    .onKeyEvent { event ->
-                        handleSearchFieldInputKeyEvent(
-                            event = event,
-                            onSearchImmediate = onSearchImmediate,
-                            onNavigateDown = {
-                                requestOverlayFocus(SearchOverlayFocusTarget.ScopeFilter(0))
-                            }
+            // Search input field + explicit "Done" exit. The field keeps the keyboard semantics,
+            // the button gives D-Pad users a visible way out of text entry into the scope row.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = searchState.query,
+                    onValueChange = onQueryChange,
+                    placeholder = {
+                        Text(
+                            text = "Search…",
+                            fontSize = FontSizes.fontSizeLG,
+                            color = colors.textSecondary
                         )
                     },
-                singleLine = true,
-                shape = RoundedCornerShape(Dimensions.radiusMD),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = colors.accentColor,
-                    unfocusedBorderColor = colors.cardBorder,
-                    focusedLabelColor = colors.accentColor,
-                    unfocusedLabelColor = colors.textSecondary,
-                    focusedTextColor = colors.textPrimary,
-                    unfocusedTextColor = colors.textPrimary,
-                    cursorColor = colors.accentColor,
-                    focusedPlaceholderColor = colors.textSecondary,
-                    unfocusedPlaceholderColor = colors.textSecondary,
-                    focusedLeadingIconColor = colors.accentColor,
-                    unfocusedLeadingIconColor = colors.iconColor
-                ),
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = FontSizes.fontSizeXL
-                ),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    imeAction = ImeAction.Search,
-                    keyboardType = KeyboardType.Text
-                ),
-                keyboardActions = KeyboardActions(
-                    onSearch = { onSearchImmediate() },
-                    onDone = { onSearchImmediate() }
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = null,
+                            tint = colors.iconColor
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchState.isSearching) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = colors.accentColor
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(searchFieldFocusRequester)
+                        .onFocusChanged {
+                            if (it.isFocused) {
+                                currentFocusTarget = SearchOverlayFocusTarget.SearchField
+                            }
+                        }
+                        .onKeyEvent { event ->
+                            handleSearchFieldInputKeyEvent(
+                                event = event,
+                                onSearchImmediate = onSearchImmediate,
+                                onNavigateDown = {
+                                    requestOverlayFocus(SearchOverlayFocusTarget.ScopeFilter(0))
+                                }
+                            )
+                        },
+                    singleLine = true,
+                    shape = RoundedCornerShape(Dimensions.radiusMD),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.accentColor,
+                        unfocusedBorderColor = colors.cardBorder,
+                        focusedContainerColor = colors.bgCard,
+                        unfocusedContainerColor = colors.bgCard,
+                        focusedLabelColor = colors.accentColor,
+                        unfocusedLabelColor = colors.textSecondary,
+                        focusedTextColor = colors.textPrimary,
+                        unfocusedTextColor = colors.textPrimary,
+                        cursorColor = colors.accentColor,
+                        focusedPlaceholderColor = colors.textSecondary,
+                        unfocusedPlaceholderColor = colors.textSecondary,
+                        focusedLeadingIconColor = colors.accentColor,
+                        unfocusedLeadingIconColor = colors.iconColor
+                    ),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = FontSizes.fontSizeXL
+                    ),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = ImeAction.Search,
+                        keyboardType = KeyboardType.Text
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onSearch = { onSearchImmediate() },
+                        onDone = { onSearchImmediate() }
+                    )
                 )
-            )
+
+                OutlinedButton(
+                    onClick = {
+                        onSearchImmediate()
+                        requestOverlayFocus(SearchOverlayFocusTarget.ScopeFilter(0))
+                    },
+                    shape = RoundedCornerShape(Dimensions.radiusMD),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = colors.accentColor
+                    ),
+                    modifier = Modifier.height(Dimensions.navbarItemHeight)
+                ) {
+                    Text(
+                        text = stringResource(R.string.search_done),
+                        fontSize = FontSizes.fontSizeLG,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
             
             Spacer(modifier = Modifier.height(Dimensions.spacingMD))
 
