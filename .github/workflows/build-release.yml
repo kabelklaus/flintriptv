@@ -1,0 +1,281 @@
+name: Build & Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  prepare:
+    name: Prepare release metadata
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      should_release: ${{ steps.should_release.outputs.should_release }}
+      version_name: ${{ steps.version.outputs.name }}
+      build_number: ${{ steps.version.outputs.build }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+      apk_filename: ${{ steps.meta.outputs.apk_filename }}
+      heading: ${{ steps.release_info.outputs.heading }}
+      description: ${{ steps.release_info.outputs.description }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Extract version from build.gradle.kts
+        id: version
+        run: |
+          # Extrahiere versionName und versionCode aus app/build.gradle.kts
+          # Unterstützt sowohl versionName = "1.0" als auch versionName="1.0"
+          VERSION_NAME=$(grep -E '^\s*versionName\s*=' app/build.gradle.kts | sed -E 's/.*versionName\s*=\s*"([^"]+)".*/\1/' | head -1)
+          BUILD_NUMBER=$(grep -E '^\s*versionCode\s*=' app/build.gradle.kts | sed -E 's/.*versionCode\s*=\s*([0-9]+).*/\1/' | head -1)
+          
+          if [ -z "$VERSION_NAME" ] || [ -z "$BUILD_NUMBER" ]; then
+            echo "❌ Failed to extract version information"
+            exit 1
+          fi
+          
+          echo "name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "build=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION_NAME (Build $BUILD_NUMBER)"
+
+      - name: Check if release should be created
+        id: should_release
+        run: |
+          CURRENT_VERSION="${{ steps.version.outputs.name }}"
+          
+          LAST_TAG=$(git tag -l 'v*' --sort=-version:refname | grep -v -- '-beta' | head -n 1 || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ No previous release found, creating first release"
+            exit 0
+          fi
+          
+          LAST_VERSION=$(echo "$LAST_TAG" | sed 's/^v//' | sed 's/-.*$//')
+          
+          echo "Last version: $LAST_VERSION"
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Parse version components (handles missing patch version)
+          LAST_MAJOR=$(echo "$LAST_VERSION" | cut -d'.' -f1)
+          LAST_MINOR=$(echo "$LAST_VERSION" | cut -d'.' -f2)
+          LAST_PATCH=$(echo "$LAST_VERSION" | cut -d'.' -f3)
+          LAST_PATCH=${LAST_PATCH:-0}
+          
+          CURRENT_MAJOR=$(echo "$CURRENT_VERSION" | cut -d'.' -f1)
+          CURRENT_MINOR=$(echo "$CURRENT_VERSION" | cut -d'.' -f2)
+          CURRENT_PATCH=$(echo "$CURRENT_VERSION" | cut -d'.' -f3)
+          CURRENT_PATCH=${CURRENT_PATCH:-0}
+          
+          if [ "$CURRENT_MAJOR" -gt "$LAST_MAJOR" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ Major version update detected ($LAST_VERSION → $CURRENT_VERSION)"
+          elif [ "$CURRENT_MAJOR" -eq "$LAST_MAJOR" ] && [ "$CURRENT_MINOR" -gt "$LAST_MINOR" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ Minor version update detected ($LAST_VERSION → $CURRENT_VERSION)"
+          else
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "✅ Patch version update detected ($LAST_VERSION → $CURRENT_VERSION), creating release"
+          fi
+      - name: Prepare release filenames
+        if: steps.should_release.outputs.should_release == 'true'
+        id: meta
+        run: |
+          TAG_NAME="v${{ steps.version.outputs.name }}"
+          RELEASE_NAME="Release v${{ steps.version.outputs.name }}"
+          APK_FILENAME="flintrTV-v${{ steps.version.outputs.name }}.apk"
+
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "apk_filename=$APK_FILENAME" >> $GITHUB_OUTPUT
+
+      - name: Extract release info from commit
+        if: steps.should_release.outputs.should_release == 'true'
+        id: release_info
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          echo "heading=$COMMIT_MSG" >> $GITHUB_OUTPUT
+
+          # Extract PR number from merge commit message
+          PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP 'Merge pull request #\K[0-9]+' || echo "")
+
+          DESCRIPTION=""
+          if [ -n "$PR_NUMBER" ]; then
+            # Fetch PR title from GitHub API
+            PR_TITLE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/pulls/${PR_NUMBER}" | \
+              jq -r '.title // empty' 2>/dev/null || echo "")
+
+            if [ -n "$PR_TITLE" ]; then
+              # Strip conventional commit prefix (e.g. "chore(release): ")
+              DESCRIPTION=$(echo "$PR_TITLE" | sed -E 's/^[a-z]+(\([^)]*\))?:\s*//')
+            fi
+          fi
+
+          echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
+          echo "📝 Heading: $COMMIT_MSG"
+          echo "📝 Description: $DESCRIPTION"
+
+  create-release:
+    name: Create draft release
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create draft GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          name: ${{ needs.prepare.outputs.release_name }}
+          body: |
+            ## ${{ needs.prepare.outputs.heading }}
+
+            Build: ${{ needs.prepare.outputs.build_number }}
+
+            ${{ needs.prepare.outputs.description }}
+          draft: true
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  android:
+    name: Build Android & upload to draft
+    needs:
+      - prepare
+      - create-release
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.gradle/build-cache
+          key: gradle-${{ runner.os }}-java21-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-java21-
+            gradle-${{ runner.os }}-
+
+      - name: Setup signing key
+        run: |
+          # Erstelle Keystore-Datei (.jks Format)
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/flintrtv-release.jks
+
+          # Erstelle local.properties (wie in build.gradle.kts erwartet)
+          cat > local.properties << EOF
+          keystore.path=app/flintrtv-release.jks
+          keystore.password=${{ secrets.KEYSTORE_PASSWORD }}
+          keystore.keyAlias=${{ secrets.KEY_ALIAS }}
+          keystore.keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+
+          echo "✅ Signing key configured"
+
+      - name: Setup Google Services
+        run: |
+          # Prüfe ob Secret gesetzt ist
+          if [ -z "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo "❌ GOOGLE_SERVICES_JSON secret is not set"
+            exit 1
+          fi
+
+          # Versuche Base64-Dekodierung (falls Secret Base64-kodiert ist)
+          JSON_CONTENT="${{ secrets.GOOGLE_SERVICES_JSON }}"
+
+          # Prüfe ob es Base64-kodiert ist (beginnt nicht mit {)
+          if ! echo "$JSON_CONTENT" | grep -q '^{'; then
+            echo "🔍 Attempting Base64 decode..."
+            JSON_CONTENT=$(echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d 2>/dev/null || echo "${{ secrets.GOOGLE_SERVICES_JSON }}")
+          fi
+
+          # Validiere JSON
+          if ! echo "$JSON_CONTENT" | jq . > /dev/null 2>&1; then
+            echo "❌ Invalid JSON in GOOGLE_SERVICES_JSON secret"
+            echo "First 100 chars: $(echo "$JSON_CONTENT" | head -c 100)"
+            exit 1
+          fi
+
+          # Schreibe Datei
+          echo "$JSON_CONTENT" > app/google-services.json
+
+          # Validiere Datei nochmal
+          if ! jq . app/google-services.json > /dev/null 2>&1; then
+            echo "❌ Failed to write valid google-services.json"
+            exit 1
+          fi
+
+          echo "✅ Google Services configured"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Setup Firebase credentials for mapping upload
+        run: |
+          if [ -n "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+            echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" | base64 -d > "${{ runner.temp }}/firebase-service-account.json"
+            echo "✅ Firebase service account configured for Crashlytics mapping upload"
+          else
+            echo "⚠️ FIREBASE_SERVICE_ACCOUNT not set — mapping upload will be skipped by the plugin"
+          fi
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true
+          GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+
+      - name: Rename APK for release
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/${{ needs.prepare.outputs.apk_filename }}
+
+      - name: Upload APK directly to draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          files: |
+            app/build/outputs/apk/release/${{ needs.prepare.outputs.apk_filename }}
+          overwrite_files: true
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-release:
+    name: Publish release
+    needs:
+      - prepare
+      - android
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

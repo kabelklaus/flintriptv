@@ -1,0 +1,419 @@
+package com.flintr.tv.ui.sidebars
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import android.util.Log
+import com.flintr.tv.data.model.Category
+import com.flintr.tv.ui.components.PopupMenu
+import com.flintr.tv.ui.components.MenuType
+import com.flintr.tv.ui.theme.Dimensions
+import com.flintr.tv.ui.theme.FontSizes
+import com.flintr.tv.ui.theme.SharedColors
+import com.flintr.tv.ui.theme.appColors
+import com.flintr.tv.ui.theme.focusRingColor
+import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.ui.utils.onLongPress
+import com.flintr.tv.ui.utils.safeRequestFocus
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.launch
+
+data class CategoryRowParams(
+    val categories: List<Category>,
+    val selectedCategoryId: String? = null,
+    val onCategorySelected: (String?) -> Unit,
+    val itemCounts: Map<String, Int>? = null,
+    val itemLabelBuilder: (Int) -> String,
+    val focusRequester: FocusRequester,
+    val onNavigateLeft: () -> Unit,
+    val onNavigateRight: () -> Unit,
+    val onCategoryHidden: (Category) -> Unit,
+    val listState: LazyListState
+)
+
+data class CategoryChipParams(
+    val category: Category,
+    val itemCount: Int = 0,
+    val itemLabelBuilder: (Int) -> String,
+    val isSelected: Boolean,
+    val onClick: () -> Unit,
+    val onNavigateLeft: (() -> Unit)? = null,
+    val onNavigateRight: (() -> Unit)? = null,
+    val onCategoryHidden: ((Category) -> Unit)? = null
+)
+
+/**
+ * Data class holding computed colors for CategoryChip
+ */
+internal data class CategoryChipColors(
+    val background: Color,
+    val title: Color,
+    val count: Color,
+    val border: Color,
+    val shadowElevation: androidx.compose.ui.unit.Dp
+)
+
+/**
+ * Calculate colors based on selection and focus state
+ */
+internal fun calculateChipColors(
+    isSelected: Boolean,
+    hasFocus: Boolean,
+    colors: com.flintr.tv.ui.theme.AppColors
+): CategoryChipColors {
+    val isHoveredOrFocused = hasFocus && !isSelected
+
+    val background = when {
+        isSelected -> colors.selectionFill
+        isHoveredOrFocused -> colors.categoryHoverBg
+        else -> Color.Transparent
+    }
+
+    val title = if (isSelected || isHoveredOrFocused) Color.White else colors.categoryDefaultText
+    val count = if (isSelected || isHoveredOrFocused) Color.White else colors.categoryChannelCountText
+    val border = focusRingColor(isFocused = hasFocus, onSelectionFill = isSelected)
+    val shadowElevation = if (isSelected) 4.dp else 0.dp
+
+    return CategoryChipColors(background, title, count, border, shadowElevation)
+}
+
+/**
+ * Creates D-Pad navigation handler for left direction
+ */
+private fun createLeftNavigationHandler(
+    onNavigateLeft: (() -> Unit)?,
+    categoryName: String
+): (() -> Boolean)? {
+    return if (onNavigateLeft != null) {
+        {
+            Log.i("TVFocus", "[CategoryRow] ⬅️ D-Pad Left: Category '$categoryName' -> Navigating to Navbar")
+            onNavigateLeft()
+            true
+        }
+    } else {
+        null
+    }
+}
+
+/**
+ * Creates D-Pad navigation handler for right direction
+ */
+private fun createRightNavigationHandler(
+    onNavigateRight: (() -> Unit)?,
+    categoryName: String
+): (() -> Boolean)? {
+    return if (onNavigateRight != null) {
+        {
+            Log.i("TVFocus", "[CategoryRow] ➡️ D-Pad Right: Category '$categoryName' -> Navigating to Content")
+            onNavigateRight()
+            true
+        }
+    } else {
+        null
+    }
+}
+
+/**
+ * Text content for CategoryChip
+ */
+@Composable
+private fun CategoryChipContent(
+    name: String,
+    itemCount: Int,
+    itemLabelBuilder: (Int) -> String,
+    isSelected: Boolean,
+    titleColor: Color,
+    countColor: Color
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(Dimensions.categoryTextSpacing)
+    ) {
+        Text(
+            text = name,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                color = titleColor
+            )
+        )
+        if (itemCount > 0) {
+            Text(
+                text = "$itemCount ${itemLabelBuilder(itemCount)}",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = FontSizes.fontSizeXS,
+                    color = countColor
+                )
+            )
+        }
+    }
+}
+
+/**
+ * PopupMenu for category actions (hide)
+ */
+@Composable
+private fun CategoryChipMenu(
+    category: Category,
+    showMenu: Boolean,
+    onDismiss: () -> Unit,
+    onCategoryHidden: (Category) -> Unit
+) {
+    val name = category.categoryName
+    Log.d("CategoryChip", "[MenuRender] Rendering PopupMenu für Kategorie '$name': showMenu = $showMenu")
+    PopupMenu(
+        isOpen = showMenu,
+        menuOptions = listOf("Ausblenden"),
+        onDismiss = {
+            Log.d("CategoryChip", "[MenuDismiss] Menü wird geschlossen für Kategorie '$name'")
+            onDismiss()
+        },
+        onOptionSelected = { index ->
+            Log.d("CategoryChip", "[MenuOption] Option $index ausgewählt für Kategorie '$name'")
+            if (index == 0) {
+                Log.d("CategoryChip", "[MenuOption] Rufe onCategoryHidden() auf für Kategorie '$name'")
+                onCategoryHidden(category)
+            }
+        },
+        menuType = MenuType.CATEGORY
+    )
+}
+
+/**
+ * Creates modifier chain for shadow and border styling
+ */
+private fun Modifier.categoryChipStyling(
+    isSelected: Boolean,
+    chipColors: CategoryChipColors,
+    animatedBackgroundColor: Color,
+    accentColor: Color
+): Modifier {
+    return this
+        .then(
+            if (isSelected) {
+                Modifier.shadow(
+                    elevation = chipColors.shadowElevation,
+                    shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius),
+                    spotColor = accentColor.copy(alpha = Dimensions.categoryShadowAlpha),
+                    ambientColor = accentColor.copy(alpha = Dimensions.categoryShadowAlpha)
+                )
+            } else {
+                Modifier
+            }
+        )
+        .background(
+            color = animatedBackgroundColor,
+            shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
+        )
+        .then(
+            if (chipColors.border != Color.Transparent) {
+                Modifier.border(
+                    width = Dimensions.listItemHoverBorderWidth,
+                    color = chipColors.border,
+                    shape = RoundedCornerShape(Dimensions.listItemHoverBorderRadius)
+                )
+            } else {
+                Modifier
+            }
+        )
+}
+
+@Composable
+fun CategoryRow(
+    params: CategoryRowParams,
+    modifier: Modifier = Modifier
+) {
+    // Categories are already filtered and sorted in AppNavigation.kt
+    val colors = appColors()
+
+    // Own, stable FocusRequester per chip (keyed on category IDs, not just list size, since
+    // hiding a category changes the list contents without necessarily changing its size) so a
+    // touch tap can focus the tapped chip directly. Never swapped onto a different chip - doing
+    // so previously left an in-flight safeRequestFocus() targeting a now-detached requester when
+    // selection changed mid-request (see Order 2, Bug 2).
+    val chipFocusRequesters = remember(params.categories.map { it.categoryId }) {
+        List(params.categories.size) { FocusRequester() }
+    }
+
+    LazyColumn(
+        state = params.listState,
+        modifier = modifier
+            .fillMaxHeight()
+            .width(Dimensions.categorySidebarWidth)
+            .background(SharedColors.sidebarCard),
+        contentPadding = PaddingValues(all = Dimensions.spacingMD),
+        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXS)
+    ) {
+        if (params.categories.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(Dimensions.spacingLG),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Keine Kategorien",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = colors.textSecondary
+                        )
+                    )
+                }
+            }
+        } else {
+            itemsIndexed(
+                items = params.categories,
+                key = { _, category -> category.categoryId }
+            ) { index, category ->
+                // Apply focusRequester to the selected category, or first item as fallback
+                val isFirstItem = params.categories.firstOrNull()?.categoryId == category.categoryId
+                val shouldReceiveFocus = params.selectedCategoryId == category.categoryId ||
+                    (params.selectedCategoryId == null && isFirstItem)
+                CategoryChip(
+                    params = CategoryChipParams(
+                        category = category,
+                        itemCount = params.itemCounts?.get(category.categoryId) ?: 0,
+                        itemLabelBuilder = params.itemLabelBuilder,
+                        isSelected = params.selectedCategoryId == category.categoryId,
+                        onClick = { params.onCategorySelected(category.categoryId) },
+                        onNavigateLeft = params.onNavigateLeft,
+                        onNavigateRight = params.onNavigateRight,
+                        onCategoryHidden = params.onCategoryHidden
+                    ),
+                    // Own requester always attached (stable tap target); the shared Navbar-return
+                    // requester is attached additionally on the selected chip - never swapped in.
+                    focusRequester = chipFocusRequesters[index],
+                    additionalFocusRequester = if (shouldReceiveFocus) params.focusRequester else null
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CategoryChip(
+    params: CategoryChipParams,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
+    additionalFocusRequester: FocusRequester? = null
+) {
+    var hasFocus by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    val colors = appColors()
+    val name = params.category.categoryName
+    val coroutineScope = rememberCoroutineScope()
+
+    // Debug: Log menu state changes
+    LaunchedEffect(showMenu) {
+        Log.d("CategoryChip", "[MenuState] Category '$name': showMenu = $showMenu, onCategoryHidden = ${params.onCategoryHidden != null}")
+    }
+
+    val chipColors = calculateChipColors(params.isSelected, hasFocus, colors)
+
+    // Background color with animation
+    val animatedBackgroundColor by animateColorAsState(
+        targetValue = chipColors.background,
+        animationSpec = tween(durationMillis = 200),
+        label = "backgroundColor"
+    )
+
+    Box(
+        modifier = modifier
+            .testTag("category-chip-${params.category.categoryId}")
+            .fillMaxWidth()
+            .categoryChipStyling(params.isSelected, chipColors, animatedBackgroundColor, colors.accentColor)
+            .then(
+                if (focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                }
+            )
+            .then(
+                // Second FocusRequester on the same node: the Navbar-return requester on the
+                // selected chip, alongside its own stable requester. A FocusRequester tracks a
+                // set of attached focus targets, so one target node can register with more than
+                // one requester - requestFocus() on either successfully focuses this node.
+                if (additionalFocusRequester != null) {
+                    Modifier.focusRequester(additionalFocusRequester)
+                } else {
+                    Modifier
+                }
+            )
+            .onFocusChanged { focusState ->
+                val wasFocused = hasFocus
+                hasFocus = focusState.hasFocus
+                if (hasFocus != wasFocused) {
+                    if (hasFocus) {
+                        Log.i("TVFocus", "[CategoryRow] ✅ FOCUSED: Category '$name' (Selected: ${params.isSelected}, Count: ${params.itemCount})")
+                    } else {
+                        Log.i("TVFocus", "[CategoryRow] ❌ UNFOCUSED: Category '$name'")
+                    }
+                }
+            }
+            .focusable()
+            .onDpadDirection(
+                onLeft = createLeftNavigationHandler(params.onNavigateLeft, name),
+                onRight = createRightNavigationHandler(params.onNavigateRight, name)
+            )
+            .onLongPress(
+                onLongPress = {
+                    Log.d("CategoryChip", "[LongPress] ✅ Long-Press erkannt für Kategorie '$name'")
+                    if (params.onCategoryHidden != null) {
+                        showMenu = true
+                    }
+                },
+                onNormalClick = {
+                    Log.d("CategoryChip", "[Click] 🔵 Single-Click erkannt für Kategorie '$name' (via onNormalClick)")
+                    // Touch tap: focus this chip so the Navbar loses focus and collapses.
+                    // No-op if the chip already has focus (D-Pad case).
+                    focusRequester?.let { requester ->
+                        coroutineScope.launch {
+                            requester.safeRequestFocus("CategoryRow", "CategoryChip: $name")
+                        }
+                    }
+                    params.onClick()
+                },
+                durationMillis = 300L
+            )
+            .padding(all = Dimensions.listItemHoverPadding),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        CategoryChipContent(
+            name = name,
+            itemCount = params.itemCount,
+            itemLabelBuilder = params.itemLabelBuilder,
+            isSelected = params.isSelected,
+            titleColor = chipColors.title,
+            countColor = chipColors.count
+        )
+    }
+
+    // Category menu dialog - only render when menu should be shown
+    if (params.onCategoryHidden != null && showMenu) {
+        CategoryChipMenu(
+            category = params.category,
+            showMenu = showMenu,
+            onDismiss = { showMenu = false },
+            onCategoryHidden = params.onCategoryHidden
+        )
+    }
+}

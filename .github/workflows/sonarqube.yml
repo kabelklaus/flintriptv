@@ -1,0 +1,76 @@
+name: SonarQube
+
+on:
+  pull_request:
+    branches:
+      - main
+      - DEV
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  scan:
+    name: SonarQube scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Cache SonarQube packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.gradle/build-cache
+          key: gradle-${{ runner.os }}-java21-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-java21-
+            gradle-${{ runner.os }}-
+
+      - name: Setup Google Services
+        run: |
+          if [ -z "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo "GOOGLE_SERVICES_JSON secret is not set"
+            exit 1
+          fi
+
+          JSON_CONTENT="${{ secrets.GOOGLE_SERVICES_JSON }}"
+
+          if ! echo "$JSON_CONTENT" | grep -q '^{' ; then
+            JSON_CONTENT=$(echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d 2>/dev/null || echo "${{ secrets.GOOGLE_SERVICES_JSON }}")
+          fi
+
+          if ! echo "$JSON_CONTENT" | jq . > /dev/null 2>&1; then
+            echo "Invalid JSON in GOOGLE_SERVICES_JSON secret"
+            exit 1
+          fi
+
+          echo "$JSON_CONTENT" > app/google-services.json
+
+      - name: Generate reports and scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./gradlew :app:lintReportDebug :app:jacocoDebugUnitTestReport sonar --info -Dsonar.scanner.skipJreProvisioning=true

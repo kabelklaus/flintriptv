@@ -1,0 +1,2188 @@
+# Todos
+
+## Prioritätsliste (sortiert nach User-Nutzen und Komplexität)
+
+**Priorität 1 - Hoher Nutzen + Mittlere Komplexität:**
+
+2. **Story #2**: Category-Navigation Performance optimieren
+   - Nutzen: ⭐⭐⭐⭐ (hoch - bessere UX)
+   - Komplexität: ⭐⭐⭐ (mittel - Performance-Optimierung)
+
+3. **Story #36**: async-Parallelisierung im MainViewModel rückgängig machen
+   - Nutzen: ⭐⭐⭐⭐ (hoch - behebt Regression aus Story #18)
+   - Komplexität: ⭐ (sehr niedrig - Revert von 2 Methoden)
+
+**Priorität 2 - Mittlerer Nutzen + Niedrige/Mittlere Komplexität:**
+5. **Story #19**: SubSettings UI/UX für TV optimieren
+   - Nutzen: ⭐⭐⭐ (mittel - bessere UX in Settings)
+   - Komplexität: ⭐⭐ (niedrig - UI-Anpassungen)
+
+6. **Story #11**: Settings und Debug-Info im Player konfigurierbar und klickbar machen
+   - Nutzen: ⭐⭐⭐ (mittel - bessere UX im Player)
+   - Komplexität: ⭐⭐ (niedrig - UI-Anpassungen)
+
+7. **Story #23**: Server-Performance-Monitoring
+   - Nutzen: ⭐⭐⭐ (mittel - hilft bei Debugging)
+   - Komplexität: ⭐⭐⭐ (mittel - API-Tests, Ampel-System)
+
+**Priorität 3 - Niedriger Nutzen + Niedrige Komplexität (Code-Cleanup):**
+8. **Story #28**: Migrations-Logik für Category Visibility entfernen
+   - Nutzen: ⭐ (niedrig - nur für Entwickler)
+   - Komplexität: ⭐ (sehr niedrig - Code-Cleanup)
+
+**Priorität 4 - Mittlerer Nutzen + Hohe Komplexität:**
+10. **Story #9**: Update-Download/Installation State-Management verbessern
+    - Nutzen: ⭐⭐⭐ (mittel - bessere UX bei Updates)
+    - Komplexität: ⭐⭐⭐⭐ (hoch - komplexes State-Management)
+
+11. **Story #32**: Miniplayer auf Homescreen (YouTube-ähnlich)
+    - Nutzen: ⭐⭐⭐⭐ (hoch für Phone/Tablet - nicht TV)
+    - Komplexität: ⭐⭐⭐⭐ (hoch - PiP/Overlay, State-Sync)
+
+**Priorität 5 - Niedriger Nutzen + Hohe Komplexität (Refactoring):**
+12. **Story #16.1-16.8**: Style-Werte in Theme verschieben (8 Teil-Stories)
+    - Nutzen: ⭐ (niedrig - nur für Entwickler, Wartbarkeit)
+    - Komplexität: ⭐⭐⭐⭐⭐ (sehr hoch - großes Refactoring über viele Dateien)
+
+13. **Story #34**: PlayerScreen.kt in kleinere Module aufteilen (Refactoring)
+    - Nutzen: ⭐⭐ (niedrig-mittel - nur für Entwickler, bessere Wartbarkeit)
+    - Komplexität: ⭐⭐⭐ (mittel - Refactoring erfordert sorgfältige Arbeit, aber keine Logik-Änderungen)
+
+**Priorität 6 - Hoher Nutzen + Sehr hohe Komplexität (Großes Feature, BLOCKER):**
+14. **Story #22**: Download-Funktion für Movies und Serien
+    - Nutzen: ⭐⭐⭐⭐⭐ (sehr hoch - wichtiges Feature)
+    - Komplexität: ⭐⭐⭐⭐⭐ (sehr hoch - großes Feature)
+    - ⚠️ **BLOCKER**: DRM-Prüfung, API-Support, rechtliche Klärung nötig VOR Implementierung
+
+**Priorität 7 - Niedriger Nutzen (Dependency-Updates):**
+15. **Story #29**: Dependency-Updates Phase 1: Kritische Updates
+    - Nutzen: ⭐ (niedrig - nur für Entwickler, Security)
+    - Komplexität: ⭐⭐⭐ (mittel - Breaking Changes möglich)
+
+16. **Story #30**: Dependency-Updates Phase 2: Wichtige Updates
+    - Nutzen: ⭐ (niedrig - nur für Entwickler)
+    - Komplexität: ⭐⭐⭐ (mittel)
+
+17. **Story #31**: Dependency-Updates Phase 3: Optionale Updates
+    - Nutzen: ⭐ (niedrig - nur für Entwickler)
+    - Komplexität: ⭐⭐⭐ (mittel - Breaking Changes bei Retrofit 3.0)
+
+---
+
+## Story #2: Category-Navigation Performance optimieren
+
+### User View
+Als Nutzer möchte ich flüssig durch die Category-Liste navigieren können, ohne Ruckeln oder Verzögerungen beim Hoch- und Runterscrollen.
+
+### Acceptance Criteria
+- Navigation mit D-Pad Hoch/Runter in CategoryRow ist flüssig
+- Keine sichtbaren Frame-Drops beim Scrollen
+- Animationen (Hover, Selection) laufen flüssig
+
+### Examples
+- User navigiert mit D-Pad durch 30 Categories → Scrollen ist flüssig, keine Ruckler
+- User wechselt schnell zwischen Categories → Fokus folgt sofort, keine Verzögerung
+- User scrollt durch lange Category-Liste → Performance bleibt konstant
+
+### Technical Notes
+- **Mögliche Ursachen identifizieren:**
+  - `sortedCategories` wird bei jeder Recomposition neu sortiert (Zeile 45 in CategoryRow.kt)
+  - Fehlende `key`-Parameter in LazyColumn.items() führt zu unnötigen Recompositionen
+  - Mehrere animierte States pro CategoryChip (backgroundColor, borderColor, shadow) könnten zu viel sein
+  - LazyColumn könnte von Prefetch-Optimierungen profitieren
+  
+- **Zu prüfende Optimierungen:**
+  - Sortierung in `remember`/`derivedStateOf` verschieben, nur bei Änderung der categories-Liste neu sortieren
+  - `key`-Parameter in `items()` verwenden: `items(sortedCategories, key = { it.categoryId })`
+  - LazyColumn `prefetchDistance` anpassen
+  - Prüfen, ob `animateColorAsState` optimiert werden kann (z.B. `remember` für nicht-ändernde Werte)
+  - Profiling mit Android Profiler durchführen, um Bottlenecks zu identifizieren
+  - Prüfen, ob zu viele Recompositionen durch State-Änderungen ausgelöst werden
+
+---
+
+## Story #9: Update-Download/Installation State-Management verbessern
+
+### User View
+Als Nutzer möchte ich nach einem fehlgeschlagenen oder abgebrochenen Installationsvorgang die Installation erneut starten können oder den Download erneut durchführen können, ohne dass die App denkt, dass bereits alles fertig ist.
+
+### Acceptance Criteria
+- Wenn Download fertig ist, aber Installation fehlschlägt oder abgebrochen wird, kann der Nutzer die Installation erneut starten
+- Wenn Installation fehlschlägt oder abgebrochen wird, wird der State zurückgesetzt, sodass der Nutzer erneut handeln kann
+- Button-Text ändert sich von "Download und Installieren" zu "Installieren", wenn Download bereits fertig ist
+- Download-Button bleibt aktiviert, wenn Installation fehlschlägt oder abgebrochen wird
+- Separater State für Download-Status und Installations-Status
+- Nutzer kann Installation manuell starten, wenn Download fertig ist (auch wenn automatische Installation fehlgeschlagen ist)
+- Progress-Anzeige für Download wird angezeigt
+
+### Examples
+- User startet Download → Download läuft → Progress wird angezeigt → Download fertig → Installation startet automatisch → User verweigert Berechtigung → Button zeigt "Installieren" und ist aktiviert → User kann Installation erneut starten
+- User startet Download → Download läuft → Download fertig → Installation startet automatisch → Installation wird unterbrochen (z.B. App wechselt) → User kommt zurück → Button zeigt "Installieren" und ist aktiviert → User kann Installation erneut starten
+- User startet Download → Download läuft → Download fertig → Installation startet automatisch → Installation erfolgreich → App wird aktualisiert (normaler Flow)
+- User startet Download → Download läuft → Download wird abgebrochen → Button zeigt "Download und Installieren" und ist aktiviert → User kann erneut herunterladen
+
+### Technical Notes
+- **Aktuelles Verhalten:**
+  - `UpdateViewModel.downloadUpdate()` startet Download und setzt `_downloadProgress`
+  - Wenn `progress.isComplete == true`, wird automatisch `installUpdate()` aufgerufen
+  - `installUpdate()` startet Installations-Intent über `UpdateInstaller.installApk()`
+  - `installApk()` gibt nur `Boolean` zurück (erfolgreich gestartet oder nicht), aber keine Info über Installation-Status
+  - In UI (SubSettingsInfo.kt, Zeile 350): Button ist deaktiviert wenn `downloadProgress?.isComplete == true`
+  - Problem: Wenn Installation fehlschlägt oder abgebrochen wird, bleibt `downloadProgress.isComplete == true` → Button bleibt deaktiviert
+  
+- **Herausforderung:**
+  - Android Installation-Intent ist asynchron - wir wissen nicht, ob Installation erfolgreich war oder fehlgeschlagen ist
+  - Wenn User Berechtigung verweigert oder Installation unterbrochen wird, gibt es keinen Callback
+  - Aktuell gibt es keinen separaten State für "Download fertig" vs "Installation läuft" vs "Installation fehlgeschlagen"
+  - `downloadProgress.isComplete` wird verwendet, um Button zu deaktivieren, aber das verhindert auch manuelle Installation nach Fehlschlag
+  
+- **Zu implementieren:**
+  - Neuer State in `UpdateViewModel`: 
+    - `_installationState: StateFlow<InstallationState?>` mit `sealed class InstallationState { Pending, Installing, Failed, Success }`
+    - Oder: `_isInstalling: StateFlow<Boolean>` und `_installationFailed: StateFlow<Boolean>`
+  - Neue Methode `installUpdate()` sollte öffentlich sein (nicht `private`), damit UI Installation manuell starten kann
+  - `installUpdate()` setzt `_installationState` auf `Installing` beim Start
+  - Wenn Installation fehlschlägt (z.B. `installApk()` gibt `false` zurück), setze `_installationState` auf `Failed`
+  - UI prüft: Wenn `downloadProgress.isComplete == true` UND `installationState != Installing`, zeige "Installieren" Button
+  - Button-Text ändern basierend auf State:
+    - Wenn `downloadProgress == null` oder nicht fertig: "Download und Installieren"
+    - Wenn `downloadProgress.isComplete == true` UND `installationState != Installing`: "Installieren"
+    - Wenn `installationState == Installing`: "Installation läuft..." (Button deaktiviert)
+  - Button `enabled` Logik anpassen:
+    - Aktiviert wenn: `downloadProgress == null` ODER (`downloadProgress.isComplete == true` UND `installationState != Installing`)
+    - Deaktiviert wenn: `downloadProgress?.isComplete == true` UND `installationState == Installing`
+  - Optional: Timeout für Installation-State (z.B. nach 30 Sekunden auf `Failed` setzen, falls keine Rückmeldung)
+  - Progress-Anzeige für Download hinzufügen (LinearProgressIndicator mit `downloadProgress.progress`)
+  
+- **Zu prüfen:**
+  - Wie kann man erkennen, ob Installation erfolgreich war? (App wird neu gestartet, also schwer zu tracken)
+  - Sollte Installation-State persistent gespeichert werden, falls App während Installation geschlossen wird?
+  - Sollte es eine Möglichkeit geben, heruntergeladene APK manuell zu löschen und erneut herunterzuladen?
+  - Wie verhält sich App, wenn User während Installation die App verlässt und wieder zurückkommt?
+  
+- **Mögliche Verbesserungen:**
+  - Separate Buttons: "Download" und "Installieren" (nur sichtbar wenn Download fertig)
+  - Oder: Ein Button mit dynamischem Text und Verhalten
+  - Progress-Anzeige für Download (LinearProgressIndicator)
+  - Status-Nachricht: "Download läuft...", "Download fertig", "Installation läuft...", "Installation fehlgeschlagen"
+  - Retry-Mechanismus: Automatisch Installation erneut versuchen nach Fehlschlag (mit User-Bestätigung)
+
+---
+
+## Story #11: Settings und Debug-Info im Player konfigurierbar und klickbar machen
+
+### User View
+Als Nutzer möchte ich die Settings- und Debug-Info-Buttons im Player per Fernbedienung aktivieren können. Wenn ich während der Wiedergabe Enter drücke, soll zuerst das Player-Overlay erscheinen, damit ich navigieren kann, ohne dass der Stream sofort pausiert wird.
+
+### Acceptance Criteria
+- **Enter-Taste Verhalten:**
+  - Enter-Taste zeigt zuerst das Player-Overlay an (ohne den Stream zu pausieren)
+  - Erst wenn das Overlay sichtbar ist und ein Control fokussiert ist, kann Enter auf dem fokussierten Control die entsprechende Aktion auslösen
+  - Wenn das Overlay bereits sichtbar ist, pausiert Enter nur, wenn der Play/Pause-Button fokussiert ist
+  - Wenn das Overlay versteckt ist, zeigt Enter das Overlay und setzt den Fokus auf das erste fokussierbare Control
+  
+- **TV-Navigation:**
+  - Settings-Button im Player ist fokussierbar und per Fernbedienung aktivierbar (aktuell nur per Touch aktivierbar)
+  - Debug-Info-Button im Player ist fokussierbar und per Fernbedienung aktivierbar (aktuell nur per Touch aktivierbar)
+  - Settings-Button öffnet VideoSettingsDialog, wenn aktiviert
+  - Debug-Info-Button zeigt/versteckt DebugOverlay, wenn aktiviert
+  - Fokus-Navigation zwischen Player-Controls funktioniert korrekt (inkl. Settings/Debug-Buttons)
+  - Alle Buttons im Player-Overlay sind per D-Pad navigierbar (Play/Pause, Progress, Settings, Debug)
+  
+- **Debug-Informationen:**
+  - DebugOverlay zeigt alle relevanten Debug-Informationen an:
+    - VIDEO: Resolution, Display Size, Aspect Ratio, Pixel Format, Decoder Type, Hardware Accelerated, Video Track ID, Quality Status
+    - AUDIO: Audio Bitrate, Sample Rate, Channels
+    - PLAYBACK: Playing, Position, Duration, Rate, Volume, Pitch, Completed
+    - BUFFER: Buffered Duration, Buffer Ahead, Buffering Status
+    - MPV Properties: hwdec (policy), hwdec-current, readahead-secs, demuxer-max-bytes, demuxer-max-back-bytes
+    - SYSTEM: System RAM Usage (aktualisiert alle 2 Sekunden)
+    - DEVICE: Model, Manufacturer, Hardware, Android Version, Device Type
+  - Debug-Informationen werden live aktualisiert (UI-Updates gedrosselt auf max. 250ms)
+  - System-Metriken und MPV-Properties werden alle 2 Sekunden aktualisiert
+  - Player-State-Updates erfolgen bei Änderungen (gedrosselt)
+
+### Examples
+- **Enter-Verhalten:**
+  - User schaut Video → drückt Enter → Player-Overlay erscheint, Stream läuft weiter → Fokus ist auf Play/Pause-Button → User kann mit D-Pad navigieren
+  - User schaut Video → drückt Enter → Overlay erscheint → User navigiert zu Settings-Button → drückt Enter → VideoSettingsDialog öffnet sich
+  - User schaut Video → drückt Enter → Overlay erscheint → User navigiert zu Debug-Button → drückt Enter → DebugOverlay wird angezeigt
+  - User hat Overlay sichtbar → Play/Pause-Button ist fokussiert → User drückt Enter → Stream pausiert/startet
+  - User hat Overlay sichtbar → Settings-Button ist fokussiert → User drückt Enter → VideoSettingsDialog öffnet sich (Stream läuft weiter)
+  
+- **TV-Navigation:**
+  - User ist im Player → drückt Enter → Overlay erscheint → D-Pad Navigation führt zu Settings-Button → User drückt OK → VideoSettingsDialog öffnet sich
+  - User ist im Player → drückt Enter → Overlay erscheint → D-Pad Navigation führt zu Debug-Button → User drückt OK → DebugOverlay wird angezeigt/versteckt
+  - User navigiert durch Player-Controls → Fokus springt korrekt zwischen Play/Pause, Progress, Settings, Debug
+  - User aktiviert Debug-Overlay → sieht alle Video/Audio/Playback/Buffer/MPV/System/Device-Informationen → Informationen aktualisieren sich live während der Wiedergabe
+  - User schaut 4K-Video → Quality Status zeigt "4K (3840x2160)" → Hardware Accelerated zeigt "Ja (MediaCodec)"
+  - User schaut Live-Stream → Duration zeigt "N/A" → Buffer Ahead wird berechnet und angezeigt
+
+### Technical Notes
+- **Aktuelles Verhalten (Probleme):**
+  - Settings- und Debug-Buttons funktionieren per Touch, sind aber auf TV nicht fokussierbar/navigierbar
+  - Enter-Taste pausiert den Stream sofort, ohne zuerst das Overlay zu zeigen
+  - `CustomPlayerControls` hat bereits `onSettings` und `onDebug` Callbacks (PlayerScreen.kt, Zeile 498-499)
+  - `showDebugOverlay` und `showSettingsDialog` States existieren bereits (PlayerScreen.kt, Zeile 86-87)
+  - `DebugOverlay` und `VideoSettingsDialog` Komponenten existieren bereits
+  
+- **Zu implementieren:**
+  - **Enter-Taste Handling:**
+    - Enter-Taste auf der Player-Box (wenn Overlay versteckt) soll `showControls = true` setzen, ohne `onPlayPause` aufzurufen
+    - Enter-Taste soll nur pausieren, wenn Play/Pause-Button fokussiert ist und Overlay sichtbar ist
+    - Fokus-Management: Wenn Overlay erscheint, Fokus auf erstes fokussierbares Control setzen (z.B. Play/Pause-Button)
+  
+  - **TV-Fokussierbarkeit:**
+    - Settings-Button in `CustomPlayerControls` muss fokussierbar sein (FocusRequester, `focusable()`, `focusableInTouchMode()`)
+    - Debug-Button in `CustomPlayerControls` muss fokussierbar sein (FocusRequester, `focusable()`, `focusableInTouchMode()`)
+    - Fokus-Navigation zwischen Controls muss korrekt funktionieren (FocusRequester-Kette, `nextFocusUp/Down/Left/Right`)
+    - Buttons müssen visuelles Focus-Feedback haben (z.B. Border/Highlight bei Fokus)
+  
+- **Zu prüfen:**
+  - Sollten die Buttons auch per Tastatur-Shortcut aktivierbar sein? (z.B. "S" für Settings, "D" für Debug)
+  - Sollte Debug-Info standardmäßig versteckt sein oder sichtbar? (aktuell: versteckt, wird per Button getoggelt)
+  - Sollte das Overlay automatisch nach einer Zeit verschwinden, wenn kein Fokus auf Controls ist?
+
+- **Erweiterte Debug-Informationen:**
+  - **VIDEO-Informationen:**
+    - Resolution: Native Videoauflösung (z.B. `1920x1080`)
+    - Display Size: Tatsächliche Anzeigegröße (nur wenn abweichend von Resolution)
+    - Aspect Ratio: Seitenverhältnis (z.B. `1.78`)
+    - Pixel Aspect Ratio: Pixel-Seitenverhältnis (nur wenn ≠ 1.0)
+    - Pixel Format: Pixelformat des Videos (z.B. `yuv420p`)
+    - Decoder Type: Decoder-Typ (`Software` oder `Hardware (MediaCodec/VideoToolbox/etc.)`)
+    - Hardware Accelerated: Ob Hardware-Beschleunigung aktiv ist (`Ja/Nein` mit Decoder-Name)
+    - Video Track ID: ID des aktuellen Video-Tracks
+    - Quality Status: Qualitätsklassifizierung:
+      - `4K (3840x2160)` bei ≥ 8.294.400 Pixeln
+      - `Full HD (1920x1080)` bei ≥ 2.073.600 Pixeln
+      - `HD (1280x720)` bei ≥ 921.600 Pixeln
+      - `Niedrig (Auflösung) ⚠️` bei niedrigeren Auflösungen
+  
+  - **AUDIO-Informationen:**
+    - Audio Bitrate: Audio-Bitrate in kbps (z.B. `128.00 kbps`)
+    - Sample Rate: Abtastrate in kHz (z.B. `48.0 kHz`)
+    - Channels: Anzahl der Audio-Kanäle (z.B. `2`)
+  
+  - **PLAYBACK-Informationen:**
+    - Playing: Ob der Player gerade abspielt (`Ja/Nein`)
+    - Position: Aktuelle Abspielposition im Format `HH:MM:SS`
+    - Duration: Gesamtdauer im Format `HH:MM:SS` (oder `N/A` bei Live-Streams)
+    - Rate: Wiedergabegeschwindigkeit (nur wenn ≠ 1.0x, z.B. `1.25x`)
+    - Volume: Lautstärke in Prozent (z.B. `100%`)
+    - Pitch: Tonhöhenkorrektur (nur wenn ≠ 1.0)
+    - Completed: Ob der Stream beendet wurde (`Ja/Nein`)
+  
+  - **BUFFER-Informationen:**
+    - Buffered Duration: Gesamte gepufferte Dauer in Sekunden
+    - Buffer Ahead (derived): Berechneter Puffer-Vorsprung in Sekunden (mit ⚠️ wenn negativ)
+    - Buffering: Ob gerade gepuffert wird (`Ja (XX%)` oder `Nein`)
+  
+  - **MPV Properties** (direkt vom nativen Player abgefragt):
+    - mpv hwdec (policy): Gesetzte Hardware-Decoder-Policy (z.B. `auto-safe`)
+    - mpv hwdec-current: Tatsächlich verwendeter Decoder (z.B. `mediacodec-copy` oder `no`)
+    - mpv readahead-secs: Maximale Vorauslesezeit in Sekunden
+    - mpv demuxer-max-bytes: Maximale Puffergröße (z.B. `32M`)
+    - mpv demuxer-max-back-bytes: Rückwärts-Puffergröße (z.B. `8M`)
+  
+  - **SYSTEM-Informationen:**
+    - System RAM Usage: Systemweiter RAM-Verbrauch im Format `X.X GiB / Y.Y GiB (ZZ%)` (aktualisiert alle 2 Sekunden)
+  
+  - **DEVICE-Informationen** (nur auf Android):
+    - Model: Gerätemodell (z.B. `Mi TV Box S`)
+    - Manufacturer: Hersteller (z.B. `Xiaomi`)
+    - Hardware: Hardware-Plattform
+    - Android Version: Android-Version mit SDK-Level (z.B. `11 (SDK 30)`)
+    - Device Type: Automatische Erkennung von TV-Boxen (z.B. `TV Box erkannt`)
+  
+  - **Technische Details:**
+    - Updates: Live-Updates über Player-Streams, UI-Updates gedrosselt auf max. 250ms
+    - Aktualisierungsintervalle:
+      - System-Metriken: alle 2 Sekunden
+      - MPV-Properties: alle 2 Sekunden
+      - Player-State: bei Änderungen (gedrosselt)
+    - Hardware-Decoder-Erkennung: Primär über `mpv hwdec-current`, Fallback über Pixel-Format-Heuristik
+    - Decoder-Namen werden übersetzt (z.B. `mediacodec` → `MediaCodec`, `videotoolbox` → `VideoToolbox`)
+  
+  - **Zu implementieren:**
+    - `DebugOverlay` erweitern, um alle oben genannten Informationen anzuzeigen
+    - Datenabfrage vom Player (ExoPlayer/MPV) für Video/Audio/Buffer-Informationen
+    - MPV-Properties über native API abfragen (falls MPV verwendet wird)
+    - System-Informationen über Android System APIs abrufen
+    - Device-Informationen über `Build` API abrufen
+    - UI-Updates mit Throttling implementieren (max. 250ms)
+    - Timer für periodische Updates (System-Metriken, MPV-Properties alle 2 Sekunden)
+    - Formatierung der Werte (Zeit, Bitrate, Prozent, etc.)
+    - Gruppierung der Informationen in Sektionen (VIDEO, AUDIO, PLAYBACK, BUFFER, MPV, SYSTEM, DEVICE)
+
+---
+
+## Story #16.1: Hardcodierte Style-Werte identifizieren
+
+### User View
+Als Entwickler möchte ich eine vollständige Übersicht über alle hardcodierten Style-Werte in den UI-Komponenten haben, um den Refactoring-Umfang zu verstehen.
+
+### Acceptance Criteria
+- [ ] Liste aller `private val.*\.dp` in ui/components/, ui/screens/, ui/settings/, ui/sidebars/, ui/tabs/
+- [ ] Liste aller `private val.*\.sp` in ui/components/, ui/screens/, ui/settings/, ui/sidebars/, ui/tabs/
+- [ ] Liste aller `Color(0x` in ui/ (außer Theme-Dateien)
+- [ ] Liste aller `FontWeight\.` Verwendungen in ui/
+- [ ] Dokumentation der gefundenen Werte pro Komponente
+- [ ] Identifikation von Duplikaten (gleiche Werte in mehreren Komponenten)
+
+### Technical Notes
+- Grep-Befehle ausführen und Ergebnisse dokumentieren
+- Pro Komponente: Welche Werte müssen verschoben werden?
+- Welche Werte sind bereits in Theme-Dateien vorhanden?
+
+### Geschätzte Zeit
+15-30 min
+
+---
+
+## Story #16.2: Pilot: ContentCard Styles in Theme verschieben
+
+### User View
+Als Entwickler möchte ich ContentCard als Pilot-Komponente refactoren, um das Pattern für weitere Komponenten zu etablieren.
+
+### Acceptance Criteria
+- [ ] Alle Style-Werte aus `ContentCard.kt` in Theme-Dateien verschoben:
+  - Dimensions → `Dimensions.ContentCard` (maxCrossAxisExtent, aspectRatio, borderRadius, borderWidth, titleOverlayPadding, titlePaddingH/V)
+  - Colors → `AppColors.ContentCard` (textColor, bgColor)
+  - Typography → `Typography.ContentCard` (titleFontSize, fontWeight, lineHeightFactor)
+  - Alpha → `AppAlpha.contentCard*` (gradientAlpha, bgAlpha)
+- [ ] `ContentCard.kt` verwendet nur noch Theme-Werte (keine `private val` Style-Konstanten mehr)
+- [ ] Duplikate entfernt (z.B. falls `contentCardMaxCrossAxisExtent` bereits in Dimensions.kt existiert)
+- [ ] KDoc-Kommentare für alle neuen nested objects in Theme-Dateien
+- [ ] Visueller Test: ContentCard sieht identisch aus wie vorher
+- [ ] Code kompiliert ohne Warnings
+
+### Technical Notes
+- **Naming Convention**: `Dimensions.ContentCard.maxCrossAxisExtent`, `AppColors.ContentCard.text`, etc.
+- **Berechnete Werte**: NICHT in Theme (z.B. ContentCardHeight bleibt berechnet)
+- **Alpha-Werte**: Über `AppAlpha` object, Verwendung via `.copy(alpha = AppAlpha.contentCardTitleGradient)`
+
+### Definition of Done
+- [ ] ContentCard.kt hat keine hardcodierten Style-Werte mehr
+- [ ] Theme-Dateien erweitert mit ContentCard-spezifischen Werten
+- [ ] Visuell identisch (manueller Test oder Screenshot)
+- [ ] Grep nach `private val.*\.dp` in ContentCard.kt liefert 0 Ergebnisse
+
+### Geschätzte Zeit
+1-2h
+
+---
+
+## Story #16.3: Player-Komponenten Styles in Theme verschieben
+
+### User View
+Als Entwickler möchte ich alle Player-Komponenten refactoren, um konsistente Theme-Nutzung zu gewährleisten.
+
+### Acceptance Criteria
+- [ ] `VideoProgressBar.kt` refactored (progressHeight → `Dimensions.Player.progressBarHeight`)
+- [ ] `CentralPlayPauseButton.kt` refactored (iconSize → `Dimensions.Player.playPauseIconSize`)
+- [ ] Weitere Player-Komponenten geprüft und refactored:
+  - `CustomPlayerControls.kt`
+  - `DebugOverlay.kt`
+  - `VideoSettingsDialog.kt`
+- [ ] Alle Player-Dimensions in `Dimensions.Player` nested object
+- [ ] Alle Player-Colors in `AppColors.Player` nested object (falls vorhanden)
+- [ ] Alle Player-Typography in `Typography.Player` nested object (falls vorhanden)
+- [ ] KDoc-Kommentare für `Dimensions.Player` object
+- [ ] Visueller Test: Player sieht identisch aus
+- [ ] Code kompiliert ohne Warnings
+
+### Technical Notes
+- Pattern aus 16.2 (ContentCard) anwenden
+- Player-Komponenten systematisch durchgehen
+- Nach jeder Komponente visuell testen
+
+### Definition of Done
+- [ ] Alle Player-Komponenten verwenden Theme-Werte
+- [ ] Grep nach `private val.*\.dp` in player/ liefert 0 Ergebnisse
+- [ ] Visuell identisch
+
+### Geschätzte Zeit
+1-2h
+
+---
+
+## Story #16.4: UI Components Styles in Theme verschieben
+
+### User View
+Als Entwickler möchte ich alle restlichen Komponenten in `ui/components/` refactoren.
+
+### Acceptance Criteria
+- [ ] Alle Komponenten in `ui/components/` (außer player/ und ContentCard) geprüft
+- [ ] Hardcodierte Style-Werte in Theme verschoben
+- [ ] Komponenten verwenden Theme-Werte
+- [ ] Duplikate eliminiert
+- [ ] KDoc-Kommentare für neue Theme-Objekte
+- [ ] Visueller Test nach jeder Komponente
+- [ ] Grep nach `private val.*\.dp` in ui/components/ liefert 0 Ergebnisse (außer player/)
+- [ ] Grep nach `private val.*\.sp` in ui/components/ liefert 0 Ergebnisse (außer player/)
+
+### Technical Notes
+- Komponenten: `MainLayout.kt`, `PopupMenu.kt`, `SearchOverlay.kt`, `UpdateDialog.kt`
+- Pattern aus 16.2 beibehalten
+- Schrittweise vorgehen, nicht alles auf einmal
+
+### Definition of Done
+- [ ] Alle ui/components/ verwenden Theme-Werte
+- [ ] Grep-Tests bestanden
+- [ ] Visuell identisch
+
+### Geschätzte Zeit
+1-2h
+
+---
+
+## Story #16.5: UI Screens Styles in Theme verschieben
+
+### User View
+Als Entwickler möchte ich alle Screen-Komponenten in `ui/screens/` refactoren.
+
+### Acceptance Criteria
+- [ ] Alle Komponenten in `ui/screens/` geprüft
+- [ ] Hardcodierte Style-Werte in Theme verschoben
+- [ ] Komponenten verwenden Theme-Werte
+- [ ] Duplikate eliminiert
+- [ ] KDoc-Kommentare für neue Theme-Objekte
+- [ ] Visueller Test
+- [ ] Grep nach `private val.*\.dp` in ui/screens/ liefert 0 Ergebnisse
+- [ ] Grep nach `private val.*\.sp` in ui/screens/ liefert 0 Ergebnisse
+
+### Technical Notes
+- Screens: `DataLoadingScreen.kt`, `LoginScreen.kt`, `PlayerScreen.kt`
+- Pattern beibehalten
+
+### Definition of Done
+- [ ] Alle ui/screens/ verwenden Theme-Werte
+- [ ] Grep-Tests bestanden
+- [ ] Visuell identisch
+
+### Geschätzte Zeit
+1-2h
+
+---
+
+## Story #16.6: UI Settings Styles in Theme verschieben
+
+### User View
+Als Entwickler möchte ich alle Settings-Komponenten in `ui/settings/` refactoren.
+
+### Acceptance Criteria
+- [ ] Alle Komponenten in `ui/settings/` geprüft
+- [ ] Hardcodierte Style-Werte in Theme verschoben
+- [ ] Komponenten verwenden Theme-Werte
+- [ ] Duplikate eliminiert
+- [ ] KDoc-Kommentare für neue Theme-Objekte
+- [ ] Visueller Test
+- [ ] Grep nach `private val.*\.dp` in ui/settings/ liefert 0 Ergebnisse
+- [ ] Grep nach `private val.*\.sp` in ui/settings/ liefert 0 Ergebnisse
+
+### Technical Notes
+- Settings: `SettingsComponents.kt`, `SettingsScreen.kt`, `SubSettings*.kt`
+- Pattern beibehalten
+
+### Definition of Done
+- [ ] Alle ui/settings/ verwenden Theme-Werte
+- [ ] Grep-Tests bestanden
+- [ ] Visuell identisch
+
+### Geschätzte Zeit
+1h
+
+---
+
+## Story #16.7: UI Sidebars & Tabs Styles in Theme verschieben
+
+### User View
+Als Entwickler möchte ich alle Sidebar- und Tab-Komponenten refactoren.
+
+### Acceptance Criteria
+- [ ] Alle Komponenten in `ui/sidebars/` geprüft und refactored
+- [ ] Alle Komponenten in `ui/tabs/` geprüft und refactored
+- [ ] Hardcodierte Style-Werte in Theme verschoben
+- [ ] Komponenten verwenden Theme-Werte
+- [ ] Duplikate eliminiert
+- [ ] KDoc-Kommentare für neue Theme-Objekte
+- [ ] Visueller Test
+- [ ] Grep nach `private val.*\.dp` in ui/sidebars/, ui/tabs/ liefert 0 Ergebnisse
+- [ ] Grep nach `private val.*\.sp` in ui/sidebars/, ui/tabs/ liefert 0 Ergebnisse
+
+### Technical Notes
+- Sidebars: `CategoryRow.kt`, `ContentGridLayout.kt`, `MainNavbar.kt`
+- Tabs: `EPGScreen.kt`, `FavoritesContent.kt`, `LiveTVScreen.kt`, `SeriesScreen.kt`, `VODScreen.kt`
+- Pattern beibehalten
+
+### Definition of Done
+- [ ] Alle ui/sidebars/ und ui/tabs/ verwenden Theme-Werte
+- [ ] Grep-Tests bestanden
+- [ ] Visuell identisch
+
+### Geschätzte Zeit
+1h
+
+---
+
+## Story #16.8: Finales Cleanup & Validierung
+
+### User View
+Als Entwickler möchte ich sicherstellen, dass alle Style-Werte konsolidiert sind und keine Duplikate oder ungenutzte Werte mehr existieren.
+
+### Acceptance Criteria
+- [ ] Finale Duplikat-Prüfung in allen Theme-Dateien durchgeführt
+- [ ] Ungenutzte Werte aus Theme-Dateien entfernt
+- [ ] KDoc-Kommentare für ALLE nested objects in Theme-Dateien vorhanden
+- [ ] Finale Grep-Tests durchgeführt:
+  - `private val.*\.dp` in ui/components/, ui/screens/, ui/settings/, ui/sidebars/, ui/tabs/ → 0 Ergebnisse
+  - `private val.*\.sp` in ui/components/, ui/screens/, ui/settings/, ui/sidebars/, ui/tabs/ → 0 Ergebnisse
+  - `Color(0x` in Komponenten (außer Theme-Dateien) → 0 Ergebnisse
+- [ ] Naming Convention konsistent in allen Theme-Dateien
+- [ ] Code kompiliert ohne Warnings
+- [ ] Visueller Vergleich: Keine Regressionen (Android TV + Handy)
+
+### Technical Notes
+- Systematisch durch alle Theme-Dateien gehen
+- Duplikate identifizieren und konsolidieren
+- Ungenutzte Werte entfernen (falls vorhanden)
+
+### Definition of Done
+- [ ] Alle Grep-Tests bestanden
+- [ ] Keine Duplikate mehr
+- [ ] Alle Theme-Objekte dokumentiert
+- [ ] Keine visuellen Regressionen
+- [ ] Code-Review bereit
+
+### Geschätzte Zeit
+30 min - 1h
+
+---
+
+### Technical Notes (für alle Stories)
+
+#### Naming Convention
+- **Component-spezifisch**: `{Component}.{property}` (z.B. `Dimensions.ContentCard.maxWidth`)
+- **Generisch wiederverwendbar**: `{property}{Variant}` (z.B. `Dimensions.radiusMD`, `Dimensions.spacingSM`)
+- **Konsistente Benennung**: camelCase, beschreibend, keine Abkürzungen außer etablierte (H/V für Horizontal/Vertical)
+
+#### Entscheidungen
+- **Font Weights**: Zentral in `Type.kt` als nested object pro Komponente
+- **Alpha-Werte**: In `Color.kt` als separates `object AppAlpha` mit const vals, Verwendung via `.copy(alpha = ...)`
+- **Berechnete Werte**: Zur Laufzeit berechnen, NICHT in Theme speichern
+- **Responsive Werte**: In Dimensions mit KDoc-Kommentar markieren: `/** Responsive: depends on screen width */`
+
+#### Theme-Struktur
+- **Dimensions.kt**: Nested objects pro Komponente, generische Werte für Wiederverwendung
+- **Color.kt**: Nested objects pro Komponente, separates `AppAlpha` object
+- **Type.kt**: Nested objects pro Komponente für Typography
+
+#### Hinweise
+- Duplikate zuerst identifizieren: Viele Werte existieren bereits in Dimensions.kt
+- Bei Unsicherheit: Wert zuerst in Theme hinzufügen, dann in Komponente verwenden
+- Berechnete Werte NICHT in Theme speichern
+- Alpha-Werte immer über AppAlpha object
+- Nach jeder Komponente visuell testen
+
+---
+
+---
+
+## Story #19: SubSettings UI/UX für TV optimieren
+
+### User View
+Als Nutzer möchte ich eine optimale TV-Erfahrung in den Settings haben, mit klarer Navigation, gut sichtbaren Fokus-Indikatoren und intuitiver Bedienung per Fernbedienung.
+
+### Acceptance Criteria
+- Alle Settings-Screens sind vollständig per TV-Fernbedienung (D-Pad) navigierbar
+- Fokus-Indikatoren sind klar sichtbar und konsistent (große, gut sichtbare Hervorhebung)
+- Navigation zwischen Settings-Kategorien ist flüssig und intuitiv
+- Navigation innerhalb von SubSettings ist logisch und vorhersehbar
+- Alle interaktiven Elemente sind fokussierbar (Buttons, Switches, Dropdowns, etc.)
+- Fokus-Management funktioniert korrekt (kein Fokus-Verlust, korrekte Fokus-Reihenfolge)
+- Text ist aus TV-Entfernung gut lesbar (ausreichend große Schriftgrößen)
+- Abstände zwischen Elementen sind TV-optimiert (ausreichend groß für Fokus-Navigation)
+- Buttons und interaktive Elemente sind groß genug für TV-Navigation
+- Konsistente UI/UX über alle SubSettings-Screens hinweg
+- Touch-Support bleibt erhalten (für Geräte mit Touch-Screen)
+
+### Examples
+- User öffnet Settings → navigiert mit D-Pad durch Kategorien → Fokus ist klar sichtbar → User drückt OK → SubSettings öffnet sich → Fokus ist auf erstem Element
+- User ist in SubSettings → navigiert mit D-Pad Hoch/Runter → Fokus springt logisch zwischen Elementen → User navigiert Links → kommt zurück zur Kategorie-Liste
+- User ist in SubSettings → alle Buttons/Switches sind fokussierbar → User kann alle Einstellungen per Fernbedienung ändern
+- User ist in SubSettings → Text ist aus 3m Entfernung gut lesbar → Buttons sind groß genug für Fokus-Navigation
+
+### Technical Notes
+- **Aktuelles Verhalten:**
+  - Settings-Screens existieren: `SettingsScreen`, `SubSettingsConnection`, `SubSettingsGeneral`, `SubSettingsInfo`, `SubSettingsPlayback`, `SubSettingsHiddenCategories`
+  - `SettingsComponents.kt` enthält wiederverwendbare Komponenten (`SettingsCard`, `SwitchSetting`, etc.)
+  - Fokus-Management ist teilweise implementiert (FocusRequester, onFocusChanged)
+  - D-Pad Navigation ist teilweise implementiert (onDpadCenter, onDpadDirection)
+  
+- **Zu optimieren:**
+  - **Fokus-Indikatoren:**
+    - Konsistente Fokus-Hervorhebung über alle Screens
+    - Große, gut sichtbare Border/Background-Änderung bei Fokus
+    - Animationen für Fokus-Übergänge (smooth, nicht ruckelig)
+    - Fokus-Farben sollten kontrastreich sein (z.B. Accent-Color)
+    - Shadow/Elevation bei Fokus für bessere Sichtbarkeit
+  - **Fokus-Management:**
+    - Initialer Fokus wird korrekt gesetzt (FocusRequester.requestFocus())
+    - Fokus-Reihenfolge ist logisch (Top-to-Bottom, Left-to-Right)
+    - Kein Fokus-Verlust bei Navigation
+    - Fokus wird korrekt wiederhergestellt nach Screen-Wechsel
+    - Fokus-Management zwischen Screens (z.B. zurück zu Main-Screen)
+  - **Navigation:**
+    - D-Pad Hoch/Runter: Navigation innerhalb von Listen
+    - D-Pad Links: Zurück zur vorherigen Ebene
+    - D-Pad Rechts: Weiter zu nächstem Element (falls sinnvoll)
+    - D-Pad Center/OK: Aktivieren/Auswählen
+    - Back-Button: Zurück zur vorherigen Ebene
+  - **Text-Lesbarkeit:**
+    - Schriftgrößen prüfen: Sind sie aus TV-Entfernung lesbar?
+    - Mindest-Schriftgröße: 14sp oder größer
+    - Kontrast prüfen: Text sollte gut lesbar sein
+    - Zeilenabstand optimieren für bessere Lesbarkeit
+  - **Abstände und Größen:**
+    - Abstände zwischen Elementen: Mindestens 8dp (besser 12-16dp)
+    - Button-Höhe: Mindestens 48dp (besser 56dp für TV)
+    - Touch-Targets: Mindestens 48x48dp (auch für TV-Navigation wichtig)
+    - Padding in Cards: Ausreichend groß für Fokus-Navigation
+  - **Interaktive Elemente:**
+    - Alle Buttons sind fokussierbar
+    - Alle Switches sind fokussierbar
+    - Alle Dropdowns/Selectors sind fokussierbar
+    - Textfelder sind fokussierbar (mit IME-Support)
+    - Alle interaktiven Elemente haben klare visuelle Feedback bei Fokus
+  
+- **Zu prüfen (Screen-spezifisch):**
+  - **SubSettingsConnection:**
+    - Textfelder (Server-URL, Username, Password) sind fokussierbar?
+    - Buttons (Test, Speichern) sind fokussierbar?
+    - Navigation zwischen Feldern funktioniert?
+    - IME (Keyboard) funktioniert korrekt?
+  - **SubSettingsGeneral:**
+    - Switches sind fokussierbar?
+    - Dropdowns/Selectors sind fokussierbar?
+    - Navigation zu HiddenCategories funktioniert?
+  - **SubSettingsInfo:**
+    - Buttons (Update prüfen, Download) sind fokussierbar?
+    - Text ist lesbar?
+    - Progress-Anzeigen sind sichtbar?
+  - **SubSettingsPlayback:**
+    - Quality-Selector ist fokussierbar?
+    - Navigation funktioniert?
+  - **SubSettingsHiddenCategories:**
+    - Liste ist fokussierbar?
+    - Items sind fokussierbar?
+    - Navigation funktioniert?
+  
+- **Konsistenz:**
+  - Alle SubSettings-Screens verwenden gleiche Komponenten (`SettingsCard`, `SwitchSetting`, etc.)
+  - Gleiche Fokus-Indikatoren über alle Screens
+  - Gleiche Navigation-Logik über alle Screens
+  - Gleiche Abstände und Größen über alle Screens
+  - Gleiche Farben und Styles über alle Screens
+  
+- **Performance:**
+  - Fokus-Animationen sollten flüssig sein (keine Frame-Drops)
+  - Navigation sollte responsiv sein (keine Verzögerungen)
+  - Recompositionen minimieren (nur bei Fokus-Änderungen)
+  
+- **Accessibility:**
+  - Content-Descriptions für alle Icons
+  - Semantische Labels für alle interaktiven Elemente
+  - Screen-Reader-Support (falls benötigt)
+
+---
+
+## Story #22: Download-Funktion für Movies und Serien
+
+### User View
+Als Nutzer möchte ich Movies oder Serien (ganze Staffeln oder einzelne Folgen) herunterladen können, damit ich diese Inhalte offline verfügbar habe und auch ohne Internetverbindung schauen kann. Ich möchte über einen eigenen Bereich in der Navigation auf diese heruntergeladenen Inhalte zugreifen können.
+
+### Acceptance Criteria
+- User kann einzelne Movies (VOD) herunterladen
+- User kann einzelne Serien-Episoden herunterladen
+- User kann ganze Staffeln einer Serie herunterladen (alle Episoden einer Staffel)
+- User kann Download-Qualität wählen (SD, HD, Full HD) vor dem Download
+- Geschätzte Download-Größe wird VOR dem Download angezeigt
+- Download-Button/Aktion ist in der ContentCard oder im Detail-Screen verfügbar
+- Download-Status wird visuell angezeigt (Download läuft, Download fertig, Download fehlgeschlagen)
+- Download-Progress wird angezeigt (z.B. Prozentanzeige, Progress-Bar)
+- Max. 3 parallele Downloads, weitere werden in Warteschlange eingereiht
+- User kann Download-Warteschlange einsehen und Reihenfolge ändern
+- User kann laufende Downloads pausieren und fortsetzen
+- User kann laufende Downloads abbrechen
+- User kann heruntergeladene Inhalte löschen (um Speicherplatz freizugeben)
+- Downloads starten standardmäßig nur über WLAN (konfigurierbar in Settings)
+- Warnung wenn User über mobile Daten downloaden möchte
+- Bei Staffel-Download: Einzelne fehlgeschlagene Episoden werden übersprungen, Rest läuft weiter
+- Bei Staffel-Download: Übersicht welche Episoden erfolgreich/fehlgeschlagen sind
+- Heruntergeladene Inhalte werden lokal auf dem Gerät gespeichert
+- Heruntergeladene Inhalte sind auch ohne Internetverbindung abspielbar
+- Thumbnails werden mit heruntergeladen (für Offline-Anzeige)
+- Offline-Badge wird in allen Screens angezeigt (ContentCard, Detail-Screen, etc.)
+- Fehlermeldung wenn User versucht, nicht-heruntergeladenen Content offline zu schauen (mit Option "Jetzt herunterladen")
+- Neue Section "Downloads" oder "Offline" in MainNavbar.kt hinzugefügt
+- Downloads-Screen zeigt alle heruntergeladenen Inhalte an (Movies, Serien-Episoden)
+- Downloads-Screen zeigt laufende Downloads mit Progress an
+- Downloads-Screen zeigt Download-Warteschlange an
+- Downloads-Screen ist per D-Pad navigierbar (konsistent mit anderen Screens)
+- Downloads-Screen zeigt Download-Status und Speicherplatz-Verbrauch an
+- Downloads-Screen erlaubt Sortierung/Filterung (nach Typ, Datum, Größe, Status)
+- Downloads-Screen erlaubt Löschen einzelner oder mehrerer Downloads
+- Downloads werden nach App-Neustart wiederhergestellt (persistente Speicherung)
+- Downloads überleben App-Updates (falls möglich)
+- Speicherplatz-Management: Warnung wenn Speicherplatz < 10% verfügbar
+- Speicherplatz-Management: Warnung wenn Download größer als verfügbarer Speicherplatz
+- Optional: Automatisches Löschen alter Downloads nach X Tagen (konfigurierbar in Settings)
+- Optional: Automatisches Löschen von Downloads die X Tage nicht angeschaut wurden
+
+### Examples
+- User ist in VOD-Screen → wählt Film "Inception" → klickt Download-Button → wählt Qualität "HD" → sieht "ca. 2.5 GB" → bestätigt → Download startet → Progress wird angezeigt → Download fertig → Film ist offline verfügbar mit Badge "Offline"
+- User ist in Series-Screen → wählt Serie "Breaking Bad" → öffnet Staffel 1 → klickt "Ganze Staffel herunterladen" → wählt Qualität → sieht "ca. 8 GB für 7 Episoden" → bestätigt → alle Episoden werden heruntergeladen → Progress wird für jede Episode angezeigt → Episode 3 schlägt fehl → Rest läuft weiter → Übersicht zeigt 6/7 erfolgreich
+- User ist in Series-Screen → wählt Episode S01E05 → klickt Download-Button → nur diese Episode wird heruntergeladen
+- User startet 5 Downloads → erste 3 starten sofort → Downloads 4 und 5 landen in Warteschlange → User kann Reihenfolge ändern
+- User navigiert zu "Downloads" in MainNavbar → sieht Liste aller heruntergeladenen Inhalte → sieht laufende Downloads mit Progress → wählt Film → Film startet offline
+- User ist in Downloads-Screen → wählt Film → klickt Löschen → Film wird gelöscht, Speicherplatz wird freigegeben
+- User startet Download → App wird geschlossen → User öffnet App wieder → Download wird fortgesetzt
+- User hat keine Internetverbindung → öffnet VOD-Screen → sieht nur heruntergeladene Filme mit "Offline" Badge → wählt nicht-heruntergeladenen Film → Fehlermeldung "Offline nicht verfügbar. Jetzt herunterladen?" → kann nicht downloaden (kein Internet)
+- User hat keine Internetverbindung → öffnet Downloads-Screen → wählt heruntergeladenen Film → Film startet ohne Internet
+- User ist über mobile Daten verbunden → startet Download → Warnung "Du bist über mobile Daten verbunden. Trotzdem herunterladen?" → User kann abbrechen oder fortfahren
+- User hat nur noch 500 MB Speicherplatz → versucht 2 GB Film zu downloaden → Warnung "Nicht genug Speicherplatz verfügbar" → Download wird nicht gestartet
+
+### Technical Notes
+- **Aktuelles Verhalten:**
+  - Keine Download-Funktion vorhanden
+  - MainNavbar.kt hat aktuell: Suche, TV, Movies, Series, EPG, Favoriten, Settings
+  - ContentCard zeigt keine Download-Option
+  - Player verwendet Streaming (keine lokale Wiedergabe)
+  
+- **Zu klären VOR Implementierung (BLOCKER):**
+  - **DRM-Prüfung**: Sind die IPTV-Streams DRM-geschützt? (Widevine, PlayReady)
+    - Falls ja: Download-Feature ist technisch nicht umsetzbar oder sehr komplex
+    - ExoPlayer kann DRM-geschützte Inhalte nicht einfach herunterladen und offline abspielen
+  - **Xtream API Support**: Unterstützt die API persistente Download-URLs?
+    - Stream-URLs sind oft zeitlich begrenzt (Token-basiert)
+    - Falls keine separaten Download-URLs: Alternative Ansätze prüfen (Stream-Recording)
+  - **Rechtliche Klärung**: Sind Downloads vom IPTV-Provider erlaubt?
+    - Lizenzrechte, Provider-Einschränkungen prüfen
+  - **Stream-Format**: Welches Format haben die Streams? (.mp4, .ts, .m3u8/HLS)
+    - Falls HLS: Download aller Segmente + evtl. Konvertierung zu MP4
+    - Oder: HLS-Playlist + Segmente lokal speichern
+  
+- **Zu implementieren:**
+  
+  - **Datenmodell:**
+    - Neue `DownloadItem` data class:
+      - `id: String` (eindeutige ID)
+      - `contentType: ContentType` (VOD, Series)
+      - `streamId: String?` (für VOD)
+      - `seriesId: String?` (für Series)
+      - `seasonNumber: Int?` (für Series)
+      - `episodeId: String?` (für einzelne Episode)
+      - `title: String`
+      - `thumbnailPath: String?` (lokaler Pfad zum Thumbnail)
+      - `downloadStatus: DownloadStatus` (PENDING, DOWNLOADING, PAUSED, COMPLETED, FAILED, CANCELLED)
+      - `progress: Float` (0.0 - 1.0)
+      - `filePath: String?` (Pfad zur heruntergeladenen Datei)
+      - `fileSize: Long?` (Dateigröße in Bytes)
+      - `estimatedSize: Long?` (geschätzte Größe vor Download)
+      - `quality: VideoQuality` (SD, HD, FULL_HD)
+      - `downloadedAt: Long?` (Timestamp)
+      - `lastWatchedAt: Long?` (für automatisches Löschen)
+      - `expiresAt: Long?` (falls Downloads zeitlich begrenzt sind)
+      - `downloadUrl: String` (URL zum Herunterladen)
+      - `queuePosition: Int?` (Position in Warteschlange)
+    - `sealed class DownloadStatus { PENDING, DOWNLOADING, PAUSED, COMPLETED, FAILED, CANCELLED }`
+    - `enum class VideoQuality { SD, HD, FULL_HD }`
+  
+  - **Service-Layer:**
+    - Neue `DownloadService` Klasse:
+      - `downloadContent(contentType, streamId, seriesId, episodeId, quality): Flow<DownloadProgress>`
+      - `pauseDownload(downloadId: String)`
+      - `resumeDownload(downloadId: String)`
+      - `cancelDownload(downloadId: String)`
+      - `deleteDownload(downloadId: String)`
+      - `getAllDownloads(): Flow<List<DownloadItem>>`
+      - `getActiveDownloads(): Flow<List<DownloadItem>>` (laufende + wartend)
+      - `getDownloadStatus(downloadId: String): Flow<DownloadStatus>`
+      - `getDownloadQueue(): Flow<List<DownloadItem>>`
+      - `updateQueuePosition(downloadId: String, newPosition: Int)`
+      - `estimateDownloadSize(contentType, streamId, quality): Long`
+    - Download-Management:
+      - Verwendet `WorkManager` für persistente Downloads (überlebt App-Neustart)
+      - Max. 3 parallele Downloads, Rest in Queue
+      - Speichert Downloads in lokalem Verzeichnis (z.B. `getExternalFilesDir("downloads")`)
+      - Persistiert Download-Status in Room-Datenbank
+      - Download-Thumbnails parallel zum Video
+    - Datei-Management:
+      - Speichert heruntergeladene Dateien in strukturiertem Verzeichnis
+      - Dateinamen: `{contentType}_{streamId}_{quality}_{timestamp}.mp4` oder ähnlich
+      - Thumbnails: `{contentType}_{streamId}_thumb.jpg`
+      - Metadaten in Room-Datenbank
+    - Netzwerk-Strategie:
+      - Prüfe Netzwerk-Typ vor Download (WLAN vs. Mobile)
+      - Pausiere Downloads automatisch wenn WLAN verloren geht (falls Setting aktiviert)
+      - Setze Downloads fort wenn WLAN wieder verfügbar
+  
+  - **Repository-Layer:**
+    - Neue `DownloadRepository`:
+      - `saveDownload(downloadItem: DownloadItem)`
+      - `getAllDownloads(): Flow<List<DownloadItem>>`
+      - `getActiveDownloads(): Flow<List<DownloadItem>>`
+      - `getCompletedDownloads(): Flow<List<DownloadItem>>`
+      - `getDownloadById(id: String): Flow<DownloadItem?>`
+      - `deleteDownload(id: String)`
+      - `updateDownloadStatus(id: String, status: DownloadStatus, progress: Float)`
+      - `updateQueuePosition(id: String, position: Int)`
+      - `isDownloaded(contentType: ContentType, streamId: String): Flow<Boolean>`
+    - Persistierung:
+      - Room-Datenbank für Download-Metadaten
+      - Dateien werden im Dateisystem gespeichert
+  
+  - **UI-Layer:**
+    - **MainNavbar.kt:**
+      - Neue `HomeDestination.Downloads` hinzufügen
+      - Neues NavItem: `NavItem("Downloads", Icons.Default.Download, HomeDestination.Downloads)`
+      - Badge mit Anzahl aktiver Downloads (optional)
+      - Konsistent mit anderen NavItems (Icon, Fokus, Navigation)
+    - **Downloads-Screen (neue Datei):**
+      - `DownloadsScreen.kt` erstellen
+      - Tabs/Sections: "Heruntergeladen", "Läuft", "Warteschlange"
+      - Zeigt Liste aller heruntergeladenen Inhalte
+      - Gruppierung nach Typ (Movies, Serien) oder chronologisch
+      - ContentCard-ähnliche Darstellung für Downloads
+      - Download-Status-Badge (Downloading, Paused, Completed, Failed)
+      - Progress-Bar für laufende Downloads
+      - Pause/Resume/Cancel-Buttons für laufende Downloads
+      - Löschen-Button pro Download
+      - Drag-and-Drop für Queue-Reihenfolge (oder Buttons für Android TV)
+      - Speicherplatz-Anzeige (gesamt, verfügbar, genutzt durch Downloads)
+      - D-Pad Navigation (konsistent mit anderen Screens)
+      - Fokus-Management (konsistent mit anderen Screens)
+      - Filter/Sort-Optionen (Typ, Datum, Größe, Status)
+    - **ContentCard.kt:**
+      - Download-Button hinzufügen (nur wenn nicht bereits heruntergeladen)
+      - Download-Status anzeigen (wenn Download läuft oder fertig)
+      - Badge "Offline verfügbar" wenn bereits heruntergeladen
+      - Badge "Download läuft" mit Progress wenn Download aktiv
+      - PopupMenu erweitern um Download-Option
+      - Offline-Badge prominent anzeigen
+    - **SeriesEpisodesScreen.kt:**
+      - Download-Button pro Episode hinzufügen
+      - "Ganze Staffel herunterladen" Button pro Staffel hinzufügen
+      - Download-Status pro Episode anzeigen
+      - Offline-Badge pro Episode
+      - Übersicht: "3 von 10 Episoden heruntergeladen"
+    - **Download-Dialog (neu):**
+      - Qualitätsauswahl (SD, HD, Full HD)
+      - Geschätzte Größe anzeigen
+      - Verfügbarer Speicherplatz anzeigen
+      - Warnung wenn nicht genug Speicherplatz
+      - Warnung wenn über mobile Daten
+      - "Download starten" / "Abbrechen" Buttons
+    - **Offline-Fehlermeldung (neu):**
+      - Dialog wenn User offline Content ohne Download öffnen will
+      - "Dieser Inhalt ist offline nicht verfügbar"
+      - Button "Jetzt herunterladen" (nur wenn online)
+      - Button "Abbrechen"
+  
+  - **Player-Integration:**
+    - Player muss lokale Dateien abspielen können (nicht nur Streaming)
+    - ExoPlayer unterstützt lokale Dateien via `Uri.fromFile(File(filePath))`
+    - PlayerScreen erweitern: 
+      - Prüfen ob Content heruntergeladen ist → lokale Datei verwenden statt Stream-URL
+      - Fallback: Wenn lokale Datei nicht verfügbar → Stream-URL verwenden
+      - Fehlerbehandlung: Wenn lokale Datei korrupt → Option zum erneuten Download
+    - `lastWatchedAt` aktualisieren beim Abspielen (für automatisches Löschen)
+  
+  - **ViewModel:**
+    - Neue `DownloadsViewModel`:
+      - `uiState: StateFlow<DownloadsUiState>`
+      - `downloads: StateFlow<List<DownloadItem>>`
+      - `activeDownloads: StateFlow<List<DownloadItem>>`
+      - `downloadQueue: StateFlow<List<DownloadItem>>`
+      - `storageInfo: StateFlow<StorageInfo>`
+      - `downloadContent(contentType, streamId, quality, ...)`
+      - `pauseDownload(downloadId)`
+      - `resumeDownload(downloadId)`
+      - `cancelDownload(downloadId)`
+      - `deleteDownload(downloadId)`
+      - `updateQueuePosition(downloadId, newPosition)`
+      - `filterDownloads(filter: DownloadFilter)`
+      - `sortDownloads(sort: DownloadSort)`
+    - `MainViewModel` / `VODViewModel` / `SeriesViewModel` erweitern:
+      - `isDownloaded(contentType, streamId): StateFlow<Boolean>`
+      - `getDownloadStatus(contentType, streamId): StateFlow<DownloadStatus?>`
+      - `getDownloadProgress(contentType, streamId): StateFlow<Float?>`
+  
+  - **Speicherplatz-Management:**
+    - `StorageService` oder ähnlich:
+      - `getAvailableStorage(): Long` (verfügbarer Speicherplatz)
+      - `getUsedStorageByDownloads(): Long` (genutzter Speicherplatz für Downloads)
+      - `getTotalStorage(): Long` (gesamter Speicherplatz)
+      - `hasEnoughSpace(requiredBytes: Long): Boolean`
+      - `getStorageWarningThreshold(): Long` (10% von Total)
+      - `cleanupOldDownloads(daysOld: Int)` (optional)
+      - `cleanupUnwatchedDownloads(daysUnwatched: Int)` (optional)
+    - Warnung wenn < 10% Speicherplatz verfügbar
+    - Warnung wenn Download größer als verfügbarer Speicherplatz
+    - Settings erweitern:
+      - "Downloads verwalten" Section
+      - "Nur über WLAN herunterladen" (Toggle, Standard: AN)
+      - "Automatisch alte Downloads löschen nach X Tagen" (optional)
+      - "Ungesehene Downloads löschen nach X Tagen" (optional)
+      - "Standard-Qualität" (SD, HD, Full HD)
+      - "Max. parallele Downloads" (1-5, Standard: 3)
+      - "Speicherplatz anzeigen"
+      - "Alle Downloads löschen" Button
+  
+  - **Download-URL-Ermittlung:**
+    - Für VOD: Stream-URL aus `VODStream.streamUrl` oder API-Aufruf
+    - Für Series: Stream-URL aus `Series.episodes[season][episode].streamUrl` oder API-Aufruf
+    - Prüfen: Unterstützt Xtream API direkte Download-URLs oder müssen Stream-URLs verwendet werden?
+    - Prüfen: Sind URLs zeitlich begrenzt? (Token-basiert)
+    - Falls zeitlich begrenzt: Neue URL anfordern vor Download-Start
+    - Qualitäts-Parameter in URL einbauen (falls API unterstützt)
+  
+  - **Fehlerbehandlung:**
+    - Netzwerk-Fehler: Download pausieren, Retry-Button anbieten, automatischer Retry nach X Sekunden
+    - Speicherplatz-Fehler: Warnung anzeigen, Download abbrechen, Speicherplatz freigeben vorschlagen
+    - Datei-Korrupt: Download als fehlgeschlagen markieren, Option zum erneuten Download
+    - App-Neustart während Download: Download fortsetzen (WorkManager)
+    - URL ungültig/abgelaufen: Neue URL anfordern, Download fortsetzen
+    - Staffel-Download: Einzelne fehlgeschlagene Episoden überspringen, Rest fortsetzen
+    - Staffel-Download: Übersicht welche Episoden erfolgreich/fehlgeschlagen
+    - Thumbnail-Download fehlgeschlagen: Placeholder verwenden, Video-Download fortsetzen
+  
+  - **Performance:**
+    - Downloads im Background-Thread (WorkManager)
+    - Keine Blockierung der UI während Downloads
+    - Progress-Updates gedrosselt (nicht bei jedem Byte, sondern z.B. alle 500ms)
+    - Liste der Downloads lazy laden (Paging)
+    - Thumbnails lazy laden (Coil)
+    - Download-Queue effizient verwalten (max. 3 parallel)
+  
+  - **Edge-Cases:**
+    - Was passiert, wenn Download-URL ungültig wird? → Neue URL anfordern, Download fortsetzen
+    - Was passiert, wenn Datei gelöscht wird, aber Eintrag in DB bleibt? → Cleanup-Job beim App-Start
+    - Was passiert, wenn User App deinstalliert? → Downloads werden gelöscht (normal)
+    - Was passiert bei mehreren gleichzeitigen Downloads? → Max. 3 parallel, Rest in Queue
+    - Was passiert, wenn User während Download die App schließt? → Download läuft weiter im Background (WorkManager)
+    - Was passiert, wenn heruntergeladene Datei beschädigt ist? → Erkennung (Checksumme?), Option zum erneuten Download
+    - Was passiert, wenn User offline ist und Download starten will? → Fehlermeldung "Keine Internetverbindung"
+    - Was passiert, wenn User von WLAN zu Mobile wechselt während Download? → Download pausieren (falls Setting aktiviert), Warnung anzeigen
+    - Was passiert, wenn gleicher Content mehrfach heruntergeladen wird? → Prüfung vor Download, Warnung "Bereits heruntergeladen"
+    - Was passiert bei App-Update? → Downloads bleiben erhalten (WorkManager + Room)
+    - Was passiert, wenn Speicherplatz während Download voll wird? → Download pausieren, Warnung anzeigen
+  
+  - **Cleanup & Maintenance:**
+    - Cleanup-Job beim App-Start:
+      - Prüfe ob Dateien in DB auch im Dateisystem existieren
+      - Lösche DB-Einträge ohne Dateien
+      - Lösche Dateien ohne DB-Einträge
+    - Optional: Automatisches Löschen alter Downloads (konfigurierbar)
+    - Optional: Automatisches Löschen ungesehener Downloads (konfigurierbar)
+  
+  - **Analytics & Monitoring (optional):**
+    - Logge Download-Fehler (für Debugging)
+    - Analytics: Anzahl gestarteter/abgeschlossener/fehlgeschlagener Downloads
+    - Analytics: Durchschnittliche Download-Größe
+    - Analytics: Beliebteste Download-Qualität
+
+### Definition of Done
+- [ ] **BLOCKER geklärt**: DRM-Prüfung durchgeführt, Xtream API Support geprüft, rechtliche Klärung
+- [ ] Proof-of-Concept: Download-Mechanismus getestet (1 Video erfolgreich heruntergeladen und offline abgespielt)
+- [ ] DownloadService implementiert (Download, Pause, Resume, Cancel, Delete, Status, Queue)
+- [ ] DownloadRepository implementiert (Persistierung mit Room)
+- [ ] StorageService implementiert (Speicherplatz-Management)
+- [ ] DownloadsViewModel implementiert
+- [ ] Downloads-Screen erstellt (UI, Navigation, D-Pad Support, Tabs, Queue)
+- [ ] Download-Dialog erstellt (Qualitätsauswahl, Größenanzeige, Warnungen)
+- [ ] MainNavbar.kt erweitert um "Downloads" Section
+- [ ] ContentCard erweitert um Download-Button/Status/Offline-Badge
+- [ ] SeriesEpisodesScreen erweitert um Download-Optionen (Episode, Staffel)
+- [ ] Player unterstützt lokale Dateien (offline Wiedergabe)
+- [ ] Download-Status wird visuell angezeigt (Progress, Badge, Queue-Position)
+- [ ] Download-Warteschlange funktioniert (max. 3 parallel, Reihenfolge änderbar)
+- [ ] Netzwerk-Strategie implementiert (WLAN-Check, Warnung bei Mobile)
+- [ ] Speicherplatz-Checks implementiert (vor Download, während Download)
+- [ ] Thumbnail-Download implementiert
+- [ ] Offline-Badge in allen Screens angezeigt
+- [ ] Offline-Fehlermeldung implementiert
+- [ ] Downloads überleben App-Neustart (WorkManager)
+- [ ] Fehlerbehandlung implementiert (Netzwerk, Speicherplatz, korrupte Dateien, Staffel-Downloads)
+- [ ] Cleanup-Job implementiert (DB-Dateisystem-Sync)
+- [ ] Settings erweitert (WLAN-only, Standard-Qualität, automatisches Löschen)
+- [ ] Unit-Tests für DownloadService, Repository, ViewModel
+- [ ] Integration-Tests für Download-Flow
+- [ ] Manuelle Tests durchgeführt (Download, Pause, Resume, Cancel, Delete, Offline-Wiedergabe)
+- [ ] Edge-Cases getestet (App-Neustart, Netzwerk-Wechsel, Speicherplatz voll, korrupte Dateien)
+- [ ] Performance-Tests (mehrere parallele Downloads, große Dateien)
+- [ ] Android TV Tests (D-Pad Navigation, Fokus-Management)
+- [ ] Android Handy Tests (Touch-Bedienung, Querformat)
+
+---
+
+## Story #23: Server-Performance-Monitoring
+
+### User View
+Als Nutzer möchte ich in den Settings mit einem Klick testen können, ob meine Verbindung zum Server gut ist, damit ich verstehe, warum Streams manchmal ruckeln oder langsam laden. Ich möchte ein einfaches Ampel-System sehen, das mir sofort zeigt, ob die Verbindung gut, moderat oder schlecht ist.
+
+### Acceptance Criteria
+**MUST-HAVE:**
+- User kann in Settings → Connection einen Performance-Test manuell per Button starten
+- Performance-Test misst:
+  - **Ping/Connect-Zeit** zum Server
+  - **API-Response-Zeit** für wichtige Endpoints (z.B. `get_live_categories`)
+  - **Download-Geschwindigkeit** (optional, nur nach User-Bestätigung wegen Datenverbrauch)
+- Während Test läuft: Loading-Indikator mit Status-Text (z.B. "Teste Verbindung...")
+- Nach Test: Ampel-System zeigt Ergebnis:
+  - 🟢 **Grün**: Verbindung gut (durchschnittliche Response-Zeit < 1000ms)
+  - 🟡 **Gelb**: Verbindung moderat (1000-2000ms)
+  - 🔴 **Rot**: Verbindung langsam (> 2000ms oder Fehler)
+- Kurze Erklärung zum Status wird angezeigt (z.B. "Server antwortet schnell", "Server überlastet", "Verbindung langsam")
+- Test kann jederzeit abgebrochen werden (Zurück-Taste oder Abbrechen-Button)
+- Debug-Overlay kann die gleiche Test-Funktion aufrufen und Ergebnis anzeigen
+- Fehlerbehandlung: Timeout, Netzwerk-Fehler, ungültige Credentials werden abgefangen und angezeigt
+
+**SHOULD-HAVE:**
+- Einzelne Metriken werden angezeigt (z.B. "Ping: 120ms, API: 450ms, Download: 8.5 Mbps")
+- Warnung bei sehr schlechter Verbindung ("Server scheint überlastet oder nicht erreichbar")
+- Download-Test zeigt Warnung vor Start ("Lädt ca. 1-2 MB Daten. Fortfahren?")
+
+**NICE-TO-HAVE:**
+- Detaillierte Metriken sind ausklappbar/einblendbar
+- Test-Timeout ist konfigurierbar (Default: 10 Sekunden)
+- Ampel-Status wird auch im Debug-Overlay persistent angezeigt (nach letztem Test)
+
+### Examples
+- User öffnet Settings → Connection → sieht Button "Verbindung testen" → klickt Button → Test läuft 5-10 Sekunden → Ampel wird grün 🟢 → Text: "Gut (450ms) - Server antwortet schnell"
+- User öffnet Settings → Connection → startet Test → Test läuft → Ampel wird rot 🔴 → Text: "Langsam (2500ms) - Server scheint überlastet"
+- User schaut Stream → Stream ruckelt → öffnet Debug-Overlay → klickt "Verbindung testen" → Test läuft → Ampel wird gelb 🟡 → Text: "Moderat (1200ms) - Verbindung könnte besser sein"
+- User startet Test → Test läuft → User drückt Zurück-Taste → Test wird abgebrochen → Ampel bleibt auf letztem bekannten Status oder zeigt "Nicht getestet"
+- User startet Test → Netzwerk-Fehler tritt auf → Ampel wird rot 🔴 → Text: "Fehler - Keine Verbindung zum Server"
+- User startet Test → Download-Test wird angeboten → Dialog: "Lädt ca. 1-2 MB Daten. Fortfahren?" → User wählt "Ja" → Download-Speed wird gemessen und angezeigt
+
+### Technical Notes
+- **Aktuelles Verhalten:**
+  - Keine Performance-Monitoring-Funktion in der App
+  - `test_server_performance.sh` Script existiert bereits (Bash-Script mit curl)
+  - Script misst: Connect-Zeit, Response-Zeit, Download-Geschwindigkeit
+  
+- **Zu implementieren:**
+  
+  - **Datenmodell (minimal):**
+    - Neue `PerformanceTestResult` data class:
+      - `pingTime: Long?` (Ping-Zeit in ms)
+      - `apiResponseTime: Long?` (API-Response-Zeit in ms)
+      - `downloadSpeed: Double?` (Download-Geschwindigkeit in Mbps, optional)
+      - `status: ConnectionStatus` (GOOD, MODERATE, SLOW)
+      - `statusMessage: String` (User-freundliche Erklärung)
+      - `timestamp: Long` (Zeitpunkt des Tests)
+    - `enum class ConnectionStatus { GOOD, MODERATE, SLOW }`
+  
+  - **Service-Layer (minimal):**
+    - Neue `ServerPerformanceService` Klasse:
+      - `testConnection(serverUrl: String): Flow<PerformanceTestResult>`
+      - `measurePing(serverUrl: String): Long?` (Connect-Zeit messen)
+      - `measureApiResponse(endpoint: String, action: String): Long?` (Response-Zeit für einen Endpoint)
+      - `measureDownloadSpeed(streamUrl: String): Double?` (optional, nur nach User-Bestätigung)
+      - `calculateStatus(avgResponseTime: Long): ConnectionStatus` (Status basierend auf durchschnittlicher Response-Zeit)
+      - `getStatusMessage(status: ConnectionStatus, avgTime: Long): String` (User-freundliche Nachricht)
+    - Performance-Messung:
+      - Verwendet `System.currentTimeMillis()` oder `System.nanoTime()` für Zeitmessung
+      - Misst Connect-Zeit und Total-Zeit für API-Calls
+      - Download-Speed-Test: Lädt 1-2MB Chunk und misst Geschwindigkeit
+      - Timeout: Max. 10 Sekunden pro Test, 5 Sekunden Connect-Timeout
+    - Keine Persistierung: Ergebnis wird nur im Memory gehalten (StateFlow)
+  
+  - **ViewModel:**
+    - `ConnectionSettingsViewModel` erweitern:
+      - `testResult: StateFlow<PerformanceTestResult?>` (aktuelles Test-Ergebnis)
+      - `isTesting: StateFlow<Boolean>` (Test läuft gerade)
+      - `testProgress: StateFlow<String>` (z.B. "Teste Verbindung...", "Messe Download-Geschwindigkeit...")
+      - `startPerformanceTest()` (Test starten)
+      - `cancelTest()` (Test abbrechen)
+    - Oder: Neue `ServerPerformanceViewModel` (falls besser für Separation of Concerns)
+    - Debug-Overlay kann das gleiche ViewModel konsumieren
+  
+  - **UI-Layer:**
+    - **Settings → Connection erweitern:**
+      - Button "Verbindung testen" hinzufügen
+      - Ampel-Indikator (Icon + Farbe: grün/gelb/rot)
+      - Status-Text unter Ampel (z.B. "Gut (450ms)")
+      - Erklärungstext (z.B. "Server antwortet schnell")
+      - Optional: Detaillierte Metriken ausklappbar (Ping, API, Download)
+      - Loading-State während Test (Spinner + Progress-Text)
+      - D-Pad Navigation (Button fokussierbar, Zurück-Taste bricht Test ab)
+    - **Debug-Overlay erweitern:**
+      - Button "Verbindung testen" hinzufügen
+      - Zeigt gleiches Ampel-System wie in Settings
+      - Zeigt Test-Ergebnis kompakt (Status + wichtigste Metrik)
+      - Optional: Zeigt letzten Test-Status persistent (auch nach Overlay-Schließen)
+  
+  - **Status-Berechnung:**
+    - Durchschnittliche Response-Zeit = (Ping + API-Response-Zeit) / 2
+    - Status-Schwellenwerte:
+      - `GOOD`: < 1000ms
+      - `MODERATE`: 1000ms - 2000ms
+      - `SLOW`: >= 2000ms oder Fehler aufgetreten
+    - Status-Messages:
+      - `GOOD`: "Server antwortet schnell"
+      - `MODERATE`: "Verbindung könnte besser sein"
+      - `SLOW`: "Server überlastet oder Verbindung langsam"
+      - Bei Fehler: "Keine Verbindung zum Server" oder "Server nicht erreichbar"
+  
+  - **Download-Speed-Test (optional):**
+    - Zeige Dialog vor Download-Test: "Lädt ca. 1-2 MB Daten. Fortfahren?"
+    - User kann ablehnen → Download-Test wird übersprungen
+    - Wenn User zustimmt:
+      - Hole Stream-URL (z.B. ersten verfügbaren Live-Stream)
+      - Lade 1-2MB Chunk (Range-Request: 0-2097152)
+      - Miss Download-Zeit und berechne Geschwindigkeit
+      - Formatiere als Mbps (Megabits pro Sekunde)
+      - Timeout: 10 Sekunden
+    - Wenn keine Stream-URL verfügbar: Download-Test überspringen, Warnung anzeigen
+  
+  - **API-Endpoint-Tests:**
+    - Teste mindestens einen wichtigen Endpoint:
+      - `get_live_categories` (schnell, klein)
+    - Optional: Teste mehrere Endpoints und berechne Durchschnitt:
+      - `get_live_categories`
+      - `get_vod_categories`
+    - Miss für jeden Endpoint: Total-Zeit (Connect + Response)
+  
+  - **Integration mit bestehenden Services:**
+    - `XtreamApiService` verwenden für API-Calls
+    - `CredentialsRepository` verwenden für Server-URL und Credentials
+    - Keine Änderungen an bestehenden Services nötig (nur konsumieren)
+  
+  - **Fehlerbehandlung:**
+    - Timeout: Wenn Test länger als 10 Sekunden dauert → Abbruch, Status = SLOW, Message = "Timeout - Server antwortet nicht"
+    - Netzwerk-Fehler: Wenn keine Verbindung → Status = SLOW, Message = "Keine Internetverbindung"
+    - API-Fehler: Wenn Endpoint fehlschlägt → Status = SLOW, Message = "Server nicht erreichbar"
+    - Ungültige Credentials: Status = SLOW, Message = "Zugangsdaten ungültig"
+    - Download-Test fehlschlägt: Warnung anzeigen, Test fortsetzen ohne Download-Metrik
+    - User bricht Test ab: Test stoppen, letztes Ergebnis beibehalten (falls vorhanden)
+  
+  - **Performance-Optimierung:**
+    - Performance-Tests laufen in Coroutines (Background-Thread)
+    - Keine Blockierung der UI während Tests
+    - Tests können jederzeit abgebrochen werden (Coroutine-Cancellation)
+    - Progress-Updates gedrosselt (nicht bei jedem Schritt, nur bei wichtigen Meilensteinen)
+  
+  - **Edge-Cases:**
+    - Was passiert, wenn User während Test die App schließt? → Test wird automatisch abgebrochen (Coroutine-Lifecycle)
+    - Was passiert, wenn mehrere Tests gleichzeitig gestartet werden? → Nur ein Test gleichzeitig erlauben (Button disabled während Test)
+    - Was passiert, wenn Server während Test nicht erreichbar ist? → Fehler-Status anzeigen (rot), Message = "Server nicht erreichbar"
+    - Was passiert, wenn Download-Test keine Stream-URL findet? → Download-Test überspringen, Warnung anzeigen, Test fortsetzen
+    - Was passiert bei sehr langsamen Verbindungen? → Timeout nach 10 Sekunden, Status = SLOW
+    - Was passiert, wenn User Credentials ändert während Test läuft? → Test mit alten Credentials fortsetzen (oder abbrechen und neu starten)
+    - Was passiert, wenn Debug-Overlay und Settings gleichzeitig Test starten? → Shared ViewModel verhindert doppelte Tests
+
+### Definition of Done
+- [ ] `ServerPerformanceService` implementiert (Ping, API-Test, optional Download-Speed)
+- [ ] `ConnectionSettingsViewModel` erweitert (Test-Funktion, State-Management)
+- [ ] Settings → Connection UI erweitert (Button, Ampel, Status-Text, Loading-State)
+- [ ] Debug-Overlay erweitert (Button, Ampel, Test-Funktion konsumiert gleiches ViewModel)
+- [ ] Ampel-System implementiert (🟢 GOOD, 🟡 MODERATE, 🔴 SLOW)
+- [ ] Status-Berechnung implementiert (basierend auf durchschnittlicher Response-Zeit)
+- [ ] Status-Messages implementiert (User-freundliche Erklärungen)
+- [ ] Loading-State während Test (Spinner, Progress-Text)
+- [ ] Test kann abgebrochen werden (Zurück-Taste, Abbrechen-Button)
+- [ ] Fehlerbehandlung implementiert (Timeout, Netzwerk-Fehler, API-Fehler, ungültige Credentials)
+- [ ] Download-Test mit User-Warnung implementiert (optional, überspringbar)
+- [ ] D-Pad Navigation funktioniert (Button fokussierbar, Navigation konsistent)
+- [ ] Manuelle Tests durchgeführt (gute Verbindung, schlechte Verbindung, Netzwerk-Fehler, Timeout)
+- [ ] Edge-Cases getestet (Test abbrechen, App schließen während Test, mehrere Tests gleichzeitig)
+- [ ] Performance-Tests laufen im Background (keine UI-Blockierung)
+- [ ] Debug-Overlay kann Test-Funktion aufrufen und Ergebnis anzeigen
+
+---
+
+## Story #27: Thumbnail-Preview während Scrubber-Drag und D-Pad-Navigation
+
+### User View
+Als Nutzer möchte ich während des Ziehens des Scrubbers auf der Progress-Bar oder beim Vorspulen mit D-Pad links/rechts eine Thumbnail-Vorschau der berechneten Position sehen, ähnlich wie bei Netflix oder YouTube. Dies hilft mir, schnell die richtige Stelle im Video zu finden, ohne erst zur Position springen zu müssen.
+
+### Acceptance Criteria
+- **Thumbnail-Anzeige während Drag (Touch):**
+  - Thumbnail erscheint oberhalb der Progress-Bar, wenn User den Scrubber zieht
+  - Thumbnail zeigt einen Frame der berechneten Video-Position
+  - Thumbnail wird in Echtzeit aktualisiert, während User den Scrubber zieht
+  - Thumbnail verschwindet, wenn User den Scrubber loslässt oder Drag abbricht
+- **Thumbnail-Anzeige während D-Pad-Navigation (TV-Remote):**
+  - Thumbnail erscheint oberhalb der Progress-Bar, wenn User D-Pad links oder rechts drückt
+  - Thumbnail zeigt einen Frame der berechneten Video-Position (basierend auf `pendingSeekPosition`)
+  - Thumbnail wird aktualisiert, wenn User wiederholt D-Pad links/rechts drückt (akkumuliertes Seek)
+  - Thumbnail verschwindet, wenn User D-Pad-Taste loslässt und Seek committed wird (nach `SEEK_COMMIT_DELAY_MS`)
+  - Thumbnail bleibt sichtbar während der gesamten Seek-Sequenz (während `pendingSeekPosition` gesetzt ist)
+- **Thumbnail-Generierung:**
+  - Thumbnail wird aus dem Video-Frame an der berechneten Position extrahiert
+  - Falls Frame-Extraktion nicht möglich: Placeholder oder Fallback-Bild anzeigen
+  - Thumbnail-Größe: angemessen für Preview (z.B. 160x90dp oder 16:9 Aspect Ratio)
+  - Thumbnail-Qualität: ausreichend für schnelle Erkennung, aber nicht zu groß (Performance)
+- **Performance:**
+  - Thumbnail-Generierung erfolgt asynchron (blockiert UI nicht)
+  - Thumbnail-Caching: bereits generierte Thumbnails werden gecacht (z.B. alle 5-10 Sekunden)
+  - Thumbnail-Updates gedrosselt:
+    - Drag-Gesten: Nicht bei jedem Drag-Event, sondern z.B. alle 200-500ms
+    - D-Pad-Navigation: Nicht bei jedem D-Pad-Press, sondern z.B. alle 200-500ms (ähnlich wie Seek-Debounce)
+  - Keine UI-Blockierung während Thumbnail-Generierung
+  - Memory-Management: alte Thumbnails werden aus Cache entfernt, wenn nicht mehr benötigt
+- **Visuelles Design:**
+  - Thumbnail wird zentriert oberhalb des Scrubber-Punkts angezeigt
+  - Optional: Zeit-Anzeige unterhalb oder oberhalb des Thumbnails
+  - Schatten/Elevation für bessere Sichtbarkeit
+  - Fade-In/Fade-Out Animation beim Erscheinen/Verschwinden
+  - Placeholder während Laden: Loading-Indicator oder generisches Video-Icon
+
+### Examples
+- **Touch-Drag:**
+  - User zieht Scrubber → Thumbnail erscheint oberhalb → zeigt Frame bei 12:34 → User zieht weiter → Thumbnail aktualisiert sich zu 15:20 → User lässt los → Thumbnail verschwindet
+  - User zieht Scrubber schnell → Thumbnail-Updates sind gedrosselt → zeigt nur alle 500ms neue Position → Performance bleibt flüssig
+  - User zieht Scrubber zu Position ohne verfügbaren Frame → Placeholder wird angezeigt → User sieht trotzdem visuelles Feedback
+  - User zieht Scrubber mehrmals zu ähnlichen Positionen → Thumbnails werden aus Cache geladen → schnelle Anzeige
+- **D-Pad-Navigation (TV-Remote):**
+  - User drückt D-Pad rechts → Thumbnail erscheint oberhalb → zeigt Frame bei +10s → User drückt erneut rechts → Thumbnail aktualisiert sich zu +20s → User lässt Taste los → Seek wird committed → Thumbnail verschwindet
+  - User drückt D-Pad links mehrmals schnell → Thumbnail-Updates sind gedrosselt → zeigt nur alle 500ms neue Position → Performance bleibt flüssig
+  - User drückt D-Pad rechts während Video läuft → Thumbnail zeigt Frame der berechneten Position → Seek-Feedback zeigt "+10s" → Thumbnail bleibt sichtbar bis Seek committed wird
+  - User drückt D-Pad links/rechts zu Position ohne verfügbaren Frame → Placeholder wird angezeigt → User sieht trotzdem visuelles Feedback
+
+### Technical Notes
+- **Aktuelles Verhalten:**
+  - `VideoProgressBar` unterstützt bereits Drag-Gesten
+  - D-Pad-Navigation ist bereits implementiert (`handleDpadSeek` in PlayerScreen.kt)
+  - D-Pad-Seek verwendet `pendingSeekPosition` für visuelles Feedback
+  - Seek wird nach `SEEK_COMMIT_DELAY_MS` (400ms) committed
+  - `seekFeedbackText` zeigt bereits Offset an (z.B. "+10s" oder "-10s")
+  - Keine Thumbnail-Preview vorhanden
+  
+- **Zu implementieren:**
+  
+  - **Thumbnail-Extraktion mit ExoPlayer:**
+    - ExoPlayer Media3 bietet `VideoFrameMetadataListener` oder `FrameProcessor` für Frame-Extraktion
+    - Alternative: Temporärer Seek zu Position → Frame aus `Surface` extrahieren → Zurück zur ursprünglichen Position
+    - Oder: `VideoDecoderOutputBufferRenderer` verwenden für Frame-Zugriff
+    - WICHTIG: Seek während Drag sollte nicht das aktuelle Video beeinflussen (temporärer Player oder Frame-Extraktion ohne Seek)
+    
+  - **Frame-Extraktion-Strategien:**
+    - **Strategie 1: Temporärer Seek (einfach, aber möglicherweise langsam):**
+      - Während Drag: Temporär zu berechneter Position seeken
+      - Frame aus aktueller `Surface` extrahieren
+      - Zurück zur ursprünglichen Position seeken
+      - Problem: Kann zu Performance-Problemen führen, wenn zu oft geseekt wird
+    - **Strategie 2: FrameProcessor (komplexer, aber performanter):**
+      - ExoPlayer Media3 `FrameProcessor` verwenden
+      - FrameProcessor kann Frames während Playback extrahieren
+      - Asynchron Frame-Extraktion ohne Seek
+      - Problem: Komplexere Implementierung, möglicherweise nicht für alle Video-Formate verfügbar
+    - **Strategie 3: Thumbnail-Generierung im Hintergrund (beste UX):**
+      - Thumbnails werden im Hintergrund generiert (z.B. alle 5-10 Sekunden)
+      - Während Drag: Nächstes verfügbares Thumbnail anzeigen
+      - Interpolation zwischen Thumbnails für bessere UX
+      - Problem: Erfordert Vorberechnung und mehr Speicher
+    
+  - **Thumbnail-Caching:**
+    - Cache-Struktur: `Map<Long, Bitmap>` (Position in ms → Thumbnail-Bitmap)
+    - Cache-Größe: Maximal 20-50 Thumbnails (Memory-Management)
+    - Cache-Invalidierung: LRU (Least Recently Used) Strategie
+    - Cache-Key: Video-URL + Position (für verschiedene Videos)
+    - Optional: Persistenter Cache auf Disk für bessere Performance bei wiederholtem Abspielen
+    
+  - **State Management:**
+    - `thumbnailPosition: Long?` State (berechnete Position für Thumbnail)
+    - `thumbnailBitmap: Bitmap?` State (aktuelles Thumbnail-Bitmap)
+    - `isLoadingThumbnail: Boolean` State (wird Thumbnail gerade geladen?)
+    - `thumbnailCache: Map<Long, Bitmap>` State (Cache für Thumbnails)
+    
+  - **UI-Integration:**
+    - Neue `ThumbnailPreview` Composable erstellen
+    - `ThumbnailPreview` wird in `VideoProgressBar` oder `PlayerScreen` eingebunden
+    - Position: Oberhalb der Progress-Bar, zentriert über Scrubber (bei Drag) oder über Progress-Bar (bei D-Pad)
+    - Sichtbarkeit: 
+      - Bei Drag: Nur wenn `isDragging == true`
+      - Bei D-Pad: Nur wenn `pendingSeekPosition != null` (während Seek-Sequenz)
+    - Layout: `Box` mit `offset` für Positionierung relativ zum Scrubber oder Progress-Bar
+    - Integration mit bestehender `handleDpadSeek` Funktion: Thumbnail-Position basiert auf `pendingSeekPosition`
+    
+  - **Performance-Optimierung:**
+    - Thumbnail-Updates gedrosselt: 
+      - Drag-Gesten: Nicht bei jedem Drag-Event, sondern z.B. alle 200-500ms
+      - D-Pad-Navigation: Nicht bei jedem D-Pad-Press, sondern z.B. alle 200-500ms (ähnlich wie `SEEK_DEBOUNCE_MS`)
+    - `LaunchedEffect` mit `debounce` für Thumbnail-Updates
+    - Frame-Extraktion in Background-Thread (nicht UI-Thread)
+    - Thumbnail-Größe optimiert: Nicht zu groß (z.B. 160x90dp), aber ausreichend für Erkennung
+    - Memory-Management: `Bitmap.recycle()` für nicht mehr benötigte Thumbnails
+    - Cache-Limit: Maximal 20-50 Thumbnails im Memory-Cache
+    - D-Pad-spezifisch: Thumbnail-Updates sollten mit `SEEK_COMMIT_DELAY_MS` synchronisiert werden, um unnötige Updates zu vermeiden
+    
+  - **Fallback-Strategien:**
+    - Falls Frame-Extraktion fehlschlägt: Placeholder-Bild anzeigen
+    - Falls Video-Format nicht unterstützt: Generisches Video-Icon
+    - Falls Seek nicht möglich (z.B. Live-Stream ohne Buffer): Kein Thumbnail, nur Zeit-Anzeige
+    - Falls Thumbnail-Generierung zu langsam: Loading-Indicator während Wartezeit
+    
+  - **Content-Type-spezifische Logik:**
+    - **VOD (Filme):**
+      - Thumbnail-Preview für alle Positionen möglich
+      - Frame-Extraktion sollte funktionieren
+    - **Serien-Episoden:**
+      - Thumbnail-Preview für alle Positionen möglich
+      - Frame-Extraktion sollte funktionieren
+    - **Live-TV:**
+      - Thumbnail-Preview nur für gepufferte Positionen möglich
+      - Falls kein Buffer: Kein Thumbnail, nur Zeit-Anzeige
+      - Frame-Extraktion möglicherweise nicht möglich
+    
+  - **Edge-Cases:**
+    - **Drag-Gesten:**
+      - Was passiert, wenn User sehr schnell zieht? → Thumbnail-Updates sind gedrosselt, zeigt nächstes verfügbares Thumbnail
+      - Was passiert, wenn User Drag abbricht? → Thumbnail verschwindet sofort
+    - **D-Pad-Navigation:**
+      - Was passiert, wenn User sehr schnell D-Pad drückt? → Thumbnail-Updates sind gedrosselt, zeigt nächstes verfügbares Thumbnail
+      - Was passiert, wenn User D-Pad-Taste loslässt bevor Seek committed wird? → Thumbnail bleibt sichtbar bis Seek committed, dann verschwindet
+      - Was passiert, wenn User D-Pad während Drag drückt? → Priorität: Drag-Geste hat Vorrang, D-Pad wird ignoriert
+    - **Allgemein:**
+      - Was passiert, wenn Frame-Extraktion fehlschlägt? → Placeholder wird angezeigt
+      - Was passiert bei sehr kurzen Videos (< 10 Sekunden)? → Thumbnail-Preview funktioniert trotzdem
+      - Was passiert, wenn Video-Format Frame-Extraktion nicht unterstützt? → Placeholder oder generisches Icon
+      - Was passiert bei Live-Streams ohne Buffer? → Kein Thumbnail, nur Zeit-Anzeige
+      - Was passiert, wenn Memory-Cache voll ist? → LRU-Strategie entfernt älteste Thumbnails
+    
+  - **Testing:**
+    - **Drag-Gesten:**
+      - Test: Scrubber ziehen → Thumbnail erscheint oberhalb
+      - Test: Scrubber ziehen → Thumbnail aktualisiert sich während Drag
+      - Test: Scrubber loslassen → Thumbnail verschwindet
+    - **D-Pad-Navigation:**
+      - Test: D-Pad rechts drücken → Thumbnail erscheint oberhalb → zeigt Frame bei +10s
+      - Test: D-Pad links/rechts mehrmals drücken → Thumbnail aktualisiert sich während Seek-Sequenz
+      - Test: D-Pad-Taste loslassen → Seek wird committed → Thumbnail verschwindet nach Commit
+      - Test: D-Pad während Drag → Drag hat Vorrang, D-Pad wird ignoriert
+    - **Allgemein:**
+      - Test: Performance → Thumbnail-Updates sind flüssig, keine UI-Blockierung
+      - Test: Cache → Thumbnails werden gecacht und wiederverwendet
+      - Test: Fallback → Placeholder wird angezeigt, wenn Frame-Extraktion fehlschlägt
+      - Test: Live-Stream → Kein Thumbnail bei nicht-gepufferten Positionen
+      - Test: Memory → Cache-Limit wird eingehalten, alte Thumbnails werden entfernt
+      - Test: TV-Remote → Thumbnail funktioniert mit D-Pad-Navigation auf TV-Geräten
+
+### Definition of Done
+- [ ] Thumbnail-Extraktion implementiert (FrameProcessor oder temporärer Seek)
+- [ ] Thumbnail-Caching implementiert (Memory-Cache mit LRU-Strategie)
+- [ ] ThumbnailPreview Composable erstellt und in UI integriert
+- [ ] Thumbnail erscheint oberhalb der Progress-Bar während Drag (Touch)
+- [ ] Thumbnail erscheint oberhalb der Progress-Bar während D-Pad-Navigation (TV-Remote)
+- [ ] Thumbnail-Integration mit `handleDpadSeek` und `pendingSeekPosition`
+- [ ] Thumbnail-Updates sind gedrosselt (nicht bei jedem Drag-Event oder D-Pad-Press)
+- [ ] Thumbnail-Generierung erfolgt asynchron (blockiert UI nicht)
+- [ ] Fallback-Strategien implementiert (Placeholder, generisches Icon)
+- [ ] Content-Type-spezifische Logik (VOD, Serien, Live-TV)
+- [ ] Memory-Management (Cache-Limit, Bitmap.recycle())
+- [ ] Performance optimiert (gedrosselte Updates, asynchrone Generierung)
+- [ ] Visuelles Design (Position, Schatten, Animationen)
+- [ ] Edge-Cases behandelt (fehlgeschlagene Extraktion, Live-Streams, Memory-Cache voll, Drag vs. D-Pad)
+- [ ] Manuelle Tests durchgeführt (Drag, D-Pad-Navigation, Thumbnail-Anzeige, Performance, Cache)
+- [ ] Performance getestet (keine UI-Blockierung, flüssige Updates)
+- [ ] TV-Remote-Tests durchgeführt (D-Pad-Navigation auf TV-Geräten)
+
+---
+
+## Story #28: Migrations-Logik für Category Visibility entfernen
+
+### User View
+Als Entwickler möchte ich die Migrations-Logik für Category Visibility entfernen, nachdem alle Nutzer die Migration durchgeführt haben, um den Code sauberer und wartbarer zu halten.
+
+### Acceptance Criteria
+- Migrations-Logik aus `CategoryVisibilityService` entfernt
+- Migration-Methoden (`performMigration`, `loadLocalData`, `loadLocalCategoriesForKey`, `clearLocalData`) entfernt
+- Migration-Flag-Prüfung in `loadFromFirestore()` entfernt
+- `migrationPrefs` SharedPreferences und zugehörige Keys entfernt
+- Optional: `migrateHiddenCategoriesFromLocal()` aus `UserRepository` entfernt (falls nicht mehr benötigt)
+- Code kompiliert ohne Fehler
+- Alle Tests bestehen (falls vorhanden)
+
+### Examples
+- Entwickler öffnet `CategoryVisibilityService.kt` → Keine Migrations-Logik mehr vorhanden
+- App startet → Lädt direkt von Firestore, keine Migration-Prüfung
+- Nutzer mit bereits migrierten Daten → Funktioniert weiterhin normal (Daten sind bereits in Firestore)
+
+### Technical Notes
+- **Aktueller Status:**
+  - Migration ist Flag-basiert (`KEY_MIGRATION_COMPLETE` in SharedPreferences)
+  - Wird nur einmal pro Nutzer ausgeführt
+  - Nach erfolgreicher Migration werden lokale Daten gelöscht
+  
+- **Zu entfernen:**
+  - `performMigration()` Methode
+  - `loadLocalData()` Methode
+  - `loadLocalCategoriesForKey()` Methode
+  - `clearLocalData()` Methode
+  - Migration-Flag-Prüfung in `loadFromFirestore()` (Zeile 64-67)
+  - `migrationPrefs` SharedPreferences-Instanz
+  - Companion-Object Keys: `KEY_HIDDEN_LIVE_CATEGORIES`, `KEY_HIDDEN_VOD_CATEGORIES`, `KEY_HIDDEN_SERIES_CATEGORIES`, `KEY_MIGRATION_COMPLETE`
+  - Optional: `migrateHiddenCategoriesFromLocal()` in `UserRepository` (falls nicht mehr benötigt)
+  
+- **Zeitpunkt:**
+  - Nach 1-2 App-Versionen (ca. 3-6 Monate nach Einführung)
+  - Wenn sichergestellt ist, dass alle aktiven Nutzer die Migration durchgeführt haben
+  - Optional: Analytics/Logs prüfen, ob noch Migration-Aufrufe vorhanden sind
+  
+- **Vorteile:**
+  - Weniger Legacy-Code
+  - Einfacherer, wartbarer Code
+  - Keine unnötigen SharedPreferences-Zugriffe mehr
+  - Klarere Code-Struktur
+
+### Definition of Done
+- [ ] Migrations-Methoden aus `CategoryVisibilityService` entfernt
+- [ ] Migration-Flag-Prüfung entfernt
+- [ ] `migrationPrefs` und Keys entfernt
+- [ ] Optional: `migrateHiddenCategoriesFromLocal()` aus `UserRepository` entfernt
+- [ ] Code kompiliert ohne Fehler
+- [ ] Manuelle Tests: App startet und lädt Daten von Firestore
+- [ ] Manuelle Tests: Category Visibility funktioniert weiterhin (hide/show)
+- [ ] Code-Review durchgeführt
+
+---
+
+## Story #29: Dependency-Updates Phase 1: Kritische Updates (AGP, Kotlin, Compose BOM, Media3, Coil)
+
+### User View
+Als Entwickler möchte ich die kritischsten Dependencies aktualisieren (AGP 9.0, Kotlin 2.3.0, Compose BOM 2026.01.00, Media3 1.9.1, Coil 3.3.0), um von den neuesten Features, Performance-Verbesserungen und Security-Patches zu profitieren, während die App stabil funktioniert.
+
+### Acceptance Criteria
+- AGP von 8.13.2 auf 9.0.0 aktualisiert
+- Kotlin von 2.0.21 auf 2.3.0 aktualisiert
+- KSP auf 2.0.21-1.0.33 aktualisiert (kompatibel mit AGP 9.0)
+- Compose BOM von 2023.10.01 auf 2026.01.00 aktualisiert
+- coreKtx von 1.10.1 auf 1.13.0 aktualisiert
+- Media3 von 1.3.1 auf 1.9.1 aktualisiert
+- Coil von 2.5.0 auf 3.3.0 aktualisiert
+- Gradle auf 9.1.0+ aktualisiert (falls erforderlich)
+- `libs.versions.toml` enthält alle aktualisierten Versionen
+- Projekt kompiliert ohne Fehler
+- Alle Breaking Changes behoben
+- App funktioniert stabil nach Updates
+- Build-Performance nicht verschlechtert
+
+### Examples
+- Entwickler aktualisiert `libs.versions.toml` → Projekt kompiliert erfolgreich
+- Entwickler startet App → Alle Features funktionieren wie vorher
+- Entwickler navigiert durch App → Compose UI läuft flüssig mit neuer BOM 2026.01.00
+- Entwickler spielt Video ab → Media3 1.9.1 Player funktioniert korrekt
+- Entwickler lädt Bilder → Coil 3.3.0 lädt Bilder korrekt
+- Entwickler baut Release → Build mit AGP 9.0.0 erfolgreich
+
+### Technical Notes
+- **Aktuelle Situation:**
+  - AGP 8.13.2 (9.0.0 ist Major Release mit Breaking Changes)
+  - Compose BOM von Oktober 2023 (sehr veraltet, 2+ Jahre alt)
+  - Media3 um 1.6 Versionen zurück
+  - Coil 2 Versionen zurück
+  - Kotlin 2.0.21 (2.3.0 ist aktuell)
+
+- **Breaking Changes (AGP 9.0.0):**
+  - Erfordert Gradle 9.1.0+
+  - Kotlin-Support ist built-in (KGP 2.2.10 Minimum)
+  - Alte DSL-Interfaces entfernt – Update erforderlich
+  - Kann vorübergehend mit `android.newDsl=false` deaktiviert werden (funktioniert nicht in AGP 10.0)
+  - Migration-Guide: https://developer.android.com/build/agp-upgrade-assistant
+
+- **Wichtige Updates:**
+  - **Compose BOM 2026.01.00:** Dringend notwendig, stellt Kompatibilität aller Compose-Bibliotheken sicher
+  - **Media3 1.9.1:** Bringt stabile Compose UI-Module (`media3-ui-compose`, `media3-ui-compose-material3`)
+  - **Kotlin 2.3.0:** Kompatibilität mit Gradle 9.0, Performance-Verbesserungen
+  - **Coil 3.3.0:** Erfordert Kotlin 2.0+, verbesserte API, Multiplatform-Unterstützung
+
+- **Vorgehen:**
+  1. Updates in `libs.versions.toml` eintragen
+  2. Gradle Sync durchführen
+  3. Breaking Changes identifizieren und beheben
+  4. Projekt kompilieren und testen
+  5. Nach erfolgreicher Validierung Phase 2 durchführen (Story #30)
+
+- **Zu testen nach Updates:**
+  - App-Start und Navigation
+  - Compose UI-Komponenten (alle Screens)
+  - Media3 Player (Video-Wiedergabe, HLS-Streams)
+  - Coil Image Loading (alle Bildanzeigen)
+  - Build-Performance
+
+- **Risiken:**
+  - AGP 9.0.0 Breaking Changes können Build-Konfiguration anpassen erfordern
+  - Coil 3.3.0 API-Änderungen könnten Code-Anpassungen erfordern
+  - Media3 1.9.1 könnte Player-API-Änderungen haben
+
+- **Vorteile:**
+  - Aktuelle Security-Patches
+  - Performance-Verbesserungen
+  - Neue Features und APIs
+  - Bessere Kompatibilität mit neueren Android-Versionen
+
+### Definition of Done
+- [ ] `libs.versions.toml` mit kritischen Updates aktualisiert
+- [ ] Gradle auf 9.1.0+ aktualisiert (falls erforderlich)
+- [ ] Alle Breaking Changes behoben
+- [ ] Projekt kompiliert ohne Fehler
+- [ ] Manuelle Tests durchgeführt (App-Start, Navigation, Player, Images)
+- [ ] Build-Performance getestet (keine Verschlechterung)
+- [ ] Code-Review durchgeführt
+- [ ] Phase 2 kann gestartet werden (Story #30)
+
+---
+
+## Story #30: Dependency-Updates Phase 2: Wichtige Updates (appcompat, activity, Hilt, constraintlayout)
+
+### User View
+Als Entwickler möchte ich nach erfolgreicher Phase 1 die wichtigen AndroidX-Bibliotheken und Hilt aktualisieren, um von neueren Features und Bug-Fixes zu profitieren, während die App stabil funktioniert.
+
+### Acceptance Criteria
+- appcompat von 1.6.1 auf 1.7.1 aktualisiert
+- activity von 1.8.0 auf 1.12.1 aktualisiert
+- composeActivity von 1.8.2 auf 1.12.1 aktualisiert
+- Hilt von 2.51.1 auf 2.57.1 aktualisiert
+- constraintlayout von 2.1.4 auf 2.2.0 aktualisiert
+- lifecycle auf neueste stabile Version aktualisiert (prüfen)
+- navigation auf neueste stabile Version aktualisiert (prüfen)
+- `libs.versions.toml` enthält alle aktualisierten Versionen
+- Projekt kompiliert ohne Fehler
+- Alle Funktionalitäten getestet und funktionieren
+- App funktioniert stabil nach Updates
+
+### Examples
+- Entwickler aktualisiert `libs.versions.toml` → Projekt kompiliert erfolgreich
+- Entwickler startet App → Alle Features funktionieren wie vorher
+- Entwickler testet Dependency Injection → Hilt 2.57.1 funktioniert korrekt
+- Entwickler navigiert durch App → Navigation funktioniert mit neuer Version
+- Entwickler testet Activity-Lifecycle → Activity 1.12.1 funktioniert korrekt
+
+### Technical Notes
+- **Voraussetzung:**
+  - Phase 1 (Story #29) muss erfolgreich abgeschlossen sein
+  - App muss stabil mit AGP 9.0.0, Kotlin 2.3.0 und Compose BOM 2026.01.00 laufen
+
+- **Wichtige Updates:**
+  - **Hilt 2.57.1:** Neueste Version mit KSP-Support statt KAPT (schneller)
+  - **activity 1.12.1:** 4 Versionen zurück, bringt neue Features und Bug-Fixes
+  - **appcompat 1.7.1:** Security & Features
+  - **constraintlayout 2.2.0:** Neue Features
+
+- **Vorgehen:**
+  1. Updates in `libs.versions.toml` eintragen
+  2. Gradle Sync durchführen
+  3. Projekt kompilieren und testen
+  4. Alle Features manuell testen
+  5. Nach erfolgreicher Validierung Phase 3 optional durchführen (Story #31)
+
+- **Zu testen nach Updates:**
+  - Hilt Dependency Injection (alle Features)
+  - Activity-Lifecycle (App-Start, Navigation, Background/Foreground)
+  - Navigation (alle Screens, Deep Links)
+  - ConstraintLayout (falls verwendet)
+  - Lifecycle-Komponenten (ViewModel, LiveData, etc.)
+
+- **Risiken:**
+  - Hilt 2.57.1 könnte API-Änderungen haben (prüfen Changelog)
+  - Activity 1.12.1 könnte Lifecycle-Änderungen haben
+  - Navigation könnte Breaking Changes haben (prüfen Release Notes)
+
+- **Vorteile:**
+  - Aktuelle Security-Patches
+  - Performance-Verbesserungen
+  - Neue Features und APIs
+  - Bessere Kompatibilität
+
+### Definition of Done
+- [ ] `libs.versions.toml` mit wichtigen Updates aktualisiert
+- [ ] Projekt kompiliert ohne Fehler
+- [ ] Alle Features getestet und funktionieren (Hilt, Navigation, Activity, Lifecycle)
+- [ ] Manuelle Tests durchgeführt
+- [ ] Code-Review durchgeführt
+- [ ] Phase 3 kann optional gestartet werden (Story #31)
+
+---
+
+## Story #31: Dependency-Updates Phase 3: Optionale Updates (Retrofit 3.0, OkHttp 5.3, securityCrypto)
+
+### User View
+Als Entwickler möchte ich optional Retrofit 3.0, OkHttp 5.3 und securityCrypto auf stabile Versionen aktualisieren, wenn die Breaking Changes akzeptabel sind und die Vorteile überwiegen.
+
+### Acceptance Criteria
+- Retrofit von 2.9.0 auf 3.0.0 aktualisiert (nur wenn Breaking Changes akzeptabel)
+- OkHttp von 4.12.0 auf 5.3.0 aktualisiert (nur mit Retrofit 3.0.0)
+- securityCrypto von 1.1.0-alpha06 auf 1.1.0 (stabil) aktualisiert
+- `libs.versions.toml` enthält alle aktualisierten Versionen
+- Projekt kompiliert ohne Fehler
+- Alle Networking-Funktionalitäten getestet und funktionieren
+- Alle API-Calls funktionieren korrekt
+- App funktioniert stabil nach Updates
+
+### Examples
+- Entwickler aktualisiert `libs.versions.toml` → Projekt kompiliert erfolgreich
+- Entwickler testet API-Calls → Retrofit 3.0.0 funktioniert korrekt
+- Entwickler testet OkHttp → OkHttp 5.3.0 funktioniert mit Retrofit 3.0.0
+- Entwickler testet Security-Crypto → Stabile Version funktioniert korrekt
+- Entwickler testet alle Netzwerk-Features → Alle funktionieren wie vorher
+
+### Technical Notes
+- **Voraussetzung:**
+  - Phase 1 (Story #29) muss erfolgreich abgeschlossen sein
+  - Phase 2 (Story #30) muss erfolgreich abgeschlossen sein
+  - App muss stabil laufen
+
+- **Wichtige Hinweise:**
+  - **Retrofit 3.0.0:** Hat Breaking Changes (z.B. RxJava-Support entfernt)
+  - **OkHttp 5.3.0:** Nur mit Retrofit 3.0.0 kompatibel
+  - **securityCrypto 1.1.0:** Stabile Version statt Alpha
+
+- **Breaking Changes (Retrofit 3.0.0):**
+  - RxJava-Support entfernt (falls verwendet, muss auf Coroutines/Kotlin Flow umgestellt werden)
+  - API-Änderungen möglich (prüfen Migration Guide)
+  - Migration-Guide: https://proandroiddev.com/retrofit-3-0-0-detailed-migration-guide-0d2c043d43e3
+
+- **Vorgehen:**
+  1. Prüfen, ob Retrofit 3.0.0 Breaking Changes akzeptabel sind
+  2. Prüfen, ob RxJava verwendet wird (falls ja, Migration erforderlich)
+  3. Updates in `libs.versions.toml` eintragen
+  4. Gradle Sync durchführen
+  5. Breaking Changes identifizieren und beheben
+  6. Projekt kompilieren und testen
+  7. Alle API-Calls testen
+
+- **Zu testen nach Updates:**
+  - Alle API-Calls (Retrofit)
+  - HTTP-Requests (OkHttp)
+  - Error-Handling
+  - Security-Crypto-Funktionalitäten
+  - Netzwerk-Performance
+
+- **Risiken:**
+  - Retrofit 3.0.0 Breaking Changes können größere Code-Anpassungen erfordern
+  - RxJava-Support entfernt (falls verwendet)
+  - OkHttp 5.3.0 könnte API-Änderungen haben
+
+- **Vorteile:**
+  - Aktuelle Security-Patches
+  - Performance-Verbesserungen
+  - Neue Features und APIs
+  - Stabile Version statt Alpha (securityCrypto)
+
+- **Alternative:**
+  - Falls Breaking Changes zu groß sind, kann Phase 3 übersprungen werden
+  - Retrofit 2.9.0 und OkHttp 4.12.0 sind stabil und funktionieren
+
+### Definition of Done
+- [ ] Breaking Changes von Retrofit 3.0.0 geprüft und als akzeptabel eingestuft
+- [ ] `libs.versions.toml` mit optionalen Updates aktualisiert
+- [ ] Alle Breaking Changes behoben
+- [ ] Projekt kompiliert ohne Fehler
+- [ ] Alle API-Calls getestet und funktionieren
+- [ ] Alle Netzwerk-Features getestet
+- [ ] Manuelle Tests durchgeführt
+- [ ] Code-Review durchgeführt
+- [ ] Oder: Entscheidung dokumentiert, Phase 3 zu überspringen
+
+---
+
+virutelle tastatur für login auch nach password mit enter bestätigen können, damit anmeldung direkt getriggert wird.
+
+---
+
+## Story #32: Miniplayer auf Homescreen (YouTube-ähnlich)
+
+### User View
+Als Nutzer möchte ich, dass beim Wechsel zum Homescreen während der Videowiedergabe ein Miniplayer angezeigt wird, ähnlich wie bei YouTube. So kann ich das Video weiterhin verfolgen, während ich andere Apps nutze oder auf dem Homescreen navigiere.
+
+### Acceptance Criteria
+- [ ] Wenn der Nutzer während der Videowiedergabe auf den Homescreen wechselt, wird automatisch ein Miniplayer angezeigt
+- [ ] Miniplayer zeigt das aktuelle Video-Thumbnail oder Video-Vorschau
+- [ ] Miniplayer zeigt Titel des aktuellen Inhalts (Movie/Episode)
+- [ ] Miniplayer zeigt Play/Pause-Button
+- [ ] Miniplayer zeigt Fortschrittsanzeige (aktueller Zeitpunkt)
+- [ ] Miniplayer kann geschlossen werden (X-Button oder Wischen)
+- [ ] Beim Klick auf Miniplayer wird der Nutzer zurück zum Player geleitet
+- [ ] Video läuft im Hintergrund weiter, wenn nicht pausiert
+- [ ] Miniplayer funktioniert nur auf Handy (nicht auf TV)
+- [ ] Miniplayer verschwindet automatisch, wenn Video beendet wird
+
+### Examples
+- Nutzer schaut einen Film → wechselt auf Homescreen → Miniplayer erscheint am unteren Bildschirmrand
+- Nutzer pausiert Video im Miniplayer → Video pausiert, Play-Button wird angezeigt
+- Nutzer klickt auf Miniplayer → App öffnet sich wieder mit Player-Screen
+- Nutzer schließt Miniplayer → Video wird gestoppt
+- Nutzer schaut Serie Episode 3 → wechselt auf Homescreen → Miniplayer zeigt "Serie X - Episode 3"
+
+### Technical Notes
+- **Android-Komponenten:**
+  - `MediaSession` für Background-Playback-Management
+  - `MediaStyle` Notification für System-Integration
+  - `Picture-in-Picture (PiP)` Mode als Alternative prüfen
+  - `Activity.onUserLeaveHint()` oder `onPause()` für Homescreen-Erkennung
+  
+- **UI-Komponenten:**
+  - Overlay-Service oder Floating Window für Miniplayer
+  - System-Window-Type mit `TYPE_APPLICATION_OVERLAY` (benötigt `SYSTEM_ALERT_WINDOW` Permission)
+  - Kompakte Player-Controls (Play/Pause, Close, Progress)
+  
+- **State-Management:**
+  - Player-State muss zwischen App und Miniplayer synchronisiert werden
+  - Video-Position muss persistent sein
+  - Playback-State (playing/paused) muss geteilt werden
+  
+- **Permissions:**
+  - `SYSTEM_ALERT_WINDOW` Permission für Overlay-Window
+  - Runtime-Permission-Request beim ersten Start
+  
+- **Alternative Ansätze:**
+  - Android Picture-in-Picture (PiP) Mode (ab Android 8.0)
+  - MediaSession + MediaStyle Notification (systemintegriert)
+  - Custom Overlay-Service (mehr Kontrolle, aber komplexer)
+
+- **Plattform-spezifisch:**
+  - Nur für Phone/Tablet implementieren (nicht für TV)
+  - Device-Type-Check vor Anzeige des Miniplayers
+
+### Definition of Done
+- [ ] Miniplayer wird beim Homescreen-Wechsel angezeigt
+- [ ] Video läuft im Hintergrund weiter
+- [ ] Play/Pause-Funktionalität funktioniert
+- [ ] Fortschrittsanzeige wird aktualisiert
+- [ ] Miniplayer kann geschlossen werden
+- [ ] Klick auf Miniplayer öffnet Player-Screen
+- [ ] Miniplayer verschwindet bei Video-Ende
+- [ ] Permission-Handling implementiert
+- [ ] Nur auf Handy/Tablet aktiv (nicht TV)
+- [ ] Manuelle Tests auf verschiedenen Android-Versionen durchgeführt
+- [ ] Code-Review durchgeführt
+
+---
+
+## Story #33: Beschleunigtes Vorspulen/Zurückspulen bei längerem D-Pad-Druck
+
+### User View
+Als Nutzer möchte ich beim längeren Drücken der D-Pad Links/Rechts-Tasten schneller durch das Video vorspulen oder zurückspulen können, damit ich bei langen Videos effizienter navigieren kann.
+
+### Acceptance Criteria
+
+**Basis-Verhalten:**
+- [ ] Bei kurzem D-Pad-Druck (Links/Rechts): Standard-Vorspulen/Zurückspulen um 10 Sekunden (wie bisher)
+- [ ] Bei längerem Drücken (Long Press): Geschwindigkeit steigert sich automatisch
+- [ ] Funktioniert sowohl für Vorspulen (Rechts) als auch Zurückspulen (Links)
+- [ ] Funktioniert nur während aktiver Wiedergabe (nicht bei pausiertem Video)
+- [ ] Bei Loslassen der Taste wird die Seek-Operation ausgeführt
+
+**Geschwindigkeitssteigerung (Akkumulierte Zeit):**
+- [ ] Geschwindigkeitssteigerung erfolgt in definierten Intervallen (z.B. alle 2 Sekunden)
+- [ ] **Akkumulierte Seek-Zeit:** Die Zeit addiert sich kontinuierlich während des Drückens
+  - Beispiel: Nach 0s = +10s, nach 2s = +40s (10+30), nach 4s = +100s (10+30+60), nach 6s = +220s (10+30+60+120)
+- [ ] Geschwindigkeitsstufen steigen schrittweise an (z.B. 10s → 30s → 60s → 120s → 300s)
+- [ ] Es gibt einen konfigurierbaren Maximalwert für die akkumulierte Vorspulzeit (z.B. 300 Sekunden pro Stufe)
+- [ ] Die akkumulierte Gesamtzeit wird visuell angezeigt (z.B. "+10s", "+40s", "+100s", "+220s")
+- [ ] Visuelle Anzeige wird kontinuierlich während des Drückens aktualisiert (mindestens alle 200ms)
+
+**Visual Feedback:**
+- [ ] Visuelle Unterscheidung zwischen Short-Press (Standard "+10s") und Long-Press-Modus (akkumulierte Zeit)
+- [ ] Die Anzeige zeigt die akkumulierte Gesamtzeit, nicht nur die aktuelle Geschwindigkeitsstufe
+- [ ] Update-Frequenz der Anzeige während des Drückens: mindestens alle 200ms für flüssige Darstellung
+
+**Reset-Verhalten:**
+- [ ] Geschwindigkeitsstufe wird nach Loslassen der Taste zurückgesetzt
+- [ ] Bei Richtungswechsel (von Rechts auf Links oder umgekehrt) ohne Loslassen: Reset und Neustart
+- [ ] Nach erfolgreicher Seek-Operation: State wird zurückgesetzt
+
+**Video-Boundaries:**
+- [ ] Seek-Position wird bei Video-Anfang (0:00) gestoppt, kein Wrap-Around
+- [ ] Seek-Position wird bei Video-Ende gestoppt, kein Wrap-Around
+- [ ] Bei sehr kurzen Videos (< Maximalwert): Maximalwert wird auf Video-Dauer begrenzt
+
+**Accessibility:**
+- [ ] Screen-Reader-Unterstützung: Aktuelle Seek-Zeit wird für sehbehinderte Nutzer ausgesprochen
+- [ ] Content-Description für Seek-Feedback wird aktualisiert
+
+**Performance:**
+- [ ] UI bleibt flüssig während Long-Press (keine Frame-Drops)
+- [ ] Maximal 5 Seek-Operationen pro Sekunde während Long-Press (Performance-Limit)
+
+### Examples
+- User drückt kurz Rechts → "+10s" wird angezeigt, 10 Sekunden vorgespult
+- User hält Rechts 2 Sekunden → "+40s" wird angezeigt (10+30 akkumuliert), Geschwindigkeit erhöht sich
+- User hält Rechts 4 Sekunden → "+100s" wird angezeigt (10+30+60 akkumuliert), weitere Steigerung
+- User hält Rechts 6 Sekunden → "+220s" wird angezeigt (10+30+60+120 akkumuliert), noch schneller
+- User hält Rechts 8 Sekunden → "+520s" wird angezeigt (10+30+60+120+300 akkumuliert), Maximalwert-Stufe erreicht
+- User lässt Taste los → Seek wird ausgeführt, Video springt zur berechneten Position (520 Sekunden vor)
+- User wechselt während Long-Press von Rechts auf Links → Reset, Start mit Zurückspulen ab aktueller Position
+- User drückt bei Video bei 5:00 Minuten Links → Stoppt bei 0:00, kein Wrap-Around
+
+### Technical Notes
+
+**Aktuelle Implementierung:**
+- `handleDpadSeek` in `PlayerScreen.kt` (Zeile ~1699)
+- Konstanten: `DPAD_SEEK_BACK_MS = 10_000L`, `DPAD_SEEK_FORWARD_MS = 10_000L` in `PlayerConstants.kt`
+- Debouncing bereits vorhanden: `SEEK_DEBOUNCE_MS = 200L`
+- `pendingSeekPosition` wird bereits für akkumulierte Seeks verwendet
+
+**Architektur-Entscheidungen:**
+
+**State-Management-Location:**
+- State soll in `PlayerScreen.kt` Composable bleiben (nicht ViewModel)
+- Grund: UI-spezifisches Verhalten, kein Business-Logic
+- State-Variablen:
+  - `var longPressActive: Boolean` - ob Long-Press aktiv ist
+  - `var currentSpeedStep: Int` - aktuelle Geschwindigkeitsstufe (0-based Index)
+  - `var accumulatedSeekTime: Long` - akkumulierte Seek-Zeit in Millisekunden
+  - `var longPressStartTime: Long` - Zeitpunkt des Long-Press-Starts
+  - `var longPressJob: Job?` - Coroutine-Job für kontinuierliche Steigerung
+
+**Threading/Coroutines:**
+- Timer-Logik läuft auf Main-Thread via `CoroutineScope` (bereits vorhanden in PlayerScreen)
+- Verwendung von `delay()` für Intervalle (nicht Timer/Handler)
+- `longPressJob` wird bei Loslassen oder Richtungswechsel gecancelt
+
+**Debouncing-Konflikt:**
+- `SEEK_DEBOUNCE_MS = 200L` bleibt für Short-Press aktiv
+- Bei Long-Press (nach Threshold): Debouncing wird deaktiviert für kontinuierliche Steigerung
+- Alternative: Separate Debouncing-Logik für Long-Press vs. Short-Press
+
+**Konfigurierbare Werte (in PlayerConstants.kt):**
+- `DPAD_SEEK_LONG_PRESS_THRESHOLD_MS`: Zeit bis Long-Press erkannt wird (z.B. 1500ms)
+- `DPAD_SEEK_SPEED_INCREASE_INTERVAL_MS`: Intervall zwischen Geschwindigkeitssteigerungen (z.B. 2000ms)
+- `DPAD_SEEK_SPEED_STEPS_MS`: Array der Geschwindigkeitsstufen in Millisekunden (z.B. [10_000L, 30_000L, 60_000L, 120_000L, 300_000L])
+- `DPAD_SEEK_MAX_ACCUMULATED_MS`: Maximalwert für akkumulierte Seek-Zeit (z.B. 600_000L = 10 Minuten)
+- `DPAD_SEEK_FEEDBACK_UPDATE_INTERVAL_MS`: Update-Frequenz für visuelle Anzeige (z.B. 200ms)
+
+**Zu implementieren:**
+- Long-Press-Erkennung für D-Pad-Tasten (nach Threshold)
+- Akkumulierungs-Logik: Addiere Geschwindigkeitsstufen während des Drückens
+- Timer/Coroutine für kontinuierliche Geschwindigkeitssteigerung
+- Reset-Logik bei Loslassen oder Richtungswechsel
+- Boundary-Checking (Video-Anfang/Ende)
+- Screen-Reader-Unterstützung für Accessibility
+
+**Edge Cases:**
+
+**Simultane D-Pad-Eingaben:**
+- Wenn User von Rechts auf Links wechselt ohne loszulassen: Reset `accumulatedSeekTime`, Start mit Zurückspulen
+- Wenn User von Links auf Rechts wechselt ohne loszulassen: Reset `accumulatedSeekTime`, Start mit Vorspulen
+
+**Playback-State:**
+- Feature funktioniert nur wenn `state.isPlaying == true`
+- Bei pausiertem Video: Standard-Verhalten (10s Seek), keine Long-Press-Beschleunigung
+
+**Buffering/Loading:**
+- Während Puffer-Vorgängen: Long-Press wird ignoriert, keine Seek-Operation
+- Bei Netzwerkproblemen: Seek-Operation wird trotzdem ausgeführt (ExoPlayer handled Buffering)
+
+**Live-Streams:**
+- Bei Live-Content ohne Seek-Möglichkeit: Feature wird deaktiviert
+- Prüfung: `exoPlayer.duration == C.TIME_UNSET` oder `exoPlayer.isCurrentWindowLive == true`
+
+**Performance:**
+- Maximal 5 Seek-Operationen pro Sekunde während Long-Press
+- UI-Update-Frequenz begrenzt auf 200ms Minimum
+- Bei Performance-Problemen: Geschwindigkeitssteigerung pausieren
+
+**Video-Boundaries:**
+- Seek-Position wird bei 0ms gestoppt (kein negatives Seek)
+- Seek-Position wird bei `exoPlayer.duration` gestoppt (kein Seek über Video-Ende)
+- Bei sehr kurzen Videos: Maximalwert wird auf `duration` begrenzt
+
+**Reset-Verhalten:**
+- Nach Loslassen: `accumulatedSeekTime = 0`, `currentSpeedStep = 0`, `longPressActive = false`
+- Nach Richtungswechsel: Gleicher Reset wie bei Loslassen
+- Nach erfolgreicher Seek-Operation: State wird zurückgesetzt
+
+**Accessibility:**
+- `seekFeedbackText` wird für Screen-Reader verwendet
+- Content-Description wird dynamisch aktualisiert: "Vorspulen um X Sekunden"
+
+### UX-Considerations
+
+**Audio-Feedback (Optional, nicht in MVP):**
+- Subtiler Sound-Effekt bei Geschwindigkeitswechsel könnte UX verbessern
+- Für MVP: Nur visuelles Feedback
+
+**Keyboard-Shortcuts für Nicht-TV:**
+- Feature funktioniert auch mit Bluetooth-Tastaturen auf regulärem Android
+- Pfeiltasten Links/Rechts triggern gleiches Verhalten wie D-Pad
+
+**Kontinuierliches vs. Schrittweises Seek:**
+- Aktuell: Keine Preview/Thumbnail während Seek (zu komplex für MVP)
+- Für zukünftige Enhancement: Thumbnail-Preview während Long-Press könnte UX verbessern
+
+### Definition of Done
+- [ ] Long-Press-Erkennung für D-Pad Links/Rechts implementiert
+- [ ] Akkumulierte Seek-Zeit funktioniert korrekt bei längerem Drücken
+- [ ] Maximalwert wird eingehalten
+- [ ] Visuelle Anzeige zeigt akkumulierte Gesamtzeit korrekt an
+- [ ] Update-Frequenz der Anzeige mindestens alle 200ms
+- [ ] Funktioniert für Vorspulen (Rechts) und Zurückspulen (Links)
+- [ ] Reset-Verhalten bei Loslassen und Richtungswechsel implementiert
+- [ ] Video-Boundaries werden korrekt eingehalten (kein Wrap-Around)
+- [ ] Feature funktioniert nur während aktiver Wiedergabe
+- [ ] Live-Streams werden korrekt erkannt und Feature deaktiviert
+- [ ] Screen-Reader-Unterstützung implementiert
+- [ ] Konstanten in `PlayerConstants.kt` konfigurierbar
+- [ ] Code kompiliert ohne Warnings
+- [ ] Unit-Tests für Timer-Logik und State-Transitions geschrieben
+- [ ] Unit-Tests für Akkumulierungs-Logik geschrieben
+- [ ] Unit-Tests für Reset-Verhalten geschrieben
+- [ ] Instrumented Tests auf mindestens 2 verschiedenen TV-Geräten durchgeführt
+- [ ] Manuelle Tests auf TV-Gerät durchgeführt
+- [ ] Edge Cases getestet (kurze Videos, Video-Ende/Anfang, Richtungswechsel, Live-Streams)
+- [ ] Performance-Tests durchgeführt (UI bleibt flüssig während Long-Press)
+
+---
+
+## Story #34: PlayerScreen.kt in kleinere Module aufteilen (Refactoring)
+
+### User View
+Als Entwickler möchte ich, dass die PlayerScreen-Logik in überschaubare, thematisch getrennte Dateien aufgeteilt ist, damit ich einzelne Bereiche schneller finden, verstehen und ändern kann.
+
+### Acceptance Criteria
+- [ ] `PlayerScreen.kt` enthält nur noch die UI-Composition (~400 Zeilen statt ~2086)
+- [ ] Jede neue Datei hat eine klare, einzelne Verantwortung
+- [ ] Keine Verhaltensänderung (reines Refactoring)
+- [ ] Alle extrahierten Funktionen bleiben `internal` oder `private` wo möglich
+- [ ] Package bleibt `com.flintr.tv.ui.screens` (oder Unter-Package `player/`)
+- [ ] Jede neue Datei kompiliert eigenständig
+- [ ] Build läuft fehlerfrei
+- [ ] Kein duplizierter Code
+
+### Examples
+- Entwickler öffnet `PlayerScreen.kt` → Sieht nur noch die UI-Composition (~400 Zeilen)
+- Entwickler sucht WatchProgress-Logik → Findet sie in `PlayerWatchProgress.kt`
+- Entwickler sucht Gesture-Handling → Findet es in `InteractionUtils.kt` (gemeinsam mit anderen Gesture-Utilities)
+- Entwickler ändert Error-Handling → Ändert nur `PlayerErrorHandling.kt`
+- Build läuft durch → Keine Fehler, keine Warnungen
+
+### Technical Notes
+
+**Aktuelle Situation:**
+- `PlayerScreen.kt` hat aktuell ~2086 Zeilen
+- Enthält UI-Composition, Business-Logik, Setup, Effects, Callbacks, Gestures, etc.
+- Schwer zu navigieren und zu warten
+
+**Vorgeschlagene Aufteilung:**
+
+| Neue Datei | Inhalt | Zeilen ca. |
+|------------|--------|------------|
+| `PlayerModels.kt` | `SeriesContext`, `StreamInfo`, Constants | ~40 |
+| `PlayerFactory.kt` | `createExoPlayer`, `createBasicAuthHeader`, HTTP-Setup | ~70 |
+| `PlayerErrorHandling.kt` | `findHttpException`, `getErrorMessage` | ~50 |
+| `InteractionUtils.kt` (erweitert) | Player-spezifische Gesture-Modifier: `createTapGestureModifier`, `createSwipeGestureModifier`, Velocity-Berechnung | +~90 |
+| `PlayerWatchProgress.kt` | `restoreWatchProgress`, `saveWatchProgress`, Restore/Save-Effects, `CompletionDetectionEffect` | ~160 |
+| `PlayerWatchNext.kt` | Alle WatchNext-Funktionen und Effects (Add, Update, Completion, Hilt EntryPoint) | ~260 |
+| `PlayerEffects.kt` | `HideSystemUIEffect`, `AutoHideControlsEffect`, `PlayerPositionUpdateEffect`, Lifecycle-Observer | ~80 |
+| `PlayerCallbackFactory.kt` | `createSeekCallback`, `createPreviousCallback`, `createNextCallback`, `createPlayPauseCallback` | ~60 |
+| `PlayerSetup.kt` | `rememberPlayerSetup`, `rememberPlayerState`, `rememberCredentials`, `prepareMediaItem`, `waitForPlayerIdle`, `createPlayerListener` | ~200 |
+| `PlayerScreen.kt` | Nur noch die `PlayerScreen`-Composable mit UI-Composition | ~400 |
+
+**Implementierungs-Reihenfolge:**
+
+1. **Phase 1 - Unabhängige Teile (können parallel extrahiert werden):**
+   - `PlayerModels.kt` - Data Classes und Constants
+   - `PlayerErrorHandling.kt` - Error-Handling-Funktionen
+   - `InteractionUtils.kt` erweitern - Player-spezifische Gesture-Modifier (`createTapGestureModifier`, `createSwipeGestureModifier`) hinzufügen
+
+2. **Phase 2 - Abhängige Blöcke:**
+   - `PlayerFactory.kt` - ExoPlayer-Erstellung (abhängig von Models)
+   - `PlayerCallbackFactory.kt` - Callback-Erstellung (abhängig von Factory)
+
+3. **Phase 3 - Komplexe Features:**
+   - `PlayerWatchProgress.kt` - WatchProgress-Logik und Effects
+   - `PlayerWatchNext.kt` - WatchNext-Logik und Effects
+   - `PlayerEffects.kt` - Verschiedene LaunchedEffects
+
+4. **Phase 4 - Setup und Finalisierung:**
+   - `PlayerSetup.kt` - Player-Setup und State-Management
+   - `PlayerScreen.kt` - Finale UI-Composition aufräumen
+
+**Package-Struktur:**
+- Option 1: Alle Dateien in `com.flintr.tv.ui.screens` (einfach)
+- Option 2: Unter-Package `com.flintr.tv.ui.screens.player` (besser organisiert)
+
+**Wichtige Hinweise:**
+- Alle Funktionen müssen `internal` sein, damit sie innerhalb des Packages sichtbar sind
+- `@Composable` Funktionen bleiben `@Composable`
+- `remember` und State-Management bleibt in `PlayerScreen.kt` oder wird in `PlayerSetup.kt` verschoben
+- Imports müssen in jeder neuen Datei korrekt sein
+- Keine zirkulären Abhängigkeiten zwischen den neuen Dateien
+- **Gesture-Modifier:** Player-spezifische Gesture-Modifier (`createTapGestureModifier`, `createSwipeGestureModifier`) werden nach `InteractionUtils.kt` verschoben, da dort bereits andere Gesture-Utilities vorhanden sind (z.B. `createVerticalSwipeGestureModifier`, `onLongPress`)
+
+**Testing-Strategie:**
+- Nach jeder Phase: Build testen, manuell Player öffnen und testen
+- Keine Unit-Tests nötig (reines Refactoring, keine Logik-Änderung)
+- Visuelle Tests: Player funktioniert identisch wie vorher
+
+### Definition of Done
+- [ ] `PlayerModels.kt` erstellt und Models extrahiert
+- [ ] `PlayerFactory.kt` erstellt und ExoPlayer-Erstellung extrahiert
+- [ ] `PlayerErrorHandling.kt` erstellt und Error-Handling extrahiert
+- [ ] `InteractionUtils.kt` erweitert: Player-spezifische Gesture-Modifier (`createTapGestureModifier`, `createSwipeGestureModifier`) hinzugefügt
+- [ ] `PlayerWatchProgress.kt` erstellt und WatchProgress-Logik extrahiert
+- [ ] `PlayerWatchNext.kt` erstellt und WatchNext-Logik extrahiert
+- [ ] `PlayerEffects.kt` erstellt und Effects extrahiert
+- [ ] `PlayerCallbackFactory.kt` erstellt und Callbacks extrahiert
+- [ ] `PlayerSetup.kt` erstellt und Setup-Logik extrahiert
+- [ ] `PlayerScreen.kt` aufgeräumt und enthält nur noch UI-Composition
+- [ ] `PlayerScreen.kt` hat weniger als 500 Zeilen
+- [ ] Alle Dateien kompilieren ohne Fehler
+- [ ] Build läuft fehlerfrei
+- [ ] Kein duplizierter Code
+- [ ] Manuelle Tests: Player funktioniert identisch wie vorher
+- [ ] Code-Review durchgeführt
+
+---
+
+## Story #36: async-Parallelisierung im MainViewModel rückgängig machen
+
+### User View
+Als Nutzer möchte ich, dass die App beim Kaltstart nicht langsamer wird durch fehlgeschlagene Optimierungen, damit die Startzeit stabil bleibt oder sich verbessert.
+
+### Hintergrund
+In Story #18 wurde versucht, `loadFromCacheIfValid()` und `loadServerInfo()` im MainViewModel mit `async` zu parallelisieren. Die Prod-Messung zeigt, dass dies **nicht geholfen** hat:
+
+| Metrik | Vorher (sequentiell) | Nachher (async) |
+|--------|---------------------|-----------------|
+| "Displayed" | +1s278ms | +1s584ms |
+| Skipped Frames | 134 | 159 |
+| Davey | 1119ms | 1328ms |
+| Cache geladen | +1777ms | +2193ms |
+
+**Ursache**: `viewModelScope` nutzt `Dispatchers.Main`. Die `async`-Blöcke laufen beide auf dem Main Thread und können sich nicht parallelisieren. Stattdessen entsteht mehr Overhead durch die `async/await`-Verwaltung.
+
+Die Beseitigung der doppelten Firestore-Loads (4 statt 8 Reads pro Start) war hingegen erfolgreich und bleibt erhalten.
+
+### Acceptance Criteria
+- [ ] `async`-Parallelisierung in `loadInitialData()` rückgängig gemacht (zurück zu sequentiellem `loadFromCacheIfValid()` dann `loadServerInfo()`)
+- [ ] `async`-Parallelisierung in `loadCategoriesFromRepository()` rückgängig gemacht (zurück zu sequentiellen API-Calls)
+- [ ] Nicht mehr benötigter `kotlinx.coroutines.async` Import entfernt
+- [ ] Doppelte-Firestore-Load-Fix bleibt erhalten (nur 1x Load pro Service)
+- [ ] Build läuft fehlerfrei
+- [ ] Prod-Messung: "Displayed"-Zeit ist gleich oder besser als vorher (~1.3s)
+- [ ] Prod-Messung: Keine Regression bei Firestore-Loads (weiterhin nur 4 statt 8 Reads)
+
+### Technical Notes
+- **Datei:** `app/src/main/java/com/flintr/tv/viewmodel/MainViewModel.kt`
+- **loadInitialData():** `async { loadFromCacheIfValid() }` + `async { loadServerInfo() }` zurück zu sequentiell
+- **loadCategoriesFromRepository():** `coroutineScope { async { ... } }` zurück zu sequentiellen `repository.getLiveCategories()`, `getVodCategories()`, `getSeriesCategories()` Aufrufen
+- **Wichtig:** Die echte Parallelisierung wäre nur mit `Dispatchers.IO` oder `Dispatchers.Default` möglich, aber `loadFromCacheIfValid()` aktualisiert StateFlows, was auf dem Main Thread passieren muss
+- **Weiterführend:** Der eigentliche Flaschenhals ist die Compose-Erstkomposition (~1.3s Main-Thread-Block). Hierfür wäre die Android Splash Screen API oder lazy Compose-Content ein besserer Ansatz (separate Story)
+
+---
+
+## Story #37: Opt-in lokales Backup der User-Daten mit wählbarem Intervall
+
+### User View
+Als App-Nutzer möchte ich meine Nutzungsdaten (Favoriten, Watched-History, Watch-Progress, versteckte Kategorien) automatisch verschlüsselt auf meinem Gerät sichern und bei Bedarf wiederherstellen können, damit ich nach einem Datenverlust auf dem Server (Bug, versehentliches Überschreiben, Fremdzugriff) nicht monatelang gesammelte Daten verliere.
+
+Hintergrund: Bei den Vorfällen vom 11.06. und 12.07.2026 wurden User-Dokumente in Firestore komplett überschrieben (siehe `konzept-backup.md`). Eine Wiederherstellung war nur durch Zufall über alte Firestore-Offline-Caches auf Geräten möglich.
+
+### Acceptance Criteria
+
+**Aktivierung & Einstellungen:**
+- [ ] Backup ist standardmäßig deaktiviert (Opt-in per Toggle in den Einstellungen)
+- [ ] Intervall wählbar: 12 Stunden, 24 Stunden, 3 Tage, 7 Tage (Default: 24 Stunden)
+- [ ] Einstellungen werden lokal pro Gerät gespeichert (nicht in Firestore)
+- [ ] Zeitpunkt des letzten Backups wird in den Einstellungen angezeigt
+
+**Backup-Erstellung:**
+- [ ] Beim App-Start wird nach erfolgreichem Firestore-Load geprüft: letztes Backup älter als Intervall → neues Backup, sonst nichts
+- [ ] Zusätzlich Button „Jetzt sichern" für manuelles Backup unabhängig vom Intervall
+- [ ] Backup enthält das vollständige User-Dokument (favorites, watchedHistory, watchProgress, hiddenCategories, friends) als JSON
+- [ ] Backup wird verschlüsselt gespeichert (AES-256-GCM, Schlüssel im Android Keystore) im app-privaten Speicher (`filesDir/backups/`)
+- [ ] Ein fehlgeschlagenes Backup blockiert oder verzögert den App-Start nicht (fire-and-forget mit Log)
+
+**Generationen & Schutz vor Backup-Überschreibung:**
+- [ ] Es werden immer die letzten 7 Backups aufbewahrt (Rotation: ältestes wird gelöscht)
+- [ ] Plausibilitätsprüfung vor jedem Backup: Ist der neue Stand drastisch kleiner als das letzte Backup (z. B. watchedHistory leer oder < 50 % der Einträge, obwohl vorher nicht leer), wird NICHT gesichert
+- [ ] Bei fehlgeschlagener Plausibilitätsprüfung erscheint ein Warn-Dialog: „Deine Daten scheinen unvollständig zu sein – möchtest du sie aus dem Backup wiederherstellen?"
+
+**Wiederherstellung:**
+- [ ] Einstellungen zeigen die Liste der vorhandenen Backups mit Datum und Eintragszahlen (z. B. „94 gesehen, 20 Favoriten")
+- [ ] Restore erfolgt als Merge (Union): Einträge aus dem Backup werden ergänzt, bei gleichem Schlüssel gewinnt der neuere Eintrag – nichts seit dem Backup Geschautes geht verloren
+- [ ] Vor jedem Restore wird automatisch ein Backup des aktuellen Stands erstellt (ohne Plausibilitätsprüfung, als eigene Generation)
+- [ ] Restore schreibt über die bestehenden Repository-Pfade nach Firestore (nur `SetOptions.merge()`, nie `set()` ohne merge)
+- [ ] Restore ist nur mit Netzwerkverbindung möglich und meldet Erfolg/Fehler sichtbar
+
+### Examples
+- User aktiviert Backup mit Intervall 24 h → beim nächsten App-Start entsteht Backup Nr. 1. Öffnet er die App 3 h später erneut, passiert nichts. Öffnet er sie 26 h später, entsteht Backup Nr. 2.
+- Server-Dokument wurde geleert (wie am 12.07.2026): App lädt 0 watchedHistory-Einträge, letztes Backup enthält 94 → kein Backup wird erstellt, stattdessen Warn-Dialog mit Restore-Angebot. Nach Restore: 94 Einträge wieder vorhanden.
+- Das 8. Backup wird erstellt → das älteste wird gelöscht, es bleiben 7.
+- User wechselt den IPTV-Account (anderer Username) → Backups des alten Users bleiben getrennt erhalten; die Plausibilitätsprüfung vergleicht nur Backups desselben Users.
+
+### Technical Notes
+
+**Bestehende Infrastruktur:**
+- `data/local/CredentialsRepository.kt`: Vorlage für Verschlüsselung – nutzt bereits `MasterKey.KeyScheme.AES256_GCM` + `EncryptedSharedPreferences` (androidx.security:security-crypto ist als Dependency vorhanden; für Backup-Dateien analog `EncryptedFile` verwenden)
+- `data/local/WatchedHistoryService.kt`, `WatchProgressService.kt`, `FavoritesRepository.kt`, `CategoryVisibilityService.kt`: halten die Daten als StateFlows; Moshi-Adapter für JSON-Serialisierung existieren dort bereits (`mapAdapter`-Pattern)
+- `data/local/PlaybackSettingsRepository.kt`: Vorlage für die lokale Speicherung der Backup-Einstellungen (Toggle, Intervall, lastBackupTimestamp)
+- `data/repository/UserRepository.kt`: Firestore-Zugriff; für Restore die bestehenden Merge-Pfade nutzen (`set(..., SetOptions.merge())`, vgl. `UserRepositoryGuardrailsTest`)
+- `ui/settings/SubSettingsGeneral.kt` & Co.: Pattern für den neuen Unterpunkt `SubSettingsBackup.kt`, Einbindung in `SettingsScreen.kt`
+
+**Neue Komponenten:**
+- `data/local/BackupService.kt` (@Singleton, Hilt): erstellt/rotiert/liest Backups, Plausibilitätsprüfung, Merge-Restore
+- `data/local/BackupSettingsRepository.kt`: Einstellungen + lastBackupTimestamp
+- Dateiname-Schema: `filesDir/backups/<username>/<ISO-Timestamp>.json.enc`
+
+**Backup-Prüfung beim App-Start:**
+
+```mermaid
+flowchart TD
+    A[App-Start] --> B[Firestore-Load der Services erfolgreich]
+    B --> C{Backup aktiviert?}
+    C -->|Nein| Z[Ende]
+    C -->|Ja| D{Letztes Backup älter als Intervall?}
+    D -->|Nein| Z
+    D -->|Ja| E{Plausibilitätsprüfung: neuer Stand >= 50% des letzten Backups?}
+    E -->|Ja| F[Backup erstellen, verschlüsseln, Rotation auf 7]
+    F --> G[lastBackupTimestamp aktualisieren] --> Z
+    E -->|Nein| H[KEIN Backup]
+    H --> I[Warn-Dialog: Daten unvollständig - wiederherstellen?]
+    I -->|Restore| J[Backup des Ist-Stands, dann Merge-Restore nach Firestore]
+    I -->|Ignorieren| Z
+```
+
+**Merge-Semantik beim Restore (wie bei der Recovery am 14.07.2026):**
+
+```kotlin
+// Union der Maps, bei gleichem Schlüssel gewinnt der neuere Eintrag
+val mergedHistory = backupHistory + currentHistory.filterKeys { key ->
+    val backupItem = backupHistory[key]
+    backupItem == null || currentHistory[key]!!.lastWatched >= backupItem.lastWatched
+}
+```
+
+**Edge Cases:**
+- Erster App-Start ohne Netz: kein erfolgreicher Firestore-Load → kein Backup (sonst würde ein leerer/kalter Zustand gesichert)
+- Legitim leeres Konto (neuer User ohne Daten): Plausibilitätsprüfung schlägt nur an, wenn das letzte Backup nicht leer war
+- Verstellte Gerätezeit: Intervall-Vergleich toleriert das (schlimmstenfalls ein Backup zu viel/zu wenig – unkritisch durch Rotation)
+- User-Wechsel: Backups pro Username getrennt (Unterordner), Plausibilitätsprüfung nie über User-Grenzen
+- Keystore-Schlüssel verloren (z. B. Werksreset): alte Backups nicht mehr entschlüsselbar → beim Lesen sauber abfangen und Datei als ungültig markieren
+
+### UX-Considerations
+
+**Platzierung:**
+- Neuer Unterpunkt „Backup" im `SettingsScreen` (Pattern der bestehenden `SubSettings*`-Screens)
+- Reihenfolge: Toggle → Intervall-Auswahl → „Jetzt sichern" → Backup-Liste mit Restore-Option
+
+**Visuelles Feedback:**
+- „Letztes Backup: vor 3 Stunden (94 gesehen, 20 Favoriten)" als Statuszeile
+- Backup-Vorgang läuft still im Hintergrund (kein Spinner beim App-Start); manuelles Backup zeigt kurzes Erfolgs-Feedback
+- Warn-Dialog bei Plausibilitätsverletzung ist D-Pad-tauglich (TV), Default-Fokus auf „Wiederherstellen"
+
+### Definition of Done
+- [ ] Backup-Erstellung, Rotation, Plausibilitätsprüfung und Merge-Restore implementiert
+- [ ] Unit-Tests für Intervall-Logik, Plausibilitätsprüfung und Merge-Semantik (reine Logik, ohne Mocking-Framework – Pattern `DataCacheServiceTest`)
+- [ ] Guardrail: Restore-Pfad verwendet ausschließlich `SetOptions.merge()` (Erweiterung `UserRepositoryGuardrailsTest`)
+- [ ] Code kompiliert ohne Warnings/Errors
+- [ ] Manuelle Tests durchgeführt (Backup nach Intervall, Restore nach simuliertem Datenverlust, User-Wechsel)
+- [ ] UI passt sich an bestehendes Design an (TV-D-Pad-Navigation)
+
+---

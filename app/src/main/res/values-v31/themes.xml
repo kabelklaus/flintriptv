@@ -1,0 +1,14 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.Flintrtv" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/flintr_start_background</item>
+        <item name="android:colorBackground">@color/flintr_start_background</item>
+        <item name="android:statusBarColor">@color/flintr_start_background</item>
+        <item name="android:navigationBarColor">@color/flintr_start_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowSplashScreenBackground">@color/flintr_start_background</item>
+    </style>
+
+    <style name="Theme.Flintrtv" parent="Base.Theme.Flintrtv" />
+</resources>
