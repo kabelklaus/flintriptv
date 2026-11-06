@@ -32,8 +32,10 @@ import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.utils.DownloadProgress
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Dialog for displaying available updates and handling download/installation
@@ -175,7 +177,7 @@ private fun rememberDialogFocusState(
     LaunchedEffect(Unit) {
         delay(16)
         isDialogReady = true
-        updateButtonFocusRequester.requestFocus()
+        updateButtonFocusRequester.safeRequestFocus(targetName = "UpdateNowButton")
     }
     
     return isDialogReady
@@ -290,7 +292,8 @@ private fun RowScope.UpdateButton(
     onUpdateNow: () -> Unit
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    
+    val coroutineScope = rememberCoroutineScope()
+
     Button(
         onClick = {
             if (!isDownloading && downloadProgress?.isComplete != true) {
@@ -306,7 +309,9 @@ private fun RowScope.UpdateButton(
             .onDpadDirection(
                 onRight = {
                     if (isDialogReady) {
-                        laterButtonFocusRequester.requestFocus()
+                        coroutineScope.launch {
+                            laterButtonFocusRequester.safeRequestFocus(targetName = "LaterButton")
+                        }
                         true
                     } else {
                         false
@@ -343,7 +348,8 @@ private fun RowScope.LaterButton(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val colors = appColors()
-    
+    val coroutineScope = rememberCoroutineScope()
+
     Button(
         onClick = onLater,
         modifier = Modifier
@@ -355,7 +361,9 @@ private fun RowScope.LaterButton(
             .onDpadDirection(
                 onLeft = {
                     if (isDialogReady) {
-                        updateButtonFocusRequester.requestFocus()
+                        coroutineScope.launch {
+                            updateButtonFocusRequester.safeRequestFocus(targetName = "UpdateNowButton")
+                        }
                         true
                     } else {
                         false

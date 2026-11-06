@@ -34,6 +34,7 @@ import com.flintr.tv.utils.loadPackageInfo
 import com.flintr.tv.utils.PackageInfoData
 import com.flintr.tv.data.model.UpdateInfo
 import com.flintr.tv.utils.DownloadProgress
+import com.flintr.tv.ui.utils.safeRequestFocus
 
 /**
  * Composable for the check updates button
@@ -370,7 +371,7 @@ fun SettingsInfo(
     // Load package info
     LaunchedEffect(Unit) {
         packageInfo = loadPackageInfo(context)
-        checkUpdatesButtonFocusRequester.requestFocus()
+        checkUpdatesButtonFocusRequester.safeRequestFocus(targetName = "CheckUpdatesButton")
     }
     
     // Handle Back button using BackHandler (works even when IME is visible)
