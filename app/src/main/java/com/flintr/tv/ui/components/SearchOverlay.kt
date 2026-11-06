@@ -11,7 +11,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -893,7 +893,7 @@ private fun SearchResultItemContent(
     ) {
         if (isInWatchlist) {
             Icon(
-                imageVector = Icons.Filled.Star,
+                imageVector = Icons.Filled.Favorite,
                 contentDescription = null,
                 tint = colors.accentColor,
                 modifier = Modifier.size(16.dp)

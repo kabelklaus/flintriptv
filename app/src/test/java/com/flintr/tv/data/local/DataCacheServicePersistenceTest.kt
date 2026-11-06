@@ -241,6 +241,49 @@ class DataCacheServicePersistenceTest {
     }
 
     @Test
+    fun `trimCachedCatalog invalidates memoized cache`() = runBlocking {
+        assertTrue(saveDefaults())
+        val first = service.loadCachedDataAsync()
+
+        service.trimCachedCatalog()
+        val second = service.loadCachedDataAsync()
+
+        assertTrue(first != null)
+        assertTrue("trim must force a fresh parse", first !== second)
+        assertEquals(first?.movies?.map { it.streamId }, second?.movies?.map { it.streamId })
+    }
+
+    @Test
+    fun `trimCachedCatalog waehrend des Parses verhindert Memo`() = runBlocking {
+        assertTrue(saveDefaults())
+
+        lateinit var reader: DataCacheService
+        var trimmedDuringParse = false
+        val probe = VodStreamProbe {
+            if (!trimmedDuringParse) {
+                trimmedDuringParse = true
+                reader.trimCachedCatalog()
+            }
+        }
+        reader = DataCacheService(
+            context,
+            Moshi.Builder().add(probe).build(),
+            Dispatchers.Unconfined,
+            newImdbEnrichmentService()
+        )
+
+        val first = reader.loadCachedDataAsync()
+        assertTrue(first != null)
+        assertTrue("trim must actually have run during the parse", trimmedDuringParse)
+        assertEquals(1, probe.parsed.get())
+
+        // Generation guard must have skipped memoization -> the next call parses again.
+        val second = reader.loadCachedDataAsync()
+        assertTrue("parse raced with trim must not be memoized", first !== second)
+        assertEquals(2, probe.parsed.get())
+    }
+
+    @Test
     fun `loadItemsByIds filtert nach angefragten IDs`() = runBlocking {
         val moreMovies = listOf(
             testVodStream(name = "Film 1", streamId = 1),
@@ -417,7 +460,9 @@ class DataCacheServicePersistenceTest {
     }
 
     /** Records which threads (de)serialize VodStreams and how many were parsed. */
-    private class VodStreamProbe : JsonAdapter.Factory {
+    private class VodStreamProbe(
+        private val onVodParsed: () -> Unit = {}
+    ) : JsonAdapter.Factory {
         val threads: MutableSet<String> = ConcurrentHashMap.newKeySet()
         val parsed = AtomicInteger()
 
@@ -433,6 +478,7 @@ class DataCacheServicePersistenceTest {
                 override fun fromJson(reader: JsonReader): VodStream? {
                     record()
                     parsed.incrementAndGet()
+                    onVodParsed()
                     return delegate.fromJson(reader)
                 }
 

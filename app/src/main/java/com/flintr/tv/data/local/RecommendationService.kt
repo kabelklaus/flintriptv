@@ -54,20 +54,43 @@ private data class CachedRatings(
  * once and reused for [RATINGS_CACHE_TTL_MS].
  */
 @Singleton
-class RecommendationService @Inject constructor(
+class RecommendationService(
     private val watchlistRepository: WatchlistRepository,
     private val watchedHistoryService: WatchedHistoryService,
     private val watchProgressService: WatchProgressService,
     private val userRepository: UserRepository,
     private val credentialsRepository: CredentialsRepository,
     private val cacheService: DataCacheService,
-    @Named("IO") private val ioDispatcher: CoroutineDispatcher
+    @Named("IO") private val ioDispatcher: CoroutineDispatcher,
+    private val nowMs: () -> Long = { System.currentTimeMillis() }
 ) {
+    /** DI constructor: Dagger cannot fill Kotlin defaults, so bind the production clock here. */
+    @Inject
+    constructor(
+        watchlistRepository: WatchlistRepository,
+        watchedHistoryService: WatchedHistoryService,
+        watchProgressService: WatchProgressService,
+        userRepository: UserRepository,
+        credentialsRepository: CredentialsRepository,
+        cacheService: DataCacheService,
+        @Named("IO") ioDispatcher: CoroutineDispatcher
+    ) : this(
+        watchlistRepository = watchlistRepository,
+        watchedHistoryService = watchedHistoryService,
+        watchProgressService = watchProgressService,
+        userRepository = userRepository,
+        credentialsRepository = credentialsRepository,
+        cacheService = cacheService,
+        ioDispatcher = ioDispatcher,
+        nowMs = { System.currentTimeMillis() }
+    )
+
     private val serviceScope = CoroutineScope(SupervisorJob() + ioDispatcher)
 
     private val _recommendations = MutableStateFlow(RecommendationResult(emptyList(), emptyList()))
     val recommendations: StateFlow<RecommendationResult> = _recommendations.asStateFlow()
 
+    @Volatile
     private var ratingsCache: CachedRatings? = null
 
     init {
@@ -122,7 +145,7 @@ class RecommendationService @Inject constructor(
             ?.takeIf { it.isNotBlank() }
             ?: return emptyMap()
 
-        val now = System.currentTimeMillis()
+        val now = nowMs()
         ratingsCache
             ?.takeIf { it.username == username && now - it.loadedAtMs < RATINGS_CACHE_TTL_MS }
             ?.let { return it.ratings }
@@ -141,7 +164,7 @@ class RecommendationService @Inject constructor(
      * below 20% (abandoned), 20-90% (started), at/above 90% (completed), plus the watch day
      * used for age decay. Keeping the real position would make every 10s tick distinct.
      */
-    private fun WatchProgress.toRecommendationSignal(): WatchProgress {
+    internal fun WatchProgress.toRecommendationSignal(): WatchProgress {
         val ratio = if (duration <= 0L) {
             0.0
         } else {

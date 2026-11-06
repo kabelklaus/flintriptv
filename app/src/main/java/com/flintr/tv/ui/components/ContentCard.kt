@@ -74,10 +74,13 @@ private val ContentCardTitleMaxLines = 2
 private val ContentCardTitleGradientAlpha = 0.7f
 private val ContentCardTitleBgAlpha = 0.75f
 
-// Friend/watchlist badges share the card's existing rating-badge footprint so the title overlay
-// keeps its full width.
-private val ContentCardAvatarBadgeSize = Dimensions.iconSizeMD
-private val ContentCardAvatarBadgeFontSize = 11.sp
+// Friend avatar and watchlist badge are separate footprints: the friend initial needs the larger
+// circle/text to stay legible, while the watchlist heart only needs a larger glyph inside the
+// existing rating-badge-sized chip.
+private val ContentCardFriendAvatarSize = 24.dp
+private val ContentCardFriendAvatarFontSize = 13.sp
+private val ContentCardWatchlistBadgeSize = Dimensions.iconSizeMD
+private val ContentCardWatchlistIconSize = 12.dp
 private val ContentCardBadgeSpacing = 3.dp
 
 // Content Card Colors (from Flutter AppTheme)
@@ -739,20 +742,33 @@ private fun CardImageWithOverlays(
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 if (overlayParams.watchState.progressPercent > 0f && !overlayParams.watchState.isWatched) {
-                    Box(modifier = Modifier.padding(horizontal = 4.dp)) {
-                        Column {
-                            InProgressIndicator(
-                                progressPercent = overlayParams.watchState.progressPercent,
-                                remainingMinutes = null,
-                                colors = overlayParams.colors
-                            )
-                            overlayParams.watchState.remainingMinutes?.let { minutes ->
-                                CardRemainingTimeLabel(minutes = minutes)
-                            }
-                        }
-                    }
+                    ProgressWithRemainingLabel(
+                        progressPercent = overlayParams.watchState.progressPercent,
+                        remainingMinutes = overlayParams.watchState.remainingMinutes,
+                        colors = overlayParams.colors
+                    )
                 }
                 TitleOverlay(title = title)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProgressWithRemainingLabel(
+    progressPercent: Float,
+    remainingMinutes: Int?,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    Box(modifier = Modifier.padding(horizontal = 4.dp)) {
+        Column {
+            InProgressIndicator(
+                progressPercent = progressPercent,
+                remainingMinutes = null,
+                colors = colors
+            )
+            remainingMinutes?.let { minutes ->
+                CardRemainingTimeLabel(minutes = minutes)
             }
         }
     }
@@ -806,7 +822,7 @@ private fun SourceBadge(
 ) {
     Box(
         modifier = modifier
-            .size(ContentCardAvatarBadgeSize)
+            .size(ContentCardFriendAvatarSize)
             .background(
                 color = SharedColors.avatarAccentBg.copy(alpha = Dimensions.contentCardRatingBgAlpha),
                 shape = CircleShape
@@ -815,7 +831,7 @@ private fun SourceBadge(
     ) {
         Text(
             text = badge,
-            fontSize = ContentCardAvatarBadgeFontSize,
+            fontSize = ContentCardFriendAvatarFontSize,
             color = SharedColors.avatarAccentText,
             fontWeight = ContentCardTextFontWeight,
             maxLines = 1
@@ -829,7 +845,7 @@ private fun WatchlistBadge(
 ) {
     Box(
         modifier = modifier
-            .size(ContentCardAvatarBadgeSize)
+            .size(ContentCardWatchlistBadgeSize)
             .background(
                 color = ContentCardBgColor.copy(alpha = Dimensions.contentCardRatingBgAlpha),
                 shape = RoundedCornerShape(Dimensions.radiusSM)
@@ -839,8 +855,8 @@ private fun WatchlistBadge(
         Icon(
             imageVector = Icons.Default.Favorite,
             contentDescription = "Watchlist",
-            modifier = Modifier.size(Dimensions.contentCardRatingIconSize),
-            tint = SharedColors.contentCardRatingIconColor
+            modifier = Modifier.size(ContentCardWatchlistIconSize),
+            tint = ContentCardTextColor
         )
     }
 }
@@ -978,7 +994,7 @@ private fun CardRemainingTimeLabel(minutes: Int) {
 }
 
 /** One unit spelling for card and detail: [formatRuntime] plus the card's "übrig" suffix. */
-private fun formatRemainingLabel(minutes: Int): String {
+internal fun formatRemainingLabel(minutes: Int): String {
     val runtime = formatRuntime(minutes.toString())
     return if (runtime.isBlank()) "" else "$runtime übrig"
 }
@@ -1005,18 +1021,11 @@ private fun CardFallbackWithOverlays(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             if (overlayParams.watchState.progressPercent > 0f && !overlayParams.watchState.isWatched) {
-                Box(modifier = Modifier.padding(horizontal = 4.dp)) {
-                    Column {
-                        InProgressIndicator(
-                            progressPercent = overlayParams.watchState.progressPercent,
-                            remainingMinutes = null,
-                            colors = overlayParams.colors
-                        )
-                        overlayParams.watchState.remainingMinutes?.let { minutes ->
-                            CardRemainingTimeLabel(minutes = minutes)
-                        }
-                    }
-                }
+                ProgressWithRemainingLabel(
+                    progressPercent = overlayParams.watchState.progressPercent,
+                    remainingMinutes = overlayParams.watchState.remainingMinutes,
+                    colors = overlayParams.colors
+                )
             }
             TitleOverlay(title = title)
         }

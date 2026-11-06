@@ -81,13 +81,18 @@ class FlintRTVApplication : Application(), ImageLoaderFactory {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
-            level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
-            level == ComponentCallbacks2.TRIM_MEMORY_COMPLETE
-        ) {
-            // Drop the large in-RAM catalog memo first, then the bitmap cache.
-            if (::dataCacheService.isInitialized) dataCacheService.trimCachedCatalog()
-            imageLoader?.memoryCache?.clear()
+        when (level) {
+            // Normal browsing pressure: drop the large in-RAM catalog memo, but keep the bitmap
+            // cache so posters do not flicker back in.
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> {
+                if (::dataCacheService.isInitialized) dataCacheService.trimCachedCatalog()
+            }
+            // Genuinely critical / process about to be killed: drop both caches.
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
+            ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+                if (::dataCacheService.isInitialized) dataCacheService.trimCachedCatalog()
+                imageLoader?.memoryCache?.clear()
+            }
         }
     }
 

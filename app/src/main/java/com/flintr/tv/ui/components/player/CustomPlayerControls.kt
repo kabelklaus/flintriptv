@@ -18,6 +18,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -362,6 +363,34 @@ internal fun resolveEffectiveFocusedButton(
     isLive && focusedButton in setOf(FocusedButton.PREVIOUS, FocusedButton.NEXT) ->
         FocusedButton.PLAY_PAUSE
     else -> focusedButton
+}
+
+/**
+ * Live indicator shown in place of the elapsed/total time. Uses the existing player label
+ * typography; the dot carries the live state, the text stays readable over the scrim.
+ */
+@Composable
+internal fun LiveBadge(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .testTag("player-live-badge"),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(SharedColors.red, CircleShape)
+        )
+        Spacer(modifier = Modifier.width(Dimensions.spacingXS))
+        // Inline label: strings.xml is outside the T8 file scope. Keep it identical to the
+        // badge wording ("LIVE") instead of inventing a localised variant here.
+        Text(
+            text = "LIVE",
+            fontSize = FontSizes.fontSizeLG,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White
+        )
+    }
 }
 
 private fun navigateToNeighbour(
