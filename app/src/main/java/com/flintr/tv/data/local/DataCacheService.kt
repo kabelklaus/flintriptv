@@ -35,6 +35,7 @@ import java.time.OffsetDateTime
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.*
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.coroutineContext
 import javax.inject.Inject
 import javax.inject.Named
@@ -72,10 +73,16 @@ class DataCacheService @Inject constructor(
     private val parseMutex = Mutex()
 
     // Bumped by save/clear so a parse that raced with them cannot memoize stale files.
-    @Volatile
-    private var cacheGeneration = 0
+    private val cacheGeneration = AtomicInteger(0)
 
     private val backgroundScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+
+    // Serializes the IMDb DB enrichment phase of saveCachedData against the background
+    // >14d refresh's ensureLoaded(): without this, a refresh can close/reopen the DB
+    // mid-enrichment of the next save, making lookups return null. A Mutex (rather than
+    // tracking/joining the refresh Job) keeps both sides symmetric and lets an
+    // unrelated save proceed immediately when no refresh is in flight.
+    private val imdbDbMutex = Mutex()
 
     // Catalog lists are streamed to files instead of SharedPreferences: a
     // 57k-movie list as one String OOMs the 256 MB heap, and prefs keep every
@@ -137,7 +144,7 @@ class DataCacheService @Inject constructor(
         internal const val FILE_VOD_CATEGORIES = "vod_categories.json"
         internal const val FILE_SERIES_CATEGORIES = "series_categories.json"
         internal const val SAVE_CHUNK_SIZE = 2_000
-        internal const val READ_CHUNK_SIZE = 5_000
+        internal const val CANCEL_CHECK_INTERVAL_ITEMS = 5_000
         private const val TMP_SUFFIX = ".tmp"
         private const val KEY_CACHE_CHANNELS_COUNT = "iptv_cache_channels_count"
         private const val KEY_CACHE_MOVIES_COUNT = "iptv_cache_movies_count"
@@ -233,7 +240,6 @@ class DataCacheService @Inject constructor(
         }
         try {
             val imdbWasOpen = imdbEnrichmentService.isAvailable
-            val enricher = imdbEnricher()
             val timestamp = ZonedDateTime.now().format(ISO8601_FORMAT)
 
             var savedItems = 0
@@ -242,8 +248,14 @@ class DataCacheService @Inject constructor(
                 onProgress(savedItems)
             }
             writeListChunked(FILE_CHANNELS, LiveStream::class.java, channels, transform = null, onChunkWritten)
-            val enrichedMovies = writeListChunked(FILE_MOVIES, VodStream::class.java, movies, enricher?.let { it::enrichMovie }, onChunkWritten)
-            val enrichedSeries = writeListChunked(FILE_SERIES, Series::class.java, series, enricher?.let { it::enrichSeries }, onChunkWritten)
+            // Held for the whole enrichment phase so a concurrent background refresh
+            // (see imdbDbMutex) can't close/reopen the DB mid-lookup.
+            val (enrichedMovies, enrichedSeries) = imdbDbMutex.withLock {
+                val enricher = imdbEnricher()
+                val enrichedMovies = writeListChunked(FILE_MOVIES, VodStream::class.java, movies, enricher?.let { it::enrichMovie }, onChunkWritten)
+                val enrichedSeries = writeListChunked(FILE_SERIES, Series::class.java, series, enricher?.let { it::enrichSeries }, onChunkWritten)
+                enrichedMovies to enrichedSeries
+            }
 
             withContext(ioDispatcher) {
                 val categoryAdapter = listAdapter(Category::class.java)
@@ -259,13 +271,14 @@ class DataCacheService @Inject constructor(
                 putInt(KEY_CACHE_SERIES_COUNT, enrichedSeries.size)
                 putInt(KEY_CACHE_VERSION, CACHE_VERSION)
             }
-            cacheGeneration++
+            cacheGeneration.incrementAndGet()
             memoizedCache = CachedData(channels, enrichedMovies, enrichedSeries, liveCategories, vodCategories, seriesCategories)
             android.util.Log.d("DataCacheService", "Cache saved successfully: $timestamp | Channels: ${channels.size}, Movies: ${enrichedMovies.size}, Series: ${enrichedSeries.size}")
             // The >14d IMDb refresh is a multi-MB download. With a DB already open this save
             // used it as-is; the refresh runs afterwards so it neither delays the save nor
-            // closes the DB mid-enrichment. The next save picks up the new DB.
-            if (imdbWasOpen) backgroundScope.launch { imdbEnrichmentService.ensureLoaded() }
+            // closes the DB mid-enrichment. The next save picks up the new DB. imdbDbMutex
+            // keeps this refresh from overlapping that next save's own enrichment phase.
+            if (imdbWasOpen) backgroundScope.launch { imdbDbMutex.withLock { imdbEnrichmentService.ensureLoaded() } }
             return true
         } catch (e: CancellationException) {
             throw e
@@ -382,7 +395,7 @@ class DataCacheService @Inject constructor(
     /**
      * Streams the JSON array in [fileName] element by element, so callers decide what to keep
      * instead of always materializing the whole list. Checks for cancellation every
-     * [READ_CHUNK_SIZE] items. Returns false if the file does not exist.
+     * [CANCEL_CHECK_INTERVAL_ITEMS] items. Returns false if the file does not exist.
      */
     private suspend fun <T> readEach(fileName: String, itemClass: Class<T>, onItem: (T) -> Unit): Boolean {
         val file = File(cacheDir, fileName)
@@ -394,7 +407,7 @@ class DataCacheService @Inject constructor(
             var count = 0
             while (reader.hasNext()) {
                 adapter.fromJson(reader)?.let(onItem)
-                if (++count % READ_CHUNK_SIZE == 0) currentCoroutineContext().ensureActive()
+                if (++count % CANCEL_CHECK_INTERVAL_ITEMS == 0) currentCoroutineContext().ensureActive()
             }
             reader.endArray()
         }
@@ -407,7 +420,7 @@ class DataCacheService @Inject constructor(
     }
 
     private suspend fun parseCachedData(): CachedData? {
-        val generation = cacheGeneration
+        val generation = cacheGeneration.get()
         try {
             val channels = readList(FILE_CHANNELS, LiveStream::class.java) ?: return null
             val movies = readList(FILE_MOVIES, VodStream::class.java) ?: return null
@@ -421,7 +434,7 @@ class DataCacheService @Inject constructor(
                 vodCategories = readList(FILE_VOD_CATEGORIES, Category::class.java) ?: emptyList(),
                 seriesCategories = readList(FILE_SERIES_CATEGORIES, Category::class.java) ?: emptyList()
             )
-            if (generation == cacheGeneration) memoizedCache = data
+            if (generation == cacheGeneration.get()) memoizedCache = data
             return data
         } catch (e: CancellationException) {
             throw e
@@ -497,8 +510,14 @@ class DataCacheService @Inject constructor(
     }
 
     fun clearCache() {
-        cacheGeneration++
-        memoizedCache = null
+        // Take parseMutex so an in-flight parse can neither repopulate memoizedCache after
+        // the invalidation below nor read the files while they are being deleted.
+        runBlocking {
+            parseMutex.withLock {
+                cacheGeneration.incrementAndGet()
+                memoizedCache = null
+            }
+        }
         sharedPreferences.edit { clear() }
         cacheDir.deleteRecursively()
     }

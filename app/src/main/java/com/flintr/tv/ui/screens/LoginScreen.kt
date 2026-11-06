@@ -290,17 +290,12 @@ private fun LoginErrorCard(
 }
 
 /**
- * Requests initial focus safely, handling the case where the component is not yet ready
+ * Requests initial focus safely, handling the case where the component is not yet ready.
+ * Callers must gate on and set `hasRequestedInitialFocus` synchronously before launching
+ * this, so exactly one retry coroutine ever runs regardless of how many layout passes fire.
  */
-private suspend fun requestInitialFocus(
-    focusRequester: FocusRequester,
-    hasRequestedInitialFocus: Boolean,
-    onInitialFocusSet: () -> Unit
-) {
-    if (hasRequestedInitialFocus) return
-    if (focusRequester.safeRequestFocus(logTag = "LoginScreen", targetName = "ServerUrlField")) {
-        onInitialFocusSet()
-    }
+private suspend fun requestInitialFocus(focusRequester: FocusRequester) {
+    focusRequester.safeRequestFocus(logTag = "LoginScreen", targetName = "ServerUrlField")
 }
 
 /**
@@ -353,12 +348,11 @@ private fun LoginFormContent(
                 enabled = !formState.isLoading,
                 focusRequester = focusState.serverUrl,
                 onGloballyPositioned = {
-                    coroutineScope.launch {
-                        requestInitialFocus(
-                            focusState.serverUrl,
-                            focusState.hasRequestedInitialFocus,
-                            focusState.onInitialFocusSet
-                        )
+                    if (!focusState.hasRequestedInitialFocus) {
+                        focusState.onInitialFocusSet()
+                        coroutineScope.launch {
+                            requestInitialFocus(focusState.serverUrl)
+                        }
                     }
                 }
             ),

@@ -83,7 +83,7 @@ fun NextEpisodeButtonGroup(
             navigationConfig = PlayerActionButtonNavigationConfig(
                 onNavigateRight = {
                     coroutineScope.launch {
-                        nextEpisodeFocusRequester.safeRequestFocus(targetName = "NextEpisodeButton")
+                        nextEpisodeFocusRequester.safeRequestFocus(targetName = "NextEpisodeButton", initialDelayMs = 0)
                     }
                     true
                 }
@@ -115,7 +115,7 @@ fun NextEpisodeButtonGroup(
             navigationConfig = PlayerActionButtonNavigationConfig(
                 onNavigateLeft = {
                     coroutineScope.launch {
-                        watchCreditsFocusRequester.safeRequestFocus(targetName = "WatchCreditsButton")
+                        watchCreditsFocusRequester.safeRequestFocus(targetName = "WatchCreditsButton", initialDelayMs = 0)
                     }
                     true
                 }

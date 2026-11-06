@@ -97,7 +97,10 @@ class MainViewModel @Inject constructor(
     private var initialLoadJob: Job? = null
 
     private fun loadInitialData() {
-        viewModelScope.launch {
+        val previousLoadJob = initialLoadJob
+        previousLoadJob?.cancel()
+        initialLoadJob = viewModelScope.launch {
+            previousLoadJob?.join()
             val credentials = withContext(ioDispatcher) { credentialsRepository.getCredentials() }
             if (credentials == null) {
                 Log.w("MainViewModel", "No credentials available, skipping initial data load")
@@ -106,29 +109,26 @@ class MainViewModel @Inject constructor(
 
             saveUsernameIfNeeded(credentials)
 
-            initialLoadJob?.cancel()
-            initialLoadJob = viewModelScope.launch {
-                _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-                Log.d("MainViewModel", "Loading initial data...")
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            Log.d("MainViewModel", "Loading initial data...")
 
-                val useOfflineBrowsingCache = cacheService.shouldUseCacheForBrowsing()
-                val cachedDataDeferred = async { loadFromCacheIfAvailable() }
-                val serverInfoJob = if (useOfflineBrowsingCache && cacheService.isFallbackCooldownActive()) {
-                    null
-                } else {
-                    async { loadServerInfo(credentials) }
-                }
-
-                val cachedData = cachedDataDeferred.await()
-                serverInfoJob?.await()
-
-                if (cachedData == null) {
-                    loadCategoriesFromRepository(credentials)
-                }
-
-                _uiState.value = _uiState.value.copy(isLoading = false)
-                Log.d("MainViewModel", "Initial data loading finished.")
+            val useOfflineBrowsingCache = cacheService.shouldUseCacheForBrowsing()
+            val cachedDataDeferred = async { loadFromCacheIfAvailable() }
+            val serverInfoJob = if (useOfflineBrowsingCache && cacheService.isFallbackCooldownActive()) {
+                null
+            } else {
+                async { loadServerInfo(credentials) }
             }
+
+            val cachedData = cachedDataDeferred.await()
+            serverInfoJob?.await()
+
+            if (cachedData == null) {
+                loadCategoriesFromRepository(credentials)
+            }
+
+            _uiState.value = _uiState.value.copy(isLoading = false)
+            Log.d("MainViewModel", "Initial data loading finished.")
         }
     }
 

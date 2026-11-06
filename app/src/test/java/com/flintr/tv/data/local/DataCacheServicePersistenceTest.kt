@@ -498,6 +498,22 @@ class DataCacheServicePersistenceTest {
     }
 
     @Test
+    fun `loadCachedData ueberspringt null-Elemente in JSON-Arrays`() {
+        assertTrue(saveDefaults())
+        val movieAdapter = moshi.adapter(VodStream::class.java)
+        val first = movieAdapter.toJson(testVodStream(name = "Film 1", streamId = 1))
+        val second = movieAdapter.toJson(testVodStream(name = "Film 2", streamId = 2))
+        File(cacheDir, "movies.json").writeText("""[null,$first,null,$second]""")
+
+        // Fresh instance so the memoized catalog cannot mask the file content.
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        val cached = fresh.loadCachedData()
+
+        assertEquals(listOf(1, 2), cached?.movies?.map { it.streamId })
+        assertEquals(listOf("Film 1", "Film 2"), cached?.movies?.map { it.name })
+    }
+
+    @Test
     fun `parallele Erst-Loads teilen sich einen Parse`() {
         val probe = VodStreamProbe()
         val probedMoshi = Moshi.Builder().add(probe).build()

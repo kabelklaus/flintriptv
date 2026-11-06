@@ -728,7 +728,8 @@ private fun SeasonNavigation(
                 coroutineScope.launch {
                     seasonButtonFocusRequesters[params.selectedSeasonIndex].safeRequestFocus(
                         "SeriesEpisodesScreen",
-                        "SEASON_BUTTON_${params.selectedSeasonIndex}"
+                        "SEASON_BUTTON_${params.selectedSeasonIndex}",
+                        initialDelayMs = 0
                     )
                 }
             }
@@ -752,7 +753,7 @@ private fun SeasonNavigation(
                         onUp = {
                             // Navigate to resume button or header when pressing up from season buttons
                             coroutineScope.launch {
-                                upFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "ABOVE_SEASONS")
+                                upFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "ABOVE_SEASONS", initialDelayMs = 0)
                             }
                             true
                         }
@@ -854,7 +855,7 @@ private fun SeasonButton(
     LaunchedEffect(isSelected, suppressAutoFocus) {
         if (isSelected && !suppressAutoFocus) {
             kotlinx.coroutines.delay(50)
-            actualFocusRequester.safeRequestFocus(targetName = "SeasonButton")
+            actualFocusRequester.safeRequestFocus(targetName = "SeasonButton", initialDelayMs = 0)
         }
     }
     

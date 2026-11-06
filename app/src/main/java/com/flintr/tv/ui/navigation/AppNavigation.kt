@@ -1716,17 +1716,23 @@ private fun resolveTargetCategoryId(
 /**
  * Clears the content-card focus requester map whenever the selected category changes,
  * so FocusRequester entries for cards no longer on screen don't accumulate unbounded
- * as the user browses categories. Keyed on selectedCategoryId so it only runs on a real
- * category switch, not on every recomposition; new entries are then created fresh via
- * getOrPut as ContentGridLayout renders the new category's cards.
+ * as the user browses categories. Only clears on a real category switch, not on first
+ * composition (e.g. returning from the player with navigation restore), since an
+ * initial clear would race with restoreCategory/restoreFocus polling for requesters
+ * that getOrPut just populated. New entries are then created fresh via getOrPut as
+ * ContentGridLayout renders the new category's cards.
  */
 @Composable
 private fun FocusRequesterMapClearEffect(
     selectedCategoryId: String?,
     focusRequesterMap: MutableMap<String, FocusRequester>
 ) {
+    var lastClearedCategoryId by remember { mutableStateOf(selectedCategoryId) }
     LaunchedEffect(selectedCategoryId) {
-        focusRequesterMap.clear()
+        if (selectedCategoryId != lastClearedCategoryId) {
+            focusRequesterMap.clear()
+            lastClearedCategoryId = selectedCategoryId
+        }
     }
 }
 
