@@ -11,6 +11,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.utils.error.AppErrorReporter
 import com.flintr.tv.utils.error.ErrorReporter
 import com.google.firebase.analytics.FirebaseAnalytics
@@ -29,6 +30,9 @@ class FlintRTVApplication : Application(), ImageLoaderFactory {
 
     @Inject
     lateinit var errorReporter: ErrorReporter
+
+    @Inject
+    lateinit var dataCacheService: DataCacheService
 
     override fun onCreate() {
         super.onCreate()
@@ -81,6 +85,8 @@ class FlintRTVApplication : Application(), ImageLoaderFactory {
             level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
             level == ComponentCallbacks2.TRIM_MEMORY_COMPLETE
         ) {
+            // Drop the large in-RAM catalog memo first, then the bitmap cache.
+            if (::dataCacheService.isInitialized) dataCacheService.trimCachedCatalog()
             imageLoader?.memoryCache?.clear()
         }
     }
