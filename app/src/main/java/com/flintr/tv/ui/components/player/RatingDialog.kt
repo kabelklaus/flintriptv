@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,7 @@ import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.safeRequestFocus
+import kotlinx.coroutines.launch
 import java.time.Instant
 
 /**
@@ -59,6 +61,7 @@ fun RatingDialog(
     onDismiss: () -> Unit
 ) {
     val colors = appColors()
+    val coroutineScope = rememberCoroutineScope()
     val thumbsUpFocusRequester = remember { FocusRequester() }
     val thumbsDownFocusRequester = remember { FocusRequester() }
     var thumbsUpFocused by remember { mutableStateOf(false) }
@@ -115,7 +118,12 @@ fun RatingDialog(
                             .focusable()
                             .onClick(onClick = { rate(1) })
                             .onDpadDirection(
-                                onRight = { thumbsDownFocusRequester.requestFocus(); true }
+                                onRight = {
+                                    coroutineScope.launch {
+                                        thumbsDownFocusRequester.safeRequestFocus(targetName = "RATING_DIALOG_THUMBS_DOWN")
+                                    }
+                                    true
+                                }
                             )
                             .semantics { contentDescription = "Daumen hoch" }
                     )
@@ -135,7 +143,12 @@ fun RatingDialog(
                             .focusable()
                             .onClick(onClick = { rate(0) })
                             .onDpadDirection(
-                                onLeft = { thumbsUpFocusRequester.requestFocus(); true }
+                                onLeft = {
+                                    coroutineScope.launch {
+                                        thumbsUpFocusRequester.safeRequestFocus(targetName = "RATING_DIALOG_THUMBS_UP")
+                                    }
+                                    true
+                                }
                             )
                             .semantics { contentDescription = "Daumen runter" }
                     )

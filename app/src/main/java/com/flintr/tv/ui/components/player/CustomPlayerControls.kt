@@ -27,6 +27,7 @@ import com.flintr.tv.ui.utils.FocusedButton
 import com.flintr.tv.ui.utils.formatTime
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.ui.utils.safeRequestFocus
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
@@ -171,7 +172,7 @@ fun CustomPlayerControls(
     
     // Request focus when focusedButton changes
     LaunchedEffect(focusedButton) {
-        focusRequesters[focusedButton]?.requestFocus()
+        focusRequesters[focusedButton]?.safeRequestFocus(targetName = "PlayerControl_${focusedButton?.name ?: "none"}")
     }
 
     var minuteTickMillis by remember { mutableStateOf(System.currentTimeMillis()) }

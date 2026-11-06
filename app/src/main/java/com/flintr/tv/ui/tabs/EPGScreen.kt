@@ -18,6 +18,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.data.model.LiveStream
+import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.viewmodel.MainViewModel
 
 @Composable
@@ -36,7 +37,7 @@ fun EPGContent(
     // Request focus when streams are loaded
     LaunchedEffect(streams.isNotEmpty(), uiState.isLoading) {
         if (!uiState.isLoading && streams.isNotEmpty()) {
-            focusRequester.requestFocus()
+            focusRequester.safeRequestFocus(targetName = "EPGStreamList")
         }
     }
     

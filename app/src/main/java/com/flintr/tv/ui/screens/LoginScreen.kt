@@ -33,7 +33,8 @@ import com.flintr.tv.ui.theme.FontSizes
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.viewmodel.LoginViewModel
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.flintr.tv.utils.error.reportControlFlow
+import com.flintr.tv.ui.utils.safeRequestFocus
+import kotlinx.coroutines.launch
 
 /**
  * Returns standardized text field colors for login form
@@ -291,18 +292,14 @@ private fun LoginErrorCard(
 /**
  * Requests initial focus safely, handling the case where the component is not yet ready
  */
-private fun requestInitialFocus(
+private suspend fun requestInitialFocus(
     focusRequester: FocusRequester,
     hasRequestedInitialFocus: Boolean,
     onInitialFocusSet: () -> Unit
 ) {
     if (hasRequestedInitialFocus) return
-    try {
-        focusRequester.requestFocus()
+    if (focusRequester.safeRequestFocus(logTag = "LoginScreen", targetName = "ServerUrlField")) {
         onInitialFocusSet()
-    } catch (e: IllegalStateException) {
-        reportControlFlow("LoginScreen.initialFocus", e)
-        // Component not ready for focus yet
     }
 }
 
@@ -332,6 +329,7 @@ private fun LoginFormContent(
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -355,11 +353,13 @@ private fun LoginFormContent(
                 enabled = !formState.isLoading,
                 focusRequester = focusState.serverUrl,
                 onGloballyPositioned = {
-                    requestInitialFocus(
-                        focusState.serverUrl,
-                        focusState.hasRequestedInitialFocus,
-                        focusState.onInitialFocusSet
-                    )
+                    coroutineScope.launch {
+                        requestInitialFocus(
+                            focusState.serverUrl,
+                            focusState.hasRequestedInitialFocus,
+                            focusState.onInitialFocusSet
+                        )
+                    }
                 }
             ),
             colors = colors
