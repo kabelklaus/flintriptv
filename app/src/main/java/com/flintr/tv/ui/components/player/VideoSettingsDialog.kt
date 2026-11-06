@@ -1,7 +1,3 @@
-// File-level suppress: Sonar reports S3776 as a file/class aggregate here even though each
-// flagged function already carries its own @Suppress("kotlin:S3776") with a rationale below.
-@file:Suppress("kotlin:S3776")
-
 package com.flintr.tv.ui.components.player
 
 import androidx.compose.foundation.background
@@ -20,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -77,32 +74,46 @@ data class AudioTrackInfo(
 @OptIn(UnstableApi::class)
 fun getAudioTracksFromPlayer(player: ExoPlayer?): List<AudioTrackInfo> {
     if (player == null) return emptyList()
-    val tracks = player.currentTracks
     val result = mutableListOf<AudioTrackInfo>()
-    tracks.groups
+    player.currentTracks.groups
         .filter { it.type == C.TRACK_TYPE_AUDIO }
         .forEachIndexed { groupIndex, group ->
-            for (i in 0 until group.length) {
-                val format = group.getTrackFormat(i)
-                val codecs = format.codecs
-                val channels = if (format.channelCount != Format.NO_VALUE) format.channelCount else 0
-                val rate = if (format.sampleRate != Format.NO_VALUE) format.sampleRate else 0
-                val lang = format.language?.takeIf { s -> s.isNotEmpty() }
-                val label = buildAudioTrackLabel(codecs, channels, rate, lang, result.size + 1)
-                result.add(
-                    AudioTrackInfo(
-                        groupIndex = groupIndex,
-                        trackIndex = i,
-                        codecs = codecs,
-                        channelCount = channels,
-                        sampleRate = rate,
-                        language = lang,
-                        displayLabel = label
-                    )
-                )
-            }
+            result.addAll(collectAudioTracksFromGroup(group, groupIndex, result.size))
         }
     return result
+}
+
+/**
+ * Builds the [AudioTrackInfo] entries for a single track group. [fallbackOffset] is the
+ * count of tracks already collected from earlier groups, so the "Track N" fallback label
+ * keeps numbering sequentially across all groups.
+ */
+private fun buildAudioTrackInfo(format: Format, groupIndex: Int, trackIndex: Int, fallbackIndex: Int): AudioTrackInfo {
+    val codecs = format.codecs
+    val channels = if (format.channelCount != Format.NO_VALUE) format.channelCount else 0
+    val rate = if (format.sampleRate != Format.NO_VALUE) format.sampleRate else 0
+    val lang = format.language?.takeIf { s -> s.isNotEmpty() }
+    return AudioTrackInfo(
+        groupIndex = groupIndex,
+        trackIndex = trackIndex,
+        codecs = codecs,
+        channelCount = channels,
+        sampleRate = rate,
+        language = lang,
+        displayLabel = buildAudioTrackLabel(codecs, channels, rate, lang, fallbackIndex)
+    )
+}
+
+private fun collectAudioTracksFromGroup(
+    group: androidx.media3.common.Tracks.Group,
+    groupIndex: Int,
+    fallbackOffset: Int
+): List<AudioTrackInfo> {
+    val tracks = mutableListOf<AudioTrackInfo>()
+    for (i in 0 until group.length) {
+        tracks.add(buildAudioTrackInfo(group.getTrackFormat(i), groupIndex, i, fallbackOffset + tracks.size + 1))
+    }
+    return tracks
 }
 
 /**
@@ -113,18 +124,18 @@ fun getAudioTracksFromPlayer(player: ExoPlayer?): List<AudioTrackInfo> {
 fun pickAudioTrackByLanguage(tracks: List<AudioTrackInfo>, language: AudioLanguage): AudioTrackInfo? =
     tracks.find { normalizeLanguageCode(it.language) == language.value }
 
+private fun channelsLabel(channels: Int): String = when (channels) {
+    1 -> "Mono"
+    2 -> "Stereo"
+    6 -> "5.1"
+    8 -> "7.1"
+    else -> "${channels}ch"
+}
+
 private fun buildAudioTrackLabel(codecs: String?, channels: Int, sampleRate: Int, language: String?, fallbackIndex: Int): String {
     val parts = mutableListOf<String>()
     if (!codecs.isNullOrEmpty()) parts.add(codecs)
-    if (channels > 0) {
-        parts.add(when (channels) {
-            1 -> "Mono"
-            2 -> "Stereo"
-            6 -> "5.1"
-            8 -> "7.1"
-            else -> "${channels}ch"
-        })
-    }
+    if (channels > 0) parts.add(channelsLabel(channels))
     if (sampleRate > 0) parts.add("${sampleRate}Hz")
     if (!language.isNullOrEmpty()) parts.add(language)
     return if (parts.isNotEmpty()) parts.joinToString(" ") else "Track $fallbackIndex"
@@ -147,25 +158,33 @@ data class SubtitleTrackInfo(
 @OptIn(UnstableApi::class)
 fun getSubtitleTracksFromPlayer(player: ExoPlayer?): List<SubtitleTrackInfo> {
     if (player == null) return emptyList()
-    val tracks = player.currentTracks
     val result = mutableListOf<SubtitleTrackInfo>()
-    tracks.groups
+    player.currentTracks.groups
         .filter { it.type == C.TRACK_TYPE_TEXT }
         .forEachIndexed { groupIndex, group ->
-            for (i in 0 until group.length) {
-                val format = group.getTrackFormat(i)
-                val lang = format.language?.takeIf { s -> s.isNotEmpty() }
-                result.add(
-                    SubtitleTrackInfo(
-                        groupIndex = groupIndex,
-                        trackIndex = i,
-                        language = lang,
-                        displayLabel = buildSubtitleTrackLabel(lang, result.size + 1)
-                    )
-                )
-            }
+            result.addAll(collectSubtitleTracksFromGroup(group, groupIndex, result.size))
         }
     return result
+}
+
+private fun collectSubtitleTracksFromGroup(
+    group: androidx.media3.common.Tracks.Group,
+    groupIndex: Int,
+    fallbackOffset: Int
+): List<SubtitleTrackInfo> {
+    val tracks = mutableListOf<SubtitleTrackInfo>()
+    for (i in 0 until group.length) {
+        val lang = group.getTrackFormat(i).language?.takeIf { s -> s.isNotEmpty() }
+        tracks.add(
+            SubtitleTrackInfo(
+                groupIndex = groupIndex,
+                trackIndex = i,
+                language = lang,
+                displayLabel = buildSubtitleTrackLabel(lang, fallbackOffset + tracks.size + 1)
+            )
+        )
+    }
+    return tracks
 }
 
 private fun buildSubtitleTrackLabel(language: String?, fallbackIndex: Int): String {
@@ -332,7 +351,6 @@ fun buildSubtitleConfigurations(subtitles: List<Subtitle>): List<MediaItem.Subti
  *   so the caller can stop re-applying the preferred-language auto-selection for this stream
  */
 @OptIn(UnstableApi::class)
-@Suppress("kotlin:S3776") // Composable assembles the full settings dialog; already split into sub-selectors, further splitting risks the tested settings flow
 @Composable
 fun VideoSettingsDialog(
     onDismiss: () -> Unit,
@@ -343,28 +361,14 @@ fun VideoSettingsDialog(
     onAudioTrackOverridden: () -> Unit = {}
 ) {
     val colors = appColors()
-
-    var videoQuality by remember {
-        mutableStateOf(playbackSettingsRepository?.getVideoQuality() ?: VideoQuality.Auto)
-    }
-    var resizeMode by remember {
-        mutableStateOf(playbackSettingsRepository?.getVideoResizeMode() ?: VideoResizeMode.FIT)
-    }
-    var autoPlay by remember {
-        mutableStateOf(playbackSettingsRepository?.isAutoPlayNextEnabled() ?: false)
-    }
-    var rememberPosition by remember {
-        mutableStateOf(playbackSettingsRepository?.isRememberPositionEnabled() ?: true)
-    }
-    var subtitlesEnabled by remember {
-        mutableStateOf(playbackSettingsRepository?.getSubtitlesEnabled() ?: false)
-    }
-    var subtitleLanguage by remember {
-        mutableStateOf(playbackSettingsRepository?.getPreferredSubtitleLanguage() ?: SubtitleLanguage.Deutsch)
-    }
-    var audioLanguage by remember {
-        mutableStateOf(playbackSettingsRepository?.getPreferredAudioLanguage() ?: AudioLanguage.Deutsch)
-    }
+    val state = remember { VideoSettingsState(playbackSettingsRepository) }
+    val actions = VideoSettingsActions(
+        state = state,
+        exoPlayer = exoPlayer,
+        playerView = playerView,
+        repository = playbackSettingsRepository,
+        onAudioTrackOverridden = onAudioTrackOverridden
+    )
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -413,169 +417,256 @@ fun VideoSettingsDialog(
                 }
                 
                 Spacer(modifier = Modifier.height(Dimensions.spacingLG))
-                
-                // Quality Section
-                SettingsCard(
-                    title = "Qualität",
-                    icon = Icons.Default.HighQuality,
-                    colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        // Max video resolution (upper bound) - persists and, when the current
-                        // stream has more than one video track, immediately constrains it
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXXS)
-                        ) {
-                            MaxVideoResolutionSelector(
-                                selectedQuality = videoQuality,
-                                onQualitySelected = { quality ->
-                                    videoQuality = quality
-                                    playbackSettingsRepository?.setVideoQuality(quality)
-                                    exoPlayer?.let { applyMaxVideoSize(it, quality) }
-                                },
-                                colors = colors
-                            )
-                            Text(
-                                text = "Wirkt nur bei Streams mit mehreren Qualitätsstufen",
-                                fontSize = FontSizes.fontSizeXS,
-                                color = colors.textSecondary
-                            )
-                        }
 
-                        // Aspect ratio / resize mode - persists and applies live to the PlayerView
-                        VideoResizeModeSelector(
-                            selectedMode = resizeMode,
-                            onModeSelected = { mode ->
-                                resizeMode = mode
-                                playbackSettingsRepository?.setVideoResizeMode(mode)
-                                playerView?.let { applyResizeMode(it, mode) }
-                            },
-                            colors = colors
-                        )
-
-                        // Auto Play Switch - persists; actual next-item advancing is gated
-                        // on this setting in PlayerScreen/PlayerViewModel
-                        SwitchSetting(
-                            label = "Automatisch abspielen",
-                            checked = autoPlay,
-                            onCheckedChange = { enabled ->
-                                autoPlay = enabled
-                                playbackSettingsRepository?.setAutoPlayNextEnabled(enabled)
-                            },
-                            colors = colors
-                        )
-
-                        // Remember Position Switch - persists; gates watch-progress saving
-                        // in PlayerScreen
-                        SwitchSetting(
-                            label = "Position merken",
-                            checked = rememberPosition,
-                            onCheckedChange = { enabled ->
-                                rememberPosition = enabled
-                                playbackSettingsRepository?.setRememberPositionEnabled(enabled)
-                            },
-                            colors = colors
-                        )
-                    }
-                }
+                QualitySettingsSection(actions = actions, colors = colors)
 
                 Spacer(modifier = Modifier.height(Dimensions.spacingMD))
 
-                // Subtitles Section
-                SettingsCard(
-                    title = "Untertitel",
-                    icon = Icons.Default.ClosedCaption,
-                    colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        // Subtitles enabled switch - persists and immediately enables/disables
-                        // text tracks on the current player
-                        SwitchSetting(
-                            label = "Untertitel aktivieren",
-                            checked = subtitlesEnabled,
-                            onCheckedChange = { enabled ->
-                                subtitlesEnabled = enabled
-                                playbackSettingsRepository?.setSubtitlesEnabled(enabled)
-                                exoPlayer?.let { applySubtitlesEnabled(it, enabled) }
-                            },
-                            colors = colors
-                        )
-
-                        // Preferred subtitle language - persists and, while subtitles are
-                        // enabled, immediately selects the matching track on the current stream
-                        Box(
-                            modifier = Modifier
-                                .alpha(if (subtitlesEnabled) 1f else 0.5f)
-                                .let { base ->
-                                    if (subtitlesEnabled) base else base.focusProperties { canFocus = false }
-                                }
-                        ) {
-                            SubtitleLanguageSelector(
-                                selectedLanguage = subtitleLanguage,
-                                onLanguageSelected = { language ->
-                                    subtitleLanguage = language
-                                    playbackSettingsRepository?.setPreferredSubtitleLanguage(language)
-                                    if (subtitlesEnabled) {
-                                        val tracks = getSubtitleTracksFromPlayer(exoPlayer)
-                                        pickSubtitleTrackByLanguage(tracks, language)?.let { track ->
-                                            exoPlayer?.let { selectSubtitleTrack(it, track) }
-                                        }
-                                    }
-                                },
-                                colors = colors
-                            )
-                        }
-
-                        // Subtitle track selection (current stream)
-                        SubtitleTrackSelector(
-                            exoPlayer = exoPlayer,
-                            colors = colors
-                        )
-                    }
-                }
+                SubtitleSettingsSection(actions = actions, colors = colors)
 
                 Spacer(modifier = Modifier.height(Dimensions.spacingMD))
 
-                // Audio Section
-                SettingsCard(
-                    title = "Audio",
-                    icon = Icons.Default.VolumeUp,
-                    colors = colors
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
-                    ) {
-                        // Preferred audio language - persists and immediately selects the
-                        // matching track on the current stream, if one exists
-                        AudioLanguageSelector(
-                            selectedLanguage = audioLanguage,
-                            onLanguageSelected = { language ->
-                                audioLanguage = language
-                                playbackSettingsRepository?.setPreferredAudioLanguage(language)
-                                val tracks = getAudioTracksFromPlayer(exoPlayer)
-                                pickAudioTrackByLanguage(tracks, language)?.let { track ->
-                                    exoPlayer?.let { selectAudioTrack(it, track) }
-                                    onAudioTrackOverridden()
-                                }
-                            },
-                            colors = colors
-                        )
-                        // Audio track selection (current stream)
-                        AudioTrackSelector(
-                            exoPlayer = exoPlayer,
-                            colors = colors,
-                            onTrackSelected = onAudioTrackOverridden
-                        )
-                    }
-                }
+                AudioSettingsSection(actions = actions, colors = colors)
             }
         }
     }
 }
+
+/**
+ * The dialog's setting values, seeded once from [repository] (defaults when null).
+ */
+@Stable
+private class VideoSettingsState(repository: PlaybackSettingsRepository?) {
+    var videoQuality by mutableStateOf(repository?.getVideoQuality() ?: VideoQuality.Auto)
+    var resizeMode by mutableStateOf(repository?.getVideoResizeMode() ?: VideoResizeMode.FIT)
+    var autoPlay by mutableStateOf(repository?.isAutoPlayNextEnabled() ?: false)
+    var rememberPosition by mutableStateOf(repository?.isRememberPositionEnabled() ?: true)
+    var subtitlesEnabled by mutableStateOf(repository?.getSubtitlesEnabled() ?: false)
+    var subtitleLanguage by mutableStateOf(repository?.getPreferredSubtitleLanguage() ?: SubtitleLanguage.Deutsch)
+    var audioLanguage by mutableStateOf(repository?.getPreferredAudioLanguage() ?: AudioLanguage.Deutsch)
+}
+
+/**
+ * Setting-change handlers of [VideoSettingsDialog]: each updates [state], persists via
+ * [repository] and applies the change live to [exoPlayer]/[playerView]. Rebuilt on every
+ * composition so the handlers always target the current player instances.
+ */
+private class VideoSettingsActions(
+    val state: VideoSettingsState,
+    val exoPlayer: ExoPlayer?,
+    private val playerView: PlayerView?,
+    private val repository: PlaybackSettingsRepository?,
+    val onAudioTrackOverridden: () -> Unit
+) {
+    fun selectQuality(quality: VideoQuality) {
+        state.videoQuality = quality
+        repository?.setVideoQuality(quality)
+        exoPlayer?.let { applyMaxVideoSize(it, quality) }
+    }
+
+    fun selectResizeMode(mode: VideoResizeMode) {
+        state.resizeMode = mode
+        repository?.setVideoResizeMode(mode)
+        playerView?.let { applyResizeMode(it, mode) }
+    }
+
+    fun setAutoPlay(enabled: Boolean) {
+        state.autoPlay = enabled
+        repository?.setAutoPlayNextEnabled(enabled)
+    }
+
+    fun setRememberPosition(enabled: Boolean) {
+        state.rememberPosition = enabled
+        repository?.setRememberPositionEnabled(enabled)
+    }
+
+    fun setSubtitlesEnabled(enabled: Boolean) {
+        state.subtitlesEnabled = enabled
+        repository?.setSubtitlesEnabled(enabled)
+        exoPlayer?.let { applySubtitlesEnabled(it, enabled) }
+    }
+
+    fun selectSubtitleLanguage(language: SubtitleLanguage) {
+        state.subtitleLanguage = language
+        repository?.setPreferredSubtitleLanguage(language)
+        if (state.subtitlesEnabled) {
+            val tracks = getSubtitleTracksFromPlayer(exoPlayer)
+            pickSubtitleTrackByLanguage(tracks, language)?.let { track ->
+                exoPlayer?.let { selectSubtitleTrack(it, track) }
+            }
+        }
+    }
+
+    fun selectAudioLanguage(language: AudioLanguage) {
+        state.audioLanguage = language
+        repository?.setPreferredAudioLanguage(language)
+        val tracks = getAudioTracksFromPlayer(exoPlayer)
+        pickAudioTrackByLanguage(tracks, language)?.let { track ->
+            exoPlayer?.let { selectAudioTrack(it, track) }
+            onAudioTrackOverridden()
+        }
+    }
+}
+
+/**
+ * Quality section card: max video resolution, aspect ratio, auto-play and remember-position.
+ */
+@Composable
+private fun QualitySettingsSection(
+    actions: VideoSettingsActions,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    val state = actions.state
+    SettingsCard(
+        title = "Qualität",
+        icon = Icons.Default.HighQuality,
+        colors = colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            // Max video resolution (upper bound) - persists and, when the current
+            // stream has more than one video track, immediately constrains it
+            Column(
+                verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXXS)
+            ) {
+                MaxVideoResolutionSelector(
+                    selectedQuality = state.videoQuality,
+                    onQualitySelected = actions::selectQuality,
+                    colors = colors
+                )
+                Text(
+                    text = "Wirkt nur bei Streams mit mehreren Qualitätsstufen",
+                    fontSize = FontSizes.fontSizeXS,
+                    color = colors.textSecondary
+                )
+            }
+
+            // Aspect ratio / resize mode - persists and applies live to the PlayerView
+            ResizeModeSelector(
+                selectedMode = state.resizeMode,
+                onModeSelected = actions::selectResizeMode,
+                colors = colors
+            )
+
+            // Auto Play Switch - persists; actual next-item advancing is gated
+            // on this setting in PlayerScreen/PlayerViewModel
+            SwitchSetting(
+                label = "Automatisch abspielen",
+                checked = state.autoPlay,
+                onCheckedChange = actions::setAutoPlay,
+                colors = colors
+            )
+
+            // Remember Position Switch - persists; gates watch-progress saving
+            // in PlayerScreen
+            SwitchSetting(
+                label = "Position merken",
+                checked = state.rememberPosition,
+                onCheckedChange = actions::setRememberPosition,
+                colors = colors
+            )
+        }
+    }
+}
+
+/**
+ * Subtitles section card: enabled switch, preferred language and current-stream track selection.
+ */
+@Composable
+private fun SubtitleSettingsSection(
+    actions: VideoSettingsActions,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    val subtitlesEnabled = actions.state.subtitlesEnabled
+    SettingsCard(
+        title = "Untertitel",
+        icon = Icons.Default.ClosedCaption,
+        colors = colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            // Subtitles enabled switch - persists and immediately enables/disables
+            // text tracks on the current player
+            SwitchSetting(
+                label = "Untertitel aktivieren",
+                checked = subtitlesEnabled,
+                onCheckedChange = actions::setSubtitlesEnabled,
+                colors = colors
+            )
+
+            // Preferred subtitle language - persists and, while subtitles are
+            // enabled, immediately selects the matching track on the current stream
+            Box(
+                modifier = Modifier
+                    .alpha(if (subtitlesEnabled) 1f else 0.5f)
+                    .let { base ->
+                        if (subtitlesEnabled) base else base.focusProperties { canFocus = false }
+                    }
+            ) {
+                SubtitleLanguageSelector(
+                    selectedLanguage = actions.state.subtitleLanguage,
+                    onLanguageSelected = actions::selectSubtitleLanguage,
+                    colors = colors
+                )
+            }
+
+            // Subtitle track selection (current stream)
+            SubtitleTrackSelector(
+                exoPlayer = actions.exoPlayer,
+                colors = colors
+            )
+        }
+    }
+}
+
+/**
+ * Audio section card: preferred language and current-stream track selection.
+ */
+@Composable
+private fun AudioSettingsSection(
+    actions: VideoSettingsActions,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    SettingsCard(
+        title = "Audio",
+        icon = Icons.Default.VolumeUp,
+        colors = colors
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Dimensions.spacingMD)
+        ) {
+            // Preferred audio language - persists and immediately selects the
+            // matching track on the current stream, if one exists
+            AudioLanguageSelector(
+                selectedLanguage = actions.state.audioLanguage,
+                onLanguageSelected = actions::selectAudioLanguage,
+                colors = colors
+            )
+            // Audio track selection (current stream)
+            AudioTrackSelector(
+                exoPlayer = actions.exoPlayer,
+                colors = colors,
+                onTrackSelected = actions.onAudioTrackOverridden
+            )
+        }
+    }
+}
+
+/**
+ * Shared visuals for the dropdown selectors below ([MaxVideoResolutionSelector],
+ * [TrackDropdownField]), pulled out of their DropdownMenu/trailingIcon lambdas so those
+ * stay flat (no branching nested inside the forEach/DropdownMenuItem structure).
+ */
+private fun dropdownBorderColor(focused: Boolean, colors: com.flintr.tv.ui.theme.AppColors): Color =
+    if (focused) colors.accentColor else colors.cardBorder
+
+private fun dropdownExpandIcon(expanded: Boolean) =
+    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore
+
+private fun dropdownItemTextColor(selected: Boolean, colors: com.flintr.tv.ui.theme.AppColors): Color =
+    if (selected) colors.accentColor else colors.textPrimary
 
 /**
  * Max video resolution (upper bound) dropdown for the current stream.
@@ -590,7 +681,7 @@ private fun MaxVideoResolutionSelector(
     var focused by remember { mutableStateOf(false) }
     val fieldLabel = "Max. Videoauflösung"
     val borderColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (focused) colors.accentColor else colors.cardBorder,
+        targetValue = dropdownBorderColor(focused, colors),
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
         label = "borderColor"
     )
@@ -619,7 +710,7 @@ private fun MaxVideoResolutionSelector(
                 },
             trailingIcon = {
                 Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    imageVector = dropdownExpandIcon(expanded),
                     contentDescription = null
                 )
             },
@@ -641,78 +732,7 @@ private fun MaxVideoResolutionSelector(
                         expanded = false
                     },
                     colors = MenuDefaults.itemColors(
-                        textColor = if (selectedQuality == quality) colors.accentColor else colors.textPrimary
-                    )
-                )
-            }
-        }
-    }
-}
-
-/**
- * Aspect ratio / resize mode dropdown, applied live to the PlayerView.
- */
-@Composable
-private fun VideoResizeModeSelector(
-    selectedMode: VideoResizeMode,
-    onModeSelected: (VideoResizeMode) -> Unit,
-    colors: com.flintr.tv.ui.theme.AppColors
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var focused by remember { mutableStateOf(false) }
-    val fieldLabel = "Seitenverhältnis"
-    val borderColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (focused) colors.accentColor else colors.cardBorder,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
-        label = "borderColor"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
-            .onClick(onClick = { expanded = !expanded })
-            .semantics {
-                contentDescription = "$fieldLabel: ${selectedMode.displayName}"
-            }
-    ) {
-        OutlinedTextField(
-            value = selectedMode.displayName,
-            onValueChange = {},
-            enabled = false,
-            readOnly = true,
-            label = { Text(fieldLabel) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clearAndSetSemantics {
-                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedMode.displayName))
-                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedMode.displayName)
-                },
-            trailingIcon = {
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = null
-                )
-            },
-            shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = dropdownSelectorColors(colors, borderColor, focused)
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier
-                .background(colors.bgCard)
-                .border(1.dp, colors.cardBorder, RoundedCornerShape(Dimensions.radiusMD))
-        ) {
-            VideoResizeMode.entries.forEach { mode ->
-                DropdownMenuItem(
-                    text = { Text(mode.displayName) },
-                    onClick = {
-                        onModeSelected(mode)
-                        expanded = false
-                    },
-                    colors = MenuDefaults.itemColors(
-                        textColor = if (selectedMode == mode) colors.accentColor else colors.textPrimary
+                        textColor = dropdownItemTextColor(selectedQuality == quality, colors)
                     )
                 )
             }
@@ -766,12 +786,85 @@ internal fun selectAudioTrack(exoPlayer: ExoPlayer, track: AudioTrackInfo) {
 }
 
 /**
+ * Dropdown field shared by [AudioTrackSelector] and [SubtitleTrackSelector]. Its Modifier/semantics
+ * chain mirrors the touch/d-pad regression-tested ResizeModeSelector (SubSettingsPlaybackTouchTest)
+ * and must stay in that shape.
+ */
+@Composable
+private fun <T> TrackDropdownField(
+    fieldLabel: String,
+    selectedLabel: String,
+    tracks: List<T>,
+    labelOf: (T) -> String,
+    isSelected: (track: T, index: Int) -> Boolean,
+    onTrackSelected: (T) -> Unit,
+    colors: com.flintr.tv.ui.theme.AppColors
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var focused by remember { mutableStateOf(false) }
+    val borderColor by androidx.compose.animation.animateColorAsState(
+        targetValue = dropdownBorderColor(focused, colors),
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
+        label = "borderColor"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused }
+            .onClick(onClick = { expanded = !expanded })
+            .semantics {
+                contentDescription = "$fieldLabel: $selectedLabel"
+            }
+    ) {
+        OutlinedTextField(
+            value = selectedLabel,
+            onValueChange = {},
+            enabled = false,
+            readOnly = true,
+            label = { Text(fieldLabel) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clearAndSetSemantics {
+                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedLabel))
+                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedLabel)
+                },
+            trailingIcon = {
+                Icon(
+                    imageVector = dropdownExpandIcon(expanded),
+                    contentDescription = null
+                )
+            },
+            shape = RoundedCornerShape(Dimensions.radiusMD),
+            colors = dropdownSelectorColors(colors, borderColor, focused)
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .background(colors.bgCard)
+                .border(1.dp, colors.cardBorder, RoundedCornerShape(Dimensions.radiusMD))
+        ) {
+            tracks.forEachIndexed { index, track ->
+                DropdownMenuItem(
+                    text = { Text(labelOf(track)) },
+                    onClick = {
+                        onTrackSelected(track)
+                        expanded = false
+                    },
+                    colors = MenuDefaults.itemColors(
+                        textColor = dropdownItemTextColor(isSelected(track, index), colors)
+                    )
+                )
+            }
+        }
+    }
+}
+
+/**
  * Audio track list and selection for the current stream.
  * Shows available audio tracks and allows switching during playback.
  */
-@Suppress("kotlin:S3776") // Dropdown selector with guard clauses + forEach-nested selection lambda; this
-// shape is touch/d-pad regression-tested (SubSettingsPlaybackTouchTest) via the sibling
-// ResizeModeSelector, so the Modifier/semantics chain here stays untouched rather than merged.
 @OptIn(UnstableApi::class)
 @Composable
 private fun AudioTrackSelector(
@@ -806,71 +899,22 @@ private fun AudioTrackSelector(
         return
     }
 
-    var expanded by remember { mutableStateOf(false) }
-    var focused by remember { mutableStateOf(false) }
-    val fieldLabel = "Audio-Track"
-    val borderColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (focused) colors.accentColor else colors.cardBorder,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
-        label = "borderColor"
-    )
     val selectedLabel = remember(audioTracks, selectedOverride, audioGroups) {
         resolveSelectedLabel(audioTracks, selectedOverride, audioGroups)
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
-            .onClick(onClick = { expanded = !expanded })
-            .semantics {
-                contentDescription = "$fieldLabel: $selectedLabel"
-            }
-    ) {
-        OutlinedTextField(
-            value = selectedLabel,
-            onValueChange = {},
-            enabled = false,
-            readOnly = true,
-            label = { Text(fieldLabel) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clearAndSetSemantics {
-                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedLabel))
-                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedLabel)
-                },
-            trailingIcon = {
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = null
-                )
-            },
-            shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = dropdownSelectorColors(colors, borderColor, focused)
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier
-                .background(colors.bgCard)
-                .border(1.dp, colors.cardBorder, RoundedCornerShape(Dimensions.radiusMD))
-        ) {
-            audioTracks.forEachIndexed { index, track ->
-                val isSelected = isTrackSelected(track, index, selectedOverride, audioGroups)
-                DropdownMenuItem(
-                    text = { Text(track.displayLabel) },
-                    onClick = {
-                        selectAudioTrack(exoPlayer, track)
-                        onTrackSelected()
-                        expanded = false
-                    },
-                    colors = MenuDefaults.itemColors(
-                        textColor = if (isSelected) colors.accentColor else colors.textPrimary
-                    )
-                )
-            }
-        }
-    }
+    TrackDropdownField(
+        fieldLabel = "Audio-Track",
+        selectedLabel = selectedLabel,
+        tracks = audioTracks,
+        labelOf = { it.displayLabel },
+        isSelected = { track, index -> isTrackSelected(track, index, selectedOverride, audioGroups) },
+        onTrackSelected = { track ->
+            selectAudioTrack(exoPlayer, track)
+            onTrackSelected()
+        },
+        colors = colors
+    )
 }
 
 private fun resolveSelectedSubtitleLabel(
@@ -902,8 +946,6 @@ private fun isSubtitleTrackSelected(
  * Subtitle track list and selection for the current stream.
  * Shows available subtitle tracks and allows switching during playback.
  */
-@Suppress("kotlin:S3776") // Mirror of AudioTrackSelector above; same touch/d-pad regression-tested
-// Modifier/semantics shape, kept unmerged for the same reason.
 @OptIn(UnstableApi::class)
 @Composable
 private fun SubtitleTrackSelector(
@@ -937,69 +979,18 @@ private fun SubtitleTrackSelector(
         return
     }
 
-    var expanded by remember { mutableStateOf(false) }
-    var focused by remember { mutableStateOf(false) }
-    val fieldLabel = "Untertitel-Track"
-    val borderColor by androidx.compose.animation.animateColorAsState(
-        targetValue = if (focused) colors.accentColor else colors.cardBorder,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
-        label = "borderColor"
-    )
     val selectedLabel = remember(subtitleTracks, selectedOverride, subtitleGroups) {
         resolveSelectedSubtitleLabel(subtitleTracks, selectedOverride, subtitleGroups)
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
-            .onClick(onClick = { expanded = !expanded })
-            .semantics {
-                contentDescription = "$fieldLabel: $selectedLabel"
-            }
-    ) {
-        OutlinedTextField(
-            value = selectedLabel,
-            onValueChange = {},
-            enabled = false,
-            readOnly = true,
-            label = { Text(fieldLabel) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clearAndSetSemantics {
-                    this[SemanticsProperties.Text] = listOf(AnnotatedString(fieldLabel), AnnotatedString(selectedLabel))
-                    this[SemanticsProperties.EditableText] = AnnotatedString(selectedLabel)
-                },
-            trailingIcon = {
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = null
-                )
-            },
-            shape = RoundedCornerShape(Dimensions.radiusMD),
-            colors = dropdownSelectorColors(colors, borderColor, focused)
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier
-                .background(colors.bgCard)
-                .border(1.dp, colors.cardBorder, RoundedCornerShape(Dimensions.radiusMD))
-        ) {
-            subtitleTracks.forEachIndexed { index, track ->
-                val isSelected = isSubtitleTrackSelected(track, index, selectedOverride, subtitleGroups)
-                DropdownMenuItem(
-                    text = { Text(track.displayLabel) },
-                    onClick = {
-                        selectSubtitleTrack(exoPlayer, track)
-                        expanded = false
-                    },
-                    colors = MenuDefaults.itemColors(
-                        textColor = if (isSelected) colors.accentColor else colors.textPrimary
-                    )
-                )
-            }
-        }
-    }
+    TrackDropdownField(
+        fieldLabel = "Untertitel-Track",
+        selectedLabel = selectedLabel,
+        tracks = subtitleTracks,
+        labelOf = { it.displayLabel },
+        isSelected = { track, index -> isSubtitleTrackSelected(track, index, selectedOverride, subtitleGroups) },
+        onTrackSelected = { track -> selectSubtitleTrack(exoPlayer, track) },
+        colors = colors
+    )
 }
 

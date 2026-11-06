@@ -3,6 +3,7 @@ package com.flintr.tv.ui.tabs
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -11,9 +12,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import android.util.Log
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.data.model.Episode
@@ -32,29 +34,28 @@ import com.flintr.tv.utils.error.reportWarning
 private const val API_CALL_DELAY_MS = 100L
 private const val MAX_IN_PROGRESS_SERIES_TO_LOAD = 10
 
-// Sealed class to represent different in-progress content types
-private sealed class InProgressItem {
-    data class Movie(val vod: VodStream, val progress: WatchProgress) : InProgressItem()
-    data class EpisodeItem(val series: Series, val episode: Episode, val progress: WatchProgress) : InProgressItem()
+// Sealed class to represent different in-progress content types.
+// internal (not private): InProgressItemsState exposes it to AppNavigation.kt and tests as the
+// single resolved-item source for both list and counter.
+internal sealed class InProgressItem {
+    internal data class Movie(val vod: VodStream, val progress: WatchProgress) : InProgressItem()
+    internal data class EpisodeItem(val series: Series, val episode: Episode, val progress: WatchProgress) : InProgressItem()
 }
 
 /**
  * Parameters for InProgressContent composable.
  */
-data class InProgressContentParams(
+internal data class InProgressContentParams(
+    val itemsState: InProgressItemsState,
     val watchProgressService: WatchProgressService,
-    val favoritesRepository: FavoritesRepository,
-    val cacheService: DataCacheService,
+    val watchlistRepository: WatchlistRepository,
     val focusRequester: FocusRequester,
     val onNavigateLeft: () -> Unit,
     val onVodClick: (VodStream) -> Unit,
     val onSeriesClick: (Series) -> Unit,
     val onEpisodeClick: (Series, Episode) -> Unit,
     val lazyGridState: LazyGridState,
-    val focusRequesterMap: MutableMap<String, FocusRequester>? = null,
-    val destination: HomeDestination,
-    val xtreamRepository: XtreamRepository? = null,
-    val credentials: Credentials? = null
+    val focusRequesterMap: MutableMap<String, FocusRequester>? = null
 )
 
 /**
@@ -329,7 +330,7 @@ private fun RenderInProgressCard(
                 params = VODCardParams(
                     vod = item.vod,
                     onClick = { params.onVodClick(item.vod) },
-                    favoritesRepository = params.favoritesRepository,
+                    watchlistRepository = params.watchlistRepository,
                     watchProgressService = params.watchProgressService,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
@@ -344,7 +345,7 @@ private fun RenderInProgressCard(
                 params = VODCardParams(
                     series = item.series,
                     onClick = { params.onSeriesClick(item.series) },
-                    favoritesRepository = params.favoritesRepository,
+                    watchlistRepository = params.watchlistRepository,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = createOnNavigateLeft(columnIndex, params.onNavigateLeft),
                     focusRequester = cardFocusRequester
@@ -355,33 +356,37 @@ private fun RenderInProgressCard(
 }
 
 /**
- * Loads all in-progress items based on the destination.
+ * Loads and resolves all in-progress items against the catalog for the given destination.
+ * Only called by [rememberInProgressItems]; grid and sidebar counter both read its result, so a
+ * progress entry whose series/episode/movie no longer exists in the catalog is dropped from
+ * both consistently (see Task 10b - counter must equal card count).
  */
-private suspend fun loadInProgressItems(
-    params: InProgressContentParams,
+internal suspend fun loadInProgressItemsCore(
+    destination: HomeDestination,
+    cacheService: DataCacheService,
+    xtreamRepository: XtreamRepository?,
+    credentials: Credentials?,
     allProgress: Map<String, WatchProgress>
 ): List<InProgressItem> {
     if (allProgress.isEmpty()) {
         return emptyList()
     }
-    
+
     val parsed = parseProgressKeys(allProgress)
     val itemsList = mutableListOf<InProgressItem>()
-    
+
     // Load movies only for VOD destination
-    if (params.destination is HomeDestination.VOD) {
+    if (destination is HomeDestination.VOD) {
         val movies = loadInProgressMovies(
             allProgress = allProgress,
             movieStreamIds = parsed.movieStreamIds,
-            cacheService = params.cacheService
+            cacheService = cacheService
         )
         itemsList.addAll(movies)
     }
-    
+
     // Load episodes only for Series destination
-    if (params.destination is HomeDestination.Series) {
-        val credentials = params.credentials
-        val xtreamRepository = params.xtreamRepository
+    if (destination is HomeDestination.Series) {
         if (credentials != null && xtreamRepository != null) {
             val episodes = loadInProgressEpisodes(
                 episodeSeriesIds = parsed.episodeSeriesIds,
@@ -394,10 +399,10 @@ private suspend fun loadInProgressItems(
             Log.w("InProgressContent", "Cannot load series info: credentials or repository missing")
         }
     }
-    
+
     // Deduplicate series items (keep only most recent episode per series)
     val deduplicatedItems = deduplicateSeriesItems(itemsList)
-    
+
     // Sort by lastWatched (most recent first)
     return deduplicatedItems.sortedByDescending { item ->
         when (item) {
@@ -407,38 +412,79 @@ private suspend fun loadInProgressItems(
     }
 }
 
+/**
+ * Hoisted result of the in-progress load pipeline. ONE instance per destination feeds both the
+ * grid ([InProgressContent]) and the sidebar counter (AppNavigation.calculateItemCounts), so the
+ * counter is always `items.size` of exactly the list that is rendered - no second resolution run.
+ */
+@Stable
+internal class InProgressItemsState {
+    var items by mutableStateOf<List<InProgressItem>>(emptyList())
+        internal set
+
+    /** Only true until the first load for this destination finished; refreshes keep stale cards. */
+    var isInitialLoading by mutableStateOf(true)
+        internal set
+}
+
+/**
+ * Sync + cleanup of completed (>= 90%) entries, run ONCE per destination before the first load.
+ * Deliberately outside the progress collection: cleanup emits on watchProgress itself and must
+ * not retrigger the pipeline it feeds.
+ */
+private suspend fun prepareInProgressSource(watchProgressService: WatchProgressService) {
+    // Sync with Firestore before loading (respects cooldown)
+    watchProgressService.syncIfNeeded()
+    val cleanedCount = watchProgressService.cleanupCompletedProgress()
+    Log.d("InProgressContent", "cleanupCompletedProgress() returned: $cleanedCount entries cleaned")
+}
+
+/**
+ * Single load pipeline for "Angefangene Inhalte". Resolves once per distinct progress state
+ * (StateFlow only emits on content change) and reloads in the background on real progress
+ * changes (film started/finished) without resetting [InProgressItemsState.isInitialLoading], so
+ * the grid - and the D-pad focus inside it - stays mounted during refreshes.
+ */
 @Composable
-fun InProgressContent(
+internal fun rememberInProgressItems(
+    destination: HomeDestination,
+    watchProgressService: WatchProgressService,
+    cacheService: DataCacheService,
+    xtreamRepository: XtreamRepository?,
+    credentials: Credentials?
+): InProgressItemsState {
+    val state = remember(destination) { InProgressItemsState() }
+    LaunchedEffect(destination) {
+        if (destination !is HomeDestination.VOD && destination !is HomeDestination.Series) {
+            state.isInitialLoading = false
+            return@LaunchedEffect
+        }
+        prepareInProgressSource(watchProgressService)
+        watchProgressService.watchProgress.collectLatest { allProgress ->
+            val items = loadInProgressItemsCore(
+                destination = destination,
+                cacheService = cacheService,
+                xtreamRepository = xtreamRepository,
+                credentials = credentials,
+                allProgress = allProgress
+            )
+            state.items = items
+            state.isInitialLoading = false
+            Log.d("InProgressContent", "Loaded ${items.size} in-progress items")
+        }
+    }
+    return state
+}
+
+@Composable
+internal fun InProgressContent(
     params: InProgressContentParams,
     modifier: Modifier = Modifier
 ) {
-    var inProgressItems by remember { mutableStateOf<List<InProgressItem>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    
-    // Load in-progress items
-    LaunchedEffect(params.destination) {
-        isLoading = true
-        
-        // Sync with Firestore before loading (respects cooldown)
-        params.watchProgressService.syncIfNeeded()
-        
-        // Cleanup completed entries (>= 90%) before loading
-        Log.d("InProgressContent", "Calling cleanupCompletedProgress()...")
-        val cleanedCount = params.watchProgressService.cleanupCompletedProgress()
-        Log.d("InProgressContent", "cleanupCompletedProgress() returned: $cleanedCount entries cleaned")
-        
-        val allProgress = params.watchProgressService.getAllInProgress()
-        val items = loadInProgressItems(params, allProgress)
-        
-        inProgressItems = items
-        Log.d("InProgressContent", "Loaded ${items.size} in-progress items")
-        isLoading = false
-    }
-    
     ContentGridLayout(
         params = ContentGridLayoutParams(
-            items = inProgressItems,
-            isLoading = isLoading,
+            items = params.itemsState.items,
+            isLoading = params.itemsState.isInitialLoading,
             focusRequester = params.focusRequester,
             modifier = modifier,
             lazyGridState = params.lazyGridState,

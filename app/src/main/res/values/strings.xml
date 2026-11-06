@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">flintrTV</string>
-    <string name="remove_from_favorites">Aus Favoriten entfernen</string>
-    <string name="add_to_favorites">Zu Favoriten hinzufügen</string>
+    <string name="remove_from_watchlist">Von Watchlist entfernen</string>
+    <string name="add_to_watchlist">Zur Watchlist hinzufügen</string>
     
     <!-- Settings Info Screen -->
     <string name="version">Version</string>
@@ -79,7 +79,7 @@
     
     <!-- Category Management -->
     <string name="category_hidden">Kategorie wurde ausgeblendet</string>
-    <string name="favorites">Favoriten</string>
+    <string name="watchlist">Watchlist</string>
     <string name="new_category">Neu</string>
     <string name="in_progress_category">Angefangene Inhalte</string>
     <string name="recommended_for_you">Für dich</string>

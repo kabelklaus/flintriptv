@@ -131,7 +131,7 @@ class ImdbEnrichmentService @Inject constructor(
                 openDatabase(dbFile)
             } catch (t: Throwable) {
                 reportHandled("$TAG.ensureLoaded.open", t)
-                dbFile.delete()
+                if (!dbFile.delete()) dbFile.deleteOnExit()
                 null
             }
         }

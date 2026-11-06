@@ -56,7 +56,7 @@ data class SmartResumeTarget(
 class WatchProgressService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val moshi: Moshi,
-    private val favoritesRepository: FavoritesRepository,
+    private val watchlistRepository: WatchlistRepository,
     private val watchedHistoryService: WatchedHistoryService,
     private val userRepository: UserRepository,
     private val credentialsRepository: CredentialsRepository,
@@ -490,16 +490,16 @@ class WatchProgressService @Inject constructor(
                 Log.w(TAG, "Cannot delete from Firestore: no username available")
             }
 
-            // Automatically remove movie from favorites when progress is deleted
+            // Automatically remove movie from watchlist when progress is deleted
             if (contentType == "movie" && streamId != null && progress != null) {
                 try {
                     val encodedName = URLEncoder.encode(progress.title, "UTF-8")
-                    val favoriteId = "$KEY_PREFIX_MOVIE$streamId:$encodedName"
-                    favoritesRepository.removeFavorite(favoriteId)
+                    val entryId = "$KEY_PREFIX_MOVIE$streamId:$encodedName"
+                    watchlistRepository.removeFromWatchlist(entryId)
                     Log.d(TAG, "Automatically removed completed movie from favorites")
                 } catch (e: Exception) {
                     reportWarning(TAG, "Failed to automatically remove completed movie from favorites", e)
-                    // Don't fail the progress deletion if favorite removal fails
+                    // Don't fail the progress deletion if watchlist removal fails
                 }
             }
 
@@ -746,7 +746,10 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Gets the total count of in-progress items (movies + episodes)
+     * Gets the total count of in-progress items (movies + episodes).
+     * RAW count over the progress map - does not resolve against the catalog, so it may
+     * include entries whose movie/series/episode no longer exists. Not used for UI labels/
+     * counters (see [com.flintr.tv.ui.tabs.rememberInProgressItems] - Task 10b).
      */
     suspend fun getInProgressCount(): Int = withContext(ioDispatcher) {
         val progressMap = _watchProgress.value
@@ -756,15 +759,9 @@ class WatchProgressService @Inject constructor(
     }
 
     /**
-     * Gets the count of in-progress movies only
-     */
-    suspend fun getInProgressMoviesCount(): Int = withContext(ioDispatcher) {
-        val progressMap = _watchProgress.value
-        progressMap.count { it.key.startsWith(KEY_PREFIX_MOVIE) }
-    }
-
-    /**
-     * Gets the count of in-progress episodes only
+     * Gets the count of in-progress episodes only.
+     * RAW count over the progress map - does not resolve against the catalog. Not used for UI
+     * labels/counters (see [com.flintr.tv.ui.tabs.rememberInProgressItems] - Task 10b).
      */
     suspend fun getInProgressEpisodesCount(): Int = withContext(ioDispatcher) {
         val progressMap = _watchProgress.value

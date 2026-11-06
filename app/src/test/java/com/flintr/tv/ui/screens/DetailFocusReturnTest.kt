@@ -180,7 +180,7 @@ class DetailFocusReturnTest {
     @Test
     fun movieHeaderButtonsUpGehenZumToggleStattInsLeere() {
         setMovie()
-        for (button in listOf("movie-detail-watch", "movie-detail-trailer", "movie-detail-favorite")) {
+        for (button in listOf("movie-detail-watch", "movie-detail-trailer", "movie-detail-watchlist")) {
             focus(button)
             pressUp(button)
             composeTestRule.onNodeWithTag("movie-detail-overview-toggle").assertIsFocused()

@@ -7,14 +7,14 @@ import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.local.imdb.ImdbEnrichment
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.DetailDisplayData
 import com.flintr.tv.data.model.Episode
-import com.flintr.tv.data.model.Favorite
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntry
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.repository.XtreamRepository
@@ -68,7 +68,7 @@ data class SeriesDetailUiState(
     val detail: DetailDisplayData? = null,
     val series: Series? = null,
     val seasons: List<SeasonUiModel> = emptyList(),
-    val isFavorite: Boolean = false,
+    val isInWatchlist: Boolean = false,
     val seasonsHint: String? = null,
     val recommendations: List<Series> = emptyList(),
     val watchTarget: WatchTargetUiModel? = null,
@@ -79,7 +79,7 @@ data class SeriesDetailUiState(
 
 /**
  * Loads a series' detail metadata (get_series_info), aggregates its seasons with watched counts
- * and resolves favorite state.
+ * and resolves watchlist state.
  *
  * Genre/rating are IMDb-only, exactly like MovieDetail: without an enrichment match both stay
  * null and the UI hides them; the Xtream `genre`/`rating` strings are never used as a fallback.
@@ -93,7 +93,7 @@ class SeriesDetailViewModel @Inject constructor(
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
     private val imdbEnrichmentService: ImdbEnrichmentService,
-    private val favoritesRepository: FavoritesRepository,
+    private val watchlistRepository: WatchlistRepository,
     private val watchProgressService: WatchProgressService,
     private val cacheService: DataCacheService,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher
@@ -188,26 +188,18 @@ class SeriesDetailViewModel @Inject constructor(
         }
     }
 
-    private fun requireCredentials(): Credentials? {
-        val credentials = credentialsRepository.getCredentials()
-        if (credentials == null) {
-            _uiState.value = SeriesDetailUiState(
-                isLoading = false,
-                error = "Keine gespeicherten Anmeldedaten gefunden"
-            )
-        }
-        return credentials
+    private fun requireCredentials(): Credentials? = requireCredentialsOrNull(credentialsRepository) {
+        _uiState.value = SeriesDetailUiState(
+            isLoading = false,
+            error = "Keine gespeicherten Anmeldedaten gefunden"
+        )
     }
 
-    private fun requireValidSeriesId(): Int? {
-        if (seriesId <= 0) {
-            _uiState.value = SeriesDetailUiState(
-                isLoading = false,
-                error = "Ungültige Serien-ID"
-            )
-            return null
-        }
-        return seriesId
+    private fun requireValidSeriesId(): Int? = requirePositiveIdOrNull(seriesId) {
+        _uiState.value = SeriesDetailUiState(
+            isLoading = false,
+            error = "Ungültige Serien-ID"
+        )
     }
 
     private suspend fun buildLoadedState(loadedSeries: Series): SeriesDetailUiState {
@@ -223,7 +215,7 @@ class SeriesDetailViewModel @Inject constructor(
             detail = baseDetail,
             series = loadedSeries,
             seasons = seasons,
-            isFavorite = findFavorite() != null,
+            isInWatchlist = findWatchlistEntry() != null,
             seasonsHint = if (seasons.isEmpty()) NO_SEASONS_HINT else null,
             recommendations = emptyList(),
             watchTarget = watchTarget,
@@ -244,24 +236,19 @@ class SeriesDetailViewModel @Inject constructor(
         }
     }
 
-    fun toggleFavorite() {
+    fun toggleWatchlist() {
         val series = _uiState.value.series ?: return
         viewModelScope.launch(ioDispatcher) {
-            val existing = findFavorite()
-            if (existing != null) {
-                if (favoritesRepository.removeFavorite(existing.id)) {
-                    _uiState.update { it.copy(isFavorite = false) }
-                }
-            } else {
-                if (favoritesRepository.addFavorite(series.toFavorite())) {
-                    _uiState.update { it.copy(isFavorite = true) }
-                }
-            }
+            toggleWatchlistEntry(
+                watchlistRepository = watchlistRepository,
+                findExisting = ::findWatchlistEntry,
+                buildEntry = { series.toWatchlistEntry() }
+            )?.let { newState -> _uiState.update { it.copy(isInWatchlist = newState) } }
         }
     }
 
-    private fun findFavorite(): Favorite? = favoritesRepository.getAllFavorites()
-        .firstOrNull { it.type == FavoriteType.SERIES && it.streamId == seriesId }
+    private fun findWatchlistEntry(): WatchlistEntry? = watchlistRepository.getAllWatchlistEntries()
+        .firstOrNull { it.type == WatchlistEntryType.SERIES && it.streamId == seriesId }
 
     private fun buildSeasons(
         series: Series,

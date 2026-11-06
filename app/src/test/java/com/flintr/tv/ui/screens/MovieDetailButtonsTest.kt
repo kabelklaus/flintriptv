@@ -41,9 +41,9 @@ class MovieDetailButtonsTest {
     )
 
     private fun setContent(
-        isFavorite: Boolean = false,
+        isInWatchlist: Boolean = false,
         onWatchClick: () -> Unit = {},
-        onToggleFavorite: () -> Unit = {}
+        onToggleWatchlist: () -> Unit = {}
     ) {
         composeTestRule.setContent {
             FlintRTVTheme {
@@ -51,10 +51,10 @@ class MovieDetailButtonsTest {
                     uiState = MovieDetailUiState(
                         isLoading = false,
                         detail = detail(),
-                        isFavorite = isFavorite
+                        isInWatchlist = isInWatchlist
                     ),
                     onWatchClick = onWatchClick,
-                    onToggleFavorite = onToggleFavorite
+                    onToggleWatchlist = onToggleWatchlist
                 )
             }
         }
@@ -73,21 +73,21 @@ class MovieDetailButtonsTest {
     }
 
     @Test
-    fun favoritKlickRuftToggleCallbackAuf() {
+    fun watchlistKlickRuftToggleCallbackAuf() {
         var toggles = 0
-        setContent(onToggleFavorite = { toggles++ })
+        setContent(onToggleWatchlist = { toggles++ })
 
-        composeTestRule.onNodeWithTag("movie-detail-favorite").performClick()
+        composeTestRule.onNodeWithTag("movie-detail-watchlist").performClick()
 
         assertEquals(1, toggles)
     }
 
     @Test
-    fun favoritLabelZeigtAktivenZustand() {
-        setContent(isFavorite = true)
+    fun watchlistLabelZeigtAktivenZustand() {
+        setContent(isInWatchlist = true)
 
-        composeTestRule.onNodeWithTag("movie-detail-favorite")
-            .assertContentDescriptionEquals("Favorit")
+        composeTestRule.onNodeWithTag("movie-detail-watchlist")
+            .assertContentDescriptionEquals("Watchlist")
     }
 
     @Test

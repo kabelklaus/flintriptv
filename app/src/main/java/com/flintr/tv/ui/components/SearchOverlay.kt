@@ -47,8 +47,8 @@ import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.ui.utils.safeRequestFocus
 import androidx.compose.ui.res.stringResource
 import com.flintr.tv.R
-import com.flintr.tv.data.local.FavoritesRepository
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.local.WatchlistRepository
+import com.flintr.tv.data.model.WatchlistEntry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -62,25 +62,25 @@ data class SearchResultCallbacks(
 )
 
 /**
- * Sealed class for type-safe search content handling with favorite support
+ * Sealed class for type-safe search content handling with watchlist support
  */
 private sealed class SearchContentType {
-    abstract fun toFavoriteId(): String
-    abstract fun toFavorite(): Favorite
+    abstract fun toWatchlistEntryId(): String
+    abstract fun toWatchlistEntry(): WatchlistEntry
 
     data class Live(val stream: LiveStream) : SearchContentType() {
-        override fun toFavoriteId() = stream.toFavoriteId()
-        override fun toFavorite() = stream.toFavorite()
+        override fun toWatchlistEntryId() = stream.toWatchlistEntryId()
+        override fun toWatchlistEntry() = stream.toWatchlistEntry()
     }
 
     data class Movie(val vod: VodStream) : SearchContentType() {
-        override fun toFavoriteId() = vod.toFavoriteId()
-        override fun toFavorite() = vod.toFavorite()
+        override fun toWatchlistEntryId() = vod.toWatchlistEntryId()
+        override fun toWatchlistEntry() = vod.toWatchlistEntry()
     }
 
     data class Series(val series: com.flintr.tv.data.model.Series) : SearchContentType() {
-        override fun toFavoriteId() = series.toFavoriteId()
-        override fun toFavorite() = series.toFavorite()
+        override fun toWatchlistEntryId() = series.toWatchlistEntryId()
+        override fun toWatchlistEntry() = series.toWatchlistEntry()
     }
 }
 
@@ -134,7 +134,7 @@ private fun SearchContent(
     onNavigateUpToScopes: () -> Unit,
     firstResultFocusRequester: FocusRequester,
     onResultFocused: () -> Unit,
-    favoritesRepository: FavoritesRepository
+    watchlistRepository: WatchlistRepository
 ) {
     // Use trimmed length for display logic (original query kept for TextField)
     val effectiveQueryLength = searchState.query.trim().length
@@ -167,7 +167,7 @@ private fun SearchContent(
                 onNavigateUp = onNavigateUpToScopes,
                 firstItemFocusRequester = firstResultFocusRequester,
                 onResultFocused = onResultFocused,
-                favoritesRepository = favoritesRepository
+                watchlistRepository = watchlistRepository
             )
         }
     }
@@ -389,7 +389,7 @@ fun SearchOverlay(
     onSearchScopeToggle: (SearchScope) -> Unit,
     onDismiss: () -> Unit,
     resultCallbacks: SearchResultCallbacks,
-    favoritesRepository: FavoritesRepository
+    watchlistRepository: WatchlistRepository
 ) {
     val colors = appColors()
     val searchFieldFocusRequester = remember { FocusRequester() }
@@ -579,7 +579,7 @@ fun SearchOverlay(
                 onResultFocused = {
                     currentFocusTarget = SearchOverlayFocusTarget.Results
                 },
-                favoritesRepository = favoritesRepository
+                watchlistRepository = watchlistRepository
             )
         }
     }
@@ -614,7 +614,7 @@ private fun SearchResultsList(
     onNavigateUp: () -> Unit,
     firstItemFocusRequester: FocusRequester,
     onResultFocused: () -> Unit,
-    favoritesRepository: FavoritesRepository
+    watchlistRepository: WatchlistRepository
 ) {
     // Build sections list
     val sections = buildList {
@@ -670,7 +670,7 @@ private fun SearchResultsList(
                 startIndex = startIndex,
                 totalItems = searchState.results.totalCount,
                 colors = colors,
-                favoritesRepository = favoritesRepository
+                watchlistRepository = watchlistRepository
             )
             startIndex += section.items.size
         }
@@ -686,7 +686,7 @@ private fun <T> LazyListScope.searchSection(
     startIndex: Int,
     totalItems: Int,
     colors: com.flintr.tv.ui.theme.AppColors,
-    favoritesRepository: FavoritesRepository
+    watchlistRepository: WatchlistRepository
 ) {
     item {
         SearchSectionHeader("${section.title} (${section.items.size})", colors)
@@ -705,7 +705,7 @@ private fun <T> LazyListScope.searchSection(
                 isLastResult = resultIndex == totalItems - 1,
                 onFocused = focusConfig.onResultFocused
             ),
-            favoritesRepository = favoritesRepository
+            watchlistRepository = watchlistRepository
         )
     }
 }
@@ -779,22 +779,22 @@ private fun handleSearchResultKeyEvent(
 }
 
 /**
- * Handles favorite toggle action
+ * Handles watchlist toggle action
  */
-private suspend fun handleFavoriteToggle(
-    isFavorite: Boolean,
-    favoriteId: String,
+private suspend fun handleWatchlistToggle(
+    isInWatchlist: Boolean,
+    entryId: String,
     contentType: SearchContentType,
-    favoritesRepository: FavoritesRepository,
-    onFavoriteChanged: (Boolean) -> Unit
+    watchlistRepository: WatchlistRepository,
+    onWatchlistChanged: (Boolean) -> Unit
 ) {
-    if (isFavorite) {
-        favoritesRepository.removeFavorite(favoriteId)
-        onFavoriteChanged(false)
+    if (isInWatchlist) {
+        watchlistRepository.removeFromWatchlist(entryId)
+        onWatchlistChanged(false)
     } else {
-        val favorite = contentType.toFavorite()
-        favoritesRepository.addFavorite(favorite)
-        onFavoriteChanged(true)
+        val entry = contentType.toWatchlistEntry()
+        watchlistRepository.addToWatchlist(entry)
+        onWatchlistChanged(true)
     }
 }
 
@@ -805,17 +805,17 @@ private fun SearchResultItem(
     onClick: () -> Unit,
     colors: com.flintr.tv.ui.theme.AppColors,
     focus: SearchResultFocus,
-    favoritesRepository: FavoritesRepository
+    watchlistRepository: WatchlistRepository
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
-    val favoriteId = remember(contentType) { contentType.toFavoriteId() }
-    var isFavorite by remember { mutableStateOf(false) }
+    val entryId = remember(contentType) { contentType.toWatchlistEntryId() }
+    var isInWatchlist by remember { mutableStateOf(false) }
 
-    LaunchedEffect(favoriteId, showMenu) {
-        isFavorite = favoritesRepository.isFavorite(favoriteId)
+    LaunchedEffect(entryId, showMenu) {
+        isInWatchlist = watchlistRepository.isInWatchlist(entryId)
     }
 
     LaunchedEffect(focus.focusRequester) {
@@ -834,10 +834,10 @@ private fun SearchResultItem(
         label = "borderColor"
     )
 
-    val removeFromFavoritesText = stringResource(R.string.remove_from_favorites)
-    val addToFavoritesText = stringResource(R.string.add_to_favorites)
-    val menuOptions = remember(isFavorite, removeFromFavoritesText, addToFavoritesText) {
-        if (isFavorite) listOf(removeFromFavoritesText) else listOf(addToFavoritesText)
+    val removeFromWatchlistText = stringResource(R.string.remove_from_watchlist)
+    val addToWatchlistText = stringResource(R.string.add_to_watchlist)
+    val menuOptions = remember(isInWatchlist, removeFromWatchlistText, addToWatchlistText) {
+        if (isInWatchlist) listOf(removeFromWatchlistText) else listOf(addToWatchlistText)
     }
 
     val itemShape = RoundedCornerShape(Dimensions.radiusSM)
@@ -862,7 +862,7 @@ private fun SearchResultItem(
             )
             .padding(horizontal = Dimensions.spacingMD, vertical = Dimensions.spacingSM)
     ) {
-        SearchResultItemContent(title, isFavorite, isFocused, colors)
+        SearchResultItemContent(title, isInWatchlist, isFocused, colors)
     }
 
     PopupMenu(
@@ -871,8 +871,8 @@ private fun SearchResultItem(
         onDismiss = { showMenu = false },
         onOptionSelected = {
             coroutineScope.launch {
-                handleFavoriteToggle(isFavorite, favoriteId, contentType, favoritesRepository) {
-                    isFavorite = it
+                handleWatchlistToggle(isInWatchlist, entryId, contentType, watchlistRepository) {
+                    isInWatchlist = it
                 }
             }
         }
@@ -882,7 +882,7 @@ private fun SearchResultItem(
 @Composable
 private fun SearchResultItemContent(
     title: String,
-    isFavorite: Boolean,
+    isInWatchlist: Boolean,
     isFocused: Boolean,
     colors: com.flintr.tv.ui.theme.AppColors
 ) {
@@ -891,7 +891,7 @@ private fun SearchResultItemContent(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
     ) {
-        if (isFavorite) {
+        if (isInWatchlist) {
             Icon(
                 imageVector = Icons.Filled.Star,
                 contentDescription = null,

@@ -19,7 +19,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.RecommendationService
 import com.flintr.tv.data.local.WatchProgressService
@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
     lateinit var cacheService: DataCacheService
 
     @Inject
-    lateinit var favoritesRepository: FavoritesRepository
+    lateinit var watchlistRepository: WatchlistRepository
 
     @Inject
     lateinit var watchProgressService: WatchProgressService
@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
                         dependencies = AppNavigationDependencies(
                             credentialsRepository = credentialsRepository,
                             cacheService = cacheService,
-                            favoritesRepository = favoritesRepository,
+                            watchlistRepository = watchlistRepository,
                             watchProgressService = watchProgressService,
                             categoryVisibilityService = categoryVisibilityService,
                             playbackSettingsRepository = playbackSettingsRepository,

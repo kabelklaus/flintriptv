@@ -15,10 +15,10 @@ import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.CategoryType
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.ui.sidebars.ContentGridLayout
@@ -26,10 +26,10 @@ import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.components.VODCard
 import com.flintr.tv.ui.components.VODCardParams
 import com.flintr.tv.viewmodel.MainViewModel
-import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.UiConstants.WATCHLIST_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.asOwnSourcedItems
-import com.flintr.tv.ui.common.useFavorites
+import com.flintr.tv.ui.common.useWatchlist
 import com.flintr.tv.ui.common.ContentFilterUtils
 import com.flintr.tv.utils.error.reportError
 
@@ -83,7 +83,7 @@ data class VODContentParams(
     val viewModel: MainViewModel,
     val selectedCategoryId: String?,
     val focusRequester: FocusRequester,
-    val favoritesRepository: FavoritesRepository,
+    val watchlistRepository: WatchlistRepository,
     val userRepository: UserRepository,
     val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
@@ -102,21 +102,21 @@ fun VODContent(params: VODContentParams) {
     val streams by params.viewModel.vodStreams.collectAsState()
     val uiState by params.viewModel.uiState.collectAsState()
     
-    val isFavoritesCategory = params.selectedCategoryId == FAVORITES_CATEGORY_ID
+    val isWatchlistCategory = params.selectedCategoryId == WATCHLIST_CATEGORY_ID
     val isNewCategory = params.selectedCategoryId == NEW_CATEGORY_ID
-    
+
     // State for new category filtered streams
     var newCategoryStreams by remember { mutableStateOf<List<VodStream>>(emptyList()) }
     var isLoadingNewCategory by remember { mutableStateOf(false) }
-    
-    // Load favorites using the hook
-    val favoritesState = useFavorites<VodStream>(
-        isFavoritesCategory = isFavoritesCategory,
-        favoritesRepository = params.favoritesRepository,
+
+    // Load watchlist entries using the hook
+    val watchlistState = useWatchlist<VodStream>(
+        isWatchlistCategory = isWatchlistCategory,
+        watchlistRepository = params.watchlistRepository,
         userRepository = params.userRepository,
         credentialsRepository = params.credentialsRepository,
         cacheService = params.cacheService,
-        favoriteType = FavoriteType.MOVIE,
+        watchlistEntryType =WatchlistEntryType.MOVIE,
         idSelector = { it.streamId }
     )
     
@@ -140,8 +140,8 @@ fun VODContent(params: VODContentParams) {
                     onWatchedIdsLoaded = { watchedVodIds = it }
                 )
             }
-            isFavoritesCategory -> {
-                // For favorites, load all watched VODs (category filtering not needed)
+            isWatchlistCategory -> {
+                // For the watchlist, load all watched VODs (category filtering not needed)
                 loadWatchedVodIds(
                     watchProgressService = params.watchProgressService,
                     categoryId = null,
@@ -165,12 +165,12 @@ fun VODContent(params: VODContentParams) {
     // This keeps the focus on the Navbar when the app starts
     
     val displayStreams = when {
-        isFavoritesCategory -> favoritesState.items
+        isWatchlistCategory -> watchlistState.items
         isNewCategory -> asOwnSourcedItems(newCategoryStreams)
         else -> asOwnSourcedItems(streams)
     }
     val isLoading = when {
-        isFavoritesCategory -> favoritesState.isLoading
+        isWatchlistCategory -> watchlistState.isLoading
         isNewCategory -> isLoadingNewCategory
         else -> uiState.isLoading
     }
@@ -191,7 +191,7 @@ fun VODContent(params: VODContentParams) {
                 params = VODCardParams(
                     vod = vod.item,
                     onClick = { params.onVodClick(vod.item) },
-                    favoritesRepository = params.favoritesRepository,
+                    watchlistRepository = params.watchlistRepository,
                     watchProgressService = params.watchProgressService,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = if (columnIndex == 0) {
@@ -202,7 +202,7 @@ fun VODContent(params: VODContentParams) {
                     focusRequester = cardFocusRequester,
                     isWatched = vod.item.streamId in watchedVodIds,
                     sourceBadge = vod.source.badge,
-                    allowFavoriteActions = vod.allowFavoriteActions
+                    allowWatchlistActions = vod.allowWatchlistActions
                 )
             )
         }

@@ -5,9 +5,9 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Stream-URL-Aufbau (Xtream-Codes-Schema) und Favoriten-Konvertierung.
+ * Stream-URL-Aufbau (Xtream-Codes-Schema) und Watchlist-Konvertierung.
  */
-class StreamUrlAndFavoriteTest {
+class StreamUrlAndWatchlistEntryTest {
 
     private val baseUrl = "http://server:8080"
 
@@ -52,68 +52,68 @@ class StreamUrlAndFavoriteTest {
     }
 
     @Test
-    fun favoriteIdsEncodeNameAndCarryTypePrefix() {
+    fun watchlistEntryIdsEncodeNameAndCarryTypePrefix() {
         assertEquals(
             "live:7:Das+Erste+HD",
-            testLiveStream(name = "Das Erste HD", streamId = 7).toFavoriteId()
+            testLiveStream(name = "Das Erste HD", streamId = 7).toWatchlistEntryId()
         )
         assertEquals(
             "series:10:Breaking+Bad",
-            testSeries(name = "Breaking Bad", seriesId = 10).toFavoriteId()
+            testSeries(name = "Breaking Bad", seriesId = 10).toWatchlistEntryId()
         )
     }
 
     @Test
-    fun liveStreamToFavoriteCarriesIconMetadata() {
+    fun liveStreamToWatchlistEntryCarriesIconMetadata() {
         val stream = testLiveStream(name = "Arte", streamId = 3, streamIcon = "http://icon.png")
 
-        val favorite = stream.toFavorite()
+        val entry = stream.toWatchlistEntry()
 
-        assertEquals(FavoriteType.LIVE, favorite.type)
-        assertEquals(3, favorite.streamId)
-        assertEquals("Arte", favorite.name)
-        assertEquals("http://icon.png", favorite.metadata?.get("streamIcon"))
+        assertEquals(WatchlistEntryType.LIVE, entry.type)
+        assertEquals(3, entry.streamId)
+        assertEquals("Arte", entry.name)
+        assertEquals("http://icon.png", entry.metadata?.get("streamIcon"))
     }
 
     @Test
-    fun seriesToFavoriteMergesCoverIntoMetadata() {
+    fun seriesToWatchlistEntryMergesCoverIntoMetadata() {
         val series = testSeries(name = "Dark", seriesId = 12, cover = "http://cover.jpg")
 
-        val favorite = series.toFavorite(metadata = mapOf("genre" to "Mystery"))
+        val entry = series.toWatchlistEntry(metadata = mapOf("genre" to "Mystery"))
 
-        assertEquals(FavoriteType.SERIES, favorite.type)
-        assertEquals("Mystery", favorite.metadata?.get("genre"))
-        assertEquals("http://cover.jpg", favorite.metadata?.get("cover"))
+        assertEquals(WatchlistEntryType.SERIES, entry.type)
+        assertEquals("Mystery", entry.metadata?.get("genre"))
+        assertEquals("http://cover.jpg", entry.metadata?.get("cover"))
     }
 
     @Test
-    fun favoriteToFirestoreMapContainsAllFields() {
-        val favorite = Favorite.create(
+    fun watchlistEntryToFirestoreMapContainsAllFields() {
+        val entry = WatchlistEntry.create(
             id = "live:1:Test",
-            type = FavoriteType.LIVE,
+            type = WatchlistEntryType.LIVE,
             streamId = 1,
             name = "Test"
         )
 
-        val map = favorite.toFirestoreMap()
+        val map = entry.toFirestoreMap()
 
         assertEquals("live:1:Test", map["id"])
         assertEquals("LIVE", map["type"])
         assertEquals(1, map["streamId"])
         assertEquals("Test", map["name"])
         assertEquals(emptyMap<String, String?>(), map["metadata"])
-        assertEquals(favorite.addedAt, map["addedAt"])
+        assertEquals(entry.addedAt, map["addedAt"])
     }
 
     @Test
-    fun favoriteWithoutOptionalMetadataHasNullMetadata() {
-        val favorite = Favorite.create(
+    fun watchlistEntryWithoutOptionalMetadataHasNullMetadata() {
+        val entry = WatchlistEntry.create(
             id = "movie:2:Film",
-            type = FavoriteType.MOVIE,
+            type = WatchlistEntryType.MOVIE,
             streamId = 2,
             name = "Film"
         )
 
-        assertNull(favorite.metadata)
+        assertNull(entry.metadata)
     }
 }

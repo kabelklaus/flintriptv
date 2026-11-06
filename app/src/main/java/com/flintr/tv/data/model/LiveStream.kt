@@ -37,17 +37,17 @@ data class LiveStream(
         return "$baseUrl/live/$username/$password/$streamId.m3u8"
     }
 
-    fun toFavoriteId(): String {
+    fun toWatchlistEntryId(): String {
         val encodedName = URLEncoder.encode(name, "UTF-8")
         return "live:$streamId:$encodedName"
     }
 
-    fun toFavorite(metadata: Map<String, String?>? = null): Favorite {
+    fun toWatchlistEntry(metadata: Map<String, String?>? = null): WatchlistEntry {
         val metadataWithIcon = metadata?.toMutableMap() ?: mutableMapOf()
         streamIcon?.let { metadataWithIcon["streamIcon"] = it }
-        return Favorite.create(
-            id = toFavoriteId(),
-            type = FavoriteType.LIVE,
+        return WatchlistEntry.create(
+            id = toWatchlistEntryId(),
+            type = WatchlistEntryType.LIVE,
             streamId = streamId,
             name = name,
             metadata = metadataWithIcon

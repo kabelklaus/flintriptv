@@ -68,7 +68,7 @@ class FirestoreSyncManager constructor(
 
     /**
      * Forces synchronization, ignoring cooldown.
-     * Use this for explicit user actions (e.g., navigating to favorites category).
+     * Use this for explicit user actions (e.g., navigating to watchlist category).
      * 
      * @param syncFunction The suspend function to execute for synchronization
      */

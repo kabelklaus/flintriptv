@@ -41,17 +41,17 @@ data class Series(
     @Json(name = "seasons")
     val seasons: List<Season>?
 ) {
-    fun toFavoriteId(): String {
+    fun toWatchlistEntryId(): String {
         val encodedName = URLEncoder.encode(name, "UTF-8")
         return "series:$seriesId:$encodedName"
     }
 
-    fun toFavorite(metadata: Map<String, String?>? = null): Favorite {
+    fun toWatchlistEntry(metadata: Map<String, String?>? = null): WatchlistEntry {
         val metadataWithCover = metadata?.toMutableMap() ?: mutableMapOf()
         cover?.let { metadataWithCover["cover"] = it }
-        return Favorite.create(
-            id = toFavoriteId(),
-            type = FavoriteType.SERIES,
+        return WatchlistEntry.create(
+            id = toWatchlistEntryId(),
+            type = WatchlistEntryType.SERIES,
             streamId = seriesId,
             name = name,
             metadata = metadataWithCover

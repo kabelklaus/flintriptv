@@ -7,12 +7,12 @@ import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.DetailDisplayData
-import com.flintr.tv.data.model.Favorite
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntry
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.mapVodInfoToDetail
@@ -35,7 +35,7 @@ data class MovieDetailUiState(
     val isLoading: Boolean = true,
     val baseStream: VodStream? = null,
     val detail: DetailDisplayData? = null,
-    val isFavorite: Boolean = false,
+    val isInWatchlist: Boolean = false,
     val watchProgress: WatchProgress? = null,
     val recommendations: List<VodStream> = emptyList(),
     val error: String? = null
@@ -43,7 +43,7 @@ data class MovieDetailUiState(
 
 /**
  * Loads one movie's detail metadata (get_vod_info), its IMDb-only genre/rating enrichment,
- * favorite state, watch progress and a similar-movie row.
+ * watchlist state, watch progress and a similar-movie row.
  *
  * The screen does not navigate itself: the movie id arrives through the navigation route's
  * [SavedStateHandle], and the Phase-4 route owns all navigation callbacks.
@@ -54,7 +54,7 @@ class MovieDetailViewModel @Inject constructor(
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
     private val imdbEnrichmentService: ImdbEnrichmentService,
-    private val favoritesRepository: FavoritesRepository,
+    private val watchlistRepository: WatchlistRepository,
     private val watchProgressService: WatchProgressService,
     private val cacheService: DataCacheService,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher
@@ -170,26 +170,18 @@ class MovieDetailViewModel @Inject constructor(
         }
     }
 
-    private fun requireCredentials(): Credentials? {
-        val credentials = credentialsRepository.getCredentials()
-        if (credentials == null) {
-            _uiState.value = MovieDetailUiState(
-                isLoading = false,
-                error = "Keine gespeicherten Anmeldedaten gefunden"
-            )
-        }
-        return credentials
+    private fun requireCredentials(): Credentials? = requireCredentialsOrNull(credentialsRepository) {
+        _uiState.value = MovieDetailUiState(
+            isLoading = false,
+            error = "Keine gespeicherten Anmeldedaten gefunden"
+        )
     }
 
-    private fun requireValidVodId(): Int? {
-        if (vodId <= 0) {
-            _uiState.value = MovieDetailUiState(
-                isLoading = false,
-                error = "Ungültige Film-ID"
-            )
-            return null
-        }
-        return vodId
+    private fun requireValidVodId(): Int? = requirePositiveIdOrNull(vodId) {
+        _uiState.value = MovieDetailUiState(
+            isLoading = false,
+            error = "Ungültige Film-ID"
+        )
     }
 
     private fun showCachedBaseStream(catalogMovie: VodStream?) {
@@ -203,7 +195,7 @@ class MovieDetailViewModel @Inject constructor(
             isLoading = false,
             baseStream = catalogMovie,
             detail = baseDetail,
-            isFavorite = findFavorite() != null,
+            isInWatchlist = findWatchlistEntry() != null,
             watchProgress = watchProgressService.getWatchProgress(
                 contentType = "movie",
                 streamId = vodId,
@@ -239,32 +231,27 @@ class MovieDetailViewModel @Inject constructor(
         }
     }
 
-    fun toggleFavorite() {
+    fun toggleWatchlist() {
         val detail = _uiState.value.detail ?: return
         viewModelScope.launch(ioDispatcher) {
-            val existing = findFavorite()
-            if (existing != null) {
-                if (favoritesRepository.removeFavorite(existing.id)) {
-                    _uiState.update { it.copy(isFavorite = false) }
-                }
-            } else {
-                if (favoritesRepository.addFavorite(buildFavorite(detail))) {
-                    _uiState.update { it.copy(isFavorite = true) }
-                }
-            }
+            toggleWatchlistEntry(
+                watchlistRepository = watchlistRepository,
+                findExisting = ::findWatchlistEntry,
+                buildEntry = { buildWatchlistEntry(detail) }
+            )?.let { newState -> _uiState.update { it.copy(isInWatchlist = newState) } }
         }
     }
 
-    private fun findFavorite(): Favorite? = favoritesRepository.getAllFavorites()
-        .firstOrNull { it.type == FavoriteType.MOVIE && it.streamId == vodId }
+    private fun findWatchlistEntry(): WatchlistEntry? = watchlistRepository.getAllWatchlistEntries()
+        .firstOrNull { it.type == WatchlistEntryType.MOVIE && it.streamId == vodId }
 
-    private fun buildFavorite(detail: DetailDisplayData): Favorite {
+    private fun buildWatchlistEntry(detail: DetailDisplayData): WatchlistEntry {
         val title = detail.title ?: "Film $vodId"
         val name = URLEncoder.encode(title, "UTF-8")
         val metadata = mapOf("cover" to detail.posterUrl)
-        return Favorite.create(
+        return WatchlistEntry.create(
             id = "movie:$vodId:$name",
-            type = FavoriteType.MOVIE,
+            type = WatchlistEntryType.MOVIE,
             streamId = vodId,
             name = title,
             metadata = metadata

@@ -11,7 +11,7 @@ enum class DestinationType {
     LIVE_TV,
     VOD,
     SERIES,
-    FAVORITES,
+    WATCHLIST,
     UNKNOWN;
 
     /**

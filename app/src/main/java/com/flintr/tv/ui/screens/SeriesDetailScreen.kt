@@ -116,7 +116,7 @@ fun SeriesDetailScreen(
     uiState: SeriesDetailUiState,
     modifier: Modifier = Modifier,
     onBackClick: () -> Unit = {},
-    onToggleFavorite: () -> Unit = {},
+    onToggleWatchlist: () -> Unit = {},
     onWatchClick: (Episode) -> Unit = {},
     onSeasonClick: (Int) -> Unit = {},
     onSeriesClick: (Int) -> Unit = {},
@@ -136,12 +136,12 @@ fun SeriesDetailScreen(
                 detail = uiState.detail,
                 seasons = uiState.seasons,
                 seasonsHint = uiState.seasonsHint,
-                isFavorite = uiState.isFavorite,
+                isInWatchlist = uiState.isInWatchlist,
                 recommendations = uiState.recommendations,
                 watchTarget = uiState.watchTarget,
                 watchLabel = uiState.watchLabel,
                 watchProgress = uiState.watchProgress,
-                onToggleFavorite = onToggleFavorite,
+                onToggleWatchlist = onToggleWatchlist,
                 onWatchClick = onWatchClick,
                 onSeasonClick = onSeasonClick,
                 onSeriesClick = onSeriesClick
@@ -230,12 +230,12 @@ private fun SeriesDetailContent(
     detail: DetailDisplayData,
     seasons: List<SeasonUiModel>,
     seasonsHint: String?,
-    isFavorite: Boolean,
+    isInWatchlist: Boolean,
     recommendations: List<Series>,
     watchTarget: WatchTargetUiModel?,
     watchLabel: String,
     watchProgress: Float?,
-    onToggleFavorite: () -> Unit,
+    onToggleWatchlist: () -> Unit,
     onWatchClick: (Episode) -> Unit,
     onSeasonClick: (Int) -> Unit,
     onSeriesClick: (Int) -> Unit
@@ -247,7 +247,7 @@ private fun SeriesDetailContent(
 
     val watchFocusRequester = remember { FocusRequester() }
     val trailerFocusRequester = remember { FocusRequester() }
-    val favoriteFocusRequester = remember { FocusRequester() }
+    val watchlistFocusRequester = remember { FocusRequester() }
     val seasonListState = rememberLazyListState()
     val seasonFocusRequesters = remember(seasons.size) {
         List(seasons.size) { FocusRequester() }
@@ -354,18 +354,18 @@ private fun SeriesDetailContent(
                         meta = meta,
                         genres = detail.genres,
                         overview = detail.plot,
-                        isFavorite = isFavorite,
+                        isInWatchlist = isInWatchlist,
                         trailerAvailable = !detail.youtubeTrailer.isNullOrBlank(),
                         watchLabel = watchLabel,
                         watchProgress = watchProgress,
                         onWatch = { watchTarget?.episode?.let(onWatchClick) },
                         onTrailer = { openSeriesYouTubeTrailer(context, detail.youtubeTrailer) },
-                        onFavorite = onToggleFavorite
+                        onToggleWatchlist = onToggleWatchlist
                     ),
                     testTagPrefix = "series-detail",
                     watchFocusRequester = watchFocusRequester,
                     trailerFocusRequester = trailerFocusRequester,
-                    favoriteFocusRequester = favoriteFocusRequester,
+                    watchlistFocusRequester = watchlistFocusRequester,
                     onButtonRowDown = { focusFirstBodySection() },
                     scrollState = scrollState,
                     modifier = Modifier.testTag("series-detail-header-row")

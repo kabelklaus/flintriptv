@@ -93,7 +93,7 @@ class RecommendationEngineTest {
     }
 
     @Test
-    fun `favorite and watched movies never appear`() {
+    fun `watchlist and watched movies never appear`() {
         val movies = listOf(
             testVod(streamId = 1, genre = "Action"),
             testVod(streamId = 2, genre = "Action")

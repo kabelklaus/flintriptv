@@ -48,7 +48,7 @@ import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.PlaybackSettingsRepository
 import com.flintr.tv.data.local.RecommendationService
 import com.flintr.tv.data.local.WatchProgressService
@@ -78,6 +78,9 @@ import com.flintr.tv.ui.tabs.SeriesContent
 import com.flintr.tv.ui.tabs.SeriesContentParams
 import com.flintr.tv.ui.tabs.InProgressContent
 import com.flintr.tv.ui.tabs.InProgressContentParams
+import com.flintr.tv.ui.tabs.InProgressItem
+import com.flintr.tv.ui.tabs.InProgressItemsState
+import com.flintr.tv.ui.tabs.rememberInProgressItems
 import com.flintr.tv.ui.tabs.SeriesItem
 import com.flintr.tv.ui.sidebars.ContentGridLayout
 import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
@@ -97,7 +100,7 @@ import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.ui.components.UpdateDialog
 import com.flintr.tv.ui.components.SearchOverlay
 import com.flintr.tv.ui.components.SearchResultCallbacks
-import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.UiConstants.WATCHLIST_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.RECOMMENDED_CATEGORY_ID
@@ -383,7 +386,7 @@ private fun com.flintr.tv.data.model.DestinationType.toHomeDestination(): HomeDe
         com.flintr.tv.data.model.DestinationType.VOD -> HomeDestination.VOD
         com.flintr.tv.data.model.DestinationType.SERIES -> HomeDestination.Series
         com.flintr.tv.data.model.DestinationType.UNKNOWN -> HomeDestination.LiveTV // Default fallback
-        else -> HomeDestination.LiveTV // Default fallback for FAVORITES and other types
+        else -> HomeDestination.LiveTV // Default fallback for WATCHLIST and other types
     }
 }
 
@@ -676,7 +679,7 @@ private fun InitialRoutingScreen(
 data class AppNavigationDependencies(
     val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
-    val favoritesRepository: FavoritesRepository,
+    val watchlistRepository: WatchlistRepository,
     val watchProgressService: WatchProgressService,
     val categoryVisibilityService: CategoryVisibilityService,
     val playbackSettingsRepository: PlaybackSettingsRepository,
@@ -892,7 +895,7 @@ fun AppNavigation(
  *
  * The saved [pendingNavigationState] (from entering this series via the Series tab) reflects
  * the sidebar category the user actually had selected, which may be a synthetic pseudo-category
- * ("Neu"/Favorites) that never matches [seriesCategoryId] (the series' own backend category).
+ * ("Neu"/Watchlist) that never matches [seriesCategoryId] (the series' own backend category).
  * Falling back to [seriesCategoryId] only when no pending state exists (e.g. entering via search
  * or a deep link, which don't save one) avoids restoreCategory() silently switching the sidebar
  * selection away from a pseudo-category on return - see bugfix-series-empty-report.md.
@@ -937,7 +940,7 @@ private fun MovieDetailRoute(
                 }
             }
         },
-        onToggleFavorite = viewModel::toggleFavorite,
+        onToggleWatchlist = viewModel::toggleWatchlist,
         onMovieClick = movieRecommendationClickHandler { route -> navController.navigate(route) },
         onRetry = viewModel::retry
     )
@@ -956,7 +959,7 @@ private fun SeriesDetailRoute(
     SeriesDetailScreen(
         uiState = uiState,
         onBackClick = { navController.popBackStack() },
-        onToggleFavorite = viewModel::toggleFavorite,
+        onToggleWatchlist = viewModel::toggleWatchlist,
         onWatchClick = { episode ->
             val series = uiState.series
             val credentials = dependencies.credentialsRepository.getCredentials()
@@ -1105,7 +1108,8 @@ private data class MainContentBodyParams(
     val focusRequesterMap: MutableMap<String, FocusRequester>,
     val onNavigateToCategorySidebar: () -> Unit,
     val onNavigateToNavbar: () -> Unit,
-    val dependencies: AppNavigationDependencies
+    val dependencies: AppNavigationDependencies,
+    val inProgressItems: InProgressItemsState
 )
 
 /**
@@ -1283,7 +1287,7 @@ private fun LiveTVContentSection(params: MainContentBodyParams) {
             viewModel = params.mainViewModel,
             selectedCategoryId = params.selectedCategoryId,
             focusRequester = params.contentListFocusRequester,
-            favoritesRepository = params.dependencies.favoritesRepository,
+            watchlistRepository = params.dependencies.watchlistRepository,
             userRepository = params.dependencies.userRepository,
             credentialsRepository = params.dependencies.credentialsRepository,
             cacheService = params.dependencies.cacheService,
@@ -1305,19 +1309,16 @@ private fun InProgressContentSection(params: MainContentBodyParams) {
     val (onVodClick, onSeriesClick, onEpisodeClick) = createInProgressClickHandlers(params)
     InProgressContent(
         params = InProgressContentParams(
+            itemsState = params.inProgressItems,
             watchProgressService = params.dependencies.watchProgressService,
-            favoritesRepository = params.dependencies.favoritesRepository,
-            cacheService = params.dependencies.cacheService,
+            watchlistRepository = params.dependencies.watchlistRepository,
             focusRequester = params.contentListFocusRequester,
             onNavigateLeft = params.onNavigateToCategorySidebar,
             onVodClick = onVodClick,
             onSeriesClick = onSeriesClick,
             onEpisodeClick = onEpisodeClick,
             lazyGridState = params.lazyGridState,
-            focusRequesterMap = params.focusRequesterMap,
-            destination = params.destination,
-            xtreamRepository = params.dependencies.xtreamRepository,
-            credentials = params.credentials
+            focusRequesterMap = params.focusRequesterMap
         )
     )
 }
@@ -1345,7 +1346,7 @@ private fun RecommendedVodContentSection(params: MainContentBodyParams) {
                 params = VODCardParams(
                     vod = vod,
                     onClick = { onVodClick(vod) },
-                    favoritesRepository = params.dependencies.favoritesRepository,
+                    watchlistRepository = params.dependencies.watchlistRepository,
                     watchProgressService = params.dependencies.watchProgressService,
                     onFocusChanged = onFocusChanged,
                     onNavigateLeft = if (columnIndex == 0) {
@@ -1381,7 +1382,7 @@ private fun RecommendedSeriesContentSection(params: MainContentBodyParams) {
         content = { series, _, columnIndex, onFocusChanged, cardFocusRequester ->
             SeriesItem(
                 series = series,
-                favoritesRepository = params.dependencies.favoritesRepository,
+                watchlistRepository = params.dependencies.watchlistRepository,
                 onSeriesClick = { onSeriesClick(series) },
                 cardConfig = com.flintr.tv.ui.components.CardConfig(
                     isSelected = false,
@@ -1413,7 +1414,7 @@ private fun VODContentSection(params: MainContentBodyParams) {
                 viewModel = params.mainViewModel,
                 selectedCategoryId = params.selectedCategoryId,
                 focusRequester = params.contentListFocusRequester,
-                favoritesRepository = params.dependencies.favoritesRepository,
+                watchlistRepository = params.dependencies.watchlistRepository,
                 userRepository = params.dependencies.userRepository,
                 credentialsRepository = params.dependencies.credentialsRepository,
                 cacheService = params.dependencies.cacheService,
@@ -1444,7 +1445,7 @@ private fun SeriesContentSection(params: MainContentBodyParams) {
                 viewModel = params.mainViewModel,
                 selectedCategoryId = params.selectedCategoryId,
                 focusRequester = params.contentListFocusRequester,
-                favoritesRepository = params.dependencies.favoritesRepository,
+                watchlistRepository = params.dependencies.watchlistRepository,
                 userRepository = params.dependencies.userRepository,
                 credentialsRepository = params.dependencies.credentialsRepository,
                 cacheService = params.dependencies.cacheService,
@@ -1589,27 +1590,27 @@ private fun filterHiddenCategories(
 }
 
 /**
- * Creates special categories. Fixed order: favorites, in-progress, recommended, new.
+ * Creates special categories. Fixed order: watchlist, in-progress, recommended, new.
  */
 internal fun createSpecialCategories(
     destination: HomeDestination,
     sortedCategories: List<Category>,
-    favoritesCategoryName: String,
+    watchlistCategoryName: String,
     newCategoryName: String,
     inProgressCategoryName: String,
     recommendedCategoryName: String
 ): List<Category> {
     if (!destination.supportsCategories()) return sortedCategories
 
-    val favoritesCategory = Category(FAVORITES_CATEGORY_ID, favoritesCategoryName, 0)
+    val watchlistCategory = Category(WATCHLIST_CATEGORY_ID, watchlistCategoryName, 0)
     val newCategory = Category(NEW_CATEGORY_ID, newCategoryName, 0)
 
     return if (destination.supportsInProgress()) {
         val recommendedCategory = Category(RECOMMENDED_CATEGORY_ID, recommendedCategoryName, 0)
         val inProgressCategory = Category(IN_PROGRESS_CATEGORY_ID, inProgressCategoryName, 0)
-        listOf(favoritesCategory, inProgressCategory, recommendedCategory, newCategory) + sortedCategories
+        listOf(watchlistCategory, inProgressCategory, recommendedCategory, newCategory) + sortedCategories
     } else {
-        listOf(favoritesCategory, newCategory) + sortedCategories
+        listOf(watchlistCategory, newCategory) + sortedCategories
     }
 }
 
@@ -1629,13 +1630,13 @@ private fun useCategoryManagement(
     val filteredCategories = filterHiddenCategories(rawCategories, categoryType, hiddenCategories)
     val sortedCategories = filteredCategories.sortedBy { it.categoryName }
 
-    val favoritesCategoryName = stringResource(R.string.favorites)
+    val watchlistCategoryName = stringResource(R.string.watchlist)
     val newCategoryName = stringResource(R.string.new_category)
     val inProgressCategoryName = stringResource(R.string.in_progress_category)
     val recommendedCategoryName = stringResource(R.string.recommended_for_you)
 
-    val categoriesWithSpecial = remember(sortedCategories, selectedDestination, favoritesCategoryName, newCategoryName, inProgressCategoryName, recommendedCategoryName) {
-        createSpecialCategories(selectedDestination, sortedCategories, favoritesCategoryName, newCategoryName, inProgressCategoryName, recommendedCategoryName)
+    val categoriesWithSpecial = remember(sortedCategories, selectedDestination, watchlistCategoryName, newCategoryName, inProgressCategoryName, recommendedCategoryName) {
+        createSpecialCategories(selectedDestination, sortedCategories, watchlistCategoryName, newCategoryName, inProgressCategoryName, recommendedCategoryName)
     }
 
     return CategoryManagementResult(
@@ -1853,6 +1854,7 @@ private data class MainContentScaffoldParams(
     val selectedCategoryId: String?,
     val onCategorySelected: (String?) -> Unit,
     val itemCounts: Map<String, Int>,
+    val inProgressItems: InProgressItemsState,
     val navbarFocusRequester: FocusRequester,
     val categorySidebarFocusRequester: FocusRequester,
     val categoryFocusRequesterMap: MutableMap<String, FocusRequester>,
@@ -1935,6 +1937,7 @@ private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params
                     selectedCategoryId = selectedCategoryId,
                     onCategorySelected = onCategorySelected,
                     itemCounts = itemCounts,
+                    itemLabelBuilder = { count -> itemLabelForDestination(selectedDestination, count) },
                     navbarFocusRequester = navbarFocusRequester,
                     categorySidebarFocusRequester = categorySidebarFocusRequester,
                     categoryFocusRequesterMap = categoryFocusRequesterMap,
@@ -1961,7 +1964,8 @@ private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params
                             focusRequesterMap = focusRequesterMap,
                             onNavigateToCategorySidebar = { focusManager.moveFocusToCategorySidebar() },
                             onNavigateToNavbar = { focusManager.moveFocusToNavbar() },
-                            dependencies = dependencies
+                            dependencies = dependencies,
+                            inProgressItems = inProgressItems
                         )
                     )
                 }
@@ -1988,7 +1992,7 @@ private fun MainContentScaffold(params: MainContentScaffoldParams) = with(params
                         onVodClick = searchClickHandlers.onVodClick,
                         onSeriesClick = searchClickHandlers.onSeriesClick
                     ),
-                    favoritesRepository = dependencies.favoritesRepository
+                    watchlistRepository = dependencies.watchlistRepository
                 )
             }
 
@@ -2202,26 +2206,29 @@ private fun handleDestinationChangeInternal(
     }
 }
 
-@Composable
-private fun calculateItemCounts(
-    selectedDestination: HomeDestination,
-    watchProgressService: WatchProgressService
-): Map<String, Int> {
-    var inProgressCount by remember { mutableStateOf(0) }
-    LaunchedEffect(selectedDestination) {
-        inProgressCount = when (selectedDestination) {
-            is HomeDestination.VOD -> watchProgressService.getInProgressMoviesCount()
-            is HomeDestination.Series -> watchProgressService.getInProgressEpisodesCount()
-            else -> 0
-        }
+/**
+ * Sidebar-Zaehler = Anzahl der Karten, die die "Angefangene Inhalte"-Liste rendert: Aufrufer
+ * uebergibt [InProgressItemsState.items] - dieselbe Liste, die das Grid anzeigt (Task 10b). Keine
+ * eigene Aufloesung - Zaehler und Liste koennen dadurch nie auseinanderlaufen.
+ */
+internal fun calculateItemCounts(inProgressItems: List<InProgressItem>): Map<String, Int> {
+    val inProgressCount = inProgressItems.size
+    return if (inProgressCount > 0) {
+        mapOf(IN_PROGRESS_CATEGORY_ID to inProgressCount)
+    } else {
+        emptyMap()
     }
-    return remember(inProgressCount) {
-        if (inProgressCount > 0) {
-            mapOf(IN_PROGRESS_CATEGORY_ID to inProgressCount)
-        } else {
-            emptyMap()
-        }
-    }
+}
+
+/**
+ * Label fuer die Item-Zaehlung pro Destination (z.B. "1 Film" / "3 Filme", "1 Serie" /
+ * "2 Serien" bei Angefangene Inhalte). Niemals "Kanaele" - das bezeichnet nur echte
+ * Live-TV-Sender.
+ */
+internal fun itemLabelForDestination(destination: HomeDestination, count: Int): String = when (destination) {
+    is HomeDestination.VOD -> if (count == 1) "Film" else "Filme"
+    is HomeDestination.Series -> if (count == 1) "Serie" else "Serien"
+    else -> "Titel"
 }
 
 @Composable
@@ -2426,11 +2433,15 @@ fun MainContentScreen(
     // String resources
     val categoryHiddenMessage = stringResource(R.string.category_hidden)
     
-    // Calculate item counts for special categories
-    val itemCounts = calculateItemCounts(
-        selectedDestination = selectedDestination,
-        watchProgressService = dependencies.watchProgressService
+    // Single in-progress pipeline: feeds the "Angefangene Inhalte" grid AND its sidebar counter
+    val inProgressItems = rememberInProgressItems(
+        destination = selectedDestination,
+        watchProgressService = dependencies.watchProgressService,
+        cacheService = dependencies.cacheService,
+        xtreamRepository = dependencies.xtreamRepository,
+        credentials = credentials
     )
+    val itemCounts = calculateItemCounts(inProgressItems.items)
     
     // Loading indicator with minimum display duration
     var loadingStartTime by remember { mutableStateOf(0L) }
@@ -2461,6 +2472,7 @@ fun MainContentScreen(
             selectedCategoryId = selectedCategoryId,
             onCategorySelected = { selectedCategoryId = it },
             itemCounts = itemCounts,
+            inProgressItems = inProgressItems,
             navbarFocusRequester = navbarFocusRequester,
             categorySidebarFocusRequester = categorySidebarFocusRequester,
             categoryFocusRequesterMap = categoryFocusRequesterMap,

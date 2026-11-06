@@ -103,7 +103,7 @@ fun MovieDetailScreen(
     modifier: Modifier = Modifier,
     onBackClick: () -> Unit = {},
     onWatchClick: () -> Unit = {},
-    onToggleFavorite: () -> Unit = {},
+    onToggleWatchlist: () -> Unit = {},
     onMovieClick: (Int) -> Unit = {},
     onRetry: () -> Unit = {}
 ) {
@@ -119,11 +119,11 @@ fun MovieDetailScreen(
             uiState.error != null -> MovieDetailError(error = uiState.error, onRetry = onRetry)
             uiState.detail != null -> MovieDetailContent(
                 detail = uiState.detail,
-                isFavorite = uiState.isFavorite,
+                isInWatchlist = uiState.isInWatchlist,
                 watchProgress = uiState.watchProgress,
                 recommendations = uiState.recommendations,
                 onWatchClick = onWatchClick,
-                onToggleFavorite = onToggleFavorite,
+                onToggleWatchlist = onToggleWatchlist,
                 onMovieClick = onMovieClick
             )
         }
@@ -247,11 +247,11 @@ private fun MovieDetailError(error: String, onRetry: () -> Unit) {
 @Composable
 private fun MovieDetailContent(
     detail: DetailDisplayData,
-    isFavorite: Boolean,
+    isInWatchlist: Boolean,
     watchProgress: com.flintr.tv.data.model.WatchProgress?,
     recommendations: List<com.flintr.tv.data.model.VodStream>,
     onWatchClick: () -> Unit,
-    onToggleFavorite: () -> Unit,
+    onToggleWatchlist: () -> Unit,
     onMovieClick: (Int) -> Unit
 ) {
     val colors = appColors()
@@ -259,7 +259,7 @@ private fun MovieDetailContent(
     val backdropUrl = detail.backdropPath?.firstOrNull { it.isNotBlank() }
     val watchFocusRequester = remember { FocusRequester() }
     val trailerFocusRequester = remember { FocusRequester() }
-    val favoriteFocusRequester = remember { FocusRequester() }
+    val watchlistFocusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
     val recommendationListState = rememberLazyListState()
     val recommendationFocusRequesters = remember(recommendations.size) {
@@ -359,17 +359,17 @@ private fun MovieDetailContent(
                         meta = meta,
                         genres = detail.genres,
                         overview = detail.plot,
-                        isFavorite = isFavorite,
+                        isInWatchlist = isInWatchlist,
                         trailerAvailable = !detail.youtubeTrailer.isNullOrBlank(),
                         watchProgress = watchProgressPercent,
                         onWatch = onWatchClick,
                         onTrailer = { openYouTubeTrailer(context, detail.youtubeTrailer) },
-                        onFavorite = onToggleFavorite
+                        onToggleWatchlist = onToggleWatchlist
                     ),
                     testTagPrefix = "movie-detail",
                     watchFocusRequester = watchFocusRequester,
                     trailerFocusRequester = trailerFocusRequester,
-                    favoriteFocusRequester = favoriteFocusRequester,
+                    watchlistFocusRequester = watchlistFocusRequester,
                     onButtonRowDown = { focusFirstRecommendation() },
                     scrollState = scrollState,
                     modifier = Modifier.testTag("movie-detail-header-row")

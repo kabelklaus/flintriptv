@@ -1,8 +1,8 @@
 package com.flintr.tv.data.local
 
 import com.flintr.tv.data.model.Category
-import com.flintr.tv.data.model.Favorite
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntry
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.repository.UserRepository
@@ -30,7 +30,7 @@ class RecommendationServiceTest {
 
     private val credentials = Credentials(serverUrl = "http://server", username = "chris", password = "pw")
 
-    private lateinit var favoritesRepository: FavoritesRepository
+    private lateinit var watchlistRepository: WatchlistRepository
     private lateinit var watchedHistoryService: WatchedHistoryService
     private lateinit var watchProgressService: WatchProgressService
     private lateinit var userRepository: UserRepository
@@ -38,7 +38,7 @@ class RecommendationServiceTest {
     private lateinit var cacheService: DataCacheService
     private lateinit var service: RecommendationService
 
-    private lateinit var favoritesFlow: MutableStateFlow<List<Favorite>>
+    private lateinit var watchlistFlow: MutableStateFlow<List<WatchlistEntry>>
     private lateinit var watchedHistoryFlow: MutableStateFlow<Map<String, com.flintr.tv.data.model.WatchedItem>>
     private lateinit var watchProgressFlow: MutableStateFlow<Map<String, com.flintr.tv.data.model.WatchProgress>>
 
@@ -53,18 +53,18 @@ class RecommendationServiceTest {
 
     @Before
     fun setUp() {
-        favoritesFlow = MutableStateFlow<List<Favorite>>(emptyList())
+        watchlistFlow = MutableStateFlow<List<WatchlistEntry>>(emptyList())
         watchedHistoryFlow = MutableStateFlow<Map<String, com.flintr.tv.data.model.WatchedItem>>(emptyMap())
         watchProgressFlow = MutableStateFlow<Map<String, com.flintr.tv.data.model.WatchProgress>>(emptyMap())
 
-        favoritesRepository = mockk(relaxed = true)
+        watchlistRepository = mockk(relaxed = true)
         watchedHistoryService = mockk(relaxed = true)
         watchProgressService = mockk(relaxed = true)
         userRepository = mockk(relaxed = true)
         credentialsRepository = mockk()
         cacheService = mockk(relaxed = true)
 
-        every { favoritesRepository.favorites } returns favoritesFlow
+        every { watchlistRepository.entries } returns watchlistFlow
         every { watchedHistoryService.watchedHistory } returns watchedHistoryFlow
         every { watchProgressService.watchProgress } returns watchProgressFlow
         every { credentialsRepository.credentialsFlow } returns silentCredentialsFlow
@@ -85,7 +85,7 @@ class RecommendationServiceTest {
         )
 
         service = RecommendationService(
-            favoritesRepository = favoritesRepository,
+            watchlistRepository = watchlistRepository,
             watchedHistoryService = watchedHistoryService,
             watchProgressService = watchProgressService,
             userRepository = userRepository,
@@ -103,19 +103,19 @@ class RecommendationServiceTest {
         runBlocking { scope.coroutineContext[Job]?.cancelAndJoin() }
     }
 
-    private fun favorite(streamId: Int) = Favorite.create(
+    private fun entry(streamId: Int) = WatchlistEntry.create(
         id = "movie:$streamId:x",
-        type = FavoriteType.MOVIE,
+        type = WatchlistEntryType.MOVIE,
         streamId = streamId,
         name = "Movie$streamId"
     )
 
     @Test
-    fun `adding favorites recomputes recommendations`() = runBlocking {
+    fun `adding watchlist entries recomputes recommendations`() = runBlocking {
         delay(400)
         assertTrue(service.recommendations.value.movies.isEmpty())
 
-        favoritesFlow.value = (1..5).map { favorite(it) }
+        watchlistFlow.value = (1..5).map { entry(it) }
         delay(400)
 
         val recommendedIds = service.recommendations.value.movies.map { it.streamId }

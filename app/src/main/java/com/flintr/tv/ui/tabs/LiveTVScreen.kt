@@ -15,9 +15,9 @@ import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
-import com.flintr.tv.data.local.FavoritesRepository
+import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.model.CategoryType
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.ui.components.CardConfig
@@ -26,11 +26,11 @@ import com.flintr.tv.ui.sidebars.ContentGridLayoutParams
 import com.flintr.tv.ui.components.LiveStreamCard
 import com.flintr.tv.ui.components.LiveStreamCardParams
 import com.flintr.tv.viewmodel.MainViewModel
-import com.flintr.tv.ui.common.UiConstants.FAVORITES_CATEGORY_ID
+import com.flintr.tv.ui.common.UiConstants.WATCHLIST_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.NEW_CATEGORY_ID
 import com.flintr.tv.ui.common.UiConstants.IN_PROGRESS_CATEGORY_ID
 import com.flintr.tv.ui.common.asOwnSourcedItems
-import com.flintr.tv.ui.common.useFavorites
+import com.flintr.tv.ui.common.useWatchlist
 import com.flintr.tv.ui.common.ContentFilterUtils
 import com.flintr.tv.utils.error.reportError
 
@@ -69,7 +69,7 @@ data class LiveTVContentParams(
     val viewModel: MainViewModel,
     val selectedCategoryId: String?,
     val focusRequester: FocusRequester,
-    val favoritesRepository: FavoritesRepository,
+    val watchlistRepository: WatchlistRepository,
     val userRepository: UserRepository,
     val credentialsRepository: CredentialsRepository,
     val cacheService: DataCacheService,
@@ -87,22 +87,22 @@ fun LiveTVContent(params: LiveTVContentParams) {
     val streams by params.viewModel.liveStreams.collectAsState()
     val uiState by params.viewModel.uiState.collectAsState()
     
-    val isFavoritesCategory = params.selectedCategoryId == FAVORITES_CATEGORY_ID
+    val isWatchlistCategory = params.selectedCategoryId == WATCHLIST_CATEGORY_ID
     val isNewCategory = params.selectedCategoryId == NEW_CATEGORY_ID
     val isInProgressCategory = params.selectedCategoryId == IN_PROGRESS_CATEGORY_ID
-    
+
     // State for new category filtered streams
     var newCategoryStreams by remember { mutableStateOf<List<LiveStream>>(emptyList()) }
     var isLoadingNewCategory by remember { mutableStateOf(false) }
-    
-    // Load favorites using the hook
-    val favoritesState = useFavorites<LiveStream>(
-        isFavoritesCategory = isFavoritesCategory,
-        favoritesRepository = params.favoritesRepository,
+
+    // Load watchlist entries using the hook
+    val watchlistState = useWatchlist<LiveStream>(
+        isWatchlistCategory = isWatchlistCategory,
+        watchlistRepository = params.watchlistRepository,
         userRepository = params.userRepository,
         credentialsRepository = params.credentialsRepository,
         cacheService = params.cacheService,
-        favoriteType = FavoriteType.LIVE,
+        watchlistEntryType =WatchlistEntryType.LIVE,
         idSelector = { it.streamId }
     )
     
@@ -121,7 +121,7 @@ fun LiveTVContent(params: LiveTVContentParams) {
                     onStreamsLoaded = { newCategoryStreams = it }
                 )
             }
-            !isFavoritesCategory && !isInProgressCategory && params.selectedCategoryId != null -> {
+            !isWatchlistCategory && !isInProgressCategory && params.selectedCategoryId != null -> {
                 params.viewModel.loadLiveStreams(params.selectedCategoryId)
             }
         }
@@ -134,13 +134,13 @@ fun LiveTVContent(params: LiveTVContentParams) {
     // In-progress category should not be shown in LiveTV (contains only movies/episodes)
     // Show empty list if in-progress category is selected
     val displayStreams = when {
-        isFavoritesCategory -> favoritesState.items
+        isWatchlistCategory -> watchlistState.items
         isNewCategory -> asOwnSourcedItems(newCategoryStreams)
         isInProgressCategory -> emptyList() // In-progress category not applicable for LiveTV
         else -> asOwnSourcedItems(streams)
     }
     val isLoading = when {
-        isFavoritesCategory -> favoritesState.isLoading
+        isWatchlistCategory -> watchlistState.isLoading
         isNewCategory -> isLoadingNewCategory
         isInProgressCategory -> false // No loading needed for empty list
         else -> uiState.isLoading
@@ -162,7 +162,7 @@ fun LiveTVContent(params: LiveTVContentParams) {
                 params = LiveStreamCardParams(
                     stream = stream.item,
                     onClick = { params.onChannelClick(stream.item) },
-                    favoritesRepository = params.favoritesRepository,
+                    watchlistRepository = params.watchlistRepository,
                     config = CardConfig(
                         focusRequester = cardFocusRequester ?: if (index == 0 && displayStreams.isNotEmpty()) params.focusRequester else null,
                         onFocusChanged = onFocusChanged,
@@ -173,7 +173,7 @@ fun LiveTVContent(params: LiveTVContentParams) {
                         }
                     ),
                     sourceBadge = stream.source.badge,
-                    allowFavoriteActions = stream.allowFavoriteActions
+                    allowWatchlistActions = stream.allowWatchlistActions
                 )
             )
         }

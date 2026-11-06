@@ -42,7 +42,7 @@ private fun createNavbarOnNavigateRight(
     return if (showCategories) {
         { onNavigateToCategorySidebar() }
     } else {
-        null // Favorites, EPG, Settings haben keine Kategorien
+        null // Watchlist, EPG, Settings haben keine Kategorien
     }
 }
 
@@ -84,7 +84,8 @@ data class MainLayoutParams(
     val onCategorySelected: (String?) -> Unit,
     val onCategoryHidden: (Category) -> Unit,
     val itemCounts: Map<String, Int>? = null,
-    
+    val itemLabelBuilder: (Int) -> String,
+
     // Focus Management
     val navbarFocusRequester: FocusRequester,
     val categorySidebarFocusRequester: FocusRequester,
@@ -132,12 +133,13 @@ fun MainLayout(
                     selectedCategoryId = params.selectedCategoryId,
                     onCategorySelected = params.onCategorySelected,
                     itemCounts = params.itemCounts,
+                    itemLabelBuilder = params.itemLabelBuilder,
                     focusRequester = params.categorySidebarFocusRequester,
                     onNavigateLeft = params.onNavigateToNavbar,
                     onNavigateRight = { params.onNavigateToContentList() },
                     onCategoryHidden = { category ->
-                        // Don't allow hiding favorites category
-                        if (category.categoryId != "__favorites__") {
+                        // Don't allow hiding watchlist category
+                        if (category.categoryId != "__watchlist__") {
                             params.onCategoryHidden(category)
                         }
                     },

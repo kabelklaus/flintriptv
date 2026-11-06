@@ -1,14 +1,14 @@
 package com.flintr.tv.ui.common
 
-import com.flintr.tv.data.model.Favorite
-import com.flintr.tv.data.model.FavoriteType
+import com.flintr.tv.data.model.WatchlistEntry
+import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.FriendEntry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class FavoritesHookTest {
+class WatchlistHookTest {
 
     @Test
     fun `build friend badge prefers alias and falls back to username`() {
@@ -18,14 +18,14 @@ class FavoritesHookTest {
     }
 
     @Test
-    fun `filter favorites by type keeps only matching items`() {
-        val favorites = listOf(
-            favorite("live_1", FavoriteType.LIVE, 1),
-            favorite("movie_2", FavoriteType.MOVIE, 2),
-            favorite("series_3", FavoriteType.SERIES, 3)
+    fun `filter watchlist by type keeps only matching items`() {
+        val entries = listOf(
+            entry("live_1", WatchlistEntryType.LIVE, 1),
+            entry("movie_2", WatchlistEntryType.MOVIE, 2),
+            entry("series_3", WatchlistEntryType.SERIES, 3)
         )
 
-        val filtered = filterFavoritesByType(favorites, FavoriteType.MOVIE)
+        val filtered = filterWatchlistByType(entries,WatchlistEntryType.MOVIE)
 
         assertEquals(1, filtered.size)
         assertEquals("movie_2", filtered.first().id)
@@ -46,15 +46,15 @@ class FavoritesHookTest {
         assertFalse(combined[2].source.isOwn)
         assertEquals("Th", combined[2].source.badge)
         assertEquals("An", combined[3].source.badge)
-        assertFalse(combined[2].allowFavoriteActions)
+        assertFalse(combined[2].allowWatchlistActions)
     }
 
-    private fun favorite(
+    private fun entry(
         id: String,
-        type: FavoriteType,
+        type: WatchlistEntryType,
         streamId: Int
-    ): Favorite {
-        return Favorite(
+    ): WatchlistEntry {
+        return WatchlistEntry(
             id = id,
             type = type,
             streamId = streamId,

@@ -1979,9 +1979,11 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 ),
                 contentType = contentType,
                 focusedButton = state.focusedButton,
-                ratedThumb = state.ratedThumb,
-                showRatingButtons = contentType != "live",
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                ratingUiState = RatingUiState(
+                    ratedThumb = state.ratedThumb,
+                    showRatingButtons = contentType != "live"
+                )
             )
 
             // Central play/pause button with seek feedback

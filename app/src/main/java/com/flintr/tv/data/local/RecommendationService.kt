@@ -1,6 +1,6 @@
 package com.flintr.tv.data.local
 
-import com.flintr.tv.data.model.Favorite
+import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.WatchedItem
 import com.flintr.tv.data.repository.UserRepository
@@ -25,14 +25,14 @@ private const val TAG = "RecommendationService"
 private const val RECOMPUTE_DEBOUNCE_MS = 300L
 
 /**
- * Combines favorites, watched history and watch progress into a [GenreProfile][com.flintr.tv.domain.recommendation.GenreProfile]
+ * Combines watchlist entries, watched history and watch progress into a [GenreProfile][com.flintr.tv.domain.recommendation.GenreProfile]
  * and scores the current catalog against it, exposing the "Für dich" recommendations as a
  * [StateFlow]. Ratings are re-fetched (read-only) on every recompute since they have no
  * reactive StateFlow of their own.
  */
 @Singleton
 class RecommendationService @Inject constructor(
-    private val favoritesRepository: FavoritesRepository,
+    private val watchlistRepository: WatchlistRepository,
     private val watchedHistoryService: WatchedHistoryService,
     private val watchProgressService: WatchProgressService,
     private val userRepository: UserRepository,
@@ -48,21 +48,21 @@ class RecommendationService @Inject constructor(
     init {
         serviceScope.launch {
             combine(
-                favoritesRepository.favorites,
+                watchlistRepository.entries,
                 watchedHistoryService.watchedHistory,
                 watchProgressService.watchProgress
-            ) { favorites, watchedHistory, watchProgress ->
-                Triple(favorites, watchedHistory, watchProgress)
+            ) { entries, watchedHistory, watchProgress ->
+                Triple(entries, watchedHistory, watchProgress)
             }
                 .debounce(RECOMPUTE_DEBOUNCE_MS)
-                .collect { (favorites, watchedHistory, watchProgress) ->
-                    recompute(favorites, watchedHistory, watchProgress)
+                .collect { (entries, watchedHistory, watchProgress) ->
+                    recompute(entries, watchedHistory, watchProgress)
                 }
         }
     }
 
     private suspend fun recompute(
-        favorites: List<Favorite>,
+        entries: List<WatchlistEntry>,
         watchedHistory: Map<String, WatchedItem>,
         watchProgress: Map<String, WatchProgress>
     ) {
@@ -76,7 +76,7 @@ class RecommendationService @Inject constructor(
         } ?: emptyMap()
 
         val profile = UserContentProfile.build(
-            favorites = favorites,
+            watchlistEntries = entries,
             watchedHistory = watchedHistory,
             watchProgress = watchProgress,
             ratings = ratings,

@@ -41,7 +41,7 @@ class WatchProgressServiceTest {
     private lateinit var userRepository: UserRepository
     private lateinit var credentialsRepository: CredentialsRepository
     private lateinit var watchedHistoryService: WatchedHistoryService
-    private lateinit var favoritesRepository: FavoritesRepository
+    private lateinit var watchlistRepository: WatchlistRepository
     private lateinit var cacheService: DataCacheService
     private lateinit var service: WatchProgressService
 
@@ -55,7 +55,7 @@ class WatchProgressServiceTest {
         userRepository = mockk(relaxed = true)
         credentialsRepository = mockk()
         watchedHistoryService = mockk(relaxed = true)
-        favoritesRepository = mockk(relaxed = true)
+        watchlistRepository = mockk(relaxed = true)
         cacheService = mockk(relaxed = true)
 
         // Init-Collect bleibt inert (null-Credentials); Laden wird explizit über syncIfNeeded getrieben
@@ -76,7 +76,7 @@ class WatchProgressServiceTest {
         service = WatchProgressService(
             context = context,
             moshi = moshi,
-            favoritesRepository = favoritesRepository,
+            watchlistRepository = watchlistRepository,
             watchedHistoryService = watchedHistoryService,
             userRepository = userRepository,
             credentialsRepository = credentialsRepository,
@@ -153,7 +153,7 @@ class WatchProgressServiceTest {
         assertTrue(result)
         assertNull(service.getProgress("movie", 42, null, null))
         coVerify { watchedHistoryService.markAsWatched("movie", 42, null, null, null, null, null) }
-        coVerify(timeout = 2_000) { favoritesRepository.removeFavorite("movie:42:Film") }
+        coVerify(timeout = 2_000) { watchlistRepository.removeFromWatchlist("movie:42:Film") }
     }
 
     @Test
@@ -222,7 +222,6 @@ class WatchProgressServiceTest {
         assertEquals(setOf("movie:1", "movie:2"), service.getInProgressMovies().keys)
         assertEquals(setOf("series:10:101"), service.getInProgressEpisodes().keys)
         assertEquals(3, service.getInProgressCount())
-        assertEquals(2, service.getInProgressMoviesCount())
         assertEquals(1, service.getInProgressEpisodesCount())
     }
 
@@ -309,6 +308,33 @@ class WatchProgressServiceTest {
         assertEquals(600_000L, service.getProgress("movie", 2, null, null))
         coVerify { watchedHistoryService.markAsWatched("movie", 1, null, null, null, null, null) }
         coVerify { watchedHistoryService.markAsWatched("series", 101, 10, 101, null, null, null) }
+    }
+
+    @Test
+    fun `cleanupCompletedProgress Grenze - 89 Prozent bleibt, 90 Prozent wird bereinigt`() = runBlocking {
+        seedProgress(
+            mapOf(
+                "movie:89" to progress(890_000, 1_000_000),
+                "movie:90" to progress(900_000, 1_000_000)
+            )
+        )
+
+        assertEquals(1, service.cleanupCompletedProgress())
+
+        assertEquals(890_000L, service.getProgress("movie", 89, null, null))
+        assertNull(service.getProgress("movie", 90, null, null))
+        coVerify { watchedHistoryService.markAsWatched("movie", 90, null, null, null, null, null) }
+        coVerify(exactly = 0) { watchedHistoryService.markAsWatched("movie", 89, any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `saveProgress Grenze - 89 Prozent speichert, 90 Prozent gilt als fertig`() = runBlocking {
+        assertTrue(service.saveProgress("movie", 1, null, null, 890_000, 1_000_000, "Film"))
+        assertEquals(890_000L, service.getProgress("movie", 1, null, null))
+
+        assertTrue(service.saveProgress("movie", 1, null, null, 900_000, 1_000_000, "Film"))
+        assertNull(service.getProgress("movie", 1, null, null))
+        coVerify { watchedHistoryService.markAsWatched("movie", 1, null, null, null, null, null) }
     }
 
     @Test

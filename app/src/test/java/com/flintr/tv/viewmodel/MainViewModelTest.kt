@@ -246,22 +246,22 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `showSeriesFromFavorites liefert Kategorie-ID bei Treffer`() = runTest {
+    fun `showSeriesFromWatchlist liefert Kategorie-ID bei Treffer`() = runTest {
         coEvery { repository.getSeriesInfo(any(), any(), any()) } coAnswers { Result.success(testSeries(seriesId = 10)) }
         coEvery { repository.getSeries(any(), any(), any()) } coAnswers { Result.success(emptyList()) }
         val vm = viewModel()
 
-        val categoryId = vm.showSeriesFromFavorites(testSeries(seriesId = 10, categoryId = "3"))
+        val categoryId = vm.showSeriesFromWatchlist(testSeries(seriesId = 10, categoryId = "3"))
 
         assertEquals("3", categoryId)
     }
 
     @Test
-    fun `showSeriesFromFavorites ohne Kategorie liefert null`() = runTest {
+    fun `showSeriesFromWatchlist ohne Kategorie liefert null`() = runTest {
         coEvery { repository.getSeriesInfo(any(), any(), any()) } coAnswers { Result.success(testSeries(seriesId = 10)) }
         val vm = viewModel()
 
-        assertNull(vm.showSeriesFromFavorites(testSeries(seriesId = 10, categoryId = "99")))
+        assertNull(vm.showSeriesFromWatchlist(testSeries(seriesId = 10, categoryId = "99")))
     }
 
     @Test
