@@ -22,11 +22,14 @@ import com.flintr.tv.ui.theme.SharedColors
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.flintr.tv.viewmodel.SettingsConnectionViewModel
 import com.flintr.tv.utils.formatExpirationDate
 import com.flintr.tv.utils.getExpirationDateColor
 import com.flintr.tv.data.local.CredentialsRepository
+import com.flintr.tv.ui.utils.safeRequestFocus
 
 private const val SUCCESS_MESSAGE_DISPLAY_TIME_MS = 5000L
 
@@ -40,6 +43,7 @@ fun SettingsConnection(
 ) {
     val colors = appColors()
     val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
     
     // ViewModel state
     val connectionTestState by viewModel.connectionTestState.collectAsState()
@@ -76,7 +80,7 @@ fun SettingsConnection(
     
     // Set initial focus
     LaunchedEffect(Unit) {
-        serverUrlFocusRequester.requestFocus()
+        serverUrlFocusRequester.safeRequestFocus(targetName = "ServerUrlField")
     }
     
     // Auto-clear cache refill success message after 5 seconds
@@ -122,9 +126,9 @@ fun SettingsConnection(
                         playlistNameFocusRequester = playlistNameFocusRequester,
                         colors = colors,
                         onBack = onBack,
-                        onServerUrlDpadDown = { playlistNameFocusRequester.requestFocus() },
-                        onPlaylistNameDpadUp = { serverUrlFocusRequester.requestFocus() },
-                        onPlaylistNameDpadDown = { usernameFocusRequester.requestFocus() }
+                        onServerUrlDpadDown = { coroutineScope.launch { playlistNameFocusRequester.safeRequestFocus(targetName = "PlaylistNameField", initialDelayMs = 0) } },
+                        onPlaylistNameDpadUp = { coroutineScope.launch { serverUrlFocusRequester.safeRequestFocus(targetName = "ServerUrlField", initialDelayMs = 0) } },
+                        onPlaylistNameDpadDown = { coroutineScope.launch { usernameFocusRequester.safeRequestFocus(targetName = "UsernameField", initialDelayMs = 0) } }
                     )
                 )
 
@@ -137,10 +141,10 @@ fun SettingsConnection(
                         usernameFocusRequester = usernameFocusRequester,
                         passwordFocusRequester = passwordFocusRequester,
                         colors = colors,
-                        onUsernameDpadUp = { playlistNameFocusRequester.requestFocus() },
-                        onUsernameDpadDown = { passwordFocusRequester.requestFocus() },
-                        onPasswordDpadUp = { usernameFocusRequester.requestFocus() },
-                        onPasswordDpadDown = { testButtonFocusRequester.requestFocus() }
+                        onUsernameDpadUp = { coroutineScope.launch { playlistNameFocusRequester.safeRequestFocus(targetName = "PlaylistNameField", initialDelayMs = 0) } },
+                        onUsernameDpadDown = { coroutineScope.launch { passwordFocusRequester.safeRequestFocus(targetName = "PasswordField", initialDelayMs = 0) } },
+                        onPasswordDpadUp = { coroutineScope.launch { usernameFocusRequester.safeRequestFocus(targetName = "UsernameField", initialDelayMs = 0) } },
+                        onPasswordDpadDown = { coroutineScope.launch { testButtonFocusRequester.safeRequestFocus(targetName = "TestConnectionButton", initialDelayMs = 0) } }
                     )
                 )
                 

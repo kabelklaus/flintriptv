@@ -5,14 +5,17 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -21,7 +24,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import android.util.Log
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.ui.components.PopupMenu
@@ -35,6 +40,8 @@ import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.ui.utils.safeRequestFocus
 import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 data class CategoryRowParams(
@@ -141,9 +148,29 @@ private fun CategoryChipContent(
     itemCount: Int,
     itemLabelBuilder: (Int) -> String,
     isSelected: Boolean,
+    isFocused: Boolean,
     titleColor: Color,
     countColor: Color
 ) {
+    val titleScrollState = rememberScrollState()
+    LaunchedEffect(isFocused) {
+        if (!isFocused) {
+            titleScrollState.animateScrollTo(0)
+            return@LaunchedEffect
+        }
+        snapshotFlow { titleScrollState.maxValue }.collectLatest { maxValue ->
+            if (maxValue > 0) {
+                delay(400)
+                while (true) {
+                    titleScrollState.animateScrollTo(maxValue, tween(2500))
+                    delay(500)
+                    titleScrollState.animateScrollTo(0, tween(2500))
+                    delay(500)
+                }
+            }
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(Dimensions.categoryTextSpacing)
@@ -152,8 +179,13 @@ private fun CategoryChipContent(
             text = name,
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                color = titleColor
-            )
+                color = titleColor,
+                lineHeight = 24.sp
+            ),
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.horizontalScroll(titleScrollState)
         )
         if (itemCount > 0) {
             Text(
@@ -402,6 +434,7 @@ fun CategoryChip(
             itemCount = params.itemCount,
             itemLabelBuilder = params.itemLabelBuilder,
             isSelected = params.isSelected,
+            isFocused = hasFocus,
             titleColor = chipColors.title,
             countColor = chipColors.count
         )

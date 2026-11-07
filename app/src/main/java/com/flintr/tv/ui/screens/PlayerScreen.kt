@@ -69,6 +69,7 @@ import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.createVerticalSwipeGestureModifier
+import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.RatingEntry
 import com.flintr.tv.data.model.Subtitle
@@ -158,8 +159,8 @@ private fun createExoPlayer(
             1500,  // bufferForPlaybackMs
             5000   // bufferForPlaybackAfterRebufferMs
         )
-        .setTargetBufferBytes(2 * 1024 * 1024) // 2MB target buffer
-        .setPrioritizeTimeOverSizeThresholds(true)
+        .setTargetBufferBytes(20 * 1024 * 1024) // 20MB target buffer
+        .setPrioritizeTimeOverSizeThresholds(false)
         .build()
 
     // Configure RenderersFactory based on audio decoder setting.
@@ -1533,6 +1534,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         )
     )
 
+    // Flush the coalesced Firestore write when the player leaves the composition (exit path),
+    // bypassing the 60s cooldown exactly once.
+    DisposableEffect(exoPlayer, watchProgressService) {
+        onDispose {
+            watchProgressService.flushPendingSync()
+        }
+    }
+
     // Detect completion (>= 90%) and trigger immediate save
     CompletionDetectionEffect(
         position = state.currentPosition,
@@ -1788,14 +1797,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
     val playerFocusRequester = remember { FocusRequester() }
     
     LaunchedEffect(Unit) {
-        playerFocusRequester.requestFocus()
+        playerFocusRequester.safeRequestFocus(targetName = "PlayerSurface")
     }
 
     val isControlsFocusActive = state.showControls && state.focusedButton != null
     val isOverlayWithoutControlFocus = state.showControls && state.focusedButton == null
     val exitControlsFocus: () -> Boolean = {
         state.focusedButton = null
-        playerFocusRequester.requestFocus()
+        coroutineScope.launch { playerFocusRequester.safeRequestFocus(targetName = "PlayerSurface") }
         resetControlsTimer()
         true
     }

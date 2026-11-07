@@ -128,6 +128,8 @@ private suspend fun AwaitPointerEventScope.handleDragGesture(
  * @param bufferedProgress Buffered progress value between 0.0 and 1.0 (accent blue, 50% alpha)
  * @param isDragging Whether the user is currently dragging the scrubber
  * @param dragCallbacks Callbacks for drag gestures (start, progress, end)
+ *
+ * Live rendert der Caller [LiveBadge] statt dieser Bar.
  */
 // Lint false positive: awaitPointerEventScope is entered exactly once and loops
 // forever (while(true) inside the scope), so no pointer events can be dropped

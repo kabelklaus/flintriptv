@@ -35,6 +35,7 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.utils.onBackButton
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.PlaybackSettingsRepository
@@ -198,7 +199,7 @@ private fun SettingsMainScreen(
     
     // Set focus on first item when screen is first displayed
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        focusRequester.safeRequestFocus(targetName = "SettingsMainScreenFirstItem")
     }
     
     LazyColumn(

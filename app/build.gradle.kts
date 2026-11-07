@@ -17,6 +17,20 @@ plugins {
     id("jacoco")
 }
 
+/*
+ * T11 Baseline Profile: intentionally NOT activated in this branch.
+ *
+ * AGP 9.2.1 + Gradle 9.5.0 are newer than the androidx.baselineprofile line verified here;
+ * nothing is pinned in gradle/libs.versions.toml. The documented 1.4.x line targets AGP 8.x,
+ * and no AGP-9-compatible version could be verified offline, so applying it unchecked would
+ * risk breaking configuration of this build. Minimal setup to finish later (operator-owned):
+ *   1. add `id("androidx.baselineprofile") version "<AGP-9-compatible>"` to this plugins
+ *      block and `apply false` to the root build,
+ *   2. include a `:baselineprofile` com.android.test module in settings.gradle.kts,
+ *   3. add profileinstaller + androidx.benchmark:benchmark-macro-junit4 to that module.
+ * Then `./gradlew :app:generateBaselineProfile` becomes available.
+ */
+
 android {
     namespace = "com.flintr.tv"
     compileSdk {
@@ -27,8 +41,8 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 113
-        versionName = "2.51.1"
+        versionCode = 115
+        versionName = "2.53.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         

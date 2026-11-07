@@ -553,11 +553,13 @@ private suspend fun restoreFocus(
     }
     
     if (focusRequester != null) {
-        try {
-            focusRequester.requestFocus()
+        val focused = focusRequester.safeRequestFocus(
+            logTag = LOG_TAG_MAIN_CONTENT_SCREEN,
+            targetName = "ContentCard_${state.contentId}"
+        )
+        if (focused) {
             Log.d(LOG_TAG_MAIN_CONTENT_SCREEN, "Focus restored on content card: ${state.contentId}")
-        } catch (e: Exception) {
-            reportWarning(LOG_TAG_MAIN_CONTENT_SCREEN, "Failed to restore focus", e)
+        } else {
             requestFallbackFocus(focusRequesterMap)
         }
     } else {
@@ -571,13 +573,9 @@ private suspend fun restoreFocus(
  * Only acts on a requester that is actually present in the map; a not-yet-attached
  * FocusRequester is a normal timing race, not a crash-worthy condition.
  */
-private fun requestFallbackFocus(focusRequesterMap: MutableMap<String, FocusRequester>) {
+private suspend fun requestFallbackFocus(focusRequesterMap: MutableMap<String, FocusRequester>) {
     val fallbackFocusRequester = focusRequesterMap.values.firstOrNull() ?: return
-    try {
-        fallbackFocusRequester.requestFocus()
-    } catch (e: IllegalStateException) {
-        Log.w(LOG_TAG_MAIN_CONTENT_SCREEN, "Fallback focus failed: FocusRequester not initialized yet", e)
-    }
+    fallbackFocusRequester.safeRequestFocus(logTag = LOG_TAG_MAIN_CONTENT_SCREEN, targetName = "FallbackContentCard")
 }
 
 /**
@@ -1201,6 +1199,9 @@ private fun createSeriesClickHandler(
             )
         )
         val route = seriesDetailRoute(series.seriesId)
+        // The detail destination creates its own ViewModel; stage the clicked object so the
+        // loading placeholder can show poster/title before getSeriesInfo returns.
+        SeriesDetailViewModel.seedNextDetail(series)
         params.navController.logAndNavigate(route, "AppNavigation") {
             "📺 Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
         }
@@ -1250,6 +1251,7 @@ private fun createInProgressClickHandlers(
             )
         )
         val route = seriesDetailRoute(series.seriesId)
+        SeriesDetailViewModel.seedNextDetail(series)
         params.navController.logAndNavigate(route, "AppNavigation") {
             "📺 InProgress Series click - series.name: ${series.name}, seriesId: ${series.seriesId}, route: $route"
         }
@@ -1716,6 +1718,29 @@ private fun resolveTargetCategoryId(
 }
 
 /**
+ * Clears the content-card focus requester map whenever the selected category changes,
+ * so FocusRequester entries for cards no longer on screen don't accumulate unbounded
+ * as the user browses categories. Only clears on a real category switch, not on first
+ * composition (e.g. returning from the player with navigation restore), since an
+ * initial clear would race with restoreCategory/restoreFocus polling for requesters
+ * that getOrPut just populated. New entries are then created fresh via getOrPut as
+ * ContentGridLayout renders the new category's cards.
+ */
+@Composable
+private fun FocusRequesterMapClearEffect(
+    selectedCategoryId: String?,
+    focusRequesterMap: MutableMap<String, FocusRequester>
+) {
+    var lastClearedCategoryId by remember { mutableStateOf(selectedCategoryId) }
+    LaunchedEffect(selectedCategoryId) {
+        if (selectedCategoryId != lastClearedCategoryId) {
+            focusRequesterMap.clear()
+            lastClearedCategoryId = selectedCategoryId
+        }
+    }
+}
+
+/**
  * LaunchedEffect for category selection when destination or categories change
  */
 @Composable
@@ -2162,6 +2187,7 @@ private fun createSearchClickHandlers(
         },
         onSeriesClick = { series ->
             val route = seriesDetailRoute(series.seriesId)
+            SeriesDetailViewModel.seedNextDetail(series)
             mainViewModel.clearSearch()
             onDismiss()
             navController.logAndNavigate(route, "AppNavigation") {
@@ -2274,6 +2300,10 @@ fun MainContentScreen(
     
     // FocusRequester map for content cards (contentId -> FocusRequester)
     val focusRequesterMap = remember { mutableMapOf<String, FocusRequester>() }
+    FocusRequesterMapClearEffect(
+        selectedCategoryId = selectedCategoryId,
+        focusRequesterMap = focusRequesterMap
+    )
 
     // FocusRequester map for category chips (categoryId -> FocusRequester)
     val categoryFocusRequesterMap = remember { mutableMapOf<String, FocusRequester>() }
