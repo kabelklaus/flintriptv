@@ -30,6 +30,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -292,14 +293,19 @@ fun HomeSidebar(
     onSearchClick: () -> Unit = {}
 ) {
     val colors = appColors()
-    
-    val navItems = remember {
+    val searchLabel = stringResource(R.string.nav_search)
+    val tvLabel = stringResource(R.string.nav_tv)
+    val moviesLabel = stringResource(R.string.nav_movies)
+    val seriesLabel = stringResource(R.string.nav_series)
+    val settingsLabel = stringResource(R.string.nav_settings)
+
+    val navItems = remember(searchLabel, tvLabel, moviesLabel, seriesLabel, settingsLabel) {
         listOf(
-            NavItem("Suche", Icons.Default.Search, HomeDestination.Search),
-            NavItem("TV", Icons.Default.Tv, HomeDestination.LiveTV),
-            NavItem("Movies", Icons.Default.Movie, HomeDestination.VOD),
-            NavItem("Series", Icons.Default.PlayArrow, HomeDestination.Series),
-            NavItem("Settings", Icons.Default.Settings, HomeDestination.Settings)
+            NavItem(searchLabel, Icons.Default.Search, HomeDestination.Search),
+            NavItem(tvLabel, Icons.Default.Tv, HomeDestination.LiveTV),
+            NavItem(moviesLabel, Icons.Default.Movie, HomeDestination.VOD),
+            NavItem(seriesLabel, Icons.Default.PlayArrow, HomeDestination.Series),
+            NavItem(settingsLabel, Icons.Default.Settings, HomeDestination.Settings)
         )
     }
     

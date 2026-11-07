@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -74,14 +73,15 @@ private val ContentCardTitleMaxLines = 2
 private val ContentCardTitleGradientAlpha = 0.7f
 private val ContentCardTitleBgAlpha = 0.75f
 
-// Friend avatar and watchlist badge are separate footprints: the friend initial needs the larger
-// circle/text to stay legible, while the watchlist heart only needs a larger glyph inside the
-// existing rating-badge-sized chip.
+// Friend avatar and watchlist badge share one shape so the top-left badge row reads as one
+// family: both use the same radiusSM rounding as the rating chip on the opposite corner.
+// The friend initial keeps its larger footprint/text for legibility; only the shape is unified.
 private val ContentCardFriendAvatarSize = 24.dp
 private val ContentCardFriendAvatarFontSize = 13.sp
 private val ContentCardWatchlistBadgeSize = Dimensions.iconSizeMD
 private val ContentCardWatchlistIconSize = 12.dp
 private val ContentCardBadgeSpacing = 3.dp
+private val ContentCardLogoPadding = 8.dp
 
 // Content Card Colors (from Flutter AppTheme)
 private val ContentCardTextColor = Color.White
@@ -146,7 +146,9 @@ private data class CardInteractionHandlers(
 private data class ContentInfo(
     val coverImageUrl: String?,
     val title: String,
-    val rating: String?
+    val rating: String?,
+    /** Live channels render a sender logo, not a poster: fit it instead of cropping. */
+    val isLogo: Boolean = false
 )
 
 private data class WatchState(
@@ -197,12 +199,14 @@ fun VODCard(params: VODCardParams) {
         params.vod != null -> ContentInfo(
             coverImageUrl = params.vod.streamIcon ?: params.vod.cover,
             title = params.vod.name,
-            rating = ContentParser.getRating(params.vod)
+            rating = ContentParser.getRating(params.vod),
+            isLogo = false
         )
         params.series != null -> ContentInfo(
             coverImageUrl = params.series.cover,
             title = params.series.name,
-            rating = ContentParser.getRating(params.series)
+            rating = ContentParser.getRating(params.series),
+            isLogo = false
         )
         else -> throw IllegalArgumentException("Either vod or series must be provided")
     }
@@ -434,6 +438,7 @@ private fun ContentCardInternal(
         CardContent(
             coverImageUrl = contentInfo.coverImageUrl,
             title = contentInfo.title,
+            isLogo = contentInfo.isLogo,
             overlayParams = CardOverlayParams(
                 rating = contentInfo.rating,
                 isInWatchlist = isInWatchlist,
@@ -474,7 +479,8 @@ fun LiveStreamCard(
             contentInfo = ContentInfo(
                 coverImageUrl = params.stream.streamIcon,
                 title = params.stream.name,
-                rating = null
+                rating = null,
+                isLogo = true
             ),
             contentType = ContentType.Live(params.stream),
             sourceBadge = params.sourceBadge,
@@ -692,12 +698,14 @@ private fun useCardVisualState(
 private fun CardContent(
     coverImageUrl: String?,
     title: String,
+    isLogo: Boolean,
     overlayParams: CardOverlayParams
 ) {
     if (!coverImageUrl.isNullOrEmpty()) {
         CardImageWithOverlays(
             coverImageUrl = coverImageUrl,
             title = title,
+            isLogo = isLogo,
             overlayParams = overlayParams
         )
     } else {
@@ -708,10 +716,17 @@ private fun CardContent(
     }
 }
 
+/**
+ * Renders the card artwork. Posters keep `ContentScale.Crop`; the existing RGB_565 decoding
+ * trade-off for posters on low-end boxes is untouched here. Sender logos instead use
+ * `ContentScale.Fit` with inner padding, because cropping/upscaling a transparent channel logo
+ * cuts off wordmarks (ZDF case) and stretches the aspect ratio.
+ */
 @Composable
 private fun CardImageWithOverlays(
     coverImageUrl: String,
     title: String,
+    isLogo: Boolean,
     overlayParams: CardOverlayParams
 ) {
     val painter = rememberAsyncImagePainter(model = coverImageUrl)
@@ -727,8 +742,12 @@ private fun CardImageWithOverlays(
             Image(
                 painter = painter,
                 contentDescription = title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (isLogo) Modifier.padding(ContentCardLogoPadding) else Modifier
+                    ),
+                contentScale = if (isLogo) ContentScale.Fit else ContentScale.Crop
             )
 
             CardBadges(
@@ -825,7 +844,7 @@ private fun SourceBadge(
             .size(ContentCardFriendAvatarSize)
             .background(
                 color = SharedColors.avatarAccentBg.copy(alpha = Dimensions.contentCardRatingBgAlpha),
-                shape = CircleShape
+                shape = RoundedCornerShape(Dimensions.radiusSM)
             ),
         contentAlignment = Alignment.Center
     ) {

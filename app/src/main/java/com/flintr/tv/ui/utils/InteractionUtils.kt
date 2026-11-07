@@ -18,6 +18,7 @@ import androidx.compose.foundation.gestures.awaitDragOrCancellation
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.focus.FocusRequester
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
@@ -185,6 +186,53 @@ fun Modifier.onClick(
             .clickable(onClick = onClick)
     } else {
         this
+    }
+}
+
+private const val DOUBLE_CLICK_DEBOUNCE_MS = 300L
+
+/**
+ * Generic guard against duplicate confirm/click events from D-Pad, touch and key-repeat paths.
+ *
+ * A TV remote can deliver the same confirm twice within a few frames (key repeat plus touch
+ * synthesis), which previously toggled a state and immediately toggled it back. This debouncer
+ * accepts the first event and ignores every further event within [debounceMillis] (default
+ * [DOUBLE_CLICK_DEBOUNCE_MS]).
+ *
+ * This is deliberately additive: [safeRequestFocus] and the existing [Modifier.onClick] /
+ * [Modifier.onLongPress] handling are unchanged, so no current call site changes behaviour.
+ * Future consumers that benefit: the central play/pause toggle in `PlayerScreen` and the
+ * `FocusedButton.PLAY_PAUSE` control in `CustomPlayerControls`, where a duplicated confirm
+ * currently produces a visible play -> pause -> play flicker.
+ *
+ * Not thread-safe: use it on the UI thread only. One instance belongs to one control;
+ * sharing an instance across controls would let a click on one control swallow the first
+ * click on another.
+ *
+ * @param debounceMillis Minimum time between two accepted events.
+ * @param clock Monotonic time source ([SystemClock.elapsedRealtime] by default), injectable
+ *   for tests.
+ */
+class ClickDebouncer(
+    private val debounceMillis: Long = DOUBLE_CLICK_DEBOUNCE_MS,
+    private val clock: () -> Long = { SystemClock.elapsedRealtime() }
+) {
+    private var lastAcceptedAt: Long? = null
+
+    /**
+     * @return true if this event should be handled, false if it falls inside the debounce window.
+     */
+    fun tryAccept(now: Long = clock()): Boolean {
+        val last = lastAcceptedAt
+        if (last != null && now - last < debounceMillis) {
+            return false
+        }
+        lastAcceptedAt = now
+        return true
+    }
+
+    fun reset() {
+        lastAcceptedAt = null
     }
 }
 

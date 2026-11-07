@@ -9,6 +9,7 @@ import com.flintr.tv.domain.recommendation.RecommendationEngine
 import com.flintr.tv.domain.recommendation.RecommendationResult
 import com.flintr.tv.domain.recommendation.UserContentProfile
 import com.flintr.tv.utils.error.reportError
+import com.google.firebase.perf.metrics.Trace
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -90,6 +91,10 @@ class RecommendationService(
     private val _recommendations = MutableStateFlow(RecommendationResult(emptyList(), emptyList()))
     val recommendations: StateFlow<RecommendationResult> = _recommendations.asStateFlow()
 
+    /**
+     * Read-through cache for ratings. Fresh ratings reach recommendations only after up to
+     * [RATINGS_CACHE_TTL_MS] (5 min). Accepted trade-off: recompute cost > freshness.
+     */
     @Volatile
     private var ratingsCache: CachedRatings? = null
 
@@ -117,29 +122,36 @@ class RecommendationService(
     }
 
     private suspend fun recompute(input: RecommendationInput) {
-        coroutineContext.ensureActive()
-        val cached = cacheService.loadCachedDataAsync() ?: return
+        val trace = PerfTrace.start("flintr_recommendation_recompute")
+        try {
+            coroutineContext.ensureActive()
+            val cached = cacheService.loadCachedDataAsync() ?: return
 
-        coroutineContext.ensureActive()
-        val ratings = loadRatings()
+            coroutineContext.ensureActive()
+            val ratings = loadRatings(trace)
 
-        coroutineContext.ensureActive()
-        val profile = UserContentProfile.build(
-            watchlistEntries = input.entries,
-            watchedHistory = input.watchedHistory,
-            watchProgress = input.watchProgress,
-            ratings = ratings,
-            movies = cached.movies,
-            series = cached.series
-        )
+            coroutineContext.ensureActive()
+            val profile = UserContentProfile.build(
+                watchlistEntries = input.entries,
+                watchedHistory = input.watchedHistory,
+                watchProgress = input.watchProgress,
+                ratings = ratings,
+                movies = cached.movies,
+                series = cached.series
+            )
 
-        val result = RecommendationEngine.recommend(profile, cached)
-        // The engine itself is synchronous, so a cancelled run must not publish its stale result.
-        coroutineContext.ensureActive()
-        _recommendations.value = result
+            val result = RecommendationEngine.recommend(profile, cached)
+            // The engine itself is synchronous, so a cancelled run must not publish its stale result.
+            coroutineContext.ensureActive()
+            _recommendations.value = result
+            PerfTrace.increment(trace, "recommendation_movies", result.movies.size.toLong())
+            PerfTrace.increment(trace, "recommendation_series", result.series.size.toLong())
+        } finally {
+            PerfTrace.stop(trace)
+        }
     }
 
-    private suspend fun loadRatings(): Map<String, RatingEntry> {
+    private suspend fun loadRatings(trace: Trace?): Map<String, RatingEntry> {
         val username = credentialsRepository.getCredentials()
             ?.username
             ?.takeIf { it.isNotBlank() }
@@ -148,13 +160,17 @@ class RecommendationService(
         val now = nowMs()
         ratingsCache
             ?.takeIf { it.username == username && now - it.loadedAtMs < RATINGS_CACHE_TTL_MS }
-            ?.let { return it.ratings }
+            ?.let {
+                PerfTrace.increment(trace, "ratings_from_cache")
+                return it.ratings
+            }
 
         val ratings = userRepository.loadAllRatings(username)
             .onFailure { reportError(TAG, "Failed to load ratings, continuing without thumbs signal", it) }
             .getOrNull()
             ?: return emptyMap()
 
+        PerfTrace.increment(trace, "ratings_from_network")
         ratingsCache = CachedRatings(username = username, ratings = ratings, loadedAtMs = now)
         return ratings
     }
