@@ -373,9 +373,12 @@ internal fun resolveEffectiveFocusedButton(
  * instead of red, so the badge does not claim an active live feed. The label stays "LIVE" to
  * avoid touching the out-of-scope string resources.
  */
+internal fun liveBadgeDotColor(isPlaying: Boolean): Color =
+    if (isPlaying) SharedColors.red else Color.Gray
+
 @Composable
 internal fun LiveBadge(
-    isPlaying: Boolean = true,
+    isPlaying: Boolean,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -387,7 +390,7 @@ internal fun LiveBadge(
             modifier = Modifier
                 .size(8.dp)
                 .background(
-                    color = if (isPlaying) SharedColors.red else Color.Gray,
+                    color = liveBadgeDotColor(isPlaying),
                     shape = CircleShape
                 )
         )

@@ -128,7 +128,7 @@ fun <T> DetailRecommendationsSection(
     // The backend may return the same film under several language/quality variants
     // (e.g. "Apollo 13", "Apollo 13 DE", "Apollo 13 4K"). Collapse those on the UI
     // side until the recommendation service can own the catalog-level dedup.
-    val visibleRecommendations = remember(recommendations, title) {
+    val visibleRecommendations = remember(recommendations) {
         deduplicateRecommendations(recommendations, title)
     }
     Column(
@@ -170,7 +170,9 @@ private val RecommendationTitleNoiseSuffixes = setOf(
 private val RecommendationYearPattern = Regex("""(19|20)\d{2}""")
 
 internal fun normalizeRecommendationTitle(raw: String): String {
-    val withoutDiacritics = Normalizer.normalize(raw, Normalizer.Form.NFD)
+    // Cap before normalizing: recommendation titles are external data and only the first
+    // 256 characters can influence the dedup key.
+    val withoutDiacritics = Normalizer.normalize(raw.take(256), Normalizer.Form.NFD)
         .replace(Regex("\\p{Mn}+"), "")
     val tokens = withoutDiacritics
         .lowercase()
@@ -208,7 +210,13 @@ internal fun <T> deduplicateRecommendations(
     val seen = mutableSetOf<String>()
     return items.filter { item ->
         val itemTitle = title(item)
-        val dedupKey = "${normalizeRecommendationTitle(itemTitle)}#${recommendationYear(item, itemTitle) ?: ""}"
+        val normalized = normalizeRecommendationTitle(itemTitle)
+        // NFD + Mn-stripping and the ASCII token filter only cover Latin scripts. For
+        // Cyrillic/Greek/Arabic/CJK (and titles that consist only of noise suffixes) the
+        // normalized title is blank; falling back to the raw title keeps distinct films
+        // apart instead of collapsing them all onto "#<year>".
+        val titleKey = normalized.ifBlank { itemTitle.take(256).lowercase().trim() }
+        val dedupKey = "$titleKey#${recommendationYear(item, itemTitle) ?: ""}"
         seen.add(dedupKey)
     }
 }

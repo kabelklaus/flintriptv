@@ -12,6 +12,7 @@
 
     <!-- Search overlay -->
     <string name="search_done">Done</string>
+    <string name="search_overlay_hint">Search…</string>
     
     <!-- Settings Info Screen -->
     <string name="version">Version</string>

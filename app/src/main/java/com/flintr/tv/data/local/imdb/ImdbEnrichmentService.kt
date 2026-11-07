@@ -46,12 +46,23 @@ internal data class ImdbEnrichmentMeta(
 
 /**
  * One Firebase trace spans all lookups of a single enrichment pass instead of one trace per
- * title (~70k per save). The save path brackets its enrichment phase with [start]/[stop] on
- * the IO context, so the trace is never started on the UI thread. Kept as a top-level object
- * (not an instance API) so the mocked service in unit tests needs no extra stubbing.
+ * title (~70k per save). The save path brackets its enrichment phase with [start]/[stop];
+ * start/stop are thread-tolerant, so the trace may also be started from the caller's
+ * `Main.immediate` context. Kept as a top-level object (not an instance API) so the mocked
+ * service in unit tests needs no extra stubbing.
  */
 internal object ImdbEnrichmentTrace {
     private const val TRACE_NAME = "flintr_imdb_enrichment"
+
+    /**
+     * Number of [ImdbEnrichmentService.lookup] SQL statements since the last [start].
+     *
+     * Ownership is process-wide, not save-scoped: every lookup calls [recordStatement],
+     * including detail-screen lookups that run outside a save. Those extra statements are
+     * counted into the currently open trace (if any) and are discarded by the next [start]
+     * when no trace is open. The metric therefore means "DB statements executed while this
+     * trace was open", not "statements of this save only".
+     */
     private val dbStatementsExecuted = AtomicInteger(0)
     private var trace: Trace? = null
 

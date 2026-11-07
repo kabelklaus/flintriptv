@@ -3,7 +3,6 @@ package com.flintr.tv.data.local
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
-import android.os.Looper
 import androidx.core.content.edit
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentTrace
@@ -52,14 +51,13 @@ import com.google.firebase.perf.metrics.Trace
  * Thin, failure-tolerant wrapper around Firebase Performance custom traces.
  *
  * A missing FirebaseApp (unit tests, Robolectric) or an unavailable perf SDK must never
- * affect the measured work, so every operation degrades to a no-op. Traces are only
- * started off the main thread: [start] returns `null` on the main thread and the caller's
- * `try/finally` still runs the block uninterrupted.
+ * affect the measured work, so every operation degrades to a no-op. Trace start/stop are
+ * thread-tolerant, so [start] may be called from the caller's context (including
+ * `Main.immediate`); the measured work itself still runs on its IO dispatcher.
  */
 internal object PerfTrace {
     fun start(name: String): Trace? {
         return try {
-            if (Looper.myLooper() == Looper.getMainLooper()) return null
             FirebasePerformance.getInstance().newTrace(name).also { it.start() }
         } catch (t: Throwable) {
             null

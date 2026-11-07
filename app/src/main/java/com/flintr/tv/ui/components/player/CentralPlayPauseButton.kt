@@ -17,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.ui.utils.onClick
 import kotlinx.coroutines.delay
@@ -39,12 +41,17 @@ fun CentralPlayPauseButton(
     val iconSize = 80.dp
 
     // The central glyph is feedback for a state change, not a persistent status indicator:
-    // show it briefly after each play/pause toggle and fade it out again.
-    var glyphVisible by remember { mutableStateOf(true) }
+    // show it briefly after each play/pause toggle and fade it out again. The first
+    // composition is not a state change, so it must not flash the glyph.
+    var glyphVisible by remember { mutableStateOf(false) }
+    var previousIsPlaying by remember { mutableStateOf(isPlaying) }
     LaunchedEffect(isPlaying) {
-        glyphVisible = true
-        delay(PAUSE_GLYPH_VISIBLE_MS)
-        glyphVisible = false
+        if (isPlaying != previousIsPlaying) {
+            previousIsPlaying = isPlaying
+            glyphVisible = true
+            delay(PAUSE_GLYPH_VISIBLE_MS)
+            glyphVisible = false
+        }
     }
     val glyphAlpha by animateFloatAsState(
         targetValue = if (glyphVisible) 1f else 0f,
@@ -55,12 +62,15 @@ fun CentralPlayPauseButton(
     Box(
         modifier = modifier
             .size(iconSize)
-            .onClick(onClick = onClick),
+            .onClick(onClick = onClick)
+            // The button, not the transient glyph, owns the accessible label. The glyph's
+            // own contentDescription stays null so a faded-out icon adds no a11y noise.
+            .semantics { contentDescription = if (isPlaying) "Pause" else "Play" },
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-            contentDescription = if (isPlaying) "Pause" else "Play",
+            contentDescription = null,
             modifier = Modifier
                 .size(iconSize)
                 .alpha(glyphAlpha),
