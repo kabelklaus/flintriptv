@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -40,6 +41,7 @@ import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.ui.utils.safeRequestFocus
 import androidx.compose.ui.focus.focusRequester
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 data class CategoryRowParams(
@@ -156,16 +158,15 @@ private fun CategoryChipContent(
             titleScrollState.animateScrollTo(0)
             return@LaunchedEffect
         }
-        delay(400)
-        while (true) {
-            if (titleScrollState.maxValue > 0) {
-                titleScrollState.animateScrollTo(titleScrollState.maxValue, tween(2500))
-                delay(500)
-                titleScrollState.animateScrollTo(0, tween(2500))
-                delay(500)
-            } else {
-                // Not yet measured or the title fits: re-check after a frame.
-                delay(250)
+        snapshotFlow { titleScrollState.maxValue }.collectLatest { maxValue ->
+            if (maxValue > 0) {
+                delay(400)
+                while (true) {
+                    titleScrollState.animateScrollTo(maxValue, tween(2500))
+                    delay(500)
+                    titleScrollState.animateScrollTo(0, tween(2500))
+                    delay(500)
+                }
             }
         }
     }

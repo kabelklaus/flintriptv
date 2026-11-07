@@ -341,15 +341,11 @@ class WatchProgressService(
 
     /**
      * Requests an asynchronous, throttled Firestore sync of the current progress map.
-     * The writer coalesces bursts and always persists [_watchProgress] at write time.
+     * This only triggers the request; credentials/owner validation happens in the writer
+     * ([writeProgressIfOwnerMatches]) inside the IO context. The writer coalesces bursts and
+     * always persists [_watchProgress] at write time.
      */
     private fun requestFirestoreSync() {
-        val username = credentialsRepository.getCredentials()?.username
-        if (username.isNullOrBlank()) {
-            Log.w(TAG, "Cannot save to Firestore: no username available")
-            return
-        }
-
         syncRequests.trySend(Unit)
     }
 
@@ -360,11 +356,12 @@ class WatchProgressService(
      * composition that requested it.
      */
     fun flushPendingSync() {
-        if (credentialsRepository.getCredentials()?.username.isNullOrBlank()) {
-            Log.w(TAG, "Cannot flush watch progress: no username available")
-            return
-        }
         serviceScope.launch {
+            val username = credentialsRepository.getCredentials()?.username
+            if (username.isNullOrBlank()) {
+                Log.w(TAG, "Cannot flush watch progress: no username available")
+                return@launch
+            }
             firestoreWriteMutex.withLock {
                 writeProgressIfOwnerMatches()
             }
