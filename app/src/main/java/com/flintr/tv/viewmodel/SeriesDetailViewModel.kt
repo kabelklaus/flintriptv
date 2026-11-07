@@ -25,6 +25,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import javax.inject.Named
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -107,6 +108,17 @@ class SeriesDetailViewModel @Inject constructor(
         private val YEAR_PATTERN = Regex("(?:19|20)\\d{2}")
         private val TITLE_YEAR_PATTERN = Regex("\\((?:19|20)\\d{2}\\)")
         private const val CAST_SEPARATOR = ","
+
+        /**
+         * In-process handoff from a series-grid click to the detail destination: the grid handler
+         * has no [SeriesDetailViewModel] instance yet (the route creates it), so it stages the
+         * clicked [Series] here and the next ViewModel instance consumes it as its loading base.
+         */
+        private val pendingBaseSeed = AtomicReference<Series?>(null)
+
+        fun seedNextDetail(seed: Series) {
+            pendingBaseSeed.set(seed)
+        }
     }
 
     private val seriesId: Int = savedStateHandle.get<Int>(ARG_SERIES_ID)
@@ -117,7 +129,19 @@ class SeriesDetailViewModel @Inject constructor(
     val uiState: StateFlow<SeriesDetailUiState> = _uiState.asStateFlow()
 
     init {
+        pendingBaseSeed.getAndSet(null)?.let(::seedBaseSeries)
         load()
+    }
+
+    /**
+     * Uses [seed] only as the loading placeholder (poster/title/backdrop). The real state from
+     * [load] replaces it wholesale, so this can never race the network result.
+     */
+    fun seedBaseSeries(seed: Series?) {
+        if (seed == null) return
+        _uiState.update { state ->
+            if (state.detail != null) state else state.copy(series = seed)
+        }
     }
 
     fun retry() = load()

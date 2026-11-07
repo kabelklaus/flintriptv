@@ -19,8 +19,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -86,16 +89,38 @@ class WatchProgressServiceTest {
         )
     }
 
+    /** Rebuilds the service with a controllable clock/interval for the throttle tests. */
+    private fun rebuildService(now: () -> Long, intervalMs: Long) {
+        cancelServiceScope()
+        service = WatchProgressService(
+            context = context,
+            moshi = moshi,
+            watchlistRepository = watchlistRepository,
+            watchedHistoryService = watchedHistoryService,
+            userRepository = userRepository,
+            credentialsRepository = credentialsRepository,
+            cacheService = cacheService,
+            syncManager = FirestoreSyncManager(syncCooldownMs = 0L),
+            ioDispatcher = Dispatchers.Unconfined,
+            nowMs = now,
+            syncIntervalMs = intervalMs
+        )
+    }
+
+    private fun cancelServiceScope() {
+        val field = WatchProgressService::class.java.getDeclaredField("serviceScope")
+        field.isAccessible = true
+        val scope = field.get(service) as CoroutineScope
+        runBlocking { scope.coroutineContext[Job]?.cancelAndJoin() }
+    }
+
     @After
     fun tearDown() {
         // Hintergrund-Coroutinen des Service beenden und abwarten (Reflection wie seedProgress):
         // serviceScope (Init-Collector, Fire-and-forget-Firestore-Saves) laeuft sonst nach dem
         // Test weiter, und Mock-Zugriffe daraus korrumpieren die every{}-Aufzeichnung
         // nachfolgender Tests, weil der MockK-Recorder global ist.
-        val field = WatchProgressService::class.java.getDeclaredField("serviceScope")
-        field.isAccessible = true
-        val scope = field.get(service) as CoroutineScope
-        runBlocking { scope.coroutineContext[Job]?.cancelAndJoin() }
+        cancelServiceScope()
     }
 
     private fun progress(position: Long, duration: Long, title: String = "Titel") = WatchProgress(
@@ -590,5 +615,139 @@ class WatchProgressServiceTest {
         assertTrue(service.isWatched("movie", 1, null, null))
         assertEquals(setOf(101), service.getWatchedEpisodeIds(10))
         assertEquals(setOf(1, 2), service.getWatchedVodIds())
+    }
+
+    // --- Coalesced Firestore-Writer (Throttle) ---
+
+    @Test
+    fun `Writer ueberspringt Save wenn der Progress-Owner nicht mehr passt`() = runBlocking {
+        rebuildService(now = { 0L }, intervalMs = 1_000L)
+
+        assertTrue(service.saveProgress("movie", 1, null, null, 600_000, 3_600_000, "Film 1"))
+        // Account wechselt, bevor der wartende Writer schreibt: die Map gehoert noch "chris".
+        every { credentialsRepository.getCredentials() } returns
+            Credentials(serverUrl = "http://server", username = "alex", password = "pw")
+
+        delay(1_300)
+        coVerify(exactly = 0) { userRepository.saveWatchProgress(any(), any()) }
+    }
+
+    @Test
+    fun `Burst von drei saveProgress schreibt genau einmal`() = runBlocking {
+        rebuildService(now = { 1_000_000L }, intervalMs = 60_000L)
+        val saves = AtomicInteger()
+        coEvery { userRepository.saveWatchProgress(any(), any()) } coAnswers {
+            saves.incrementAndGet()
+            Result.success(Unit)
+        }
+
+        assertTrue(service.saveProgress("movie", 1, null, null, 600_000, 3_600_000, "Film 1"))
+        assertTrue(service.saveProgress("movie", 2, null, null, 600_000, 3_600_000, "Film 2"))
+        assertTrue(service.saveProgress("movie", 3, null, null, 600_000, 3_600_000, "Film 3"))
+
+        coVerify(timeout = 2_000, exactly = 1) { userRepository.saveWatchProgress("chris", any()) }
+        assertEquals(1, saves.get())
+    }
+
+    @Test
+    fun `zweiter Save wartet mindestens syncIntervalMs`() = runBlocking {
+        var now = 1_000_000L
+        rebuildService(now = { now }, intervalMs = 1_000L)
+        val saves = AtomicInteger()
+        coEvery { userRepository.saveWatchProgress(any(), any()) } coAnswers {
+            saves.incrementAndGet()
+            Result.success(Unit)
+        }
+
+        assertTrue(service.saveProgress("movie", 1, null, null, 600_000, 3_600_000, "Film 1"))
+        coVerify(timeout = 2_000, exactly = 1) { userRepository.saveWatchProgress("chris", any()) }
+
+        // 500 ms vor Ablauf des Intervalls: der zweite Save darf noch nicht passieren.
+        now = 1_000_500L
+        assertTrue(service.saveProgress("movie", 2, null, null, 600_000, 3_600_000, "Film 2"))
+        delay(200)
+        assertEquals("second save must wait for the remaining interval", 1, saves.get())
+
+        coVerify(timeout = 2_000, exactly = 2) { userRepository.saveWatchProgress("chris", any()) }
+    }
+
+    @Test
+    fun `conflated Requests ergeben genau einen weiteren Save`() = runBlocking {
+        val savedMaps = Collections.synchronizedList(mutableListOf<Map<String, WatchProgress>>())
+        var now = 1_000_000L
+        rebuildService(now = { now }, intervalMs = 2_000L)
+        coEvery { userRepository.saveWatchProgress(any(), any()) } coAnswers {
+            savedMaps += secondArg<Map<String, WatchProgress>>()
+            Result.success(Unit)
+        }
+
+        assertTrue(service.saveProgress("movie", 1, null, null, 600_000, 3_600_000, "Film 1"))
+        coVerify(timeout = 2_000, exactly = 1) { userRepository.saveWatchProgress("chris", any()) }
+
+        // Zweiter Request startet den 1-s-Wait; die naechsten beiden coalescen waehrenddessen.
+        now = 1_001_000L
+        assertTrue(service.saveProgress("movie", 2, null, null, 600_000, 3_600_000, "Film 2"))
+        delay(100)
+        assertTrue(service.saveProgress("movie", 3, null, null, 600_000, 3_600_000, "Film 3"))
+        assertTrue(service.saveProgress("movie", 4, null, null, 600_000, 3_600_000, "Film 4"))
+
+        coVerify(timeout = 3_000, exactly = 2) { userRepository.saveWatchProgress("chris", any()) }
+        assertEquals(2, savedMaps.size)
+        val lastMap = savedMaps.last()
+        assertTrue(lastMap.containsKey("movie:1"))
+        assertTrue(lastMap.containsKey("movie:2"))
+        assertTrue(lastMap.containsKey("movie:3"))
+        assertTrue(lastMap.containsKey("movie:4"))
+    }
+
+    @Test
+    fun `wartender Save resurrectet einen geloeschten Key nicht`() = runBlocking {
+        var deletedKeySeen = false
+        rebuildService(now = { 1_000_000L }, intervalMs = 1_000L)
+        coEvery { userRepository.saveWatchProgress(any(), any()) } coAnswers {
+            val map = secondArg<Map<String, WatchProgress>>()
+            if (!map.containsKey("movie:42")) deletedKeySeen = true
+            Result.success(Unit)
+        }
+
+        assertTrue(service.saveProgress("movie", 42, null, null, 600_000, 3_600_000, "Film"))
+        coVerify(timeout = 2_000) { userRepository.saveWatchProgress("chris", any()) }
+
+        // Zweiter Save wartet 1 s; in dieser Zeit wird der Key geloescht.
+        assertTrue(service.saveProgress("movie", 42, null, null, 700_000, 3_600_000, "Film"))
+        delay(100)
+        assertTrue(service.saveProgress("movie", 42, null, null, 3_500_000, 3_600_000, "Film"))
+
+        coVerify(timeout = 3_000) {
+            userRepository.saveWatchProgress("chris", match { !it.containsKey("movie:42") })
+        }
+        assertTrue("waiting save must contain the map without the deleted key", deletedKeySeen)
+    }
+
+    @Test
+    fun `flushPendingSync verschiebt das Koaleszenz-Fenster und verhindert redundanten Write`() = runBlocking {
+        var now = 1_000_000L
+        rebuildService(now = { now }, intervalMs = 1_000L)
+        val saves = AtomicInteger()
+        coEvery { userRepository.saveWatchProgress(any(), any()) } coAnswers {
+            saves.incrementAndGet()
+            Result.success(Unit)
+        }
+
+        assertTrue(service.saveProgress("movie", 1, null, null, 600_000, 3_600_000, "Film 1"))
+        coVerify(timeout = 2_000, exactly = 1) { userRepository.saveWatchProgress("chris", any()) }
+        assertEquals(1, saves.get())
+
+        // Flush kurz vor Ende des urspruenglichen Fensters: ohne Clock-Advance wuerde der
+        // naechste Writer-Lauf nur noch ~100 ms warten und direkt nach dem Flush erneut schreiben.
+        now = 1_000_900L
+        service.flushPendingSync()
+        coVerify(timeout = 2_000, exactly = 2) { userRepository.saveWatchProgress("chris", any()) }
+        assertEquals(2, saves.get())
+
+        // Neuer Request im selben syncIntervalMs-Fenster ab dem Flush: kein zweiter Write.
+        assertTrue(service.saveProgress("movie", 2, null, null, 600_000, 3_600_000, "Film 2"))
+        delay(300)
+        assertEquals("flush must advance the coalescing clock", 2, saves.get())
     }
 }

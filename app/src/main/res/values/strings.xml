@@ -2,6 +2,17 @@
     <string name="app_name">flintrTV</string>
     <string name="remove_from_watchlist">Von Watchlist entfernen</string>
     <string name="add_to_watchlist">Zur Watchlist hinzufügen</string>
+
+    <!-- Navigation labels (EN, Streamflix reference) -->
+    <string name="nav_search">Search</string>
+    <string name="nav_tv">TV</string>
+    <string name="nav_movies">Movies</string>
+    <string name="nav_series">Series</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Search overlay -->
+    <string name="search_done">Done</string>
+    <string name="search_overlay_hint">Search…</string>
     
     <!-- Settings Info Screen -->
     <string name="version">Version</string>

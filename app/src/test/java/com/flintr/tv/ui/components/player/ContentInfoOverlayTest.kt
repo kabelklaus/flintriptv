@@ -56,14 +56,14 @@ class ContentInfoOverlayTest {
     fun serieZeigtStaffelEpisodeUndTitel() {
         setOverlay(contentType = "series", title = null, seriesData = seriesContext())
 
-        composeTestRule.onNodeWithText("S2:E5 \"Finale\"").assertIsDisplayed()
+        composeTestRule.onNodeWithText("S2 E5 Finale").assertIsDisplayed()
     }
 
     @Test
     fun serieOhneEpisodentitelZeigtNurStaffelUndEpisode() {
         setOverlay(contentType = "series", title = null, seriesData = seriesContext(episodeTitle = ""))
 
-        composeTestRule.onNodeWithText("S2:E5").assertIsDisplayed()
+        composeTestRule.onNodeWithText("S2 E5").assertIsDisplayed()
     }
 
     @Test
@@ -74,7 +74,7 @@ class ContentInfoOverlayTest {
             seriesData = seriesContext(episodeNum = null, episodeId = 99)
         )
 
-        composeTestRule.onNodeWithText("S2:E99 \"Finale\"").assertIsDisplayed()
+        composeTestRule.onNodeWithText("S2 E99 Finale").assertIsDisplayed()
     }
 
     @Test
@@ -85,24 +85,26 @@ class ContentInfoOverlayTest {
     }
 
     @Test
-    fun filmZeigtTitelInAnfuehrungszeichen() {
+    fun filmZeigtTitelOhneAnfuehrungszeichen() {
         setOverlay(contentType = "movie", title = "Der Film", seriesData = null)
 
-        composeTestRule.onNodeWithText("\"Der Film\"").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Der Film").assertIsDisplayed()
     }
 
     @Test
-    fun liveZeigtSendernamen() {
+    fun liveZeigtSendernamenOhneAnfuehrungszeichen() {
         setOverlay(contentType = "live", title = "Kanal Eins", seriesData = null)
 
-        composeTestRule.onNodeWithText("\"Kanal Eins\"").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Kanal Eins").assertIsDisplayed()
     }
 
     @Test
     fun filmMitLeeremTitelZeigtNichts() {
         setOverlay(contentType = "movie", title = "", seriesData = null)
 
-        composeTestRule.onNodeWithText("\"\"").assertDoesNotExist()
+        // The overlay composes no text node at all for a blank title; asserting on the
+        // empty string targets the actual (absent) output instead of an unrelated title.
+        composeTestRule.onNodeWithText("").assertDoesNotExist()
     }
 
     @Test
@@ -113,12 +115,12 @@ class ContentInfoOverlayTest {
     }
 
     @Test
-    fun langerTitelWirdMitSchlusszeichenGekuerzt() {
+    fun langerTitelWirdGekuerzt() {
         val longTitle = "A".repeat(60)
         setOverlay(contentType = "movie", title = longTitle, seriesData = null)
 
-        // "\"" + 60x A + "\"" (62 Zeichen) -> take(46) + "..." + "\""
-        val expected = "\"" + "A".repeat(45) + "...\""
+        // 60 x A -> take(47) + "..."
+        val expected = "A".repeat(47) + "..."
         composeTestRule.onNodeWithText(expected).assertIsDisplayed()
     }
 }

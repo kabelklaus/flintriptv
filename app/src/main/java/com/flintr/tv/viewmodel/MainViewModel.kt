@@ -15,6 +15,7 @@ import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.ui.common.ContentFilterUtils
 import com.flintr.tv.utils.isConnectivityError
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -23,7 +24,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import javax.inject.Named
 import com.flintr.tv.utils.error.reportError
 import com.flintr.tv.utils.error.reportWarning
 
@@ -34,7 +37,8 @@ class MainViewModel @Inject constructor(
     private val credentialsRepository: CredentialsRepository,
     private val userRepository: UserRepository,
     private val cacheService: DataCacheService,
-    private val categoryVisibilityService: CategoryVisibilityService
+    private val categoryVisibilityService: CategoryVisibilityService,
+    @Named("IO") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -93,16 +97,18 @@ class MainViewModel @Inject constructor(
     private var initialLoadJob: Job? = null
 
     private fun loadInitialData() {
-        val credentials = credentialsRepository.getCredentials()
-        if (credentials == null) {
-            Log.w("MainViewModel", "No credentials available, skipping initial data load")
-            return
-        }
-
-        saveUsernameIfNeeded(credentials)
-
-        initialLoadJob?.cancel()
+        val previousLoadJob = initialLoadJob
+        previousLoadJob?.cancel()
         initialLoadJob = viewModelScope.launch {
+            previousLoadJob?.join()
+            val credentials = withContext(ioDispatcher) { credentialsRepository.getCredentials() }
+            if (credentials == null) {
+                Log.w("MainViewModel", "No credentials available, skipping initial data load")
+                return@launch
+            }
+
+            saveUsernameIfNeeded(credentials)
+
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             Log.d("MainViewModel", "Loading initial data...")
 
@@ -238,9 +244,9 @@ class MainViewModel @Inject constructor(
         fetchCall: suspend (username: String, password: String) -> Result<List<T>>
     ) {
         dataLoadingJob?.cancel()
-        val credentials = credentialsRepository.getCredentials() ?: return
         val generation = ++loadGeneration
         dataLoadingJob = viewModelScope.launch {
+            val credentials = withContext(ioDispatcher) { credentialsRepository.getCredentials() } ?: return@launch
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             dataFlow.value = emptyList() // Clear old content while loading
             Log.d("MainViewModel", "Loading $logName")
@@ -295,8 +301,8 @@ class MainViewModel @Inject constructor(
     }
 
     fun loadSeriesInfo(seriesId: Int) {
-        val credentials = credentialsRepository.getCredentials() ?: return
         viewModelScope.launch {
+            val credentials = withContext(ioDispatcher) { credentialsRepository.getCredentials() } ?: return@launch
             Log.d("MainViewModel", "Loading series info for series ID: $seriesId")
             repository.getSeriesInfo(credentials.username, credentials.password, seriesId)
                 .onSuccess { 

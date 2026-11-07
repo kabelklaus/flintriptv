@@ -22,7 +22,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -36,7 +35,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
-import com.flintr.tv.R
 import com.flintr.tv.data.local.SmartResumeTarget
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.model.Episode
@@ -44,6 +42,7 @@ import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.ui.components.PopupMenu
 import com.flintr.tv.ui.components.WatchedBadge
+import com.flintr.tv.ui.components.formatRemainingLabel
 import com.flintr.tv.ui.components.detail.formatDate
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
@@ -55,10 +54,12 @@ import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.ui.utils.InteractionUtils.tvFocusable
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.utils.ContentParser
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import com.flintr.tv.utils.error.reportHandled
-import com.flintr.tv.utils.error.reportControlFlow
 
 // Navigation direction enum
 private enum class NavigationDirection {
@@ -164,6 +165,42 @@ internal suspend fun requestInitialEpisodeFocus(
     }
 }
 
+// Order GF6: fast D-Pad bursts used to restart the follow animation on every index change, so the
+// MutatePriority mutex cancelled the previous animateScrollToItem before it reached anything and
+// the viewport stayed at the first visible card while focusedEpisodeIndex raced ahead (15x RIGHT
+// -> counter "50/64", viewport still at episode 4/5). Bundle the burst and jump once when it ends.
+internal const val EPISODE_FOCUS_SCROLL_DEBOUNCE_MS = 120L
+
+/**
+ * Collects navigation-driven episode index changes with trailing-edge debounce: every new index
+ * cancels the pending delay via collectLatest, so only the last index after a short input pause is
+ * acted on. This is deliberately separate from [requestInitialEpisodeFocus]: the initial focus
+ * path still scrolls immediately and is never delayed by this effect.
+ *
+ * The callbacks are injectable so the burst/strategy contract can be tested without mocking
+ * LazyListState.
+ */
+internal suspend fun followEpisodeFocusBurst(
+    indices: kotlinx.coroutines.flow.Flow<Int>,
+    debounceMillis: Long = EPISODE_FOCUS_SCROLL_DEBOUNCE_MS,
+    isVisible: (Int) -> Boolean,
+    scrollTo: suspend (Int) -> Unit,
+    animateScrollTo: suspend (Int) -> Unit
+) {
+    indices.collectLatest { index ->
+        delay(debounceMillis)
+        // Off-screen target: the item is not composed yet, so an animation would have nothing to
+        // animate towards. scrollToItem composes it immediately; EpisodeCard's own
+        // LaunchedEffect(isFocused) then requests focus (no duplicate request here).
+        // Visible target: a single tap close by can move smoothly.
+        if (isVisible(index)) {
+            animateScrollTo(index)
+        } else {
+            scrollTo(index)
+        }
+    }
+}
+
 /**
  * Manages episode focus state and handles initial focus setup
  */
@@ -197,10 +234,10 @@ internal fun rememberEpisodeFocus(
         requestInitialEpisodeFocus(listState, focusRequesters, targetIndex)
     }
 
-    // Scroll to focused episode - keyed the same as requestInitialEpisodeFocus above (rather than
-    // focusedEpisodeIndex.value) and drop(1)-ing the first emission on every restart, so this
-    // effect only reacts to LATER, genuine navigation-driven focusedEpisodeIndex changes (e.g.
-    // D-Pad left/right updating focusState.focusedEpisodeIndex.value directly).
+    // Navigation follow only - initial focus belongs exclusively to requestInitialEpisodeFocus
+    // above. Keyed the same as that effect and drop(1)-ing the first emission on every restart, so
+    // this only reacts to LATER, genuine navigation-driven focusedEpisodeIndex changes (e.g. D-Pad
+    // left/right updating focusState.focusedEpisodeIndex.value directly).
     //
     // Without the drop(1): on a season switch (or any initialEpisodeIndex change), focusedEpisodeIndex
     // is freshly remembered already holding the resume target, so this effect's very first emission
@@ -211,14 +248,24 @@ internal fun rememberEpisodeFocus(
     // ?.safeRequestFocus(...) - so nothing ends up focused. Reproduced deterministically via
     // SeriesEpisodesFocusRecoveryTest.seasonSwitchAfterInitialCompositionLeavesFocusRequestersStaleForTheNewSeason;
     // see fix2-report.md.
+    //
+    // Order GF6: the follow is trailing-edge debounced (120ms). Rapid D-Pad input therefore produces
+    // exactly ONE action after the burst instead of one cancelled animation per index. A target
+    // outside the composed viewport is jumped to instantly (scrollToItem, which composes it and
+    // lets EpisodeCard's LaunchedEffect(isFocused) attach focus); a target already in view is
+    // animated for a smooth single step. The debounce only delays this navigation follow: the
+    // initial requestInitialEpisodeFocus path above remains un-delayed and unchanged.
     LaunchedEffect(episodes.size, initialEpisodeIndex) {
-        snapshotFlow { focusedEpisodeIndex.value }
-            .drop(1)
-            .collect { index ->
-                if (index in 0 until episodes.size) {
-                    listState.animateScrollToItem(index)
-                }
-            }
+        followEpisodeFocusBurst(
+            indices = snapshotFlow { focusedEpisodeIndex.value }
+                .drop(1)
+                .filter { it in 0 until episodes.size },
+            isVisible = { index ->
+                listState.layoutInfo.visibleItemsInfo.any { it.index == index }
+            },
+            scrollTo = { index -> listState.scrollToItem(index) },
+            animateScrollTo = { index -> listState.animateScrollToItem(index) }
+        )
     }
     
     return EpisodeFocusState(
@@ -729,7 +776,8 @@ private fun SeasonNavigation(
                 coroutineScope.launch {
                     seasonButtonFocusRequesters[params.selectedSeasonIndex].safeRequestFocus(
                         "SeriesEpisodesScreen",
-                        "SEASON_BUTTON_${params.selectedSeasonIndex}"
+                        "SEASON_BUTTON_${params.selectedSeasonIndex}",
+                        initialDelayMs = 0
                     )
                 }
             }
@@ -753,7 +801,7 @@ private fun SeasonNavigation(
                         onUp = {
                             // Navigate to resume button or header when pressing up from season buttons
                             coroutineScope.launch {
-                                upFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "ABOVE_SEASONS")
+                                upFocusRequester.safeRequestFocus("SeriesEpisodesScreen", "ABOVE_SEASONS", initialDelayMs = 0)
                             }
                             true
                         }
@@ -855,12 +903,7 @@ private fun SeasonButton(
     LaunchedEffect(isSelected, suppressAutoFocus) {
         if (isSelected && !suppressAutoFocus) {
             kotlinx.coroutines.delay(50)
-            try {
-                actualFocusRequester.requestFocus()
-            } catch (e: IllegalStateException) {
-                reportHandled("SeriesEpisodesScreen.SeasonButton", e)
-                // FocusRequester might not be ready yet
-            }
+            actualFocusRequester.safeRequestFocus(targetName = "SeasonButton", initialDelayMs = 0)
         }
     }
     
@@ -1014,25 +1057,6 @@ private fun Modifier.conditionalBorder(
     }
 }
 
-/**
- * Requests focus and retries once because the FocusRequester may not be attached yet.
- */
-private suspend fun requestFocusWithRetry(focusRequester: FocusRequester) {
-    try {
-        focusRequester.requestFocus()
-    } catch (e: IllegalStateException) {
-        reportControlFlow("requestFocusWithRetry.firstAttempt", e)
-        // FocusRequester might not be ready yet, retry after short delay
-        kotlinx.coroutines.delay(50)
-        try {
-            focusRequester.requestFocus()
-        } catch (e: IllegalStateException) {
-            reportControlFlow("requestFocusWithRetry.retry", e)
-            // Ignore if still not ready
-        }
-    }
-}
-
 @Composable
 private fun EpisodeDetailCard(
     config: EpisodeCardConfig,
@@ -1085,10 +1109,12 @@ private fun EpisodeDetailCard(
         label = "shadowElevation"
     )
     
-    // Request focus when isFocused changes
+    // Request focus when isFocused changes. Order GF6: no initial delay here - isFocused only turns
+    // true after the handler updated focusedEpisodeIndex, and by then the item is composed (the
+    // follow effect scrolls instantly when needed). The old default 50ms delay was pure lag.
     LaunchedEffect(isFocused) {
         if (isFocused) {
-            requestFocusWithRetry(cardFocusRequester)
+            cardFocusRequester.safeRequestFocus(targetName = "EpisodeCard", initialDelayMs = 0)
         }
     }
     
@@ -1376,7 +1402,7 @@ internal fun EpisodeThumbnail(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = stringResource(R.string.remaining_minutes, minutes),
+                            text = formatRemainingLabel(minutes),
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.9f)
                         )

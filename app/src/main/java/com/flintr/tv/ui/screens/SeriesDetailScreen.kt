@@ -130,7 +130,7 @@ fun SeriesDetailScreen(
             .onBackButton(onBackClick)
     ) {
         when {
-            uiState.isLoading -> SeriesDetailLoading()
+            uiState.isLoading -> SeriesDetailLoading(baseSeries = uiState.series)
             uiState.error != null -> SeriesDetailError(error = uiState.error, onRetry = onRetry)
             uiState.detail != null -> SeriesDetailContent(
                 detail = uiState.detail,
@@ -151,7 +151,8 @@ fun SeriesDetailScreen(
 }
 
 @Composable
-private fun SeriesDetailLoading() {
+private fun SeriesDetailLoading(baseSeries: Series?) {
+    val colors = appColors()
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         val focused = focusRequester.safeRequestFocus("SeriesDetailScreen", "LOADING_ROOT")
@@ -166,13 +167,46 @@ private fun SeriesDetailLoading() {
             .focusable()
             .testTag("series-detail-loading")
     ) {
-        // Same centered header geometry as SeriesDetailContent: a calm placeholder instead
-        // of a centered spinner that is replaced by a completely different layout.
+        val backdropUrl = baseSeries?.backdropPath?.firstOrNull { it.isNotBlank() }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(420.dp)
+                .background(colors.bgCard)
+                .testTag("series-detail-backdrop")
+        ) {
+            if (backdropUrl != null) {
+                AsyncImage(
+                    model = backdropUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                // Same ~25% top scrim as the loaded header: the catalog
+                                // artwork reads weaker and stays in place when details land.
+                                colors.bgPreview.copy(alpha = 0.5f),
+                                colors.bgPreview.copy(alpha = 0.85f),
+                                colors.bgPreview
+                            )
+                        )
+                    )
+            )
+        }
+
+        // Same centered header geometry as SeriesDetailContent. Poster and title are rendered
+        // as soon as a base series is available instead of leaving the whole header empty.
         CenteredHeaderBlock(viewportHeight = maxHeight) {
             DetailHeaderSkeleton(
-                posterUrl = null,
-                title = null,
-                meta = null,
+                posterUrl = baseSeries?.cover,
+                title = baseSeries?.name,
+                meta = baseSeries?.releaseDate?.take(4)?.takeIf { it.isNotBlank() },
                 testTagPrefix = "series-detail"
             )
         }

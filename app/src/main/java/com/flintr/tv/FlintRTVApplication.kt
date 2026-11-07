@@ -1,6 +1,7 @@
 package com.flintr.tv
 
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -10,6 +11,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.utils.error.AppErrorReporter
 import com.flintr.tv.utils.error.ErrorReporter
 import com.google.firebase.analytics.FirebaseAnalytics
@@ -28,6 +30,9 @@ class FlintRTVApplication : Application(), ImageLoaderFactory {
 
     @Inject
     lateinit var errorReporter: ErrorReporter
+
+    @Inject
+    lateinit var dataCacheService: DataCacheService
 
     override fun onCreate() {
         super.onCreate()
@@ -69,7 +74,27 @@ class FlintRTVApplication : Application(), ImageLoaderFactory {
         }
     }
     
-    override fun newImageLoader(): ImageLoader = buildFlintrImageLoader(this)
+    private var imageLoader: ImageLoader? = null
+
+    override fun newImageLoader(): ImageLoader =
+        imageLoader ?: buildFlintrImageLoader(this).also { imageLoader = it }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        when (level) {
+            // Normal browsing pressure: drop the large in-RAM catalog memo, but keep the bitmap
+            // cache so posters do not flicker back in.
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> {
+                if (::dataCacheService.isInitialized) dataCacheService.trimCachedCatalog()
+            }
+            // Genuinely critical / process about to be killed: drop both caches.
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
+            ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+                if (::dataCacheService.isInitialized) dataCacheService.trimCachedCatalog()
+                imageLoader?.memoryCache?.clear()
+            }
+        }
+    }
 
     companion object {
         private const val TAG = "FlintRTVApplication"
@@ -92,7 +117,7 @@ internal const val IMAGE_DECODE_PARALLELISM = 2
 @OptIn(ExperimentalCoroutinesApi::class)
 internal fun buildFlintrImageLoader(context: Context): ImageLoader =
     ImageLoader.Builder(context)
-        .memoryCache { MemoryCache.Builder(context).maxSizePercent(0.25).build() }
+        .memoryCache { MemoryCache.Builder(context).maxSizePercent(0.15).build() }
         .diskCache {
             DiskCache.Builder()
                 .directory(context.cacheDir.resolve("images"))

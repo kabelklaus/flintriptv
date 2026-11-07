@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
@@ -34,6 +35,7 @@ class DataRefreshUseCaseFlowTest {
     private lateinit var cacheService: DataCacheService
     private lateinit var useCase: DataRefreshUseCase
 
+    private val testDispatcher = UnconfinedTestDispatcher()
     private val channels = listOf(testLiveStream(streamId = 100))
     private val movies = listOf(testVodStream(streamId = 1), testVodStream(streamId = 2))
     private val series = listOf(testSeries(seriesId = 10))
@@ -43,7 +45,7 @@ class DataRefreshUseCaseFlowTest {
     fun setUp() {
         repository = mockk()
         cacheService = mockk(relaxed = true)
-        useCase = DataRefreshUseCase(repository, cacheService)
+        useCase = DataRefreshUseCase(repository, cacheService, testDispatcher)
 
         coEvery { repository.loadLiveStreamsFromApi(any(), any()) } coAnswers { Result.success(channels) }
         coEvery { repository.loadVodStreamsFromApi(any(), any()) } coAnswers { Result.success(movies) }
@@ -54,7 +56,7 @@ class DataRefreshUseCaseFlowTest {
     }
 
     @Test
-    fun `erfolgreicher Refresh emittiert Fortschritt und speichert Cache`() = runTest {
+    fun `erfolgreicher Refresh emittiert Fortschritt und speichert Cache`() = runTest(testDispatcher) {
         val events = useCase.refreshData("chris", "pw").toList()
 
         assertEquals(
@@ -72,7 +74,7 @@ class DataRefreshUseCaseFlowTest {
     }
 
     @Test
-    fun `Speicherfortschritt wird als SAVING-Zwischenstand emittiert`() = runTest {
+    fun `Speicherfortschritt wird als SAVING-Zwischenstand emittiert`() = runTest(testDispatcher) {
         coEvery { cacheService.saveCachedData(any(), any(), any(), any(), any(), any(), any()) } coAnswers {
             val onProgress = arg<suspend (Int) -> Unit>(6)
             onProgress(2)
@@ -89,7 +91,7 @@ class DataRefreshUseCaseFlowTest {
     }
 
     @Test
-    fun `Speicherfortschritt aus fremdem Coroutine-Kontext verletzt keine Flow-Invariante`() = runTest {
+    fun `Speicherfortschritt aus fremdem Coroutine-Kontext verletzt keine Flow-Invariante`() = runTest(testDispatcher) {
         // Reproduces the 2.50.0 crash: DataCacheService reports chunk progress from its own
         // withContext(ioDispatcher) coroutines, so the emission job differs from the collector's.
         coEvery { cacheService.saveCachedData(any(), any(), any(), any(), any(), any(), any()) } coAnswers {
@@ -113,7 +115,7 @@ class DataRefreshUseCaseFlowTest {
     }
 
     @Test
-    fun `vorzeitiger Abbruch durch den Collector verletzt keine Exception-Transparenz`() = runTest {
+    fun `vorzeitiger Abbruch durch den Collector verletzt keine Exception-Transparenz`() = runTest(testDispatcher) {
         val events = useCase.refreshData("chris", "pw").take(2).toList()
 
         assertEquals(listOf(RefreshStep.CHANNELS, RefreshStep.MOVIES), events.map { it.step })
@@ -121,7 +123,7 @@ class DataRefreshUseCaseFlowTest {
     }
 
     @Test
-    fun `leere Antworten werden mit Wiederholungen behandelt`() = runTest {
+    fun `leere Antworten werden mit Wiederholungen behandelt`() = runTest(testDispatcher) {
         coEvery { repository.loadLiveStreamsFromApi(any(), any()) } coAnswers { Result.success(emptyList()) }
 
         val events = useCase.refreshData("chris", "pw").toList()
@@ -135,7 +137,7 @@ class DataRefreshUseCaseFlowTest {
     }
 
     @Test
-    fun `Wiederholung nach leerer Antwort fuehrt zum Erfolg`() = runTest {
+    fun `Wiederholung nach leerer Antwort fuehrt zum Erfolg`() = runTest(testDispatcher) {
         var attempts = 0
         coEvery { repository.loadLiveStreamsFromApi(any(), any()) } coAnswers {
             attempts++
@@ -149,7 +151,7 @@ class DataRefreshUseCaseFlowTest {
     }
 
     @Test
-    fun `Verbindungsfehler mit Cache faellt auf gespeicherte Daten zurueck`() = runTest {
+    fun `Verbindungsfehler mit Cache faellt auf gespeicherte Daten zurueck`() = runTest(testDispatcher) {
         coEvery { repository.loadLiveStreamsFromApi(any(), any()) } coAnswers {
             Result.failure(UnknownHostException("offline"))
         }
@@ -164,7 +166,7 @@ class DataRefreshUseCaseFlowTest {
     }
 
     @Test
-    fun `Verbindungsfehler ohne Cache verlangt Server-Rekonfiguration`() = runTest {
+    fun `Verbindungsfehler ohne Cache verlangt Server-Rekonfiguration`() = runTest(testDispatcher) {
         coEvery { repository.loadLiveStreamsFromApi(any(), any()) } coAnswers {
             Result.failure(UnknownHostException("offline"))
         }
@@ -179,7 +181,7 @@ class DataRefreshUseCaseFlowTest {
     }
 
     @Test
-    fun `API-Fehler ohne Verbindungsbezug meldet fehlgeschlagenen Schritt`() = runTest {
+    fun `API-Fehler ohne Verbindungsbezug meldet fehlgeschlagenen Schritt`() = runTest(testDispatcher) {
         coEvery { repository.loadVodStreamsFromApi(any(), any()) } coAnswers {
             Result.failure(Exception("Failed to get VOD streams: 401"))
         }
@@ -193,7 +195,7 @@ class DataRefreshUseCaseFlowTest {
     }
 
     @Test
-    fun `Kategoriefehler blockieren den Refresh nicht`() = runTest {
+    fun `Kategoriefehler blockieren den Refresh nicht`() = runTest(testDispatcher) {
         coEvery { repository.getLiveCategories(any(), any()) } coAnswers { Result.failure(Exception("kaputt")) }
 
         val events = useCase.refreshData("chris", "pw").toList()

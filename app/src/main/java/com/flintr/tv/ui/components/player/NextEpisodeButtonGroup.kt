@@ -28,6 +28,8 @@ import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.utils.onClick
 import com.flintr.tv.ui.utils.onDpadCenter
 import com.flintr.tv.ui.utils.onDpadDirection
+import com.flintr.tv.ui.utils.safeRequestFocus
+import kotlinx.coroutines.launch
 
 /**
  * Button group containing "Watch Credits" and "Next Episode" buttons
@@ -48,10 +50,11 @@ fun NextEpisodeButtonGroup(
     val nextEpisodeFocusRequester = remember { FocusRequester() }
     var watchCreditsFocused by remember { mutableStateOf(false) }
     var nextEpisodeFocused by remember { mutableStateOf(false) }
-    
+    val coroutineScope = rememberCoroutineScope()
+
     // Auto-focus on "Next Episode" button when group appears
     LaunchedEffect(Unit) {
-        nextEpisodeFocusRequester.requestFocus()
+        nextEpisodeFocusRequester.safeRequestFocus(targetName = "NextEpisodeButton")
     }
     
     // Animated progress for visual feedback
@@ -79,7 +82,9 @@ fun NextEpisodeButtonGroup(
             onClick = onWatchCredits,
             navigationConfig = PlayerActionButtonNavigationConfig(
                 onNavigateRight = {
-                    nextEpisodeFocusRequester.requestFocus()
+                    coroutineScope.launch {
+                        nextEpisodeFocusRequester.safeRequestFocus(targetName = "NextEpisodeButton", initialDelayMs = 0)
+                    }
                     true
                 }
             ),
@@ -109,7 +114,9 @@ fun NextEpisodeButtonGroup(
             onClick = onNextEpisode,
             navigationConfig = PlayerActionButtonNavigationConfig(
                 onNavigateLeft = {
-                    watchCreditsFocusRequester.requestFocus()
+                    coroutineScope.launch {
+                        watchCreditsFocusRequester.safeRequestFocus(targetName = "WatchCreditsButton", initialDelayMs = 0)
+                    }
                     true
                 }
             ),
