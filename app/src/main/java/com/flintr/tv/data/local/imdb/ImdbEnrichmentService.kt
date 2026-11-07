@@ -5,9 +5,11 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteDoneException
 import android.database.sqlite.SQLiteStatement
 import com.flintr.tv.BuildConfig
+import com.flintr.tv.data.local.PerfTrace
 import com.flintr.tv.data.model.GitHubAsset
 import com.flintr.tv.data.model.GitHubRelease
 import com.flintr.tv.utils.error.reportHandled
+import com.google.firebase.perf.metrics.Trace
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
@@ -23,6 +25,7 @@ import java.io.File
 import java.io.IOException
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 import javax.inject.Inject
 import javax.inject.Named
@@ -40,6 +43,45 @@ data class ImdbEnrichment(
 internal data class ImdbEnrichmentMeta(
     @Json(name = "built_at") val builtAt: String
 )
+
+/**
+ * One Firebase trace spans all lookups of a single enrichment pass instead of one trace per
+ * title (~70k per save). The save path brackets its enrichment phase with [start]/[stop];
+ * start/stop are thread-tolerant, so the trace may also be started from the caller's
+ * `Main.immediate` context. Kept as a top-level object (not an instance API) so the mocked
+ * service in unit tests needs no extra stubbing.
+ */
+internal object ImdbEnrichmentTrace {
+    private const val TRACE_NAME = "flintr_imdb_enrichment"
+
+    /**
+     * Number of [ImdbEnrichmentService.lookup] SQL statements since the last [start].
+     *
+     * Ownership is process-wide, not save-scoped: every lookup calls [recordStatement],
+     * including detail-screen lookups that run outside a save. Those extra statements are
+     * counted into the currently open trace (if any) and are discarded by the next [start]
+     * when no trace is open. The metric therefore means "DB statements executed while this
+     * trace was open", not "statements of this save only".
+     */
+    private val dbStatementsExecuted = AtomicInteger(0)
+    private var trace: Trace? = null
+
+    fun start() {
+        dbStatementsExecuted.set(0)
+        trace = PerfTrace.start(TRACE_NAME)
+    }
+
+    fun stop() {
+        val current = trace ?: return
+        trace = null
+        PerfTrace.increment(current, "db_statements_executed", dbStatementsExecuted.getAndSet(0).toLong())
+        PerfTrace.stop(current)
+    }
+
+    fun recordStatement() {
+        dbStatementsExecuted.incrementAndGet()
+    }
+}
 
 /**
  * Laedt die IMDb-Enrichment-DB vom GitHub-Release `imdb-data`
@@ -196,6 +238,7 @@ class ImdbEnrichmentService @Inject constructor(
                         val key = ImdbKeyNormalizer.makeKey(variant, candidateYear(year, index))
                         open.lookup.clearBindings()
                         open.lookup.bindString(1, key)
+                        ImdbEnrichmentTrace.recordStatement()
                         val row = try {
                             open.lookup.simpleQueryForString()
                         } catch (e: SQLiteDoneException) {

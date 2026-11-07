@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.os.Build
 import androidx.core.content.edit
 import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
+import com.flintr.tv.data.local.imdb.ImdbEnrichmentTrace
 import com.flintr.tv.data.model.*
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonReader
@@ -43,6 +44,44 @@ import javax.inject.Singleton
 import com.flintr.tv.utils.error.reportError
 import com.flintr.tv.utils.error.reportHandled
 import com.flintr.tv.utils.error.reportControlFlow
+import com.google.firebase.perf.FirebasePerformance
+import com.google.firebase.perf.metrics.Trace
+
+/**
+ * Thin, failure-tolerant wrapper around Firebase Performance custom traces.
+ *
+ * A missing FirebaseApp (unit tests, Robolectric) or an unavailable perf SDK must never
+ * affect the measured work, so every operation degrades to a no-op. Trace start/stop are
+ * thread-tolerant, so [start] may be called from the caller's context (including
+ * `Main.immediate`); the measured work itself still runs on its IO dispatcher.
+ */
+internal object PerfTrace {
+    fun start(name: String): Trace? {
+        return try {
+            FirebasePerformance.getInstance().newTrace(name).also { it.start() }
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    fun stop(trace: Trace?) {
+        if (trace == null) return
+        try {
+            trace.stop()
+        } catch (t: Throwable) {
+            // Measurement must not affect the measured path.
+        }
+    }
+
+    fun increment(trace: Trace?, metric: String, value: Long = 1L) {
+        if (trace == null) return
+        try {
+            trace.incrementMetric(metric, value)
+        } catch (t: Throwable) {
+            // Measurement must not affect the measured path.
+        }
+    }
+}
 
 data class CachedData(
     val channels: List<LiveStream>,
@@ -238,6 +277,7 @@ class DataCacheService @Inject constructor(
                 "channels=${channels.size}, movies=${movies.size}, series=${series.size}")
             return false
         }
+        val trace = PerfTrace.start("flintr_cache_save")
         try {
             val imdbWasOpen = imdbEnrichmentService.isAvailable
             val timestamp = ZonedDateTime.now().format(ISO8601_FORMAT)
@@ -245,6 +285,7 @@ class DataCacheService @Inject constructor(
             var savedItems = 0
             val onChunkWritten: suspend (Int) -> Unit = { written ->
                 savedItems += written
+                PerfTrace.increment(trace, "chunks_written")
                 onProgress(savedItems)
             }
             writeListChunked(FILE_CHANNELS, LiveStream::class.java, channels, transform = null, onChunkWritten)
@@ -252,9 +293,14 @@ class DataCacheService @Inject constructor(
             // (see imdbDbMutex) can't close/reopen the DB mid-lookup.
             val (enrichedMovies, enrichedSeries) = imdbDbMutex.withLock {
                 val enricher = imdbEnricher()
-                val enrichedMovies = writeListChunked(FILE_MOVIES, VodStream::class.java, movies, enricher?.let { it::enrichMovie }, onChunkWritten)
-                val enrichedSeries = writeListChunked(FILE_SERIES, Series::class.java, series, enricher?.let { it::enrichSeries }, onChunkWritten)
-                enrichedMovies to enrichedSeries
+                ImdbEnrichmentTrace.start()
+                try {
+                    val enrichedMovies = writeListChunked(FILE_MOVIES, VodStream::class.java, movies, enricher?.let { it::enrichMovie }, onChunkWritten)
+                    val enrichedSeries = writeListChunked(FILE_SERIES, Series::class.java, series, enricher?.let { it::enrichSeries }, onChunkWritten)
+                    enrichedMovies to enrichedSeries
+                } finally {
+                    ImdbEnrichmentTrace.stop()
+                }
             }
 
             withContext(ioDispatcher) {
@@ -279,6 +325,7 @@ class DataCacheService @Inject constructor(
             // closes the DB mid-enrichment. The next save picks up the new DB. imdbDbMutex
             // keeps this refresh from overlapping that next save's own enrichment phase.
             if (imdbWasOpen) backgroundScope.launch { imdbDbMutex.withLock { imdbEnrichmentService.ensureLoaded() } }
+            PerfTrace.increment(trace, "items_saved", savedItems.toLong())
             return true
         } catch (e: CancellationException) {
             throw e
@@ -286,6 +333,8 @@ class DataCacheService @Inject constructor(
             // Log error but don't crash
             reportError("DataCacheService", "Failed to save cache", e)
             return false
+        } finally {
+            PerfTrace.stop(trace)
         }
     }
 

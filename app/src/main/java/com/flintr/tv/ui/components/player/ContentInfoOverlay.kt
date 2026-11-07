@@ -33,19 +33,17 @@ private fun formatContentInfo(
             
             when {
                 season != null && episodeNum != null && episodeName != null -> {
-                    "S${season}:E${episodeNum} \"${episodeName}\""
+                    "S${season} E${episodeNum} $episodeName"
                 }
                 season != null && episodeNum != null -> {
                     // Episode name is empty, show only season and episode number
-                    "S${season}:E${episodeNum}"
+                    "S${season} E${episodeNum}"
                 }
                 else -> null
             }
         }
         "movie", "live" -> {
-            title?.takeIf { it.isNotEmpty() }?.let { 
-                "\"${it}\""
-            }
+            title?.takeIf { it.isNotEmpty() }
         }
         else -> null
     }
@@ -53,20 +51,15 @@ private fun formatContentInfo(
 
 /**
  * Truncates text if it exceeds maximum length
- * Preserves closing quotes if present
  */
 private fun truncateText(text: String, maxLength: Int = MAX_TITLE_LENGTH): String {
     if (text.length <= maxLength) {
         return text
     }
-    
-    // If text ends with a quote, preserve it
-    val endsWithQuote = text.endsWith("\"")
-    val truncateLength = if (endsWithQuote) maxLength - 4 else maxLength - 3
-    
+
+    val truncateLength = maxLength - 3
     return if (truncateLength > 0) {
-        val truncated = text.take(truncateLength) + "..."
-        if (endsWithQuote) truncated + "\"" else truncated
+        text.take(truncateLength) + "..."
     } else {
         text.take(maxLength)
     }

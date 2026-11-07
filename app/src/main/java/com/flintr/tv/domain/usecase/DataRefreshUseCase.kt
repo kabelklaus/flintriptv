@@ -95,6 +95,13 @@ class DataRefreshUseCase @Inject constructor(
     /**
      * Loads data with automatic retry on empty responses or errors.
      * Returns loaded data on success, or a failure message after all retries are exhausted.
+     *
+     * The retry count is strictly bounded ([MAX_RETRIES] plus the initial attempt) and each
+     * attempt runs sequentially with a fixed exponential-backoff delay. This is the regression
+     * guard for the 2026-09 sync loop: an unbounded "retry until non-empty" path kept the
+     * refresh job alive forever, re-triggering network calls while the app was backgrounded.
+     * Do not turn this loop into a recursive/while-no-limit retry without preserving the
+     * [MAX_RETRIES] cap and the cancellation path below.
      */
     private suspend fun <T> loadWithRetry(
         step: RefreshStep,
@@ -103,6 +110,7 @@ class DataRefreshUseCase @Inject constructor(
         val totalAttempts = MAX_RETRIES + 1
         var lastError: Throwable? = null
 
+        // Bounded retry block: MAX_RETRIES + initial attempt, fixed backoff, no sync loop.
         for (attempt in 0 until totalAttempts) {
             if (attempt > 0) {
                 delay(RETRY_DELAYS_MS[attempt - 1])
