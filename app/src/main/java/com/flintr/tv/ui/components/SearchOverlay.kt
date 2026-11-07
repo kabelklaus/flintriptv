@@ -484,7 +484,7 @@ fun SearchOverlay(
                     onValueChange = onQueryChange,
                     placeholder = {
                         Text(
-                            text = "Search…",
+                            text = stringResource(R.string.search_overlay_hint),
                             fontSize = FontSizes.fontSizeLG,
                             color = colors.textSecondary
                         )

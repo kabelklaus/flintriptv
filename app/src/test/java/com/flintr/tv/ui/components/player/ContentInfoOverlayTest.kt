@@ -102,7 +102,9 @@ class ContentInfoOverlayTest {
     fun filmMitLeeremTitelZeigtNichts() {
         setOverlay(contentType = "movie", title = "", seriesData = null)
 
-        composeTestRule.onNodeWithText("Der Film").assertDoesNotExist()
+        // The overlay composes no text node at all for a blank title; asserting on the
+        // empty string targets the actual (absent) output instead of an unrelated title.
+        composeTestRule.onNodeWithText("").assertDoesNotExist()
     }
 
     @Test

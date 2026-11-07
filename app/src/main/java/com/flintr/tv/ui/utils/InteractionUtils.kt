@@ -18,6 +18,7 @@ import androidx.compose.foundation.gestures.awaitDragOrCancellation
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.focus.FocusRequester
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
@@ -204,12 +205,17 @@ private const val DOUBLE_CLICK_DEBOUNCE_MS = 300L
  * `FocusedButton.PLAY_PAUSE` control in `CustomPlayerControls`, where a duplicated confirm
  * currently produces a visible play -> pause -> play flicker.
  *
+ * Not thread-safe: use it on the UI thread only. One instance belongs to one control;
+ * sharing an instance across controls would let a click on one control swallow the first
+ * click on another.
+ *
  * @param debounceMillis Minimum time between two accepted events.
- * @param clock Time source, injectable for tests.
+ * @param clock Monotonic time source ([SystemClock.elapsedRealtime] by default), injectable
+ *   for tests.
  */
 class ClickDebouncer(
     private val debounceMillis: Long = DOUBLE_CLICK_DEBOUNCE_MS,
-    private val clock: () -> Long = { System.currentTimeMillis() }
+    private val clock: () -> Long = { SystemClock.elapsedRealtime() }
 ) {
     private var lastAcceptedAt: Long? = null
 
