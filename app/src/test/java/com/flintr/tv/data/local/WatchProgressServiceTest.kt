@@ -723,4 +723,31 @@ class WatchProgressServiceTest {
         }
         assertTrue("waiting save must contain the map without the deleted key", deletedKeySeen)
     }
+
+    @Test
+    fun `flushPendingSync verschiebt das Koaleszenz-Fenster und verhindert redundanten Write`() = runBlocking {
+        var now = 1_000_000L
+        rebuildService(now = { now }, intervalMs = 1_000L)
+        val saves = AtomicInteger()
+        coEvery { userRepository.saveWatchProgress(any(), any()) } coAnswers {
+            saves.incrementAndGet()
+            Result.success(Unit)
+        }
+
+        assertTrue(service.saveProgress("movie", 1, null, null, 600_000, 3_600_000, "Film 1"))
+        coVerify(timeout = 2_000, exactly = 1) { userRepository.saveWatchProgress("chris", any()) }
+        assertEquals(1, saves.get())
+
+        // Flush kurz vor Ende des urspruenglichen Fensters: ohne Clock-Advance wuerde der
+        // naechste Writer-Lauf nur noch ~100 ms warten und direkt nach dem Flush erneut schreiben.
+        now = 1_000_900L
+        service.flushPendingSync()
+        coVerify(timeout = 2_000, exactly = 2) { userRepository.saveWatchProgress("chris", any()) }
+        assertEquals(2, saves.get())
+
+        // Neuer Request im selben syncIntervalMs-Fenster ab dem Flush: kein zweiter Write.
+        assertTrue(service.saveProgress("movie", 2, null, null, 600_000, 3_600_000, "Film 2"))
+        delay(300)
+        assertEquals("flush must advance the coalescing clock", 2, saves.get())
+    }
 }

@@ -167,10 +167,12 @@ fun VODContent(params: VODContentParams) {
     // Focus will be set manually when navigating from CategorySidebar
     // This keeps the focus on the Navbar when the app starts
     
-    val displayStreams = when {
-        isWatchlistCategory -> watchlistState.items
-        isNewCategory -> remember(newCategoryStreams) { asOwnSourcedItems(newCategoryStreams) }
-        else -> remember(streams) { asOwnSourcedItems(streams) }
+    val displayStreams = remember(isWatchlistCategory, isNewCategory, watchlistState.items, newCategoryStreams, streams) {
+        when {
+            isWatchlistCategory -> watchlistState.items
+            isNewCategory -> asOwnSourcedItems(newCategoryStreams)
+            else -> asOwnSourcedItems(streams)
+        }
     }
     val isLoading = when {
         isWatchlistCategory -> watchlistState.isLoading

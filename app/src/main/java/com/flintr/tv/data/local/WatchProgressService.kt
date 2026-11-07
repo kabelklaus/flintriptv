@@ -135,6 +135,11 @@ class WatchProgressService(
     // CONFLATED: while a write is cooling down, only the newest pending save request matters.
     private val syncRequests = Channel<Unit>(Channel.CONFLATED)
 
+    // Timestamp of the last successful Firestore write. Shared by the coalesced writer and the
+    // immediate exit flush so a flush also advances the coalescing clock (no redundant rewrite).
+    @Volatile
+    private var lastWriteAtMs = 0L
+
     private val mapType = Types.newParameterizedType(
         Map::class.java,
         String::class.java,
@@ -163,7 +168,6 @@ class WatchProgressService(
         // Coalesced writer: at most one full-map Firestore write per interval, always with the
         // latest local state. Continuous playback therefore syncs at most ~60s behind.
         serviceScope.launch {
-            var lastWriteAtMs = 0L
             while (true) {
                 syncRequests.receive()
                 val waitMs = (lastWriteAtMs + syncIntervalMs - nowMs())
@@ -350,8 +354,9 @@ class WatchProgressService(
     }
 
     /**
-     * Flushes the current progress map to Firestore immediately, bypassing the 60s coalescing
-     * cooldown. Uses the same [firestoreWriteMutex] and owner-skip guard as the regular writer.
+     * Flushes the current progress map to Firestore immediately, bypassing and advancing the
+     * coalescing clock. Uses the same [firestoreWriteMutex] and owner-skip guard as the regular
+     * writer.
      * Call at most once per player exit; the write runs in [serviceScope], so it survives the
      * composition that requested it.
      */
@@ -363,7 +368,9 @@ class WatchProgressService(
                 return@launch
             }
             firestoreWriteMutex.withLock {
-                writeProgressIfOwnerMatches()
+                if (writeProgressIfOwnerMatches()) {
+                    lastWriteAtMs = nowMs()
+                }
             }
         }
     }
