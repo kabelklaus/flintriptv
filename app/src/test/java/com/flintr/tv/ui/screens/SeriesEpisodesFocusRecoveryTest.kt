@@ -24,7 +24,15 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.ui.utils.safeRequestFocus
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -290,5 +298,83 @@ class SeriesEpisodesFocusRecoveryTest {
 
         // Bug proof: the smart-resume target (season B, index 7) is not focused.
         composeTestRule.onNodeWithTag(episodeTag(7)).assertIsFocused()
+    }
+
+    // ---- Order GF6: burst bundling and scroll strategy ----
+
+    /**
+     * 15 rapid index changes in one burst (Chris' live repro: 15x RIGHT, 100ms apart) must produce
+     * exactly ONE scroll action after the debounce window - to the final index - and must never
+     * animate the intermediate indices. The production helper is exercised directly with injected
+     * callbacks, so no LazyListState mock is needed.
+     */
+    @Test
+    fun burstOfFifteenIndexChangesScrollsOnceToTheFinalIndexAfterDebounce() = runTest {
+        val indices = MutableSharedFlow<Int>(extraBufferCapacity = 64)
+        val instantTargets = mutableListOf<Int>()
+        val animatedTargets = mutableListOf<Int>()
+
+        backgroundScope.launch {
+            followEpisodeFocusBurst(
+                indices = indices,
+                isVisible = { false },
+                scrollTo = { instantTargets += it },
+                animateScrollTo = { animatedTargets += it }
+            )
+        }
+        runCurrent()
+
+        repeat(15) { indices.emit(it + 1) }
+
+        // Nothing may happen before the trailing-edge debounce expires.
+        advanceTimeBy(EPISODE_FOCUS_SCROLL_DEBOUNCE_MS - 1)
+        runCurrent()
+        assertTrue("No scroll before the burst pause", instantTargets.isEmpty())
+        assertTrue("No animation during the burst", animatedTargets.isEmpty())
+
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals("Exactly one jump, to the 15th index", listOf(15), instantTargets)
+        assertTrue("No animateScrollToItem for the burst", animatedTargets.isEmpty())
+    }
+
+    @Test
+    fun singleInputWithinViewportUsesAnimateScrollToItem() = runTest {
+        val instantTargets = mutableListOf<Int>()
+        val animatedTargets = mutableListOf<Int>()
+
+        launch {
+            followEpisodeFocusBurst(
+                indices = flowOf(2),
+                isVisible = { it == 2 },
+                scrollTo = { instantTargets += it },
+                animateScrollTo = { animatedTargets += it }
+            )
+        }
+        advanceTimeBy(EPISODE_FOCUS_SCROLL_DEBOUNCE_MS)
+        runCurrent()
+
+        assertTrue("Visible target must not jump", instantTargets.isEmpty())
+        assertEquals(listOf(2), animatedTargets)
+    }
+
+    @Test
+    fun offScreenTargetUsesInstantScrollToItem() = runTest {
+        val instantTargets = mutableListOf<Int>()
+        val animatedTargets = mutableListOf<Int>()
+
+        launch {
+            followEpisodeFocusBurst(
+                indices = flowOf(15),
+                isVisible = { false },
+                scrollTo = { instantTargets += it },
+                animateScrollTo = { animatedTargets += it }
+            )
+        }
+        advanceTimeBy(EPISODE_FOCUS_SCROLL_DEBOUNCE_MS)
+        runCurrent()
+
+        assertEquals("Off-screen target must be composed via scrollToItem", listOf(15), instantTargets)
+        assertTrue("Off-screen target must not animate", animatedTargets.isEmpty())
     }
 }
