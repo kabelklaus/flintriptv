@@ -29,7 +29,7 @@ private fun formatContentInfo(
         "series" -> {
             val season = seriesData?.currentSeason?.seasonNumber
             val episodeNum = seriesData?.currentEpisode?.episodeNum ?: seriesData?.currentEpisode?.id
-            val episodeName = seriesData?.currentEpisode?.title?.takeIf { it.isNotEmpty() }
+            val episodeName = seriesData?.currentEpisode?.title?.takeIf { it.isNotBlank() }
             
             when {
                 season != null && episodeNum != null && episodeName != null -> {
