@@ -54,7 +54,10 @@ import com.flintr.tv.ui.utils.onLongPress
 import com.flintr.tv.ui.utils.InteractionUtils.tvFocusable
 import com.flintr.tv.ui.utils.safeRequestFocus
 import com.flintr.tv.utils.ContentParser
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import com.flintr.tv.utils.error.reportHandled
 
@@ -162,6 +165,42 @@ internal suspend fun requestInitialEpisodeFocus(
     }
 }
 
+// Order GF6: fast D-Pad bursts used to restart the follow animation on every index change, so the
+// MutatePriority mutex cancelled the previous animateScrollToItem before it reached anything and
+// the viewport stayed at the first visible card while focusedEpisodeIndex raced ahead (15x RIGHT
+// -> counter "50/64", viewport still at episode 4/5). Bundle the burst and jump once when it ends.
+internal const val EPISODE_FOCUS_SCROLL_DEBOUNCE_MS = 120L
+
+/**
+ * Collects navigation-driven episode index changes with trailing-edge debounce: every new index
+ * cancels the pending delay via collectLatest, so only the last index after a short input pause is
+ * acted on. This is deliberately separate from [requestInitialEpisodeFocus]: the initial focus
+ * path still scrolls immediately and is never delayed by this effect.
+ *
+ * The callbacks are injectable so the burst/strategy contract can be tested without mocking
+ * LazyListState.
+ */
+internal suspend fun followEpisodeFocusBurst(
+    indices: kotlinx.coroutines.flow.Flow<Int>,
+    debounceMillis: Long = EPISODE_FOCUS_SCROLL_DEBOUNCE_MS,
+    isVisible: (Int) -> Boolean,
+    scrollTo: suspend (Int) -> Unit,
+    animateScrollTo: suspend (Int) -> Unit
+) {
+    indices.collectLatest { index ->
+        delay(debounceMillis)
+        // Off-screen target: the item is not composed yet, so an animation would have nothing to
+        // animate towards. scrollToItem composes it immediately; EpisodeCard's own
+        // LaunchedEffect(isFocused) then requests focus (no duplicate request here).
+        // Visible target: a single tap close by can move smoothly.
+        if (isVisible(index)) {
+            animateScrollTo(index)
+        } else {
+            scrollTo(index)
+        }
+    }
+}
+
 /**
  * Manages episode focus state and handles initial focus setup
  */
@@ -195,10 +234,10 @@ internal fun rememberEpisodeFocus(
         requestInitialEpisodeFocus(listState, focusRequesters, targetIndex)
     }
 
-    // Scroll to focused episode - keyed the same as requestInitialEpisodeFocus above (rather than
-    // focusedEpisodeIndex.value) and drop(1)-ing the first emission on every restart, so this
-    // effect only reacts to LATER, genuine navigation-driven focusedEpisodeIndex changes (e.g.
-    // D-Pad left/right updating focusState.focusedEpisodeIndex.value directly).
+    // Navigation follow only - initial focus belongs exclusively to requestInitialEpisodeFocus
+    // above. Keyed the same as that effect and drop(1)-ing the first emission on every restart, so
+    // this only reacts to LATER, genuine navigation-driven focusedEpisodeIndex changes (e.g. D-Pad
+    // left/right updating focusState.focusedEpisodeIndex.value directly).
     //
     // Without the drop(1): on a season switch (or any initialEpisodeIndex change), focusedEpisodeIndex
     // is freshly remembered already holding the resume target, so this effect's very first emission
@@ -209,14 +248,24 @@ internal fun rememberEpisodeFocus(
     // ?.safeRequestFocus(...) - so nothing ends up focused. Reproduced deterministically via
     // SeriesEpisodesFocusRecoveryTest.seasonSwitchAfterInitialCompositionLeavesFocusRequestersStaleForTheNewSeason;
     // see fix2-report.md.
+    //
+    // Order GF6: the follow is trailing-edge debounced (120ms). Rapid D-Pad input therefore produces
+    // exactly ONE action after the burst instead of one cancelled animation per index. A target
+    // outside the composed viewport is jumped to instantly (scrollToItem, which composes it and
+    // lets EpisodeCard's LaunchedEffect(isFocused) attach focus); a target already in view is
+    // animated for a smooth single step. The debounce only delays this navigation follow: the
+    // initial requestInitialEpisodeFocus path above remains un-delayed and unchanged.
     LaunchedEffect(episodes.size, initialEpisodeIndex) {
-        snapshotFlow { focusedEpisodeIndex.value }
-            .drop(1)
-            .collect { index ->
-                if (index in 0 until episodes.size) {
-                    listState.animateScrollToItem(index)
-                }
-            }
+        followEpisodeFocusBurst(
+            indices = snapshotFlow { focusedEpisodeIndex.value }
+                .drop(1)
+                .filter { it in 0 until episodes.size },
+            isVisible = { index ->
+                listState.layoutInfo.visibleItemsInfo.any { it.index == index }
+            },
+            scrollTo = { index -> listState.scrollToItem(index) },
+            animateScrollTo = { index -> listState.animateScrollToItem(index) }
+        )
     }
     
     return EpisodeFocusState(
@@ -1060,10 +1109,12 @@ private fun EpisodeDetailCard(
         label = "shadowElevation"
     )
     
-    // Request focus when isFocused changes
+    // Request focus when isFocused changes. Order GF6: no initial delay here - isFocused only turns
+    // true after the handler updated focusedEpisodeIndex, and by then the item is composed (the
+    // follow effect scrolls instantly when needed). The old default 50ms delay was pure lag.
     LaunchedEffect(isFocused) {
         if (isFocused) {
-            cardFocusRequester.safeRequestFocus(targetName = "EpisodeCard")
+            cardFocusRequester.safeRequestFocus(targetName = "EpisodeCard", initialDelayMs = 0)
         }
     }
     
