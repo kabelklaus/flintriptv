@@ -30,6 +30,7 @@ import okio.sink
 import okio.source
 import java.io.File
 import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.time.OffsetDateTime
@@ -424,6 +425,10 @@ class DataCacheService @Inject constructor(
         }
     }
 
+    /**
+     * Writes [fileName] via a temp file and moves it into place: atomic, with a non-atomic
+     * fallback on filesystems without atomic-move support.
+     */
     private inline fun writeAtomically(fileName: String, write: (JsonWriter) -> Unit) {
         cacheDir.mkdirs()
         val tmp = File(cacheDir, "$fileName$TMP_SUFFIX")
@@ -431,7 +436,11 @@ class DataCacheService @Inject constructor(
         JsonWriter.of(tmp.sink().buffer()).use { writer -> write(writer) }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+                try {
+                    Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+                } catch (e: AtomicMoveNotSupportedException) {
+                    Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                }
             } else if (!tmp.renameTo(target)) {
                 throw IOException("rename failed: $fileName")
             }
