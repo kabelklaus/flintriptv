@@ -25,3 +25,15 @@ internal fun isBehindLiveWindowError(error: PlaybackException): Boolean {
     }
     return false
 }
+
+/** Cap on consecutive live-rejoin attempts before falling through to the normal error dialog. */
+internal const val MAX_LIVE_REJOIN_ATTEMPTS = 3
+
+/**
+ * Pure decision: rejoin the live edge only while [isBehindLiveWindow] is true and [attempts]
+ * hasn't hit [MAX_LIVE_REJOIN_ATTEMPTS] yet. Without this cap, a live playlist with a
+ * persistently wrong timestamp or clock drift would retry the rejoin on every error forever,
+ * flooding telemetry; past the cap the normal error dialog takes over instead.
+ */
+internal fun decideLiveRejoin(isBehindLiveWindow: Boolean, attempts: Int): Boolean =
+    isBehindLiveWindow && attempts < MAX_LIVE_REJOIN_ATTEMPTS

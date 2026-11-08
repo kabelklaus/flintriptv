@@ -813,7 +813,8 @@ private fun <T> TrackDropdownField(
     labelOf: (T) -> String,
     isSelected: (track: T, index: Int) -> Boolean,
     onTrackSelected: (T) -> Unit,
-    colors: com.flintr.tv.ui.theme.AppColors
+    colors: com.flintr.tv.ui.theme.AppColors,
+    isEnabled: (track: T, index: Int) -> Boolean = { _, _ -> true }
 ) {
     var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
@@ -861,12 +862,15 @@ private fun <T> TrackDropdownField(
                 .border(1.dp, colors.cardBorder, RoundedCornerShape(Dimensions.radiusMD))
         ) {
             tracks.forEachIndexed { index, track ->
+                val trackEnabled = isEnabled(track, index)
                 DropdownMenuItem(
                     text = { Text(labelOf(track)) },
                     onClick = {
                         onTrackSelected(track)
                         expanded = false
                     },
+                    enabled = trackEnabled,
+                    modifier = Modifier.alpha(if (trackEnabled) 1f else 0.5f),
                     colors = MenuDefaults.itemColors(
                         textColor = dropdownItemTextColor(isSelected(track, index), colors)
                     )
@@ -922,13 +926,14 @@ private fun AudioTrackSelector(
         fieldLabel = "Audio-Track",
         selectedLabel = selectedLabel,
         tracks = audioTracks,
-        labelOf = { it.displayLabel },
+        labelOf = { if (it.isSupported) it.displayLabel else "${it.displayLabel} (nicht unterstützt)" },
         isSelected = { track, index -> isTrackSelected(track, index, selectedOverride, audioGroups) },
         onTrackSelected = { track ->
             selectAudioTrack(exoPlayer, track)
             onTrackSelected()
         },
-        colors = colors
+        colors = colors,
+        isEnabled = { track, _ -> track.isSupported }
     )
 }
 

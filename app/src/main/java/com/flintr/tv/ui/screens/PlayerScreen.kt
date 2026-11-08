@@ -318,7 +318,9 @@ private fun createPlayerListener(
     context: Context,
     callbacks: PlayerSetupCallbacks,
     onBehindLiveWindow: (PlaybackException) -> Boolean,
-    onAudioDecoderFailure: (PlaybackException) -> Boolean
+    onAudioDecoderFailure: (PlaybackException) -> Boolean,
+    isCurrentStreamFailure: () -> Boolean,
+    onStateReady: () -> Unit
 ): Player.Listener {
     return object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
@@ -334,11 +336,17 @@ private fun createPlayerListener(
             }
             // true = handled by the hardware→software audio fallback, no error dialog
             if (onAudioDecoderFailure(error)) return
-            callbacks.onError(getErrorMessage(context, error))
+            // A delayed generic error for a channel the user already zapped away from must not
+            // surface an error dialog for the new, unrelated stream - mirrors the guard in the
+            // two branches above.
+            if (isCurrentStreamFailure()) {
+                callbacks.onError(getErrorMessage(context, error))
+            }
         }
 
         override fun onPlaybackStateChanged(state: Int) {
             callbacks.onPlaybackStateChanged(state)
+            if (state == Player.STATE_READY) onStateReady()
             if (BuildConfig.DEBUG) {
                 val stateString = when (state) {
                     Player.STATE_IDLE -> "STATE_IDLE"
@@ -724,6 +732,8 @@ private fun rememberPlayerSetup(
     // Guards the audio decoder fallback to one retry per stream (reset on stream change below).
     val audioFallbackRetried = remember { mutableStateOf(false) }
     val userOverrodeAudioTrack = remember { mutableStateOf(false) }
+    // Caps consecutive live-rejoin attempts (reset on STATE_READY and on stream change below).
+    val rejoinAttempts = remember { mutableStateOf(0) }
     // The error listener below is attached to DisposableEffect(exoPlayer), so it outlives
     // channel changes; rememberUpdatedState keeps its closure reading the current streamUrl
     // instead of the one captured when the listener was created.
@@ -745,16 +755,18 @@ private fun rememberPlayerSetup(
             callbacks = callbacks,
             onBehindLiveWindow = { error ->
                 if (isFailureForCurrentStream(exoPlayer.currentMediaItem, currentStreamUrl.value) &&
-                    isBehindLiveWindowError(error)
+                    decideLiveRejoin(isBehindLiveWindowError(error), rejoinAttempts.value)
                 ) {
+                    rejoinAttempts.value++
                     reportWarning(
                         "PlayerScreen",
                         "Live window fell behind during pause — rejoining live edge",
                         error
                     )
+                    val wasPlayWhenReady = exoPlayer.playWhenReady
                     exoPlayer.seekToDefaultPosition()
                     exoPlayer.prepare()
-                    exoPlayer.play()
+                    exoPlayer.playWhenReady = wasPlayWhenReady
                     true
                 } else {
                     false
@@ -768,7 +780,8 @@ private fun rememberPlayerSetup(
                         error.errorCode,
                         findFailedDecoderMime(error),
                         playbackSettingsRepository.getHardwareBlockedAudioMimes(),
-                        audioFallbackRetried.value
+                        audioFallbackRetried.value,
+                        audioDecoderMode
                     )
                 ) {
                     is AudioFallbackDecision.BlockAndRetry -> {
@@ -789,7 +802,11 @@ private fun rememberPlayerSetup(
                     }
                     AudioFallbackDecision.PassThrough -> false
                 }
-            }
+            },
+            isCurrentStreamFailure = {
+                isFailureForCurrentStream(exoPlayer.currentMediaItem, currentStreamUrl.value)
+            },
+            onStateReady = { rejoinAttempts.value = 0 }
         )
 
         exoPlayer.addListener(listener)
@@ -814,6 +831,7 @@ private fun rememberPlayerSetup(
         callbacks.onStreamPreparingChanged(true)
         userOverrodeAudioTrack.value = false
         audioFallbackRetried.value = false
+        rejoinAttempts.value = 0
 
         // Applies the persisted subtitles/audio-language/max-resolution settings once the
         // new stream's tracks are known (can't select a language-matching track or judge
@@ -1427,7 +1445,12 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         subtitles = contentInfoSeriesData?.currentEpisode?.subtitles,
         callbacks = PlayerSetupCallbacks(
             onError = { message -> state.errorMessage = message },
-            onStreamPreparingChanged = { preparing -> state.isPreparingStream = preparing },
+            onStreamPreparingChanged = { preparing ->
+                state.isPreparingStream = preparing
+                // Explicit reset on stream change: a stale error from the previous channel must
+                // not stick around once the user has switched away from it.
+                if (preparing) state.errorMessage = null
+            },
             onPlaybackStateChanged = { playbackStateValue ->
                 state.playbackState = playbackStateValue
                 if (playbackStateValue == Player.STATE_READY) {

@@ -224,6 +224,11 @@ fun SettingsPlayback(
                                 onBack()
                             }
                         )
+                        Text(
+                            text = stringResource(R.string.audio_decoder_hint),
+                            fontSize = FontSizes.fontSizeXS,
+                            color = colors.textSecondary
+                        )
                         if (isTvDevice) {
                             Column(
                                 verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXXS)
