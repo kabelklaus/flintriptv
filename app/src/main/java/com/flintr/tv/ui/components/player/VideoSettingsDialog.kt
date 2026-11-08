@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -44,6 +45,7 @@ import com.flintr.tv.data.model.Subtitle
 import com.flintr.tv.data.model.SubtitleLanguage
 import com.flintr.tv.data.model.VideoQuality
 import com.flintr.tv.data.model.VideoResizeMode
+import com.flintr.tv.R
 import com.flintr.tv.ui.settings.*
 import com.flintr.tv.ui.settings.dropdownSelectorColors
 import com.flintr.tv.ui.theme.Dimensions
@@ -922,11 +924,12 @@ private fun AudioTrackSelector(
         resolveSelectedLabel(audioTracks, selectedOverride, audioGroups)
     }
 
+    val notSupportedLabel = stringResource(R.string.audio_track_not_supported)
     TrackDropdownField(
         fieldLabel = "Audio-Track",
         selectedLabel = selectedLabel,
         tracks = audioTracks,
-        labelOf = { if (it.isSupported) it.displayLabel else "${it.displayLabel} (nicht unterstützt)" },
+        labelOf = { if (it.isSupported) it.displayLabel else notSupportedLabel.format(it.displayLabel) },
         isSelected = { track, index -> isTrackSelected(track, index, selectedOverride, audioGroups) },
         onTrackSelected = { track ->
             selectAudioTrack(exoPlayer, track)

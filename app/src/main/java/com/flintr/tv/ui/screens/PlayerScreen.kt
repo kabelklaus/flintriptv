@@ -196,6 +196,7 @@ private fun createExoPlayer(
             eventListener: AudioRendererEventListener,
             out: ArrayList<Renderer>
         ) {
+            val firstAudioRendererIndex = out.indexOfFirst { it.trackType == C.TRACK_TYPE_AUDIO }
             super.buildAudioRenderers(
                 context,
                 DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
@@ -208,7 +209,7 @@ private fun createExoPlayer(
             )
             if (extensionRendererMode == DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF) return
             out.add(
-                ffmpegInsertionIndex(out.size, extensionRendererMode),
+                decideFfmpegInsertionIndex(firstAudioRendererIndex, out.size, extensionRendererMode),
                 RestrictedFfmpegAudioRenderer(eventHandler, eventListener, audioSink)
             )
         }

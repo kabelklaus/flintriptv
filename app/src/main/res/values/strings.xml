@@ -145,4 +145,5 @@
     <string name="max_resolution_warning">Wirkt nur bei Streams mit mehreren Qualitätsstufen</string>
     <string name="audio_passthrough_warning">An lassen, nur wenn dein Verstärker Dolby-Ton direkt verarbeitet. Aus ist die sichere Einstellung.</string>
     <string name="audio_decoder_hint">Auto ist meist richtig. Software hilft, wenn Ton bei manchen Sendern ausbleibt oder abbricht.</string>
+    <string name="audio_track_not_supported">%1$s (nicht unterstützt)</string>
 </resources>
