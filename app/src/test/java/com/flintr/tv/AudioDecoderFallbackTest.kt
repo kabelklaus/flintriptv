@@ -278,6 +278,14 @@ class AudioDecoderFallbackTest {
         )
     }
 
+    @Test
+    fun `ffmpeg insertion index clamps to 0 when the base renderer list is empty`() {
+        assertEquals(
+            0,
+            ffmpegInsertionIndex(baseRendererCount = 0, DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        )
+    }
+
     // --- blockingMediaCodecSelector only blocks audio (F7 hardening) ---
 
     @Test
