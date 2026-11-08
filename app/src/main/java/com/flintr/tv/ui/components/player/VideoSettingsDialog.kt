@@ -872,7 +872,6 @@ private fun <T> TrackDropdownField(
                         expanded = false
                     },
                     enabled = trackEnabled,
-                    modifier = Modifier.alpha(if (trackEnabled) 1f else 0.5f),
                     colors = MenuDefaults.itemColors(
                         textColor = dropdownItemTextColor(isSelected(track, index), colors)
                     )
