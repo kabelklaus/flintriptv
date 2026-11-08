@@ -2,6 +2,8 @@ package com.flintr.tv
 
 import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.source.BehindLiveWindowException
+import com.flintr.tv.ui.components.player.MAX_LIVE_REJOIN_ATTEMPTS
+import com.flintr.tv.ui.components.player.decideLiveRejoin
 import com.flintr.tv.ui.components.player.isBehindLiveWindowError
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -36,5 +38,25 @@ class LiveRejoinFallbackTest {
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
         )
         assertFalse(isBehindLiveWindowError(error))
+    }
+
+    // --- decideLiveRejoin (rejoin retry cap) ---
+
+    @Test
+    fun `rejoin is allowed below the attempt cap`() {
+        for (attempts in 0 until MAX_LIVE_REJOIN_ATTEMPTS) {
+            assertTrue("attempts=$attempts", decideLiveRejoin(isBehindLiveWindow = true, attempts = attempts))
+        }
+    }
+
+    @Test
+    fun `rejoin is blocked once the attempt cap is reached`() {
+        assertFalse(decideLiveRejoin(isBehindLiveWindow = true, attempts = MAX_LIVE_REJOIN_ATTEMPTS))
+        assertFalse(decideLiveRejoin(isBehindLiveWindow = true, attempts = MAX_LIVE_REJOIN_ATTEMPTS + 1))
+    }
+
+    @Test
+    fun `rejoin is blocked when the error is not behind-live-window, regardless of attempts`() {
+        assertFalse(decideLiveRejoin(isBehindLiveWindow = false, attempts = 0))
     }
 }

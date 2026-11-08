@@ -45,13 +45,19 @@ internal sealed interface AudioFallbackDecision {
 /**
  * Pure decision: block [failedMime] for hardware decoding and retry once, unless it is
  * not an audio fallback candidate, already blocked, or this stream already retried.
+ *
+ * In [AudioDecoderMode.HARDWARE], the fallback never fires: there is no software decoder to
+ * fall back to, so blocking the MIME and retrying would just fail the same way again. The
+ * normal error dialog takes over instead, without persisting a hardware blocklist entry.
  */
 internal fun decideAudioFallback(
     errorCode: Int,
     failedMime: String?,
     blockedMimes: Set<String>,
-    alreadyRetriedThisStream: Boolean
+    alreadyRetriedThisStream: Boolean,
+    decoderMode: AudioDecoderMode
 ): AudioFallbackDecision = when {
+    decoderMode == AudioDecoderMode.HARDWARE -> AudioFallbackDecision.PassThrough
     errorCode != PlaybackException.ERROR_CODE_DECODER_INIT_FAILED -> AudioFallbackDecision.PassThrough
     failedMime == null || failedMime !in FALLBACK_AUDIO_MIMES -> AudioFallbackDecision.PassThrough
     failedMime in blockedMimes || alreadyRetriedThisStream -> AudioFallbackDecision.PassThrough

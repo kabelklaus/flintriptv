@@ -53,8 +53,9 @@ class AudioDecoderFallbackTest {
         mime: String?,
         errorCode: Int = initFailed,
         blocked: Set<String> = emptySet(),
-        retried: Boolean = false
-    ) = decideAudioFallback(errorCode, mime, blocked, retried)
+        retried: Boolean = false,
+        decoderMode: AudioDecoderMode = AudioDecoderMode.AUTO
+    ) = decideAudioFallback(errorCode, mime, blocked, retried, decoderMode)
 
     private fun decoderInitException(mime: String) = MediaCodecRenderer.DecoderInitializationException(
         Format.Builder().setSampleMimeType(mime).build(),
@@ -114,6 +115,26 @@ class AudioDecoderFallbackTest {
     @Test
     fun `unknown failed MIME passes through`() {
         assertEquals(AudioFallbackDecision.PassThrough, decide(null))
+    }
+
+    @Test
+    fun `HARDWARE mode always passes through, even for an eac3 decoder init failure`() {
+        assertEquals(
+            AudioFallbackDecision.PassThrough,
+            decide(MimeTypes.AUDIO_E_AC3, decoderMode = AudioDecoderMode.HARDWARE)
+        )
+    }
+
+    @Test
+    fun `AUTO and SOFTWARE modes still block and retry`() {
+        assertEquals(
+            AudioFallbackDecision.BlockAndRetry(MimeTypes.AUDIO_E_AC3),
+            decide(MimeTypes.AUDIO_E_AC3, decoderMode = AudioDecoderMode.AUTO)
+        )
+        assertEquals(
+            AudioFallbackDecision.BlockAndRetry(MimeTypes.AUDIO_E_AC3),
+            decide(MimeTypes.AUDIO_E_AC3, decoderMode = AudioDecoderMode.SOFTWARE)
+        )
     }
 
     // --- findFailedDecoderMime ---
