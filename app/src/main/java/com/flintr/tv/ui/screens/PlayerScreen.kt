@@ -316,10 +316,7 @@ private fun getErrorMessage(context: Context, error: PlaybackException): String 
  */
 private fun createPlayerListener(
     context: Context,
-    onError: (String) -> Unit,
-    onPlaybackStateChanged: (Int) -> Unit,
-    onIsPlayingChanged: (Boolean) -> Unit,
-    onPlayWhenReadyChanged: (Boolean) -> Unit,
+    callbacks: PlayerSetupCallbacks,
     onBehindLiveWindow: (PlaybackException) -> Boolean,
     onAudioDecoderFailure: (PlaybackException) -> Boolean
 ): Player.Listener {
@@ -337,11 +334,11 @@ private fun createPlayerListener(
             }
             // true = handled by the hardware→software audio fallback, no error dialog
             if (onAudioDecoderFailure(error)) return
-            onError(getErrorMessage(context, error))
+            callbacks.onError(getErrorMessage(context, error))
         }
 
         override fun onPlaybackStateChanged(state: Int) {
-            onPlaybackStateChanged(state)
+            callbacks.onPlaybackStateChanged(state)
             if (BuildConfig.DEBUG) {
                 val stateString = when (state) {
                     Player.STATE_IDLE -> "STATE_IDLE"
@@ -355,11 +352,11 @@ private fun createPlayerListener(
         }
         
         override fun onIsPlayingChanged(playing: Boolean) {
-            onIsPlayingChanged(playing)
+            callbacks.onIsPlayingChanged(playing)
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-            onPlayWhenReadyChanged(playWhenReady)
+            callbacks.onPlayWhenReadyChanged(playWhenReady)
         }
     }
 }
@@ -745,10 +742,7 @@ private fun rememberPlayerSetup(
     DisposableEffect(exoPlayer) {
         val listener = createPlayerListener(
             context = context,
-            onError = callbacks.onError,
-            onPlaybackStateChanged = callbacks.onPlaybackStateChanged,
-            onIsPlayingChanged = callbacks.onIsPlayingChanged,
-            onPlayWhenReadyChanged = callbacks.onPlayWhenReadyChanged,
+            callbacks = callbacks,
             onBehindLiveWindow = { error ->
                 if (isFailureForCurrentStream(exoPlayer.currentMediaItem, currentStreamUrl.value) &&
                     isBehindLiveWindowError(error)
