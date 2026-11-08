@@ -64,7 +64,9 @@ data class AudioTrackInfo(
     val channelCount: Int,
     val sampleRate: Int,
     val language: String?,
-    val displayLabel: String
+    val displayLabel: String,
+    /** False when no renderer can play this track, e.g. its MIME is on the hardware blocklist. */
+    val isSupported: Boolean = true
 )
 
 /**
@@ -88,7 +90,13 @@ fun getAudioTracksFromPlayer(player: ExoPlayer?): List<AudioTrackInfo> {
  * count of tracks already collected from earlier groups, so the "Track N" fallback label
  * keeps numbering sequentially across all groups.
  */
-private fun buildAudioTrackInfo(format: Format, groupIndex: Int, trackIndex: Int, fallbackIndex: Int): AudioTrackInfo {
+private fun buildAudioTrackInfo(
+    format: Format,
+    groupIndex: Int,
+    trackIndex: Int,
+    fallbackIndex: Int,
+    isSupported: Boolean
+): AudioTrackInfo {
     val codecs = format.codecs
     val channels = if (format.channelCount != Format.NO_VALUE) format.channelCount else 0
     val rate = if (format.sampleRate != Format.NO_VALUE) format.sampleRate else 0
@@ -100,7 +108,8 @@ private fun buildAudioTrackInfo(format: Format, groupIndex: Int, trackIndex: Int
         channelCount = channels,
         sampleRate = rate,
         language = lang,
-        displayLabel = buildAudioTrackLabel(codecs, channels, rate, lang, fallbackIndex)
+        displayLabel = buildAudioTrackLabel(codecs, channels, rate, lang, fallbackIndex),
+        isSupported = isSupported
     )
 }
 
@@ -111,7 +120,12 @@ private fun collectAudioTracksFromGroup(
 ): List<AudioTrackInfo> {
     val tracks = mutableListOf<AudioTrackInfo>()
     for (i in 0 until group.length) {
-        tracks.add(buildAudioTrackInfo(group.getTrackFormat(i), groupIndex, i, fallbackOffset + tracks.size + 1))
+        tracks.add(
+            buildAudioTrackInfo(
+                group.getTrackFormat(i), groupIndex, i, fallbackOffset + tracks.size + 1,
+                isSupported = group.isTrackSupported(i, /* allowExceedsCapabilities = */ true)
+            )
+        )
     }
     return tracks
 }
@@ -119,10 +133,11 @@ private fun collectAudioTracksFromGroup(
 /**
  * Picks the audio track whose language matches [language]; unlike subtitle selection,
  * returns null (no override) rather than falling back to the first track, since audio
- * already plays by default and an arbitrary override would be surprising.
+ * already plays by default and an arbitrary override would be surprising. Unsupported tracks
+ * are skipped: forcing one (e.g. a blocked eac3 track) would fail again on every track change.
  */
 fun pickAudioTrackByLanguage(tracks: List<AudioTrackInfo>, language: AudioLanguage): AudioTrackInfo? =
-    tracks.find { normalizeLanguageCode(it.language) == language.value }
+    tracks.find { it.isSupported && normalizeLanguageCode(it.language) == language.value }
 
 private fun channelsLabel(channels: Int): String = when (channels) {
     1 -> "Mono"
