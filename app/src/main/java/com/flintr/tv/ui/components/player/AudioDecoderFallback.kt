@@ -180,12 +180,13 @@ internal class RestrictedFfmpegAudioRenderer(
  * [DefaultRenderersFactory.buildAudioRenderers]'s own placement: PREFER puts it before the
  * [baseRendererCount] MediaCodec renderers already in the list (tried first), ON/AUTO puts it
  * after them (tried only once MediaCodec can't handle the track). Pure so it's unit-testable
- * without instantiating a real renderer list.
+ * without instantiating a real renderer list. If the base list is empty, the FFmpeg renderer
+ * lands at index 0 (it's then the only renderer).
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun ffmpegInsertionIndex(baseRendererCount: Int, extensionRendererMode: Int): Int =
     if (extensionRendererMode == DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER) {
-        baseRendererCount - 1
+        (baseRendererCount - 1).coerceAtLeast(0)
     } else {
         baseRendererCount
     }
