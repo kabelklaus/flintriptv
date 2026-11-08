@@ -320,11 +320,17 @@ private fun createPlayerListener(
     onPlaybackStateChanged: (Int) -> Unit,
     onIsPlayingChanged: (Boolean) -> Unit,
     onPlayWhenReadyChanged: (Boolean) -> Unit,
+    onBehindLiveWindow: (PlaybackException) -> Boolean,
     onAudioDecoderFailure: (PlaybackException) -> Boolean
 ): Player.Listener {
     return object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
             reportError("PlayerScreen", "Player Error:", error)
+            // Live window moved past the paused position - rejoin at the live edge instead of
+            // showing an error dialog. Must run before the audio-decoder fallback below: both
+            // react to onPlayerError, and a behind-live-window error must never fall through to
+            // the HW->SW audio retry path.
+            if (onBehindLiveWindow(error)) return
             if (error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
                 error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED) {
                 Log.w("PlayerScreen", "Decoder error: code=${error.errorCode}, message=${error.message}")
@@ -743,6 +749,23 @@ private fun rememberPlayerSetup(
             onPlaybackStateChanged = callbacks.onPlaybackStateChanged,
             onIsPlayingChanged = callbacks.onIsPlayingChanged,
             onPlayWhenReadyChanged = callbacks.onPlayWhenReadyChanged,
+            onBehindLiveWindow = { error ->
+                if (isFailureForCurrentStream(exoPlayer.currentMediaItem, currentStreamUrl.value) &&
+                    isBehindLiveWindowError(error)
+                ) {
+                    reportWarning(
+                        "PlayerScreen",
+                        "Live window fell behind during pause — rejoining live edge",
+                        error
+                    )
+                    exoPlayer.seekToDefaultPosition()
+                    exoPlayer.prepare()
+                    exoPlayer.play()
+                    true
+                } else {
+                    false
+                }
+            },
             onAudioDecoderFailure = { error ->
                 if (!isFailureForCurrentStream(exoPlayer.currentMediaItem, currentStreamUrl.value)) {
                     false
