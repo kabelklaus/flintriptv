@@ -133,7 +133,9 @@
     <string name="hls_playlist_error">HLS-Playlist ist leer oder ungültig. Der Stream ist möglicherweise nicht verfügbar.</string>
     <string name="network_error">Netzwerkfehler. Bitte Verbindung prüfen.</string>
     <string name="video_format_unsupported">Videoformat wird nicht unterstützt.</string>
-    <string name="codec_error_try_software">Audio/Video-Codec-Fehler. In Einstellungen \u201eWiedergabe\u201c \u201eAudio-Decoder: Software\u201c versuchen.</string>
+    <string name="codec_error_try_software">Wiedergabefehler beim Ton oder Bild. Versuche in den Einstellungen unter \u201eWiedergabe\u201c den Audio-Decoder zu \u00e4ndern, sonst einen anderen Stream w\u00e4hlen.</string>
+    <string name="audio_fallback_software">Ton wird auf diesem Ger\u00e4t per Software abgespielt.</string>
+    <string name="audio_fallback_no_decoder">Tonspur wird auf diesem Ger\u00e4t nicht unterst\u00fctzt.</string>
     <string name="no_audio_detected">Kein Audio erkannt. Audio-Einstellungen öffnen?</string>
     <string name="open_audio_settings">Einstellungen</string>
     <string name="playback_error_generic">Wiedergabefehler: %1$s</string>
@@ -142,4 +144,5 @@
     <!-- Video Settings Dialog: not-yet-wired mock controls -->
     <string name="video_settings_coming_soon">Demnächst verfügbar</string>
     <string name="max_resolution_warning">Wirkt nur bei Streams mit mehreren Qualitätsstufen</string>
+    <string name="audio_passthrough_warning">Aus: Dolby-Ton wird dekodiert und als Stereo ausgegeben (empfohlen für TV-Lautsprecher). An: Bitstream an Receiver/Soundbar. Kann auf manchen Boxen beim Fortsetzen nach Pause zu Tonfehlern führen.</string>
 </resources>
