@@ -184,17 +184,28 @@ internal class RestrictedFfmpegAudioRenderer(
 /**
  * Where to insert the FFmpeg extension renderer into the audio renderer list, mirroring
  * [DefaultRenderersFactory.buildAudioRenderers]'s own placement: PREFER puts it before the
- * [baseRendererCount] MediaCodec renderers already in the list (tried first), ON/AUTO puts it
- * after them (tried only once MediaCodec can't handle the track). Pure so it's unit-testable
- * without instantiating a real renderer list. If the base list is empty, the FFmpeg renderer
- * lands at index 0 (it's then the only renderer).
+ * first MediaCodec *audio* renderer (tried first among audio renderers), ON/AUTO appends it
+ * at [listSize] (tried only once MediaCodec can't handle the track). Pure so it's
+ * unit-testable without instantiating a real renderer list.
+ *
+ * [firstAudioRendererIndex] must be read from the renderer list *before* the base class's
+ * `buildAudioRenderers` call that produces [listSize]: that call only appends audio renderers,
+ * so indices already in the list (including any video renderers placed earlier by
+ * `createRenderers`) don't shift. If there is no MediaCodec audio renderer
+ * ([firstAudioRendererIndex] is -1, e.g. decoder blocklisting removed it), FFmpeg has nothing
+ * to be tried "before", so it's appended at [listSize] instead - it is then the only audio
+ * renderer either way.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-internal fun ffmpegInsertionIndex(baseRendererCount: Int, extensionRendererMode: Int): Int =
-    if (extensionRendererMode == DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER) {
-        (baseRendererCount - 1).coerceAtLeast(0)
+internal fun decideFfmpegInsertionIndex(
+    firstAudioRendererIndex: Int,
+    listSize: Int,
+    extensionRendererMode: Int
+): Int =
+    if (extensionRendererMode == DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER && firstAudioRendererIndex >= 0) {
+        firstAudioRendererIndex
     } else {
-        baseRendererCount
+        listSize
     }
 
 /**

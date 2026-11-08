@@ -92,13 +92,13 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             // App-Name für Debug kommt aus src/debug/res/values/strings.xml (AGP 9: resValues im BuildType deaktiviert)
-            // FFmpeg-Decoder (.so): x86_64 nur für den Emulator
+            // FFmpeg decoder (.so): x86_64 only for emulator builds
             ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            // armeabi-v7a ist Pflicht: viele TV-Boxen laufen mit 32-bit-Userland
+            // armeabi-v7a is required: many TV boxes run a 32-bit userland
             ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

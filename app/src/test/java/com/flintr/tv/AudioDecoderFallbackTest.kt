@@ -24,8 +24,8 @@ import com.flintr.tv.ui.components.player.buildDownmixAudioSink
 import com.flintr.tv.ui.components.player.clearAudioOverridesForRetry
 import com.flintr.tv.ui.components.player.createStereoDownmixProcessor
 import com.flintr.tv.ui.components.player.decideAudioFallback
+import com.flintr.tv.ui.components.player.decideFfmpegInsertionIndex
 import com.flintr.tv.ui.components.player.extensionRendererModeFor
-import com.flintr.tv.ui.components.player.ffmpegInsertionIndex
 import com.flintr.tv.ui.components.player.findFailedDecoderMime
 import com.flintr.tv.ui.components.player.isFailureForCurrentStream
 import com.flintr.tv.ui.components.player.isFfmpegAllowedMime
@@ -273,7 +273,7 @@ class AudioDecoderFallbackTest {
         assertFalse(isFailureForCurrentStream(null, "http://example.com/current.m3u8"))
     }
 
-    // --- isFfmpegAllowedMime / ffmpegInsertionIndex (F5: restrict in-process FFmpeg) ---
+    // --- isFfmpegAllowedMime / decideFfmpegInsertionIndex (F5: restrict in-process FFmpeg) ---
 
     @Test
     fun `ffmpeg is allowed only for the fallback audio MIMEs, never AAC-MP3-Opus-Flac`() {
@@ -288,22 +288,50 @@ class AudioDecoderFallbackTest {
     }
 
     @Test
-    fun `ffmpeg insertion index mirrors DefaultRenderersFactory placement`() {
+    fun `PREFER inserts ffmpeg before the first MediaCodec audio renderer, not the end of the combined video+audio list`() {
         assertEquals(
-            0,
-            ffmpegInsertionIndex(baseRendererCount = 1, DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-        )
-        assertEquals(
-            1,
-            ffmpegInsertionIndex(baseRendererCount = 1, DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            2,
+            decideFfmpegInsertionIndex(
+                firstAudioRendererIndex = 2,
+                listSize = 5,
+                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+            )
         )
     }
 
     @Test
-    fun `ffmpeg insertion index clamps to 0 when the base renderer list is empty`() {
+    fun `PREFER with no MediaCodec audio renderer appends ffmpeg as the sole audio renderer`() {
+        assertEquals(
+            3,
+            decideFfmpegInsertionIndex(
+                firstAudioRendererIndex = -1,
+                listSize = 3,
+                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+            )
+        )
+    }
+
+    @Test
+    fun `ON appends ffmpeg after every renderer already in the list`() {
+        assertEquals(
+            5,
+            decideFfmpegInsertionIndex(
+                firstAudioRendererIndex = 2,
+                listSize = 5,
+                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+            )
+        )
+    }
+
+    @Test
+    fun `PREFER on an empty base list inserts ffmpeg at index 0`() {
         assertEquals(
             0,
-            ffmpegInsertionIndex(baseRendererCount = 0, DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            decideFfmpegInsertionIndex(
+                firstAudioRendererIndex = -1,
+                listSize = 0,
+                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+            )
         )
     }
 
