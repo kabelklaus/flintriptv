@@ -7,25 +7,18 @@ import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
-import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionParameters
-import androidx.media3.common.util.Clock
 import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.MediaClock
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RendererCapabilities
-import androidx.media3.exoplayer.RendererConfiguration
 import androidx.media3.exoplayer.audio.AudioCapabilities
 import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.AudioSink
-import androidx.media3.exoplayer.analytics.PlayerId
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
-import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.SampleStream
 import com.flintr.tv.data.local.AudioDecoderMode
 
 /** Audio MIME types eligible for the hardware→software fallback. */
@@ -65,20 +58,25 @@ internal fun decideAudioFallback(
     else -> AudioFallbackDecision.BlockAndRetry(failedMime)
 }
 
+/** Cap on cause-chain walks, so a circular [Throwable.cause] chain can't loop forever. */
+private const val MAX_CAUSE_CHAIN_DEPTH = 10
+
 /**
  * Walks the cause chain for a [MediaCodecRenderer.DecoderInitializationException] and returns
  * the MIME type the failing decoder was queried for. That is the codec's own MIME when known
  * (e.g. audio/eac3 for an eac3-joc track decoded by the eac3 fallback decoder), otherwise the
- * track's sample MIME type.
+ * track's sample MIME type. (depth-limited against circular cause chains)
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun findFailedDecoderMime(error: Throwable?): String? {
     var current: Throwable? = error
-    while (current != null) {
+    var depth = 0
+    while (current != null && depth < MAX_CAUSE_CHAIN_DEPTH) {
         if (current is MediaCodecRenderer.DecoderInitializationException) {
             return current.codecInfo?.mimeType ?: current.mimeType
         }
         current = current.cause
+        depth++
     }
     return null
 }
@@ -150,21 +148,18 @@ internal fun isFfmpegAllowedMime(mimeType: String?): Boolean = mimeType != null 
  * [FfmpegAudioRenderer] restricted to [isFfmpegAllowedMime]. The stock renderer reports
  * support for every MIME FFmpeg was built with (aac, mp3, opus, flac, ... - see
  * [isFfmpegAllowedMime] KDoc), so without this override it would also decode those even
- * though MediaCodec already handles them. [FfmpegAudioRenderer] is `final`, so this implements
- * `Renderer` directly and forwards every call to a delegate instance.
+ * though MediaCodec already handles them. [FfmpegAudioRenderer] is `final`, so this delegates
+ * `Renderer` to an instance instead of extending it, overriding only [getCapabilities] to
+ * enforce the restriction - every other call passes through to [delegate] unchanged.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal class RestrictedFfmpegAudioRenderer(
     eventHandler: Handler?,
     eventListener: AudioRendererEventListener?,
-    audioSink: AudioSink
-) : Renderer {
-    private val delegate = FfmpegAudioRenderer(eventHandler, eventListener, audioSink)
+    audioSink: AudioSink,
+    private val delegate: FfmpegAudioRenderer = FfmpegAudioRenderer(eventHandler, eventListener, audioSink)
+) : Renderer by delegate {
 
-    // Renderer has no base class to extend here (FfmpegAudioRenderer is final), so every
-    // method below forwards to delegate unchanged - only getCapabilities() actually restricts
-    // anything, by returning a capabilities object whose supportsFormat() enforces
-    // isFfmpegAllowedMime() instead of delegate's own (unrestricted) decision.
     private val capabilities = object : RendererCapabilities {
         override fun getName(): String = delegate.name
         override fun getTrackType(): Int = delegate.trackType
@@ -177,53 +172,7 @@ internal class RestrictedFfmpegAudioRenderer(
         override fun supportsMixedMimeTypeAdaptation(): Int = delegate.capabilities.supportsMixedMimeTypeAdaptation()
     }
 
-    override fun getName(): String = delegate.name
-    override fun getTrackType(): Int = delegate.trackType
     override fun getCapabilities(): RendererCapabilities = capabilities
-    override fun init(index: Int, playerId: PlayerId, clock: Clock) = delegate.init(index, playerId, clock)
-    override fun getMediaClock(): MediaClock? = delegate.mediaClock
-    override fun getState(): Int = delegate.state
-    override fun enable(
-        configuration: RendererConfiguration,
-        formats: Array<out Format>,
-        stream: SampleStream,
-        positionUs: Long,
-        joining: Boolean,
-        mayRenderStartOfStream: Boolean,
-        startPositionUs: Long,
-        offsetUs: Long,
-        mediaPeriodId: MediaSource.MediaPeriodId
-    ) = delegate.enable(
-        configuration, formats, stream, positionUs, joining, mayRenderStartOfStream,
-        startPositionUs, offsetUs, mediaPeriodId
-    )
-    override fun start() = delegate.start()
-    override fun replaceStream(
-        formats: Array<out Format>,
-        stream: SampleStream,
-        startPositionUs: Long,
-        offsetUs: Long,
-        mediaPeriodId: MediaSource.MediaPeriodId
-    ) = delegate.replaceStream(formats, stream, startPositionUs, offsetUs, mediaPeriodId)
-    override fun getStream(): SampleStream? = delegate.stream
-    override fun hasReadStreamToEnd(): Boolean = delegate.hasReadStreamToEnd()
-    override fun getReadingPositionUs(): Long = delegate.readingPositionUs
-    override fun setCurrentStreamFinal() = delegate.setCurrentStreamFinal()
-    override fun isCurrentStreamFinal(): Boolean = delegate.isCurrentStreamFinal
-    override fun maybeThrowStreamError() = delegate.maybeThrowStreamError()
-    override fun resetPosition(positionUs: Long) = delegate.resetPosition(positionUs)
-    override fun setTimeline(timeline: Timeline) = delegate.setTimeline(timeline)
-    override fun render(positionUs: Long, elapsedRealtimeUs: Long) = delegate.render(positionUs, elapsedRealtimeUs)
-    override fun isReady(): Boolean = delegate.isReady
-    override fun isEnded(): Boolean = delegate.isEnded
-    override fun setPlaybackSpeed(currentPlaybackSpeed: Float, targetPlaybackSpeed: Float) =
-        delegate.setPlaybackSpeed(currentPlaybackSpeed, targetPlaybackSpeed)
-    override fun stop() = delegate.stop()
-    override fun disable() = delegate.disable()
-    override fun enableMayRenderStartOfStream() = delegate.enableMayRenderStartOfStream()
-    override fun reset() = delegate.reset()
-    override fun handleMessage(messageType: Int, message: Any?) = delegate.handleMessage(messageType, message)
-    override fun release() = delegate.release()
 }
 
 /**
@@ -233,6 +182,7 @@ internal class RestrictedFfmpegAudioRenderer(
  * after them (tried only once MediaCodec can't handle the track). Pure so it's unit-testable
  * without instantiating a real renderer list.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal fun ffmpegInsertionIndex(baseRendererCount: Int, extensionRendererMode: Int): Int =
     if (extensionRendererMode == DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER) {
         baseRendererCount - 1

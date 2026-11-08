@@ -141,8 +141,7 @@
     <string name="playback_error_generic">Wiedergabefehler: %1$s</string>
     <string name="playback_error_unknown">Unbekannter Fehler</string>
 
-    <!-- Video Settings Dialog: not-yet-wired mock controls -->
-    <string name="video_settings_coming_soon">Demnächst verfügbar</string>
+    <!-- Video Settings Dialog -->
     <string name="max_resolution_warning">Wirkt nur bei Streams mit mehreren Qualitätsstufen</string>
     <string name="audio_passthrough_warning">Aus: Dolby-Ton wird dekodiert und als Stereo ausgegeben (empfohlen für TV-Lautsprecher). An: Bitstream an Receiver/Soundbar. Kann auf manchen Boxen beim Fortsetzen nach Pause zu Tonfehlern führen.</string>
 </resources>
