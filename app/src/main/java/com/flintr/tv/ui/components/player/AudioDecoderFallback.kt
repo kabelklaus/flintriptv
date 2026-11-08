@@ -150,8 +150,8 @@ internal fun isFfmpegAllowedMime(mimeType: String?): Boolean = mimeType != null 
  * [FfmpegAudioRenderer] restricted to [isFfmpegAllowedMime]. The stock renderer reports
  * support for every MIME FFmpeg was built with (aac, mp3, opus, flac, ... - see
  * [isFfmpegAllowedMime] KDoc), so without this override it would also decode those even
- * though MediaCodec already handles them. [FfmpegAudioRenderer] is `final`, so this wraps it
- * via [ForwardingRenderer] instead of subclassing it.
+ * though MediaCodec already handles them. [FfmpegAudioRenderer] is `final`, so this implements
+ * `Renderer` directly and forwards every call to a delegate instance.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal class RestrictedFfmpegAudioRenderer(
@@ -216,8 +216,11 @@ internal class RestrictedFfmpegAudioRenderer(
     override fun render(positionUs: Long, elapsedRealtimeUs: Long) = delegate.render(positionUs, elapsedRealtimeUs)
     override fun isReady(): Boolean = delegate.isReady
     override fun isEnded(): Boolean = delegate.isEnded
+    override fun setPlaybackSpeed(currentPlaybackSpeed: Float, targetPlaybackSpeed: Float) =
+        delegate.setPlaybackSpeed(currentPlaybackSpeed, targetPlaybackSpeed)
     override fun stop() = delegate.stop()
     override fun disable() = delegate.disable()
+    override fun enableMayRenderStartOfStream() = delegate.enableMayRenderStartOfStream()
     override fun reset() = delegate.reset()
     override fun handleMessage(messageType: Int, message: Any?) = delegate.handleMessage(messageType, message)
     override fun release() = delegate.release()
