@@ -5,10 +5,10 @@ import android.content.SharedPreferences
 import android.os.Build
 import androidx.core.content.edit
 import com.flintr.tv.data.model.AudioLanguage
+import com.flintr.tv.data.model.FALLBACK_AUDIO_MIMES
 import com.flintr.tv.data.model.SubtitleLanguage
 import com.flintr.tv.data.model.VideoQuality
 import com.flintr.tv.data.model.VideoResizeMode
-import com.flintr.tv.ui.components.player.FALLBACK_AUDIO_MIMES
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton

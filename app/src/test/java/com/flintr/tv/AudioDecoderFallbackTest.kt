@@ -17,8 +17,8 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.test.core.app.ApplicationProvider
 import com.flintr.tv.data.local.AudioDecoderMode
+import com.flintr.tv.data.model.FALLBACK_AUDIO_MIMES
 import com.flintr.tv.ui.components.player.AudioFallbackDecision
-import com.flintr.tv.ui.components.player.FALLBACK_AUDIO_MIMES
 import com.flintr.tv.ui.components.player.blockingMediaCodecSelector
 import com.flintr.tv.ui.components.player.buildDownmixAudioSink
 import com.flintr.tv.ui.components.player.clearAudioOverridesForRetry

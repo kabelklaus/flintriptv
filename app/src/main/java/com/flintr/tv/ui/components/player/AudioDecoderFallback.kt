@@ -20,12 +20,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import com.flintr.tv.data.local.AudioDecoderMode
-
-/** Audio MIME types eligible for the hardware→software fallback. */
-internal val FALLBACK_AUDIO_MIMES = setOf(
-    MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_E_AC3_JOC, MimeTypes.AUDIO_AC3,
-    MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_TRUEHD
-)
+import com.flintr.tv.data.model.FALLBACK_AUDIO_MIMES
 
 /**
  * Float output stays off as a defensive measure: media3 1.3.1 only puts custom audio
