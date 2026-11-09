@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
@@ -108,9 +109,6 @@ fun LiveTVContent(params: LiveTVContentParams) {
     
     // Load new category streams (all channels from last 7 days)
     LaunchedEffect(params.selectedCategoryId) {
-        // Reset scroll position when category changes
-        params.lazyGridState.scrollToItem(0)
-
         when {
             isNewCategory -> {
                 loadNewCategoryStreams(
@@ -125,6 +123,10 @@ fun LiveTVContent(params: LiveTVContentParams) {
                 params.viewModel.loadLiveStreams(params.selectedCategoryId)
             }
         }
+        // scrollToItem suspends until a layout pass arrives; with an empty/static grid that can
+        // take arbitrarily long. Run it in a child job so the effect completes deterministically
+        // and the previous category's scroll job is cancelled by the next key change.
+        launch { params.lazyGridState.scrollToItem(0) }
     }
     
     // Don't automatically request focus when streams are loaded
