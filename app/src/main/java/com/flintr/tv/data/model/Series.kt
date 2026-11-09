@@ -39,7 +39,9 @@ data class Series(
     @Json(name = "backdrop_path")
     val backdropPath: List<String>?,
     @Json(name = "seasons")
-    val seasons: List<Season>?
+    val seasons: List<Season>?,
+    @Json(name = "tmdb")
+    val tmdbId: String? = null
 ) {
     fun toWatchlistEntryId(): String {
         val encodedName = URLEncoder.encode(name, "UTF-8")

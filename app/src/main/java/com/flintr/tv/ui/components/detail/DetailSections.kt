@@ -51,7 +51,7 @@ import java.text.Normalizer
  * member testTags derive from it as `$testTag-member-$index`.
  */
 @Composable
-fun DetailCastSection(cast: List<String>, testTag: String) {
+fun DetailCastSection(cast: List<String>, testTag: String, photos: Map<String, String> = emptyMap()) {
     val colors = appColors()
     Column(
         modifier = Modifier
@@ -83,12 +83,27 @@ fun DetailCastSection(cast: List<String>, testTag: String) {
                             .background(colors.bgCard),
                         contentAlignment = Alignment.Center
                     ) {
+                        // Briefmarke liegt als Unterlay immer da - ein Ladefehler blendet nur
+                        // das Foto aus, ohne dass die Initialen kurz aufblitzen oder fehlen.
                         Text(
                             text = name.trim().take(1).uppercase(),
                             color = colors.accentBright,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
+                        val photoUrl = photos[name]
+                        if (photoUrl != null) {
+                            var photoFailed by remember(photoUrl) { mutableStateOf(false) }
+                            if (!photoFailed) {
+                                AsyncImage(
+                                    model = photoUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    onError = { photoFailed = true },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
                     }
                     Text(
                         text = name,

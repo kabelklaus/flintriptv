@@ -15,6 +15,8 @@ import com.flintr.tv.data.model.VodInfo
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.data.tmdb.TmdbCastClient
+import com.flintr.tv.data.tmdb.TmdbCastMember
 import com.flintr.tv.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -46,6 +48,7 @@ class MovieDetailViewModelTest {
     private val watchlistRepository = mockk<WatchlistRepository>(relaxed = true)
     private val watchProgressService = mockk<WatchProgressService>(relaxed = true)
     private val cacheService = mockk<DataCacheService>(relaxed = true)
+    private val tmdbCastClient = mockk<TmdbCastClient>(relaxed = true)
 
     private val catalogMovie = VodStream(
         num = 1,
@@ -115,6 +118,7 @@ class MovieDetailViewModelTest {
         watchlistRepository = watchlistRepository,
         watchProgressService = watchProgressService,
         cacheService = cacheService,
+        tmdbCastClient = tmdbCastClient,
         ioDispatcher = mainDispatcherRule.dispatcher
     )
 
@@ -127,6 +131,7 @@ class MovieDetailViewModelTest {
             ImdbEnrichment(rating = 8.4, numVotes = 1234, genres = listOf("Action", "Drama"))
         every { watchlistRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchProgress("movie", vodId, null, null) } returns watchProgress
+        coEvery { tmdbCastClient.movieCredits(any()) } returns emptyList()
     }
 
     @Test
@@ -269,5 +274,75 @@ class MovieDetailViewModelTest {
 
         assertNull(vm.uiState.value.error)
         assertNotNull(vm.uiState.value.detail)
+    }
+
+    @Test
+    fun `load mit tmdbId laedt Cast-Fotos von TMDB`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
+            TmdbCastMember(id = 1, name = "Alice", profilePath = "/alice.jpg"),
+            TmdbCastMember(id = 2, name = "Bob", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertEquals(
+            mapOf("Alice" to "https://image.tmdb.org/t/p/w185/alice.jpg"),
+            vm.uiState.value.castPhotos
+        )
+        coVerify(exactly = 1) { tmdbCastClient.movieCredits("42") }
+    }
+
+    @Test
+    fun `load ohne tmdbId ruft TMDB Cast-Client nicht auf`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(tmdbId = null))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+        coVerify(exactly = 0) { tmdbCastClient.movieCredits(any()) }
+    }
+
+    @Test
+    fun `nicht matchende TMDB Namen erzeugen keine Foto-Eintraege`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
+            TmdbCastMember(id = 3, name = "Charlie", profilePath = "/charlie.jpg")
+        )
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+    }
+
+    @Test
+    fun `Cast-Name mit Umlaut und doppeltem Leerzeichen matcht normalisierten TMDB Namen`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(cast = "Penélope  Cruz"))
+        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
+            TmdbCastMember(id = 1, name = "penelope cruz", profilePath = "/penelope.jpg")
+        )
+
+        val vm = viewModel()
+
+        assertEquals(
+            mapOf("Penélope  Cruz" to "https://image.tmdb.org/t/p/w185/penelope.jpg"),
+            vm.uiState.value.castPhotos
+        )
+    }
+
+    @Test
+    fun `load mit leerer tmdbId ruft TMDB Cast-Client nicht auf`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(tmdbId = ""))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+        coVerify(exactly = 0) { tmdbCastClient.movieCredits(any()) }
     }
 }

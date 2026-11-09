@@ -19,6 +19,8 @@ import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.data.tmdb.TmdbCastClient
+import com.flintr.tv.data.tmdb.TmdbCastMember
 import com.flintr.tv.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -49,6 +51,7 @@ class SeriesDetailViewModelTest {
     private val watchlistRepository = mockk<WatchlistRepository>(relaxed = true)
     private val watchProgressService = mockk<WatchProgressService>(relaxed = true)
     private val cacheService = mockk<DataCacheService>(relaxed = true)
+    private val tmdbCastClient = mockk<TmdbCastClient>(relaxed = true)
 
     private fun episode(id: Int, episodeNum: Int) = Episode(
         id = id,
@@ -142,6 +145,7 @@ class SeriesDetailViewModelTest {
         watchlistRepository = watchlistRepository,
         watchProgressService = watchProgressService,
         cacheService = cacheService,
+        tmdbCastClient = tmdbCastClient,
         ioDispatcher = mainDispatcherRule.dispatcher
     )
 
@@ -156,6 +160,7 @@ class SeriesDetailViewModelTest {
         coEvery { watchProgressService.getLastInteraction(seriesId, series) } returns null
         coEvery { watchProgressService.getSmartResumeTarget(seriesId, series) } returns null
         coEvery { cacheService.loadCachedDataAsync() } returns cachedData()
+        coEvery { tmdbCastClient.tvCredits(any()) } returns emptyList()
     }
 
     @Test
@@ -459,5 +464,69 @@ class SeriesDetailViewModelTest {
 
         assertFalse(vm.uiState.value.isLoading)
         assertNotNull(vm.uiState.value.error)
+    }
+
+    @Test
+    fun `load mit tmdbId laedt Cast-Fotos von TMDB`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "99"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "Alice", profilePath = "/alice.jpg"),
+            TmdbCastMember(id = 2, name = "Bob", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertEquals(
+            mapOf("Alice" to "https://image.tmdb.org/t/p/w185/alice.jpg"),
+            vm.uiState.value.castPhotos
+        )
+        coVerify(exactly = 1) { tmdbCastClient.tvCredits("99") }
+    }
+
+    @Test
+    fun `load ohne tmdbId ruft TMDB Cast-Client nicht auf`() = runTest {
+        stubHappyPath(series.copy(tmdbId = null))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+        coVerify(exactly = 0) { tmdbCastClient.tvCredits(any()) }
+    }
+
+    @Test
+    fun `nicht matchende TMDB Namen erzeugen keine Foto-Eintraege`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "99"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 3, name = "Charlie", profilePath = "/charlie.jpg")
+        )
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+    }
+
+    @Test
+    fun `Cast-Name mit Umlaut und doppeltem Leerzeichen matcht normalisierten TMDB Namen`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "99", cast = "Penélope  Cruz"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "penelope cruz", profilePath = "/penelope.jpg")
+        )
+
+        val vm = viewModel()
+
+        assertEquals(
+            mapOf("Penélope  Cruz" to "https://image.tmdb.org/t/p/w185/penelope.jpg"),
+            vm.uiState.value.castPhotos
+        )
+    }
+
+    @Test
+    fun `load mit leerer tmdbId ruft TMDB Cast-Client nicht auf`() = runTest {
+        stubHappyPath(series.copy(tmdbId = ""))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+        coVerify(exactly = 0) { tmdbCastClient.tvCredits(any()) }
     }
 }

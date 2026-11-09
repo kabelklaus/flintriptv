@@ -141,6 +141,7 @@ fun SeriesDetailScreen(
                 watchTarget = uiState.watchTarget,
                 watchLabel = uiState.watchLabel,
                 watchProgress = uiState.watchProgress,
+                castPhotos = uiState.castPhotos,
                 onToggleWatchlist = onToggleWatchlist,
                 onWatchClick = onWatchClick,
                 onSeasonClick = onSeasonClick,
@@ -269,6 +270,7 @@ private fun SeriesDetailContent(
     watchTarget: WatchTargetUiModel?,
     watchLabel: String,
     watchProgress: Float?,
+    castPhotos: Map<String, String>,
     onToggleWatchlist: () -> Unit,
     onWatchClick: (Episode) -> Unit,
     onSeasonClick: (Int) -> Unit,
@@ -451,7 +453,7 @@ private fun SeriesDetailContent(
             }
 
             if (detail.cast.isNotEmpty()) {
-                DetailCastSection(cast = detail.cast, testTag = "series-detail-cast")
+                DetailCastSection(cast = detail.cast, testTag = "series-detail-cast", photos = castPhotos)
             }
 
             detail.director?.takeIf { it.isNotBlank() }?.let { director ->

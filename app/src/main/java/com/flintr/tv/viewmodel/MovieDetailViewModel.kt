@@ -17,10 +17,14 @@ import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.mapVodInfoToDetail
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.data.tmdb.TmdbCastClient
+import com.flintr.tv.data.tmdb.TmdbCastMember
 import com.flintr.tv.domain.recommendation.RecommendationEngine
 import com.flintr.tv.utils.error.reportWarning
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.net.URLEncoder
+import java.text.Normalizer
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Named
 import kotlinx.coroutines.CancellationException
@@ -38,6 +42,7 @@ data class MovieDetailUiState(
     val isInWatchlist: Boolean = false,
     val watchProgress: WatchProgress? = null,
     val recommendations: List<VodStream> = emptyList(),
+    val castPhotos: Map<String, String> = emptyMap(),
     val error: String? = null
 )
 
@@ -57,6 +62,7 @@ class MovieDetailViewModel @Inject constructor(
     private val watchlistRepository: WatchlistRepository,
     private val watchProgressService: WatchProgressService,
     private val cacheService: DataCacheService,
+    private val tmdbCastClient: TmdbCastClient,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -65,6 +71,9 @@ class MovieDetailViewModel @Inject constructor(
         private const val TAG = "MovieDetailViewModel"
         private val YEAR_PATTERN = Regex("(?:19|20)\\d{2}")
         private val TITLE_YEAR_PATTERN = Regex("\\((?:19|20)\\d{2}\\)")
+        private const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w185"
+        private val COMBINING_MARKS = Regex("\\p{M}")
+        private val WHITESPACE = Regex("\\s+")
     }
 
     private val vodId: Int = savedStateHandle.get<Int>(ARG_VOD_ID)
@@ -135,6 +144,10 @@ class MovieDetailViewModel @Inject constructor(
                 }
 
                 _uiState.value = buildLoadedState(catalogMovie, baseDetail)
+
+                // TMDB-Cast-Fotos laufen in eigenem Job: duerfen Rating/Genres/Empfehlungen nicht
+                // blockieren (ohne tmdbId/Match bleiben die Briefmarken/Initial-Kreis stehen).
+                viewModelScope.launch(ioDispatcher) { loadCastPhotos(baseDetail) }
 
                 // IMDb-Enrichment nachschieben: Rating/Genres kommen ausschliesslich von hier,
                 // ein Fehler/Miss darf den bereits gezeigten Basis-State nicht zuruecknehmen.
@@ -229,6 +242,47 @@ class MovieDetailViewModel @Inject constructor(
             }
             if (year != null) "$lookupTitle ($year)" else lookupTitle
         }
+    }
+
+    /**
+     * Loads cast photos from TMDB for [detail]'s tmdbId and matches them onto [detail]'s cast
+     * names. Unmatched names (no tmdbId, no TMDB match, or no profile photo) simply get no map
+     * entry - the cast section falls back to its initial-letter stamp for those.
+     */
+    private suspend fun loadCastPhotos(detail: DetailDisplayData?) {
+        val tmdbId = detail?.tmdbId?.takeIf { it.isNotBlank() } ?: return
+        val castNames = detail.cast
+        if (castNames.isEmpty()) return
+
+        val members = tmdbCastClient.movieCredits(tmdbId)
+        val photos = matchCastPhotos(castNames, members)
+        _uiState.update { it.copy(castPhotos = photos) }
+    }
+
+    private fun matchCastPhotos(castNames: List<String>, members: List<TmdbCastMember>): Map<String, String> {
+        if (members.isEmpty()) return emptyMap()
+        // Bei normalisierten Namens-Duplikaten gewinnt deterministisch der Eintrag mit Foto,
+        // statt von der (zufaelligen) API-Reihenfolge abzuhaengen.
+        val membersByNormalizedName = mutableMapOf<String, TmdbCastMember>()
+        for (member in members) {
+            val key = normalizeCastName(member.name)
+            val existing = membersByNormalizedName[key]
+            if (existing == null || (existing.validProfilePath() == null && member.validProfilePath() != null)) {
+                membersByNormalizedName[key] = member
+            }
+        }
+        return castNames.mapNotNull { name ->
+            val profilePath = membersByNormalizedName[normalizeCastName(name)]?.validProfilePath()
+                ?: return@mapNotNull null
+            name to "$TMDB_IMAGE_BASE_URL$profilePath"
+        }.toMap()
+    }
+
+    private fun TmdbCastMember.validProfilePath(): String? = profilePath?.takeIf { it.startsWith("/") }
+
+    private fun normalizeCastName(name: String): String {
+        val withoutDiacritics = Normalizer.normalize(name, Normalizer.Form.NFD).replace(COMBINING_MARKS, "")
+        return WHITESPACE.replace(withoutDiacritics.lowercase(Locale.ROOT).trim(), " ")
     }
 
     fun toggleWatchlist() {

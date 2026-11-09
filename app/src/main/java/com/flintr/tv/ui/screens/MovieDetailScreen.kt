@@ -122,6 +122,7 @@ fun MovieDetailScreen(
                 isInWatchlist = uiState.isInWatchlist,
                 watchProgress = uiState.watchProgress,
                 recommendations = uiState.recommendations,
+                castPhotos = uiState.castPhotos,
                 onWatchClick = onWatchClick,
                 onToggleWatchlist = onToggleWatchlist,
                 onMovieClick = onMovieClick
@@ -250,6 +251,7 @@ private fun MovieDetailContent(
     isInWatchlist: Boolean,
     watchProgress: com.flintr.tv.data.model.WatchProgress?,
     recommendations: List<com.flintr.tv.data.model.VodStream>,
+    castPhotos: Map<String, String>,
     onWatchClick: () -> Unit,
     onToggleWatchlist: () -> Unit,
     onMovieClick: (Int) -> Unit
@@ -377,7 +379,7 @@ private fun MovieDetailContent(
             }
 
             if (detail.cast.isNotEmpty()) {
-                DetailCastSection(cast = detail.cast, testTag = "movie-detail-cast")
+                DetailCastSection(cast = detail.cast, testTag = "movie-detail-cast", photos = castPhotos)
             }
 
             detail.director?.takeIf { it.isNotBlank() }?.let { director ->
