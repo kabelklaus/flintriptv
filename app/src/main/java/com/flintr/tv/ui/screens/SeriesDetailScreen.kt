@@ -53,8 +53,10 @@ import com.flintr.tv.ui.components.detail.DetailHeaderData
 import com.flintr.tv.ui.components.detail.DetailHeaderSection
 import com.flintr.tv.ui.components.detail.DetailHeaderSkeleton
 import com.flintr.tv.ui.components.detail.DetailRecommendationsSection
+import com.flintr.tv.ui.components.detail.focusBottomBuffer
 import com.flintr.tv.ui.components.detail.focusWatchAndRevealHeader
 import com.flintr.tv.ui.components.detail.formatSeasonLabel
+import com.flintr.tv.ui.theme.CardTitleStyle
 import com.flintr.tv.ui.theme.DarkColors
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
@@ -533,6 +535,7 @@ private fun SeasonTile(
             .onDpadDirection(onUp = { onUp(); true }, onDown = onDown)
             .onClick(onClick = onClick)
             .tvFocusRing(isFocused = isFocused, onArtwork = true, shape = shape)
+            .focusBottomBuffer()
             .testTag("season-tile-${season.seasonNumber}")
     ) {
         Box(
@@ -596,8 +599,8 @@ private fun SeasonTile(
         Text(
             text = formatSeasonLabel(season.title),
             color = DarkColors.textPrimary,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = CardTitleStyle.fontSize,
+            fontWeight = CardTitleStyle.fontWeight,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier

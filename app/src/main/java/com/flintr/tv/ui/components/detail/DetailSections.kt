@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
+import com.flintr.tv.ui.theme.CardTitleStyle
 import com.flintr.tv.ui.theme.DarkColors
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
@@ -239,6 +240,19 @@ internal fun <T> deduplicateRecommendations(
     }
 }
 
+/**
+ * Unterer Puffer zwischen fokussierbaren Layout-Bounds und Inhalt: Der Ring wird NICHT um den
+ * Puffer gezeichnet (Padding sitzt in der Modifier-Kette NACH tvFocusRing), aber BringIntoView
+ * scrollt ihn mit rein — Fokus-Scale/-Ring bleiben am Viewport-Rand vollständig sichtbar.
+ *
+ * `scale()` ist ein graphicsLayer-Transform und vergrößert die Layout-Bounds nicht; das
+ * BringIntoView-Rect von `focusable()` basiert auf den LAYOUT-Bounds und kennt Scale/Ring nicht —
+ * deshalb dieser Layout-Puffer.
+ */
+internal val FocusBottomBuffer = Dimensions.spacingMD
+
+fun Modifier.focusBottomBuffer(): Modifier = padding(bottom = FocusBottomBuffer)
+
 @Composable
 private fun DetailRecommendationCard(
     posterUrl: String?,
@@ -266,6 +280,7 @@ private fun DetailRecommendationCard(
                 onArtwork = true,
                 shape = RoundedCornerShape(Dimensions.radiusMD)
             )
+            .focusBottomBuffer()
             .testTag(testTag)
     ) {
         Box(
@@ -286,8 +301,8 @@ private fun DetailRecommendationCard(
                 Text(
                     text = title,
                     color = DarkColors.textPrimary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = CardTitleStyle.fontSize,
+                    fontWeight = CardTitleStyle.fontWeight,
                     textAlign = TextAlign.Center,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
@@ -300,7 +315,8 @@ private fun DetailRecommendationCard(
         Text(
             text = title,
             color = DarkColors.textPrimary,
-            style = MaterialTheme.typography.bodyMedium,
+            fontSize = CardTitleStyle.fontSize,
+            fontWeight = CardTitleStyle.fontWeight,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = Dimensions.spacingXS)

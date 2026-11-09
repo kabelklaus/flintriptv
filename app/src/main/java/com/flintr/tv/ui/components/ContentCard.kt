@@ -47,6 +47,7 @@ import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.components.detail.formatRuntime
+import com.flintr.tv.ui.theme.CardTitleStyle
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
@@ -68,7 +69,7 @@ private val ContentCardBorderRadius = 8.dp // radiusMD
 private val ContentCardTitleOverlayPadding = 1.dp
 private val ContentCardTitleContainerPaddingH = 1.dp
 private val ContentCardTitleContainerPaddingV = 1.dp
-private val ContentCardTitleFontSize = 14.sp
+private val ContentCardTitleFontSize = CardTitleStyle.fontSize
 private val ContentCardTitleMaxLines = 2
 private val ContentCardTitleGradientAlpha = 0.7f
 private val ContentCardTitleBgAlpha = 0.75f
@@ -83,10 +84,14 @@ private val ContentCardWatchlistIconSize = 12.dp
 private val ContentCardBadgeSpacing = 3.dp
 private val ContentCardLogoPadding = 8.dp
 
+// Rating-Badge-Zahl: bewusst alter Stil, bleibt wie vor dem Titel-Resizing (14sp/Bold).
+private val ContentCardRatingFontSize = 14.sp
+private val ContentCardRatingFontWeight = FontWeight.Bold
+
 // Content Card Colors (from Flutter AppTheme)
 private val ContentCardTextColor = Color.White
 private val ContentCardBgColor = SharedColors.contentCardBgColor
-private val ContentCardTextFontWeight = FontWeight.Bold
+private val ContentCardTextFontWeight = CardTitleStyle.fontWeight
 
 // Content Card Title Line Height
 private const val ContentCardTitleLineHeightFactor = 1.2f
@@ -852,7 +857,7 @@ private fun SourceBadge(
             text = badge,
             fontSize = ContentCardFriendAvatarFontSize,
             color = SharedColors.avatarAccentText,
-            fontWeight = ContentCardTextFontWeight,
+            fontWeight = FontWeight.Bold,
             maxLines = 1
         )
     }
@@ -913,9 +918,9 @@ private fun RatingBadge(
             )
             Text(
                 text = rating,
-                fontSize = ContentCardTitleFontSize,
+                fontSize = ContentCardRatingFontSize,
                 color = ContentCardTextColor,
-                fontWeight = ContentCardTextFontWeight
+                fontWeight = ContentCardRatingFontWeight
             )
         }
     }
