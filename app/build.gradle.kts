@@ -61,6 +61,18 @@ android {
                 ""
             }
         buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
+
+        // TMDB API key: from environment variable (CI/CD) or local.properties (local builds)
+        val tmdbApiKey = System.getenv("TMDB_API_KEY")
+            ?: if (localPropertiesFile.exists()) {
+                val props = Properties().apply {
+                    localPropertiesFile.inputStream().use(::load)
+                }
+                props.getProperty("tmdb.api.key", "")
+            } else {
+                ""
+            }
+        buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
     }
 
     signingConfigs {

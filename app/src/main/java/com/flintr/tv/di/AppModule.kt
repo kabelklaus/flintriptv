@@ -171,6 +171,18 @@ object AppModule {
     
     @Provides
     @Singleton
+    @Named("Tmdb")
+    fun provideTmdbOkHttpClient(): OkHttpClient {
+        return OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .writeTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(5, TimeUnit.SECONDS)
+            .build()
+    }
+
+    @Provides
+    @Singleton
     @Named("Download")
     fun provideDownloadOkHttpClient(): OkHttpClient {
         val builder = OkHttpClient.Builder()
