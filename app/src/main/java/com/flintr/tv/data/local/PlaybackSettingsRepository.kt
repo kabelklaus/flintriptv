@@ -2,8 +2,10 @@ package com.flintr.tv.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import androidx.core.content.edit
 import com.flintr.tv.data.model.AudioLanguage
+import com.flintr.tv.data.model.FALLBACK_AUDIO_MIMES
 import com.flintr.tv.data.model.SubtitleLanguage
 import com.flintr.tv.data.model.VideoQuality
 import com.flintr.tv.data.model.VideoResizeMode
@@ -61,6 +63,8 @@ class PlaybackSettingsRepository @Inject constructor(
         private const val KEY_AUTO_PLAY_NEXT = "auto_play_next"
         private const val KEY_REMEMBER_POSITION = "remember_position"
         private const val KEY_VIDEO_QUALITY = "video_quality"
+        private const val KEY_HW_BLOCKED_AUDIO_MIMES = "hw_blocked_audio_mimes"
+        private const val KEY_HW_BLOCKLIST_FINGERPRINT = "hw_blocklist_fingerprint"
     }
 
     fun getAudioDecoderMode(): AudioDecoderMode {
@@ -70,8 +74,46 @@ class PlaybackSettingsRepository @Inject constructor(
 
     fun setAudioDecoderMode(mode: AudioDecoderMode) {
         prefs.edit { putString(KEY_AUDIO_DECODER_MODE, mode.value) }
+        // Explicitly choosing hardware is the user's way to give blocked HW decoders another try.
+        if (mode == AudioDecoderMode.HARDWARE) clearHardwareBlockedAudioMimes()
     }
 
+    /**
+     * Audio MIME types whose hardware decoder failed to initialise on this device. Empty
+     * when the list was recorded under a different [Build.FINGERPRINT], since a firmware
+     * update may have fixed the decoder.
+     */
+    fun getHardwareBlockedAudioMimes(): Set<String> {
+        if (prefs.getString(KEY_HW_BLOCKLIST_FINGERPRINT, null) != Build.FINGERPRINT) return emptySet()
+        // Defense-in-depth: a tampered prefs file (root/restore) could otherwise inject a
+        // non-audio MIME (e.g. video/avc) and block it via blockingMediaCodecSelector.
+        return prefs.getStringSet(KEY_HW_BLOCKED_AUDIO_MIMES, null)
+            ?.filterTo(mutableSetOf()) { it in FALLBACK_AUDIO_MIMES }
+            ?: emptySet()
+    }
+
+    fun addHardwareBlockedAudioMime(mime: String) {
+        val updated = getHardwareBlockedAudioMimes() + mime
+        prefs.edit {
+            putStringSet(KEY_HW_BLOCKED_AUDIO_MIMES, updated)
+            putString(KEY_HW_BLOCKLIST_FINGERPRINT, Build.FINGERPRINT)
+        }
+    }
+
+    fun clearHardwareBlockedAudioMimes() {
+        prefs.edit {
+            remove(KEY_HW_BLOCKED_AUDIO_MIMES)
+            remove(KEY_HW_BLOCKLIST_FINGERPRINT)
+        }
+    }
+
+    /**
+     * Default off: Dolby/DTS audio is decoded and downmixed to stereo, which is what TV
+     * speakers need and what most hardware decoders on cheap TV boxes can't reliably do for
+     * eac3/ac3 (see [AudioDecoderMode] fallback). Users with an AVR/soundbar that accepts the
+     * bitstream directly can opt in via [setAudioPassthroughEnabled]; on some boxes that has
+     * been observed to cause audio errors when resuming from pause.
+     */
     fun isAudioPassthroughEnabled(): Boolean =
         prefs.getBoolean(KEY_AUDIO_PASSTHROUGH, false)
 

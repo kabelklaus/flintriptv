@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import kotlinx.coroutines.CoroutineDispatcher
+import com.flintr.tv.ui.utils.launchScrollToTopIfScrolled
 import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
@@ -173,8 +174,7 @@ fun SeriesContent(
     
     // Load new category series (all series modified in last 7 days)
     LaunchedEffect(params.selectedCategoryId) {
-        // Reset scroll position when category changes
-        params.lazyGridState.scrollToItem(0)
+        launchScrollToTopIfScrolled(params.lazyGridState)
 
         when {
             isNewCategory -> {

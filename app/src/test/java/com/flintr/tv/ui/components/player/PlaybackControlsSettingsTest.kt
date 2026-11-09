@@ -113,6 +113,17 @@ class PlaybackControlsSettingsTest {
     }
 
     @Test
+    fun `Audio-Sprach-Vorauswahl ueberspringt nicht unterstuetzte Tracks`() {
+        val tracks = listOf(
+            AudioTrackInfo(groupIndex = 0, trackIndex = 0, codecs = "ec-3", channelCount = 6, sampleRate = 48000, language = "de", displayLabel = "Deutsch DD+", isSupported = false),
+            AudioTrackInfo(groupIndex = 1, trackIndex = 0, codecs = "mp4a", channelCount = 2, sampleRate = 48000, language = "de", displayLabel = "Deutsch AAC")
+        )
+
+        assertEquals(1, pickAudioTrackByLanguage(tracks, AudioLanguage.Deutsch)?.groupIndex)
+        assertNull(pickAudioTrackByLanguage(tracks.take(1), AudioLanguage.Deutsch))
+    }
+
+    @Test
     fun `Audio-Sprach-Vorauswahl gibt null zurueck wenn keine Tracks vorhanden`() {
         assertNull(pickAudioTrackByLanguage(emptyList(), AudioLanguage.Deutsch))
     }

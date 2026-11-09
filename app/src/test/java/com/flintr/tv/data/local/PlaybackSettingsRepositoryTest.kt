@@ -1,6 +1,8 @@
 package com.flintr.tv.data.local
 
 import android.content.Context
+import android.os.Build
+import androidx.core.content.edit
 import androidx.test.core.app.ApplicationProvider
 import com.flintr.tv.data.model.AudioLanguage
 import com.flintr.tv.data.model.SubtitleLanguage
@@ -13,6 +15,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowBuild
 
 @RunWith(RobolectricTestRunner::class)
 class PlaybackSettingsRepositoryTest {
@@ -172,5 +175,49 @@ class PlaybackSettingsRepositoryTest {
 
         repository.setVideoQuality(VideoQuality.Quality480p)
         assertEquals(VideoQuality.Quality480p, repository.getVideoQuality())
+    }
+
+    @Test
+    fun `HW-Sperrliste ist ein Set und wird persistiert`() {
+        assertTrue(repository.getHardwareBlockedAudioMimes().isEmpty())
+
+        repository.addHardwareBlockedAudioMime("audio/eac3")
+        repository.addHardwareBlockedAudioMime("audio/eac3")
+        repository.addHardwareBlockedAudioMime("audio/ac3")
+
+        val reloaded = PlaybackSettingsRepository(ApplicationProvider.getApplicationContext())
+        assertEquals(setOf("audio/eac3", "audio/ac3"), reloaded.getHardwareBlockedAudioMimes())
+    }
+
+    @Test
+    fun `HW-Sperrliste verfaellt bei Firmware-Wechsel`() {
+        ShadowBuild.setFingerprint("vendor/box/1:11/OLD")
+        repository.addHardwareBlockedAudioMime("audio/eac3")
+        assertEquals(setOf("audio/eac3"), repository.getHardwareBlockedAudioMimes())
+
+        ShadowBuild.setFingerprint("vendor/box/1:11/NEW")
+        assertTrue(repository.getHardwareBlockedAudioMimes().isEmpty())
+    }
+
+    @Test
+    fun `HW-Sperrliste filtert nicht erlaubte MIMEs aus manipulierten Prefs heraus`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("playback_settings", Context.MODE_PRIVATE).edit {
+            putStringSet("hw_blocked_audio_mimes", setOf("audio/eac3", "video/avc"))
+            putString("hw_blocklist_fingerprint", Build.FINGERPRINT)
+        }
+
+        assertEquals(setOf("audio/eac3"), repository.getHardwareBlockedAudioMimes())
+    }
+
+    @Test
+    fun `AudioDecoderMode HARDWARE leert die HW-Sperrliste`() {
+        repository.addHardwareBlockedAudioMime("audio/eac3")
+
+        repository.setAudioDecoderMode(AudioDecoderMode.SOFTWARE)
+        assertEquals(setOf("audio/eac3"), repository.getHardwareBlockedAudioMimes())
+
+        repository.setAudioDecoderMode(AudioDecoderMode.HARDWARE)
+        assertTrue(repository.getHardwareBlockedAudioMimes().isEmpty())
     }
 }
