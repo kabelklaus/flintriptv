@@ -11,7 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.launch
+import com.flintr.tv.ui.utils.launchScrollToTopIfScrolled
 import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
@@ -129,13 +129,7 @@ fun VODContent(params: VODContentParams) {
     
     // Load new category streams (all movies from last 7 days)
     LaunchedEffect(params.selectedCategoryId) {
-        val gridState = params.lazyGridState
-        if (gridState.firstVisibleItemIndex != 0 || gridState.firstVisibleItemScrollOffset != 0) {
-            // Fire the scroll reset immediately as a detached child job: scrollToItem suspends
-            // until a layout pass arrives (which may never come while the grid is empty/static),
-            // so it must not block the load below — and cancellation on the next key change reaps it.
-            launch { gridState.scrollToItem(0) }
-        }
+        launchScrollToTopIfScrolled(params.lazyGridState)
 
         when {
             isNewCategory -> {
