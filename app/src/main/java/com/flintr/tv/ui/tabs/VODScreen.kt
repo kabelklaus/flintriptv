@@ -129,6 +129,11 @@ fun VODContent(params: VODContentParams) {
     
     // Load new category streams (all movies from last 7 days)
     LaunchedEffect(params.selectedCategoryId) {
+        // Fire the scroll reset immediately as a detached child job: scrollToItem suspends
+        // until a layout pass arrives (which may never come while the grid is empty/static),
+        // so it must not block the load below — and cancellation on the next key change reaps it.
+        launch { params.lazyGridState.scrollToItem(0) }
+
         when {
             isNewCategory -> {
                 loadNewCategoryStreams(
@@ -159,10 +164,6 @@ fun VODContent(params: VODContentParams) {
                 )
             }
         }
-        // scrollToItem suspends until a layout pass arrives; with an empty/static grid that can
-        // take arbitrarily long. Run it in a child job so the effect completes deterministically
-        // and the previous category's scroll job is cancelled by the next key change.
-        launch { params.lazyGridState.scrollToItem(0) }
     }
     
     // Don't automatically request focus when streams are loaded
