@@ -436,9 +436,17 @@ class SeriesDetailViewModel @Inject constructor(
     }
 
     /**
-     * Loads cast photos from TMDB for [detail]'s tmdbId and matches them onto [detail]'s cast
-     * names. Unmatched names (no tmdbId, no TMDB match, or no profile photo) simply get no map
-     * entry - the cast section falls back to its initial-letter stamp for those.
+     * Loads the cast for [detail]'s tmdbId from TMDB's aggregate_credits (full series cast,
+     * already capped to 25 by [TmdbCastClient]).
+     *
+     * Liefert TMDB mindestens so viele Mitglieder wie Xtream (`detail.cast`) UND taucht darunter
+     * mindestens ein Anubis-Name wieder auf, wird TMDB zur Anzeige-Quelle: Xtream-Serien wie
+     * Supernatural liefern oft nur die aktuelle Staffel (3 Namen), TMDB die gesamte Besetzung.
+     * Namen und Fotos kommen dann 1:1 aus derselben Liste, kein Name-Matching noetig. Der
+     * Namens-Treffer ist ein Plausibilitaets-Check gegen eine falsche tmdbId: ohne ihn wuerde eine
+     * zufaellig groessere, aber komplett fremde Besetzung die korrekten Anubis-Namen ersetzen.
+     * Fehlt der Treffer oder liefert TMDB weniger Mitglieder, bleiben die Xtream-Namen und Fotos
+     * werden wie bisher per Namens-Matching zugeordnet.
      */
     private suspend fun loadCastPhotos(detail: DetailDisplayData?) {
         val tmdbId = detail?.tmdbId?.takeIf { it.isNotBlank() } ?: return
@@ -446,27 +454,50 @@ class SeriesDetailViewModel @Inject constructor(
         if (castNames.isEmpty()) return
 
         val members = tmdbCastClient.tvCredits(tmdbId)
-        val photos = matchCastPhotos(castNames, members)
-        _uiState.update { it.copy(castPhotos = photos) }
+        val nonBlankMembers = members.filter { it.name.isNotBlank() }
+        val hasPlausibleMatch = nonBlankMembers.any { member ->
+            castNames.any { name -> normalizeCastName(name) == normalizeCastName(member.name) }
+        }
+        if (nonBlankMembers.size >= castNames.size && hasPlausibleMatch) {
+            val photos = dedupeByNormalizedName(nonBlankMembers).values.mapNotNull { member ->
+                member.validProfilePath()?.let { path -> member.name to "$TMDB_IMAGE_BASE_URL$path" }
+            }.toMap()
+            _uiState.update { state ->
+                state.copy(
+                    detail = state.detail?.copy(cast = nonBlankMembers.map { it.name }),
+                    castPhotos = photos
+                )
+            }
+        } else {
+            val photos = matchCastPhotos(castNames, members)
+            _uiState.update { it.copy(castPhotos = photos) }
+        }
     }
 
     private fun matchCastPhotos(castNames: List<String>, members: List<TmdbCastMember>): Map<String, String> {
         if (members.isEmpty()) return emptyMap()
-        // Bei normalisierten Namens-Duplikaten gewinnt deterministisch der Eintrag mit Foto,
-        // statt von der (zufaelligen) API-Reihenfolge abzuhaengen.
-        val membersByNormalizedName = mutableMapOf<String, TmdbCastMember>()
-        for (member in members) {
-            val key = normalizeCastName(member.name)
-            val existing = membersByNormalizedName[key]
-            if (existing == null || (existing.validProfilePath() == null && member.validProfilePath() != null)) {
-                membersByNormalizedName[key] = member
-            }
-        }
+        val membersByNormalizedName = dedupeByNormalizedName(members)
         return castNames.mapNotNull { name ->
             val profilePath = membersByNormalizedName[normalizeCastName(name)]?.validProfilePath()
                 ?: return@mapNotNull null
             name to "$TMDB_IMAGE_BASE_URL$profilePath"
         }.toMap()
+    }
+
+    /**
+     * Bei normalisierten Namens-Duplikaten gewinnt deterministisch der Eintrag mit Foto, statt
+     * von der (zufaelligen) API-Reihenfolge abzuhaengen.
+     */
+    private fun dedupeByNormalizedName(members: List<TmdbCastMember>): Map<String, TmdbCastMember> {
+        val result = mutableMapOf<String, TmdbCastMember>()
+        for (member in members) {
+            val key = normalizeCastName(member.name)
+            val existing = result[key]
+            if (existing == null || (existing.validProfilePath() == null && member.validProfilePath() != null)) {
+                result[key] = member
+            }
+        }
+        return result
     }
 
     private fun TmdbCastMember.validProfilePath(): String? = profilePath?.takeIf { it.startsWith("/") }

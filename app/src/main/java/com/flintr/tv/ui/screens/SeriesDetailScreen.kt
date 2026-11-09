@@ -534,7 +534,7 @@ private fun SeasonTile(
                 .fillMaxWidth()
                 .height(230.dp)
                 .clip(shape)
-                .background(colors.bgCard)
+                .background(Color.Transparent)
                 .testTag("season-poster-${season.seasonNumber}")
         ) {
             if (season.posterUrl != null) {

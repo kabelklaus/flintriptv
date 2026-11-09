@@ -506,8 +506,10 @@ class SeriesDetailViewModelTest {
     }
 
     @Test
-    fun `Cast-Name mit Umlaut und doppeltem Leerzeichen matcht normalisierten TMDB Namen`() = runTest {
-        stubHappyPath(series.copy(tmdbId = "99", cast = "Penélope  Cruz"))
+    fun `Cast-Name mit Umlaut und doppeltem Leerzeichen matcht normalisierten TMDB Namen im Fallback-Pfad`() = runTest {
+        // Xtream liefert 2 Namen, TMDB nur 1 Treffer - TMDB unterliegt Xtream an Groesse, der
+        // Namens-Matching-Fallback bleibt also aktiv und muss die Umlaut-Normalisierung testen.
+        stubHappyPath(series.copy(tmdbId = "99", cast = "Penélope  Cruz, Other"))
         coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
             TmdbCastMember(id = 1, name = "penelope cruz", profilePath = "/penelope.jpg")
         )
@@ -518,6 +520,91 @@ class SeriesDetailViewModelTest {
             mapOf("Penélope  Cruz" to "https://image.tmdb.org/t/p/w185/penelope.jpg"),
             vm.uiState.value.castPhotos
         )
+        assertEquals(listOf("Penélope  Cruz", "Other"), vm.uiState.value.detail?.cast)
+    }
+
+    @Test
+    fun `TMDB-Cast grösser als Xtream-Cast wird zur Anzeige-Quelle`() = runTest {
+        // Supernatural-Fall: Xtream liefert nur 3 Namen (letzte Staffel), TMDB (aggregate_credits)
+        // liefert die gesamte Besetzung - TMDB gewinnt, Namen/Fotos kommen 1:1 aus derselben Liste.
+        // "Jared Padalecki" taucht in beiden Listen auf und erfuellt damit den Plausibilitaets-Check (R1).
+        stubHappyPath(series.copy(tmdbId = "99", cast = "Jared Padalecki, Bob, Charlie"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "Jared Padalecki", profilePath = "/jared.jpg"),
+            TmdbCastMember(id = 2, name = "Jensen Ackles", profilePath = "/jensen.jpg"),
+            TmdbCastMember(id = 3, name = "Misha Collins", profilePath = null),
+            TmdbCastMember(id = 4, name = "Mark Sheppard", profilePath = "/mark.jpg"),
+            TmdbCastMember(id = 5, name = "Samantha Smith", profilePath = "/samantha.jpg")
+        )
+
+        val vm = viewModel()
+        val state = vm.uiState.value
+
+        assertEquals(
+            listOf("Jared Padalecki", "Jensen Ackles", "Misha Collins", "Mark Sheppard", "Samantha Smith"),
+            state.detail?.cast
+        )
+        assertEquals(
+            mapOf(
+                "Jared Padalecki" to "https://image.tmdb.org/t/p/w185/jared.jpg",
+                "Jensen Ackles" to "https://image.tmdb.org/t/p/w185/jensen.jpg",
+                "Mark Sheppard" to "https://image.tmdb.org/t/p/w185/mark.jpg",
+                "Samantha Smith" to "https://image.tmdb.org/t/p/w185/samantha.jpg"
+            ),
+            state.castPhotos
+        )
+    }
+
+    @Test
+    fun `TMDB-Cast kleiner als Xtream-Cast behaelt Xtream-Namen mit Match-Fotos`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "99", cast = "Alice, Bob, Charlie"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "Alice", profilePath = "/alice.jpg"),
+            TmdbCastMember(id = 2, name = "Bob", profilePath = "/bob.jpg")
+        )
+
+        val vm = viewModel()
+        val state = vm.uiState.value
+
+        assertEquals(listOf("Alice", "Bob", "Charlie"), state.detail?.cast)
+        assertEquals(
+            mapOf(
+                "Alice" to "https://image.tmdb.org/t/p/w185/alice.jpg",
+                "Bob" to "https://image.tmdb.org/t/p/w185/bob.jpg"
+            ),
+            state.castPhotos
+        )
+    }
+
+    @Test
+    fun `TMDB- und Xtream-Cast gleicher Groesse mit passendem Namen lassen TMDB gewinnen`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "99", cast = "Alice, Bob, Charlie"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "Alice", profilePath = "/alice.jpg"),
+            TmdbCastMember(id = 2, name = "Dana", profilePath = "/dana.jpg"),
+            TmdbCastMember(id = 3, name = "Eve", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertEquals(listOf("Alice", "Dana", "Eve"), vm.uiState.value.detail?.cast)
+    }
+
+    @Test
+    fun `TMDB-Cast ohne jeden passenden Namen bleibt trotz gleicher oder groesserer Groesse Fallback`() = runTest {
+        // Plausibilitaets-Check (R1): eine falsche tmdbId darf die korrekten Anubis-Namen nicht
+        // durch eine komplett fremde Besetzung ersetzen, auch wenn diese zahlenmaessig passt.
+        stubHappyPath(series.copy(tmdbId = "99", cast = "Alice, Bob, Charlie"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "Dana", profilePath = "/dana.jpg"),
+            TmdbCastMember(id = 2, name = "Eve", profilePath = "/eve.jpg"),
+            TmdbCastMember(id = 3, name = "Frank", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertEquals(listOf("Alice", "Bob", "Charlie"), vm.uiState.value.detail?.cast)
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
     }
 
     @Test

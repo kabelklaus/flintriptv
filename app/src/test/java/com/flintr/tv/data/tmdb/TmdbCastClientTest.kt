@@ -96,6 +96,55 @@ class TmdbCastClientTest {
         }
     """.trimIndent()
 
+    /**
+     * Live gegen api.themoviedb.org/3/tv/1622/aggregate_credits verifiziertes Schema (Supernatural):
+     * kein `character` direkt am Eintrag, stattdessen `roles[].character` + `total_episode_count`.
+     */
+    private val aggregateCastJson = """
+        {
+          "cast": [
+            {
+              "adult": false,
+              "gender": 2,
+              "id": 1234,
+              "known_for_department": "Acting",
+              "name": "Jared Padalecki",
+              "original_name": "Jared Padalecki",
+              "popularity": 10.0,
+              "profile_path": "/jared.jpg",
+              "roles": [
+                { "credit_id": "abc", "character": "Sam Winchester", "episode_count": 327 }
+              ],
+              "total_episode_count": 327,
+              "order": 0
+            },
+            {
+              "adult": false,
+              "gender": 2,
+              "id": 5678,
+              "known_for_department": "Acting",
+              "name": "Jensen Ackles",
+              "original_name": "Jensen Ackles",
+              "popularity": 9.0,
+              "profile_path": null,
+              "roles": [],
+              "total_episode_count": 0,
+              "order": 1
+            }
+          ],
+          "crew": [],
+          "id": 1622
+        }
+    """.trimIndent()
+
+    /** 31 TV-Cast-Eintraege (nur `order`/`name` relevant) - prueft den Cap auf 25. */
+    private fun aggregateCastJsonWithCount(count: Int): String {
+        val entries = (0 until count).joinToString(",") { index ->
+            """{"id": $index, "name": "Member $index", "profile_path": null, "roles": [], "order": $index}"""
+        }
+        return """{"cast": [$entries]}"""
+    }
+
     // -- URL-Bildung ----------------------------------------------------
 
     @Test
@@ -115,17 +164,69 @@ class TmdbCastClientTest {
     }
 
     @Test
-    fun `tvCredits baut Pfad fuer tv`() = runBlocking {
+    fun `tvCredits baut Pfad fuer tv aggregate_credits`() = runBlocking {
         assumeTrue(apiKey.isNotBlank())
         var capturedUrl: String? = null
         val (okHttpClient, _) = fakeClient { request ->
             capturedUrl = request.url.toString()
-            jsonResponse(request, 200, castJson)
+            jsonResponse(request, 200, aggregateCastJson)
         }
 
-        client(okHttpClient).tvCredits("1399")
+        client(okHttpClient).tvCredits("1622")
 
-        assertTrue(capturedUrl!!.startsWith("https://api.themoviedb.org/3/tv/1399/credits"))
+        assertTrue(capturedUrl!!.startsWith("https://api.themoviedb.org/3/tv/1622/aggregate_credits"))
+        assertTrue(capturedUrl!!.contains("api_key=$apiKey"))
+    }
+
+    @Test
+    fun `tvCredits parst character aus roles und order unveraendert`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val (okHttpClient, _) = fakeClient { request -> jsonResponse(request, 200, aggregateCastJson) }
+
+        val result = client(okHttpClient).tvCredits("1622")
+
+        assertEquals(2, result.size)
+        assertEquals("Jared Padalecki", result[0].name)
+        assertEquals("Sam Winchester", result[0].character)
+        assertEquals("/jared.jpg", result[0].profilePath)
+        assertEquals(0, result[0].order)
+        assertEquals("Jensen Ackles", result[1].name)
+        assertNull(result[1].character)
+        assertEquals(1, result[1].order)
+    }
+
+    @Test
+    fun `tvCredits kappt auf die ersten 25 Eintraege`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val (okHttpClient, _) = fakeClient { request -> jsonResponse(request, 200, aggregateCastJsonWithCount(31)) }
+
+        val result = client(okHttpClient).tvCredits("1622")
+
+        assertEquals(25, result.size)
+        assertEquals("Member 0", result[0].name)
+        assertEquals("Member 24", result[24].name)
+    }
+
+    @Test
+    fun `tvCredits kappt nicht bei exakt 25 Eintraegen`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val (okHttpClient, _) = fakeClient { request -> jsonResponse(request, 200, aggregateCastJsonWithCount(25)) }
+
+        val result = client(okHttpClient).tvCredits("1622")
+
+        assertEquals(25, result.size)
+        assertEquals("Member 24", result[24].name)
+    }
+
+    @Test
+    fun `tvCredits kappt bei 26 Eintraegen auf die ersten 25`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val (okHttpClient, _) = fakeClient { request -> jsonResponse(request, 200, aggregateCastJsonWithCount(26)) }
+
+        val result = client(okHttpClient).tvCredits("1622")
+
+        assertEquals(25, result.size)
+        assertEquals("Member 24", result[24].name)
     }
 
     // -- Parsing ----------------------------------------------------------
@@ -227,6 +328,20 @@ class TmdbCastClientTest {
 
         val first = tmdbCastClient.movieCredits("550")
         val second = tmdbCastClient.movieCredits("550")
+
+        assertTrue(first.isEmpty())
+        assertTrue(second.isEmpty())
+        assertEquals(1, hits.get())
+    }
+
+    @Test
+    fun `leeres cast-Array aus tv aggregate_credits wird gecacht`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val (okHttpClient, hits) = fakeClient { request -> jsonResponse(request, 200, """{"cast": []}""") }
+        val tmdbCastClient = client(okHttpClient)
+
+        val first = tmdbCastClient.tvCredits("1622")
+        val second = tmdbCastClient.tvCredits("1622")
 
         assertTrue(first.isEmpty())
         assertTrue(second.isEmpty())
