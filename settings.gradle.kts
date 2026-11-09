@@ -21,6 +21,12 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Pins the native-code Jellyfin FFmpeg decoder to Maven Central specifically, so no
+        // other (e.g. future) repository in this list can silently serve a substitute build.
+        exclusiveContent {
+            forRepository { mavenCentral() }
+            filter { includeGroup("org.jellyfin.media3") }
+        }
     }
 }
 
