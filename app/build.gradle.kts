@@ -41,8 +41,8 @@ android {
         applicationId = "com.flintr.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 115
-        versionName = "2.53.0"
+        versionCode = 117
+        versionName = "2.54.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -104,10 +104,14 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             // App-Name für Debug kommt aus src/debug/res/values/strings.xml (AGP 9: resValues im BuildType deaktiviert)
+            // FFmpeg decoder (.so): x86_64 only for emulator builds
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            // armeabi-v7a is required: many TV boxes run a 32-bit userland
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -252,6 +256,8 @@ dependencies {
     implementation(libs.media3.ui)
     implementation(libs.media3.hls)
     implementation(libs.media3.session)
+    // Software-Audio-Decoder (ac3/eac3/dts/truehd) für Geräte ohne funktionierenden HW-Decoder; LGPL, siehe THIRD_PARTY_NOTICES.md
+    implementation(libs.media3.ffmpeg.decoder)
     
     // Image Loading
     implementation(libs.coil.compose)

@@ -224,16 +224,30 @@ fun SettingsPlayback(
                                 onBack()
                             }
                         )
+                        Text(
+                            text = stringResource(R.string.audio_decoder_hint),
+                            fontSize = FontSizes.fontSizeXS,
+                            color = colors.textSecondary
+                        )
                         if (isTvDevice) {
-                            SwitchSetting(
-                                label = "Audio-Passthrough",
-                                checked = audioPassthrough,
-                                onCheckedChange = {
-                                    audioPassthrough = it
-                                    playbackSettingsRepository.setAudioPassthroughEnabled(it)
-                                },
-                                colors = colors
-                            )
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(Dimensions.spacingXXS)
+                            ) {
+                                SwitchSetting(
+                                    label = "Audio-Passthrough",
+                                    checked = audioPassthrough,
+                                    onCheckedChange = {
+                                        audioPassthrough = it
+                                        playbackSettingsRepository.setAudioPassthroughEnabled(it)
+                                    },
+                                    colors = colors
+                                )
+                                Text(
+                                    text = stringResource(R.string.audio_passthrough_warning),
+                                    fontSize = FontSizes.fontSizeXS,
+                                    color = colors.textSecondary
+                                )
+                            }
                         }
                         PreferredAudioCodecSelector(
                             selectedCodec = preferredAudioCodec,
