@@ -1,6 +1,7 @@
 package com.flintr.tv.ui.screens
 
 import android.app.Activity
+import android.os.Handler
 import android.util.Log
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -39,8 +40,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.AudioSink
-import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -93,6 +96,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.flintr.tv.R
 import com.flintr.tv.utils.error.reportError
+import com.flintr.tv.utils.error.reportWarning
 import androidx.media3.session.MediaSession
 import androidx.media3.common.MediaMetadata
 import java.util.UUID
@@ -147,7 +151,9 @@ private fun createBasicAuthHeader(username: String, password: String): String {
 private fun createExoPlayer(
     context: Context,
     credentials: com.flintr.tv.data.local.Credentials?,
-    audioDecoderMode: com.flintr.tv.data.local.AudioDecoderMode
+    audioDecoderMode: com.flintr.tv.data.local.AudioDecoderMode,
+    audioPassthroughEnabled: Boolean,
+    blockedAudioMimes: () -> Set<String>
 ): ExoPlayer {
     // Configure LoadControl with optimized buffer settings to prevent main thread blocking
     val allocator = DefaultAllocator(true, 16 * 1024)
@@ -166,26 +172,51 @@ private fun createExoPlayer(
     // Configure RenderersFactory based on audio decoder setting.
     // The audio sink downmixes multichannel PCM to stereo so devices without a
     // multichannel AudioTrack (e.g. 5.1 over HDMI to a stereo TV) don't fail.
+    // Audio MIMEs whose hardware decoder failed on this device are hidden from the
+    // MediaCodec renderers, so the FFmpeg extension renderer (or another track) takes over.
     val renderersFactory = object : DefaultRenderersFactory(context) {
+        // enableFloatOutput is ignored on purpose, see AUDIO_SINK_FLOAT_OUTPUT.
         override fun buildAudioSink(
             context: Context,
             enableFloatOutput: Boolean,
             enableAudioTrackPlaybackParams: Boolean
-        ): AudioSink = DefaultAudioSink.Builder(context)
-            .setEnableFloatOutput(enableFloatOutput)
-            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-            .setAudioProcessors(arrayOf(createStereoDownmixProcessor()))
-            .build()
+        ): AudioSink = buildDownmixAudioSink(context, audioPassthroughEnabled, enableAudioTrackPlaybackParams)
+
+        // Loads the FFmpeg extension ourselves (RestrictedFfmpegAudioRenderer) instead of the
+        // base class's reflection-based, unrestricted load: FFmpeg is a bundled, always-present
+        // dependency here, not an optional extension, and the stock renderer would otherwise
+        // also decode AAC/MP3/Opus/etc. in SOFTWARE mode - see isFfmpegAllowedMime.
+        override fun buildAudioRenderers(
+            context: Context,
+            extensionRendererMode: Int,
+            mediaCodecSelector: MediaCodecSelector,
+            enableDecoderFallback: Boolean,
+            audioSink: AudioSink,
+            eventHandler: Handler,
+            eventListener: AudioRendererEventListener,
+            out: ArrayList<Renderer>
+        ) {
+            val firstAudioRendererIndex = out.indexOfFirst { it.trackType == C.TRACK_TYPE_AUDIO }
+            super.buildAudioRenderers(
+                context,
+                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
+                mediaCodecSelector,
+                enableDecoderFallback,
+                audioSink,
+                eventHandler,
+                eventListener,
+                out
+            )
+            if (extensionRendererMode == DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF) return
+            out.add(
+                decideFfmpegInsertionIndex(firstAudioRendererIndex, out.size, extensionRendererMode),
+                RestrictedFfmpegAudioRenderer(eventHandler, eventListener, audioSink)
+            )
+        }
     }.apply {
         setEnableDecoderFallback(true)
-        when (audioDecoderMode) {
-            com.flintr.tv.data.local.AudioDecoderMode.SOFTWARE ->
-                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-            com.flintr.tv.data.local.AudioDecoderMode.HARDWARE ->
-                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
-            com.flintr.tv.data.local.AudioDecoderMode.AUTO ->
-                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-        }
+        setMediaCodecSelector(blockingMediaCodecSelector(blockedAudioMimes))
+        setExtensionRendererMode(extensionRendererModeFor(audioDecoderMode))
     }
     
     // Configure HTTP DataSource with custom headers to avoid 513 errors
@@ -286,23 +317,37 @@ private fun getErrorMessage(context: Context, error: PlaybackException): String 
  */
 private fun createPlayerListener(
     context: Context,
-    onError: (String) -> Unit,
-    onPlaybackStateChanged: (Int) -> Unit,
-    onIsPlayingChanged: (Boolean) -> Unit,
-    onPlayWhenReadyChanged: (Boolean) -> Unit
+    callbacks: PlayerSetupCallbacks,
+    onBehindLiveWindow: (PlaybackException) -> Boolean,
+    onAudioDecoderFailure: (PlaybackException) -> Boolean,
+    isCurrentStreamFailure: () -> Boolean,
+    onStateReady: () -> Unit
 ): Player.Listener {
     return object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
             reportError("PlayerScreen", "Player Error:", error)
+            // Live window moved past the paused position - rejoin at the live edge instead of
+            // showing an error dialog. Must run before the audio-decoder fallback below: both
+            // react to onPlayerError, and a behind-live-window error must never fall through to
+            // the HW->SW audio retry path.
+            if (onBehindLiveWindow(error)) return
             if (error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
                 error.errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED) {
                 Log.w("PlayerScreen", "Decoder error: code=${error.errorCode}, message=${error.message}")
             }
-            onError(getErrorMessage(context, error))
+            // true = handled by the hardware→software audio fallback, no error dialog
+            if (onAudioDecoderFailure(error)) return
+            // A delayed generic error for a channel the user already zapped away from must not
+            // surface an error dialog for the new, unrelated stream - mirrors the guard in the
+            // two branches above.
+            if (isCurrentStreamFailure()) {
+                callbacks.onError(getErrorMessage(context, error))
+            }
         }
 
         override fun onPlaybackStateChanged(state: Int) {
-            onPlaybackStateChanged(state)
+            callbacks.onPlaybackStateChanged(state)
+            if (state == Player.STATE_READY) onStateReady()
             if (BuildConfig.DEBUG) {
                 val stateString = when (state) {
                     Player.STATE_IDLE -> "STATE_IDLE"
@@ -316,11 +361,11 @@ private fun createPlayerListener(
         }
         
         override fun onIsPlayingChanged(playing: Boolean) {
-            onIsPlayingChanged(playing)
+            callbacks.onIsPlayingChanged(playing)
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-            onPlayWhenReadyChanged(playWhenReady)
+            callbacks.onPlayWhenReadyChanged(playWhenReady)
         }
     }
 }
@@ -638,7 +683,9 @@ private data class PlayerSetupCallbacks(
     val onStreamPreparingChanged: (Boolean) -> Unit,
     val onPlaybackStateChanged: (Int) -> Unit,
     val onIsPlayingChanged: (Boolean) -> Unit,
-    val onPlayWhenReadyChanged: (Boolean) -> Unit
+    val onPlayWhenReadyChanged: (Boolean) -> Unit,
+    /** A hardware audio decoder failed and playback was retried; true = software decoder available. */
+    val onAudioFallback: (softwareDecoderAvailable: Boolean) -> Unit
 )
 
 /**
@@ -672,10 +719,26 @@ private fun rememberPlayerSetup(
         ).playbackSettingsRepository()
     }
     val audioDecoderMode = playbackSettingsRepository.getAudioDecoderMode()
+    val audioPassthroughEnabled = playbackSettingsRepository.isAudioPassthroughEnabled()
 
-    val exoPlayer = remember(credentials, audioDecoderMode) {
-        createExoPlayer(context, credentials, audioDecoderMode)
+    val exoPlayer = remember(credentials, audioDecoderMode, audioPassthroughEnabled) {
+        createExoPlayer(
+            context,
+            credentials,
+            audioDecoderMode,
+            audioPassthroughEnabled,
+            blockedAudioMimes = playbackSettingsRepository::getHardwareBlockedAudioMimes
+        )
     }
+    // Guards the audio decoder fallback to one retry per stream (reset on stream change below).
+    val audioFallbackRetried = remember { mutableStateOf(false) }
+    val userOverrodeAudioTrack = remember { mutableStateOf(false) }
+    // Caps consecutive live-rejoin attempts (reset on STATE_READY and on stream change below).
+    val rejoinAttempts = remember { mutableStateOf(0) }
+    // The error listener below is attached to DisposableEffect(exoPlayer), so it outlives
+    // channel changes; rememberUpdatedState keeps its closure reading the current streamUrl
+    // instead of the one captured when the listener was created.
+    val currentStreamUrl = rememberUpdatedState(streamUrl)
     // Explicit unique session ID: without it, Builder defaults to "". During the
     // next-episode navigation transition, old and new PlayerScreen compositions
     // briefly coexist (AnimatedContent crossfade), so two MediaSessions with the
@@ -690,10 +753,61 @@ private fun rememberPlayerSetup(
     DisposableEffect(exoPlayer) {
         val listener = createPlayerListener(
             context = context,
-            onError = callbacks.onError,
-            onPlaybackStateChanged = callbacks.onPlaybackStateChanged,
-            onIsPlayingChanged = callbacks.onIsPlayingChanged,
-            onPlayWhenReadyChanged = callbacks.onPlayWhenReadyChanged
+            callbacks = callbacks,
+            onBehindLiveWindow = { error ->
+                if (isFailureForCurrentStream(exoPlayer.currentMediaItem, currentStreamUrl.value) &&
+                    decideLiveRejoin(isBehindLiveWindowError(error), rejoinAttempts.value)
+                ) {
+                    rejoinAttempts.value++
+                    reportWarning(
+                        "PlayerScreen",
+                        "Live window fell behind during pause — rejoining live edge",
+                        error
+                    )
+                    val wasPlayWhenReady = exoPlayer.playWhenReady
+                    exoPlayer.seekToDefaultPosition()
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = wasPlayWhenReady
+                    true
+                } else {
+                    false
+                }
+            },
+            onAudioDecoderFailure = { error ->
+                if (!isFailureForCurrentStream(exoPlayer.currentMediaItem, currentStreamUrl.value)) {
+                    false
+                } else when (
+                    val decision = decideAudioFallback(
+                        error.errorCode,
+                        findFailedDecoderMime(error),
+                        playbackSettingsRepository.getHardwareBlockedAudioMimes(),
+                        audioFallbackRetried.value,
+                        audioDecoderMode
+                    )
+                ) {
+                    is AudioFallbackDecision.BlockAndRetry -> {
+                        playbackSettingsRepository.addHardwareBlockedAudioMime(decision.mimeType)
+                        audioFallbackRetried.value = true
+                        reportWarning("AudioFallback", "HW decoder failed for ${decision.mimeType}, retrying", error)
+                        // A language pre-selection may have pinned the now-blocked track as an
+                        // explicit override; clear it so the retry can pick another track/decoder.
+                        exoPlayer.trackSelectionParameters =
+                            clearAudioOverridesForRetry(exoPlayer.trackSelectionParameters)
+                        userOverrodeAudioTrack.value = false
+                        // Media item stays set: VOD keeps its position, live reconnects.
+                        exoPlayer.prepare()
+                        callbacks.onAudioFallback(
+                            isSoftwareAudioDecoderAvailable(audioDecoderMode, decision.mimeType)
+                        )
+                        true
+                    }
+                    AudioFallbackDecision.PassThrough -> false
+                }
+            },
+            isCurrentStreamFailure = {
+                isFailureForCurrentStream(exoPlayer.currentMediaItem, currentStreamUrl.value)
+            },
+            onStateReady = { rejoinAttempts.value = 0 }
         )
 
         exoPlayer.addListener(listener)
@@ -712,13 +826,13 @@ private fun rememberPlayerSetup(
         }
     }
 
-    val userOverrodeAudioTrack = remember { mutableStateOf(false) }
-
     // Handle stream URL changes (for channel switching)
     DisposableEffect(exoPlayer, streamUrl) {
         if (BuildConfig.DEBUG) Log.d("PlayerScreen", "DisposableEffect triggered for streamUrl: $streamUrl")
         callbacks.onStreamPreparingChanged(true)
         userOverrodeAudioTrack.value = false
+        audioFallbackRetried.value = false
+        rejoinAttempts.value = 0
 
         // Applies the persisted subtitles/audio-language/max-resolution settings once the
         // new stream's tracks are known (can't select a language-matching track or judge
@@ -1332,7 +1446,12 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
         subtitles = contentInfoSeriesData?.currentEpisode?.subtitles,
         callbacks = PlayerSetupCallbacks(
             onError = { message -> state.errorMessage = message },
-            onStreamPreparingChanged = { preparing -> state.isPreparingStream = preparing },
+            onStreamPreparingChanged = { preparing ->
+                state.isPreparingStream = preparing
+                // Explicit reset on stream change: a stale error from the previous channel must
+                // not stick around once the user has switched away from it.
+                if (preparing) state.errorMessage = null
+            },
             onPlaybackStateChanged = { playbackStateValue ->
                 state.playbackState = playbackStateValue
                 if (playbackStateValue == Player.STATE_READY) {
@@ -1340,7 +1459,14 @@ fun PlayerScreen( // NOSONAR - Cognitive Complexity acceptable for UI compositio
                 }
             },
             onIsPlayingChanged = { playing -> state.isPlaying = playing },
-            onPlayWhenReadyChanged = { ready -> state.playWhenReady = ready }
+            onPlayWhenReadyChanged = { ready -> state.playWhenReady = ready },
+            onAudioFallback = { softwareDecoderAvailable ->
+                val message = if (softwareDecoderAvailable) R.string.audio_fallback_software
+                    else R.string.audio_fallback_no_decoder
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar(context.getString(message), duration = SnackbarDuration.Short)
+                }
+            }
         ),
         coroutineScope = coroutineScope
     )
