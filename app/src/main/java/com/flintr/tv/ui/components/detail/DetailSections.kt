@@ -160,7 +160,10 @@ fun <T> DetailRecommendationsSection(
         )
         LazyRow(
             state = listState,
-            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM),
+            // Wie DetailCastSection: ohne contentPadding klebt die fokussierte Randkarte am
+            // eigenen Clip-Rand der LazyRow und ihr Fokus-Ring/-Scale wird dort beschnitten.
+            contentPadding = PaddingValues(horizontal = Dimensions.spacingXS)
         ) {
             itemsIndexed(items = visibleRecommendations, key = { _, item -> key(item) }) { index, item ->
                 DetailRecommendationCard(

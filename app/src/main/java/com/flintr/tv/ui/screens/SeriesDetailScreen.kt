@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -380,6 +380,10 @@ private fun SeriesDetailContent(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
+                // Letzte Reihe darf nicht am Screen-Unterrand ankleben: ohne dieses Padding
+                // scrollt der Fokus die unterste Karte (inkl. Titelzeile) exakt bis zum
+                // Viewport-Rand, wo der Fokus-Scale/-Ring sichtbar beschnitten wird.
+                .padding(bottom = Dimensions.spacingXL)
         ) {
             CenteredHeaderBlock(viewportHeight = viewportHeight) {
                 DetailHeaderSection(
@@ -425,6 +429,10 @@ private fun SeriesDetailContent(
                     seasons.isNotEmpty() -> LazyRow(
                         state = seasonListState,
                         horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
+                        // Analog zur Besetzungsreihe (DetailCastSection): ohne contentPadding
+                        // klebt die fokussierte Randkachel am eigenen Clip-Rand der LazyRow und
+                        // ihr Fokus-Ring/-Scale wird dort beschnitten.
+                        contentPadding = PaddingValues(horizontal = Dimensions.spacingXS),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("series-detail-season-row")
@@ -498,8 +506,6 @@ private fun SeriesDetailContent(
                     onItemClick = { series -> onSeriesClick(series.seriesId) }
                 )
             }
-
-            Spacer(modifier = Modifier.height(Dimensions.spacingXL))
         }
     }
 }
