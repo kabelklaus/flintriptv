@@ -3,6 +3,7 @@ package com.flintr.tv.ui.utils
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -871,5 +872,18 @@ fun Modifier.createVerticalSwipeGestureModifier(
                 }
             }
         }
+    }
+}
+
+/**
+ * Resets a LazyGrid to the top when it is not already there.
+ *
+ * scrollToItem suspends until a layout pass arrives (which may never come while the
+ * grid is empty/static), so it must run as a detached child job — cancellation on the
+ * caller's key change reaps it, and it never blocks the load that follows.
+ */
+fun CoroutineScope.launchScrollToTopIfScrolled(gridState: LazyGridState) {
+    if (gridState.firstVisibleItemIndex != 0 || gridState.firstVisibleItemScrollOffset != 0) {
+        launch { gridState.scrollToItem(0) }
     }
 }

@@ -1700,6 +1700,13 @@ private fun AutoCloseDialogEffect(
     }
 }
 
+private val SPECIAL_CATEGORY_IDS = setOf(
+    WATCHLIST_CATEGORY_ID,
+    NEW_CATEGORY_ID,
+    IN_PROGRESS_CATEGORY_ID,
+    RECOMMENDED_CATEGORY_ID
+)
+
 /**
  * Determines the target category ID based on the current sorted categories and selection.
  * Returns null if the list is empty, the current ID if it exists in the list,
@@ -1710,10 +1717,11 @@ private fun resolveTargetCategoryId(
     selectedCategoryId: String?
 ): String? {
     if (sortedCategories.isEmpty()) return null
-    return if (sortedCategories.any { it.categoryId == selectedCategoryId }) {
+    return if (selectedCategoryId != null && sortedCategories.any { it.categoryId == selectedCategoryId }) {
         selectedCategoryId
     } else {
-        sortedCategories.first().categoryId
+        sortedCategories.firstOrNull { it.categoryId !in SPECIAL_CATEGORY_IDS }?.categoryId
+            ?: sortedCategories.first().categoryId
     }
 }
 

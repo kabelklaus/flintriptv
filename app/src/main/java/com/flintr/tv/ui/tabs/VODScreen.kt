@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineDispatcher
+import com.flintr.tv.ui.utils.launchScrollToTopIfScrolled
 import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
@@ -128,8 +129,7 @@ fun VODContent(params: VODContentParams) {
     
     // Load new category streams (all movies from last 7 days)
     LaunchedEffect(params.selectedCategoryId) {
-        // Reset scroll position when category changes
-        params.lazyGridState.scrollToItem(0)
+        launchScrollToTopIfScrolled(params.lazyGridState)
 
         when {
             isNewCategory -> {
