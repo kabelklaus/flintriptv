@@ -43,4 +43,21 @@ class FocusRingColorTest {
             focusRingColor(isFocused = true, onSelectionFill = true)
         )
     }
+
+    @Test
+    fun innerEdgeIsTransparentWhenNotFocused() {
+        assertEquals(
+            "Ein permanent sichtbarer Rand wirkt wie ein schwarzer Rahmen um das Poster",
+            Color.Transparent,
+            focusInnerEdgeColor(isFocused = false)
+        )
+    }
+
+    @Test
+    fun innerEdgeUsesBgPreviewWhenFocused() {
+        assertEquals(
+            DarkColors.bgPreview,
+            focusInnerEdgeColor(isFocused = true)
+        )
+    }
 }

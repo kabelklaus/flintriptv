@@ -42,6 +42,13 @@ fun focusRingColor(isFocused: Boolean, onSelectionFill: Boolean): Color = when {
 }
 
 /**
+ * Die Innenkantenfarbe auf Artwork. Nur bei Fokus sichtbar — sonst
+ * transparent, siehe Design-Kommentar an `onArtwork`.
+ */
+fun focusInnerEdgeColor(isFocused: Boolean): Color =
+    if (isFocused) DarkColors.bgPreview else Color.Transparent
+
+/**
  * Einheitliche Fokusdarstellung für alle fokussierbaren Elemente.
  *
  * @param isFocused ob das Element gerade den Fokus hält. Selektion gehört
@@ -49,8 +56,10 @@ fun focusRingColor(isFocused: Boolean, onSelectionFill: Boolean): Color = when {
  * @param onSelectionFill ob das Element auf der blauen Selektionsfüllung liegt.
  * @param onArtwork ob hinter dem Rahmen Bildmaterial liegt. Dann wird eine
  *   dunkle Innenkante ergänzt, damit der Rahmen sich auch von hellem Artwork
- *   absetzt. Die Einrückung ist bewusst konstant und nicht an den Fokus
- *   gekoppelt, damit beim Durchsteppen nichts springt.
+ *   absetzt. Die Innenkantenfarbe ist — wie der Außenring — an den Fokus
+ *   gekoppelt (Chris-Feedback: ein permanent sichtbarer Rand wirkte wie ein
+ *   schwarzer Rahmen um das Poster). Die Einrückung selbst (Padding) bleibt
+ *   bewusst konstant, damit beim Durchsteppen nichts springt.
  */
 // Sonar/Lint verlangt hier eine Non-Composable Modifier-Factory (z.B. via `composed {}`).
 // tvFocusRing ist der Kern des gerade stabilisierten TV-Fokus-Systems und wird von fünf
@@ -75,6 +84,11 @@ fun Modifier.tvFocusRing(
         animationSpec = tween(durationMillis = FocusRing.animationMillis),
         label = "focusRingScale"
     )
+    val innerEdgeColor by animateColorAsState(
+        targetValue = focusInnerEdgeColor(isFocused),
+        animationSpec = tween(durationMillis = FocusRing.animationMillis),
+        label = "focusInnerEdgeColor"
+    )
 
     return this
         .scale(elementScale)
@@ -85,7 +99,7 @@ fun Modifier.tvFocusRing(
                     .padding(FocusRing.width)
                     .border(
                         width = FocusRing.innerEdgeWidth,
-                        color = DarkColors.bgPreview,
+                        color = innerEdgeColor,
                         shape = shape
                     )
                     .padding(FocusRing.innerEdgeWidth)
