@@ -1717,7 +1717,7 @@ private fun resolveTargetCategoryId(
     selectedCategoryId: String?
 ): String? {
     if (sortedCategories.isEmpty()) return null
-    return if (sortedCategories.any { it.categoryId == selectedCategoryId }) {
+    return if (selectedCategoryId != null && sortedCategories.any { it.categoryId == selectedCategoryId }) {
         selectedCategoryId
     } else {
         sortedCategories.firstOrNull { it.categoryId !in SPECIAL_CATEGORY_IDS }?.categoryId
