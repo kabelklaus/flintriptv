@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.flintr.tv.data.local.CategoryVisibilityService
 import com.flintr.tv.data.local.CredentialsRepository
@@ -128,9 +129,6 @@ fun VODContent(params: VODContentParams) {
     
     // Load new category streams (all movies from last 7 days)
     LaunchedEffect(params.selectedCategoryId) {
-        // Reset scroll position when category changes
-        params.lazyGridState.scrollToItem(0)
-
         when {
             isNewCategory -> {
                 loadNewCategoryStreams(
@@ -161,6 +159,10 @@ fun VODContent(params: VODContentParams) {
                 )
             }
         }
+        // scrollToItem suspends until a layout pass arrives; with an empty/static grid that can
+        // take arbitrarily long. Run it in a child job so the effect completes deterministically
+        // and the previous category's scroll job is cancelled by the next key change.
+        launch { params.lazyGridState.scrollToItem(0) }
     }
     
     // Don't automatically request focus when streams are loaded
