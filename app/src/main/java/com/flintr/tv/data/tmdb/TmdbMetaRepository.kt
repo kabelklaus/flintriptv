@@ -30,6 +30,7 @@ import javax.inject.Singleton
 @Singleton
 class TmdbMetaRepository @Inject constructor(
     private val client: TmdbMetaClient,
+    private val discoverClient: TmdbDiscoverClient,
     private val cache: TmdbMetaCache,
     private val normalizer: TitleNormalizer,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher
@@ -273,6 +274,90 @@ class TmdbMetaRepository @Inject constructor(
             TmdbResult.Transient -> null
         }
     }
+
+    /** Top-bewertete tmdbIds pro Genre-Set, 24h gecacht, stale-fallback bei Transient. */
+    suspend fun discoverMovieIds(genreIds: List<Int>, pages: Int = 2): List<Int> =
+        discoverIds("movie", genreIds, pages)
+
+    suspend fun discoverTvIds(genreIds: List<Int>, pages: Int = 2): List<Int> =
+        discoverIds("tv", genreIds, pages)
+
+    /** Recommendations eines Anchors, 24h gecacht. */
+    suspend fun recommendationsFor(kind: String, tmdbId: String): List<Int> {
+        val key = "discover:rec:$kind:$tmdbId"
+        val now = now()
+        val entry = cache.loadAll()[key]
+        if (entry != null) {
+            if (entry.discoverIds != null && TmdbMetaCache.isFresh(entry, now)) {
+                return entry.discoverIds
+            }
+            if (isNegativeFresh(entry, now)) return emptyList()
+        }
+
+        val result = if (kind == "movie") {
+            discoverClient.movieRecommendations(tmdbId)
+        } else {
+            discoverClient.tvRecommendations(tmdbId)
+        }
+        return when (result) {
+            is TmdbResult.Data -> {
+                cache.putAll(mapOf(key to discoverEntry(result.value)))
+                result.value
+            }
+            TmdbResult.Negative -> {
+                cache.putAll(mapOf(key to negativeDiscoverEntry()))
+                emptyList()
+            }
+            TmdbResult.Transient -> entry?.discoverIds ?: emptyList()
+        }
+    }
+
+    /** Fetcht Pages sequenziell; Negative/leer bricht ab, Transient liefert stale IDs. */
+    private suspend fun discoverIds(kind: String, genreIds: List<Int>, pages: Int): List<Int> {
+        // Sortiert-distinct, damit ("28","18") und ("18","28") denselben Key treffen.
+        val genreKey = genreIds.distinct().sorted().joinToString("|")
+        val ids = mutableListOf<Int>()
+
+        for (page in 1..pages) {
+            val key = "discover:$kind:$genreKey:$page"
+            val now = now()
+            val entry = cache.loadAll()[key]
+            if (entry != null) {
+                if (entry.discoverIds != null && TmdbMetaCache.isFresh(entry, now)) {
+                    ids += entry.discoverIds
+                    continue
+                }
+                if (isNegativeFresh(entry, now)) break
+            }
+
+            val result = if (kind == "movie") {
+                discoverClient.discoverMovies(genreIds, page)
+            } else {
+                discoverClient.discoverTv(genreIds, page)
+            }
+            when (result) {
+                is TmdbResult.Data -> {
+                    cache.putAll(mapOf(key to discoverEntry(result.value)))
+                    ids += result.value
+                }
+                TmdbResult.Negative -> {
+                    cache.putAll(mapOf(key to negativeDiscoverEntry()))
+                    break
+                }
+                TmdbResult.Transient -> {
+                    entry?.discoverIds?.let { ids += it }
+                    return ids
+                }
+            }
+        }
+        return ids
+    }
+
+    private fun discoverEntry(ids: List<Int>): TmdbMetaCacheEntry =
+        TmdbMetaCacheEntry(discoverIds = ids, fetchedAtMs = now(), meta = null, negative = false)
+
+    private fun negativeDiscoverEntry(): TmdbMetaCacheEntry =
+        TmdbMetaCacheEntry(discoverIds = null, fetchedAtMs = now(), meta = null, negative = true)
 
     private suspend fun refreshFlow() {
         _metaFlow.value = cache.loadAll()

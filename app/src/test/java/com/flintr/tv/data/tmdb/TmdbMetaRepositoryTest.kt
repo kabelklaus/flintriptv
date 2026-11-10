@@ -30,11 +30,13 @@ class TmdbMetaRepositoryTest {
 
     private lateinit var cache: TmdbMetaCache
     private lateinit var client: TmdbMetaClient
+    private lateinit var discoverClient: TmdbDiscoverClient
 
     @Before
     fun setUp() {
         cache = TmdbMetaCache(tempDir, { nowRef.get() })
         client = mockk()
+        discoverClient = mockk()
     }
 
     @After
@@ -43,7 +45,7 @@ class TmdbMetaRepositoryTest {
     }
 
     private fun repository(): TmdbMetaRepository =
-        TmdbMetaRepository(client, cache, TitleNormalizer, Dispatchers.IO)
+        TmdbMetaRepository(client, discoverClient, cache, TitleNormalizer, Dispatchers.IO)
 
     private fun meta(id: Int, rating: Double = 8.0): TmdbMeta =
         TmdbMeta(
@@ -56,8 +58,14 @@ class TmdbMetaRepositoryTest {
     private fun entry(
         meta: TmdbMeta?,
         fetchedAtMs: Long = nowRef.get(),
-        negative: Boolean = false
-    ) = TmdbMetaCacheEntry(meta = meta, fetchedAtMs = fetchedAtMs, negative = negative)
+        negative: Boolean = false,
+        discoverIds: List<Int>? = null
+    ) = TmdbMetaCacheEntry(
+        meta = meta,
+        fetchedAtMs = fetchedAtMs,
+        negative = negative,
+        discoverIds = discoverIds
+    )
 
     private fun staleAt(): Long = nowRef.get() - TmdbMetaCache.TTL_MS - 60_000
 
@@ -237,5 +245,76 @@ class TmdbMetaRepositoryTest {
         assertEquals(1, repo.metaFlow.value.size)
         assertFalse(repo.metaFlow.value.containsKey("movie:1"))
         assertTrue(repo.metaFlow.value.containsKey("movie:2"))
+    }
+
+    @Test
+    fun `discoverMovieIds cached am sortierten Genre-Key und trifft beim zweiten Call`() = runBlocking {
+        coEvery { discoverClient.discoverMovies(listOf(18, 28), 1) } returns
+            TmdbResult.Data(listOf(1560520, 980431))
+        val repo = repository()
+
+        val first = repo.discoverMovieIds(listOf(18, 28), pages = 1)
+        val stored = cache.loadAll()["discover:movie:18|28:1"]
+
+        assertEquals(listOf(1560520, 980431), first)
+        assertEquals(listOf(1560520, 980431), stored!!.discoverIds)
+        assertFalse(stored.negative)
+        assertTrue(TmdbMetaCache.isFresh(stored, nowRef.get()))
+
+        val second = repo.discoverMovieIds(listOf(28, 18), pages = 1)
+
+        assertEquals(first, second)
+        coVerify(exactly = 1) { discoverClient.discoverMovies(listOf(18, 28), 1) }
+    }
+
+    @Test
+    fun `discover Transient liefert leer und schreibt nichts`() = runBlocking {
+        coEvery { discoverClient.discoverMovies(listOf(18), 1) } returns TmdbResult.Transient
+        val repo = repository()
+
+        val first = repo.discoverMovieIds(listOf(18), pages = 1)
+        assertTrue(first.isEmpty())
+        assertNull(cache.loadAll()["discover:movie:18:1"])
+
+        val second = repo.discoverMovieIds(listOf(18), pages = 1)
+        assertTrue(second.isEmpty())
+        coVerify(exactly = 2) { discoverClient.discoverMovies(listOf(18), 1) }
+    }
+
+    @Test
+    fun `discover Transient liefert abgelaufene stale IDs`() = runBlocking {
+        cache.putAll(
+            mapOf(
+                "discover:movie:18|28:1" to entry(
+                    meta = null,
+                    fetchedAtMs = staleAt(),
+                    discoverIds = listOf(1, 2, 3)
+                )
+            )
+        )
+        coEvery { discoverClient.discoverMovies(listOf(18, 28), 1) } returns TmdbResult.Transient
+        val repo = repository()
+
+        val ids = repo.discoverMovieIds(listOf(18, 28), pages = 1)
+
+        assertEquals(listOf(1, 2, 3), ids)
+    }
+
+    @Test
+    fun `recommendationsFor cached Hit und Miss am rec-Key`() = runBlocking {
+        coEvery { discoverClient.movieRecommendations("238") } returns
+            TmdbResult.Data(listOf(240, 242))
+        val repo = repository()
+
+        val first = repo.recommendationsFor("movie", "238")
+        val stored = cache.loadAll()["discover:rec:movie:238"]
+
+        assertEquals(listOf(240, 242), first)
+        assertEquals(listOf(240, 242), stored!!.discoverIds)
+
+        val second = repo.recommendationsFor("movie", "238")
+
+        assertEquals(first, second)
+        coVerify(exactly = 1) { discoverClient.movieRecommendations("238") }
     }
 }
