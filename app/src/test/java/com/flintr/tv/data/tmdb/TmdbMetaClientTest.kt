@@ -58,6 +58,8 @@ class TmdbMetaClientTest {
 
     private fun <T> TmdbResult<T>.dataOrNull(): T? = (this as? TmdbResult.Data<T>)?.value
 
+    private fun <T> FetchResult<T>.dataOrNull(): T? = (this as? FetchResult.Data<T>)?.value
+
     /** Live gegen api.themoviedb.org verifizierte Details (Godfather, 238). */
     private val movieJson = """
         {
@@ -235,6 +237,95 @@ class TmdbMetaClientTest {
         capturedUrl = null
         tmdbMetaClient.searchMovieId("X", null)
         assertFalse(capturedUrl!!.contains("year="))
+    }
+
+    // -- Kandidaten -----------------------------------------------------
+
+    @Test
+    fun `searchCandidates parst Movie-Titel und Release-Jahr`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val (okHttpClient, _) = fakeClient { request ->
+            jsonResponse(
+                request,
+                200,
+                """
+                {
+                  "page": 1,
+                  "results": [
+                    {"id": 603, "title": "The Matrix", "release_date": "1999-03-30"},
+                    {"id": 604, "title": "The Matrix Reloaded", "release_date": "2003-05-15"}
+                  ],
+                  "total_results": 2
+                }
+                """.trimIndent()
+            )
+        }
+
+        val candidates = client(okHttpClient)
+            .searchCandidates("movie", "The Matrix", 1999)
+            .dataOrNull()
+
+        assertEquals(
+            listOf(
+                TmdbSearchCandidate(603, "The Matrix", 1999),
+                TmdbSearchCandidate(604, "The Matrix Reloaded", 2003)
+            ),
+            candidates
+        )
+    }
+
+    @Test
+    fun `searchCandidates parst TV-Name und first_air_date`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val (okHttpClient, _) = fakeClient { request ->
+            jsonResponse(
+                request,
+                200,
+                """
+                {
+                  "page": 1,
+                  "results": [
+                    {"id": 1396, "name": "Breaking Bad", "first_air_date": "2008-01-20"}
+                  ],
+                  "total_results": 1
+                }
+                """.trimIndent()
+            )
+        }
+
+        val candidates = client(okHttpClient)
+            .searchCandidates("tv", "Breaking Bad", null)
+            .dataOrNull()
+
+        assertEquals(listOf(TmdbSearchCandidate(1396, "Breaking Bad", 2008)), candidates)
+    }
+
+    @Test
+    fun `searchCandidates mit blankem Titel liefert Transient ohne Netz-Call`() = runBlocking {
+        val (okHttpClient, hits) = fakeClient { request -> jsonResponse(request, 200, searchMovieJson) }
+
+        val result = client(okHttpClient).searchCandidates("movie", "   ", null)
+
+        assertEquals(FetchResult.Transient, result)
+        assertEquals(0, hits.get())
+    }
+
+    @Test
+    fun `searchCandidates 404 und leere Liste liefern Negative`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val (notFoundClient, _) = fakeClient { request -> jsonResponse(request, 404, "") }
+        val (emptyClient, _) = fakeClient { request ->
+            jsonResponse(request, 200, """{"page": 1, "results": [], "total_results": 0}""")
+        }
+
+        assertEquals(
+            FetchResult.Negative,
+            client(notFoundClient).searchCandidates("movie", "Nichts", null)
+        )
+        assertEquals(
+            FetchResult.Negative,
+            client(emptyClient).searchCandidates("movie", "Nichts", null)
+        )
     }
 
     // -- Guards ---------------------------------------------------------

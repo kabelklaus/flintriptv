@@ -203,13 +203,23 @@ fun VODCard(params: VODCardParams) {
         params.vod != null -> ContentInfo(
             coverImageUrl = params.vod.streamIcon ?: params.vod.cover,
             title = params.vod.name,
-            rating = rememberTmdbRating("movie", params.vod.tmdbId),
+            rating = rememberTmdbRating(
+                kind = "movie",
+                tmdbId = params.vod.tmdbId,
+                year = params.vod.releaseDate?.take(4)?.toIntOrNull(),
+                title = params.vod.name
+            ),
             isLogo = false
         )
         params.series != null -> ContentInfo(
             coverImageUrl = params.series.cover,
             title = params.series.name,
-            rating = rememberTmdbRating("tv", params.series.tmdbId),
+            rating = rememberTmdbRating(
+                kind = "tv",
+                tmdbId = params.series.tmdbId,
+                year = params.series.releaseDate?.take(4)?.toIntOrNull(),
+                title = params.series.name
+            ),
             isLogo = false
         )
         else -> throw IllegalArgumentException("Either vod or series must be provided")

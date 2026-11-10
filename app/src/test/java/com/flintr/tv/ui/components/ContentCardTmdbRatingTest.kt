@@ -24,8 +24,8 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * Grid-Chip kommt ausschließlich aus [TmdbMetaRepository.metaFlow]; Xtream-Ratings und
- * der Search-Pfad werden für Karten nicht mehr verwendet.
+ * Grid-Chip: mit tmdbId direkt aus [TmdbMetaRepository.metaFlow], ohne ID aus dem
+ * strikten Search-Resolve von [TmdbMetaRepository.resolveCardMeta].
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], qualifiers = "w1280dp-h720dp-land")
@@ -47,6 +47,9 @@ class ContentCardTmdbRatingTest {
         coEvery { repository.request(any(), any()) } coAnswers {
             requests += firstArg<String>() to secondArg<String>()
         }
+        coEvery {
+            repository.resolveCardMeta(any(), any(), any(), any())
+        } returns null
         watchlistRepository = mockk(relaxed = true)
         every { watchlistRepository.isInWatchlist(any()) } returns false
     }
@@ -94,10 +97,22 @@ class ContentCardTmdbRatingTest {
     }
 
     @Test
-    fun filmOhneTmdbIdZeigtKeinenChipUndFragtNichtsAn() {
+    fun filmOhneTmdbIdOhneTrefferZeigtKeinenChip() {
         showMovie(null)
 
         composeTestRule.onNodeWithText("8.4").assertDoesNotExist()
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun filmOhneTmdbIdZeigtChipNachSearchResolve() {
+        coEvery {
+            repository.resolveCardMeta("movie", "Testfilm", null, null)
+        } returns meta(14306, 8.4)
+
+        showMovie(null)
+
+        composeTestRule.onNodeWithText("8.4").assertIsDisplayed()
         assertTrue(requests.isEmpty())
     }
 

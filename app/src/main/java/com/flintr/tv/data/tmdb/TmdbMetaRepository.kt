@@ -18,6 +18,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
+import kotlin.math.abs
 
 /**
  * Reaktive Schicht ueber [TmdbMetaClient] und [TmdbMetaCache].
@@ -46,6 +47,9 @@ class TmdbMetaRepository @Inject constructor(
     val metaFlow: StateFlow<Map<String, TmdbMeta>> = _metaFlow.asStateFlow()
 
     private val ensureMutex = Mutex()
+
+    /** Serialisiert Cache-Recheck plus Suche, damit derselbe Search-Key nur einmal HTTP sieht. */
+    private val searchMutex = Mutex()
 
     @Volatile
     private var loaded = false
@@ -78,6 +82,117 @@ class TmdbMetaRepository @Inject constructor(
         }
         coalescedFetch(key)
     }
+
+    /**
+     * Karten-Pfad: numerische tmdbId laeuft direkt, sonst strikter Title-Match ueber die Suche.
+     * Die Suche selbst laeuft nicht durch den Leader-Drain; [searchMutex] verhindert nur
+     * doppelte Suchen desselben Keys in einer Welle.
+     */
+    suspend fun resolveCardMeta(
+        kind: String,
+        title: String,
+        year: Int?,
+        tmdbId: String?
+    ): TmdbMeta? {
+        ensureLoaded()
+
+        if (tmdbId != null && NUMERIC_ID.matches(tmdbId)) {
+            val key = metaKey(kind, tmdbId)
+            val now = now()
+            val entry = cache.loadAll()[key]
+            if (entry != null) {
+                if (TmdbMetaCache.isFresh(entry, now)) return entry.meta
+                if (isNegativeFresh(entry, now)) return null
+            }
+            request(kind, tmdbId)
+            return metaFlow.value[key]
+        }
+
+        val (clean, titleYear) = normalizer.normalize(title)
+        if (clean.isBlank()) return null
+
+        // Wie im Detail-Pfad: explizites Jahr gewinnt, sonst das Jahr aus dem Titel.
+        val queryYear = year ?: titleYear
+        val key = searchKey(kind, clean, queryYear)
+        val now = now()
+        val cached = cache.loadAll()[key]
+        if (cached != null) {
+            if (isNegativeFresh(cached, now)) return null
+            if (TmdbMetaCache.isFresh(cached, now)) {
+                val resolvedId = cached.meta?.tmdbId ?: return null
+                return requestResolved(kind, resolvedId)
+            }
+        }
+
+        val resolvedId = searchMutex.withLock {
+            // Zweiter Check unter dem Lock: derselbe Key in einer Welle sucht nur einmal.
+            val current = cache.loadAll()[key]
+            val lockNow = now()
+            if (current != null) {
+                if (isNegativeFresh(current, lockNow)) return@withLock null
+                if (TmdbMetaCache.isFresh(current, lockNow)) return@withLock current.meta?.tmdbId
+            }
+
+            when (val result = client.searchCandidates(kind, clean, queryYear)) {
+                is FetchResult.Data -> {
+                    val match = result.value.firstOrNull { candidate ->
+                        normalizer.normalize(candidate.title).first == clean &&
+                            yearMatches(queryYear, candidate.year)
+                    }
+                    if (match == null) {
+                        cache.putAll(mapOf(key to negativeSearchEntry()))
+                        refreshFlow()
+                        null
+                    } else {
+                        val id = match.tmdbId.toInt()
+                        // Positiver Search-Key haelt nur die aufgeloeste tmdbId, nicht die Details.
+                        cache.putAll(
+                            mapOf(
+                                key to TmdbMetaCacheEntry(
+                                    meta = resolvedMeta(id),
+                                    fetchedAtMs = now(),
+                                    negative = false
+                                )
+                            )
+                        )
+                        refreshFlow()
+                        id
+                    }
+                }
+                FetchResult.Negative -> {
+                    cache.putAll(mapOf(key to negativeSearchEntry()))
+                    refreshFlow()
+                    null
+                }
+                FetchResult.Transient -> null
+            }
+        }
+
+        return resolvedId?.let { requestResolved(kind, it) }
+    }
+
+    /** Detail-Fetch nach aufgeloester Suche; laeuft bewusst durch Koaleszenz/Semaphore. */
+    private suspend fun requestResolved(kind: String, tmdbId: Int): TmdbMeta? {
+        val id = tmdbId.toString()
+        request(kind, id)
+        return metaFlow.value[metaKey(kind, id)]
+    }
+
+    /**
+     * ±1 Jahr: TMDB fuehrt haeufig das Premieren-/Festivaljahr, der Katalog das Release-Jahr.
+     * Mehr Abweichung gilt als anderer Film; fehlendes Kandidaten-Jahr matcht nie.
+     */
+    private fun yearMatches(queryYear: Int?, candidateYear: Int?): Boolean {
+        if (queryYear == null) return true
+        if (candidateYear == null) return false
+        return abs(candidateYear - queryYear) <= 1
+    }
+
+    private fun resolvedMeta(tmdbId: Int): TmdbMeta =
+        TmdbMeta(tmdbId = tmdbId, rating = 0.0, voteCount = 0, genres = emptyList())
+
+    private fun negativeSearchEntry(): TmdbMetaCacheEntry =
+        TmdbMetaCacheEntry(meta = null, fetchedAtMs = now(), negative = true)
 
     /**
      * Detail-Pfad. Mit numerischer ID wird direkt geladen, sonst ueber die Suche.

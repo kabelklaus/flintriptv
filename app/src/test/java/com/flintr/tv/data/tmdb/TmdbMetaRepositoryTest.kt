@@ -300,6 +300,85 @@ class TmdbMetaRepositoryTest {
         assertEquals(listOf(1, 2, 3), ids)
     }
 
+    // -- resolveCardMeta -------------------------------------------------
+
+    @Test
+    fun `resolveCardMeta mit tmdbId umgeht die Suche`() = runBlocking {
+        coEvery { client.movieMeta("238") } returns TmdbResult.Data(meta(238))
+        val repo = repository()
+
+        val result = repo.resolveCardMeta("movie", "Der Pate", 1972, "238")
+
+        assertEquals(meta(238), result)
+        coVerify(exactly = 0) { client.searchCandidates(any(), any(), any()) }
+    }
+
+    @Test
+    fun `resolveCardMeta strikter Match cached Search-Key positiv und sucht nur einmal`() = runBlocking {
+        coEvery { client.searchCandidates("movie", "testfilm", 2020) } returns
+            FetchResult.Data(listOf(TmdbSearchCandidate(42, "Testfilm", 2020)))
+        coEvery { client.movieMeta("42") } returns TmdbResult.Data(meta(42))
+        val repo = repository()
+
+        val first = repo.resolveCardMeta("movie", "Testfilm", 2020, null)
+        val stored = cache.loadAll()["search:movie:testfilm|2020"]
+        val second = repo.resolveCardMeta("movie", "Testfilm", 2020, null)
+
+        assertEquals(meta(42), first)
+        assertEquals(meta(42), second)
+        assertFalse(stored!!.negative)
+        assertEquals(42, stored.meta?.tmdbId)
+        coVerify(exactly = 1) { client.searchCandidates("movie", "testfilm", 2020) }
+        coVerify(exactly = 1) { client.movieMeta("42") }
+    }
+
+    @Test
+    fun `resolveCardMeta ohne Match schreibt Negative und sucht kein zweites Mal`() = runBlocking {
+        coEvery { client.searchCandidates("movie", "testfilm", 2020) } returns
+            FetchResult.Data(listOf(TmdbSearchCandidate(7, "Anderer Film", 2020)))
+        val repo = repository()
+
+        val first = repo.resolveCardMeta("movie", "Testfilm", 2020, null)
+        val second = repo.resolveCardMeta("movie", "Testfilm", 2020, null)
+
+        assertNull(first)
+        assertNull(second)
+        assertTrue(cache.loadAll()["search:movie:testfilm|2020"]!!.negative)
+        coVerify(exactly = 1) { client.searchCandidates("movie", "testfilm", 2020) }
+        coVerify(exactly = 0) { client.movieMeta(any()) }
+    }
+
+    @Test
+    fun `resolveCardMeta fuzzy Titel matcht via Normalizer`() = runBlocking {
+        coEvery { client.searchCandidates("movie", "marley me", 2008) } returns
+            FetchResult.Data(listOf(TmdbSearchCandidate(14306, "Marley & Me", 2008)))
+        coEvery { client.movieMeta("14306") } returns TmdbResult.Data(meta(14306))
+        val repo = repository()
+
+        val result = repo.resolveCardMeta(
+            "movie",
+            "EN - MARLEY & ME (2008) (Ger Sub)",
+            null,
+            null
+        )
+
+        assertEquals(meta(14306), result)
+        assertTrue(cache.loadAll().containsKey("search:movie:marley me|2008"))
+    }
+
+    @Test
+    fun `resolveCardMeta Jahr-Abweichung groesser eins matcht nicht`() = runBlocking {
+        coEvery { client.searchCandidates("movie", "testfilm", 2020) } returns
+            FetchResult.Data(listOf(TmdbSearchCandidate(42, "Testfilm", 2023)))
+        val repo = repository()
+
+        val result = repo.resolveCardMeta("movie", "Testfilm", 2020, null)
+
+        assertNull(result)
+        assertTrue(cache.loadAll()["search:movie:testfilm|2020"]!!.negative)
+        coVerify(exactly = 0) { client.movieMeta(any()) }
+    }
+
     @Test
     fun `recommendationsFor cached Hit und Miss am rec-Key`() = runBlocking {
         coEvery { discoverClient.movieRecommendations("238") } returns
