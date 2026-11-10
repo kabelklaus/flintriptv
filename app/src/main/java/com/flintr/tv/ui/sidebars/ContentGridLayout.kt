@@ -143,7 +143,12 @@ fun <T> ContentGridLayout(
                 ),
                 contentPadding = PaddingValues(
                     top = Dimensions.contentCardGridPadding * 2,
-                    bottom = Dimensions.contentCardGridPadding,
+                    // spacingXL statt contentCardGridPadding: die unterste Reihe braucht beim
+                    // Fokussieren Platz für Fokus-Ring + 1.04-Scale (FocusRing.focusScale), die
+                    // über die Karten-Bounds hinausragen - 8dp reichten dafür nicht, der Ring
+                    // wurde am Screen-Unterrand beschnitten. spacingXL matcht das bereits in
+                    // SeriesDetailScreen genutzte Bottom-Padding für dasselbe Problem.
+                    bottom = Dimensions.spacingXL,
                     start = Dimensions.contentCardGridPadding,
                     end = Dimensions.contentCardGridPadding
                 ),
