@@ -54,7 +54,6 @@ import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.theme.tvFocusRing
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
-import com.flintr.tv.utils.ContentParser
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.res.stringResource
 import com.flintr.tv.R
@@ -204,13 +203,13 @@ fun VODCard(params: VODCardParams) {
         params.vod != null -> ContentInfo(
             coverImageUrl = params.vod.streamIcon ?: params.vod.cover,
             title = params.vod.name,
-            rating = ContentParser.getRating(params.vod),
+            rating = rememberTmdbRating("movie", params.vod.tmdbId),
             isLogo = false
         )
         params.series != null -> ContentInfo(
             coverImageUrl = params.series.cover,
             title = params.series.name,
-            rating = ContentParser.getRating(params.series),
+            rating = rememberTmdbRating("tv", params.series.tmdbId),
             isLogo = false
         )
         else -> throw IllegalArgumentException("Either vod or series must be provided")
