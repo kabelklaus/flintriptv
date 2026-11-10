@@ -391,4 +391,88 @@ class TmdbCastClientTest {
 
         assertEquals(0, hits.get())
     }
+
+    // -- seasonPosters ------------------------------------------------------
+
+    /** Live gegen api.themoviedb.org/3/tv/1622 verifiziertes Schema: `seasons[]` mit poster_path. */
+    private val tvSeasonsJson = """
+        {
+          "id": 1622,
+          "seasons": [
+            { "id": 1, "season_number": 0, "name": "Specials", "poster_path": "/specials.jpg" },
+            { "id": 2, "season_number": 1, "name": "Season 1", "poster_path": "/season1.jpg" },
+            { "id": 3, "season_number": 2, "name": "Season 2", "poster_path": null }
+          ]
+        }
+    """.trimIndent()
+
+    @Test
+    fun `seasonPosters baut Pfad fuer tv Detail und filtert Specials raus`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        var capturedUrl: String? = null
+        val (okHttpClient, _) = fakeClient { request ->
+            capturedUrl = request.url.toString()
+            jsonResponse(request, 200, tvSeasonsJson)
+        }
+
+        val result = client(okHttpClient).seasonPosters("1622")
+
+        assertTrue(capturedUrl!!.startsWith("https://api.themoviedb.org/3/tv/1622"))
+        assertTrue(capturedUrl!!.contains("api_key=$apiKey"))
+        assertEquals(1, result.size)
+        assertEquals("https://image.tmdb.org/t/p/w342/season1.jpg", result[1])
+        assertNull(result[0])
+        assertNull(result[2])
+    }
+
+    @Test
+    fun `seasonPosters liefert leere Map bei 404`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val (okHttpClient, _) = fakeClient { request -> jsonResponse(request, 404, "") }
+
+        val result = client(okHttpClient).seasonPosters("999999")
+
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `seasonPosters liefert leere Map bei Server-Fehler und wirft nicht`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val (okHttpClient, _) = fakeClient { request -> jsonResponse(request, 500, "server error") }
+
+        val result = client(okHttpClient).seasonPosters("1622")
+
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `seasonPosters liefert leere Map bei kaputtem Body`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val (okHttpClient, _) = fakeClient { request -> jsonResponse(request, 200, "{not json") }
+
+        val result = client(okHttpClient).seasonPosters("1622")
+
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `seasonPosters ohne BuildConfig-Key macht keinen Netz-Call`() = runBlocking {
+        assumeTrue(apiKey.isBlank())
+        val (okHttpClient, hits) = fakeClient { request -> jsonResponse(request, 200, tvSeasonsJson) }
+
+        val result = client(okHttpClient).seasonPosters("1622")
+
+        assertTrue(result.isEmpty())
+        assertEquals(0, hits.get())
+    }
+
+    @Test
+    fun `seasonPosters mit nicht-numerischer tmdbId macht keinen Netz-Call`() = runBlocking {
+        val (okHttpClient, hits) = fakeClient { request -> jsonResponse(request, 200, tvSeasonsJson) }
+
+        val result = client(okHttpClient).seasonPosters("1622abc")
+
+        assertTrue(result.isEmpty())
+        assertEquals(0, hits.get())
+    }
 }

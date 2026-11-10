@@ -195,6 +195,11 @@ class SeriesDetailViewModel @Inject constructor(
                 // blockieren (ohne tmdbId/Match bleiben die Briefmarken/Initial-Kreis stehen).
                 viewModelScope.launch(ioDispatcher) { loadCastPhotos(_uiState.value.detail) }
 
+                // Staffel-Poster laufen ebenfalls in eigenem Job: duerfen Rating/Genres nicht
+                // blockieren (Provider liefert info.seasons leer, verifiziert - ohne Treffer
+                // bleiben die Staffel-Kacheln ohne Bild stehen).
+                viewModelScope.launch(ioDispatcher) { loadSeasonPosters(_uiState.value.detail) }
+
                 // TMDB-Meta nachschieben: Rating/Genres kommen ausschliesslich von hier,
                 // ein Fehler/Miss darf den bereits gezeigten Basis-State nicht zuruecknehmen.
                 _uiState.update { it.copy(isMetaLoading = true) }
@@ -470,6 +475,27 @@ class SeriesDetailViewModel @Inject constructor(
         } else {
             val photos = matchCastPhotos(castNames, members)
             _uiState.update { it.copy(castPhotos = photos) }
+        }
+    }
+
+    /**
+     * Provider liefert info.seasons leer (verifiziert) - Poster aus TMDB. Xtream gewinnt (schon in
+     * [buildSeasons] als [SeasonUiModel.posterUrl] aufgeloest), TMDB fuellt nur die Luecken ueber
+     * die Staffelnummer.
+     */
+    private suspend fun loadSeasonPosters(detail: DetailDisplayData?) {
+        val tmdbId = detail?.tmdbId?.takeIf { it.isNotBlank() } ?: return
+        val tmdbPosters = tmdbCastClient.seasonPosters(tmdbId)
+        if (tmdbPosters.isEmpty()) return
+
+        _uiState.update { state ->
+            state.copy(
+                seasons = state.seasons.map { season ->
+                    season.posterUrl?.let { season } ?: tmdbPosters[season.seasonNumber]?.let {
+                        season.copy(posterUrl = it)
+                    } ?: season
+                }
+            )
         }
     }
 

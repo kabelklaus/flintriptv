@@ -637,4 +637,71 @@ class SeriesDetailViewModelTest {
         assertTrue(vm.uiState.value.castPhotos.isEmpty())
         coVerify(exactly = 0) { tmdbCastClient.tvCredits(any()) }
     }
+
+    // -- Staffel-Poster aus TMDB (get_series_info liefert info.seasons leer) ---------------
+
+    @Test
+    fun `Staffel ohne jeden Xtream-Fallback bekommt Poster aus TMDB`() = runTest {
+        // Kein Staffel-/Serien-Cover, kein Episoden-Still, kein Backdrop - posterUrl ist null,
+        // bevor der TMDB-Job laeuft (siehe `ohne Cover und Episoden-Stills faellt Poster auf
+        // Serien-Backdrop zurueck` fuer dieselbe Fallback-Kette ohne TMDB).
+        val coverlessSeason = season(1, listOf(episode(11, 1))).copy(cover = null)
+        stubHappyPath(
+            series.copy(
+                tmdbId = "99",
+                cover = null,
+                backdropPath = null,
+                seasons = listOf(coverlessSeason, seasonTwo)
+            )
+        )
+        coEvery { tmdbCastClient.seasonPosters("99") } returns mapOf(
+            1 to "https://image.tmdb.org/t/p/w342/season1.jpg"
+        )
+
+        val vm = viewModel()
+        val state = vm.uiState.value
+
+        assertEquals("https://image.tmdb.org/t/p/w342/season1.jpg", state.seasons[0].posterUrl)
+        // Staffel 2 hat bereits ein Xtream-Cover - TMDB darf es nicht ueberschreiben.
+        assertEquals("https://img/season-2.jpg", state.seasons[1].posterUrl)
+    }
+
+    @Test
+    fun `Staffel mit Xtream-Cover behaelt Xtream-Poster trotz TMDB-Treffer`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "99"))
+        coEvery { tmdbCastClient.seasonPosters("99") } returns mapOf(
+            1 to "https://image.tmdb.org/t/p/w342/season1.jpg"
+        )
+
+        val vm = viewModel()
+
+        assertEquals("https://img/season-1.jpg", vm.uiState.value.seasons[0].posterUrl)
+    }
+
+    @Test
+    fun `load ohne tmdbId ruft TMDB Staffel-Poster nicht auf`() = runTest {
+        stubHappyPath(series.copy(tmdbId = null))
+
+        val vm = viewModel()
+
+        coVerify(exactly = 0) { tmdbCastClient.seasonPosters(any()) }
+    }
+
+    @Test
+    fun `leere TMDB Staffel-Poster-Map laesst Seasons unveraendert`() = runTest {
+        val coverlessSeason = season(1, listOf(episode(11, 1))).copy(cover = null)
+        stubHappyPath(
+            series.copy(
+                tmdbId = "99",
+                cover = null,
+                backdropPath = null,
+                seasons = listOf(coverlessSeason)
+            )
+        )
+        coEvery { tmdbCastClient.seasonPosters("99") } returns emptyMap()
+
+        val vm = viewModel()
+
+        assertNull(vm.uiState.value.seasons[0].posterUrl)
+    }
 }

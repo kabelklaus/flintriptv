@@ -66,6 +66,19 @@ internal data class TmdbAggregateCreditsResponse(
     val cast: List<TmdbAggregateCastMember> = emptyList()
 )
 
+/** Ein Staffel-Eintrag aus `/tv/{id}`; `poster_path` kann fehlen (kein Cover auf TMDB). */
+@JsonClass(generateAdapter = true)
+internal data class TmdbSeasonImage(
+    @Json(name = "season_number") val seasonNumber: Int = 0,
+    @Json(name = "poster_path") val posterPath: String? = null
+)
+
+/** Antwort-Schema von `/tv/{id}` fuer die Staffel-Poster. */
+@JsonClass(generateAdapter = true)
+internal data class TmdbTvSeasonsResponse(
+    val seasons: List<TmdbSeasonImage> = emptyList()
+)
+
 /**
  * Laedt die Besetzung eines Films von TMDB (`/movie/{id}/credits`) bzw. einer Serie
  * (`/tv/{id}/aggregate_credits`) und cacht sie im Speicher.
@@ -90,6 +103,7 @@ class TmdbCastClient @Inject constructor(
     companion object {
         private const val TAG = "TmdbCastClient"
         private const val BASE_URL = "https://api.themoviedb.org/3"
+        private const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w342"
         private const val CACHE_CAPACITY = 250
         private const val TV_CAST_CAP = 25
         private val NUMERIC_ID = Regex("\\d+")
@@ -104,6 +118,7 @@ class TmdbCastClient @Inject constructor(
     private val moshi = Moshi.Builder().build()
     private val movieResponseAdapter = moshi.adapter(TmdbCreditsResponse::class.java)
     private val aggregateResponseAdapter = moshi.adapter(TmdbAggregateCreditsResponse::class.java)
+    private val seasonsResponseAdapter = moshi.adapter(TmdbTvSeasonsResponse::class.java)
 
     private val cacheMutex = Mutex()
     private val cache = object : LinkedHashMap<String, List<TmdbCastMember>>(16, 0.75f, true) {
@@ -114,6 +129,39 @@ class TmdbCastClient @Inject constructor(
     suspend fun movieCredits(tmdbId: String): List<TmdbCastMember> = credits("movie", tmdbId)
 
     suspend fun tvCredits(tmdbId: String): List<TmdbCastMember> = credits("tv", tmdbId)
+
+    /**
+     * Staffel-Poster aus `/tv/{id}`. `get_series_info` liefert `info.seasons` leer (verifiziert) -
+     * Xtream hat damit nie ein Cover fuer die Staffel-Kacheln. Specials (`season_number` 0)
+     * werden ausgefiltert, reines Add-on: leerer Key, ungueltige ID, 404, Netzwerkfehler oder
+     * kaputte Antwort fuehren nur zu einer leeren Map, nie zu einem Crash.
+     */
+    suspend fun seasonPosters(tmdbId: String): Map<Int, String> {
+        if (!NUMERIC_ID.matches(tmdbId)) return emptyMap()
+        val apiKey = BuildConfig.TMDB_API_KEY
+        if (apiKey.isBlank()) return emptyMap()
+
+        return withContext(ioDispatcher) { fetchSeasonPosters(tmdbId, apiKey) }
+    }
+
+    private fun fetchSeasonPosters(tmdbId: String, apiKey: String): Map<Int, String> {
+        return try {
+            val url = "$BASE_URL/tv/$tmdbId?api_key=$apiKey"
+            val request = Request.Builder().url(url).build()
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use emptyMap()
+                val json = response.body?.string() ?: return@use emptyMap()
+                val seasons = seasonsResponseAdapter.fromJson(json)?.seasons ?: return@use emptyMap()
+                seasons
+                    .filter { it.seasonNumber >= 1 && !it.posterPath.isNullOrBlank() }
+                    .associate { it.seasonNumber to "$TMDB_IMAGE_BASE_URL${it.posterPath}" }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
 
     private suspend fun credits(kind: String, tmdbId: String): List<TmdbCastMember> {
         if (!NUMERIC_ID.matches(tmdbId)) return emptyList()
