@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Named
@@ -40,7 +41,9 @@ private const val PROGRESS_SIGNAL_DURATION = 100L
 private data class RecommendationInput(
     val entries: List<WatchlistEntry>,
     val watchedHistory: Map<String, WatchedItem>,
-    val watchProgress: Map<String, WatchProgress>
+    val watchProgress: Map<String, WatchProgress>,
+    // Nur Trigger: Meta-Nachlaeufe aendern die Genre-Signale, nicht das Nutzerprofil selbst.
+    val metaCount: Int
 )
 
 private data class CachedRatings(
@@ -53,6 +56,7 @@ private data class CachedRatings(
  * Baut aus Watchlist, Verlauf und Fortschritt ein [GenreProfile][com.flintr.tv.domain.recommendation.GenreProfile]
  * (Genre-IDs aus TMDB-Meta) und laedt danach die Top-Genres ueber TMDB-Discover. Die Engine
  * waehlt nur noch aus den bereits geladenen Listen aus; Cold Start spart alle Netz-Calls.
+ * Meta-Nachlaeufe re-triggern, weil Genre-Signale aus TMDB-Meta kommen, die erst nach dem Start ankommen.
  * Ratings haben keinen reaktiven Flow und werden fuer [RATINGS_CACHE_TTL_MS] gecacht.
  */
 @Singleton
@@ -107,14 +111,16 @@ class RecommendationService(
             combine(
                 watchlistRepository.entries,
                 watchedHistoryService.watchedHistory,
-                watchProgressService.watchProgress
-            ) { entries, watchedHistory, watchProgress ->
+                watchProgressService.watchProgress,
+                tmdbMetaRepository.metaFlow.map { it.size }
+            ) { entries, watchedHistory, watchProgress, metaCount ->
                 RecommendationInput(
                     entries = entries,
                     watchedHistory = watchedHistory,
                     watchProgress = watchProgress.mapValues { (_, progress) ->
                         progress.toRecommendationSignal()
-                    }
+                    },
+                    metaCount = metaCount
                 )
             }
                 .distinctUntilChanged()

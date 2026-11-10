@@ -176,6 +176,26 @@ class RecommendationServiceTest {
     }
 
     @Test
+    fun `Meta-Nachlaeufe triggern Recompute ohne User-Daten-Aenderung`() = runTest(testDispatcher) {
+        // User-Daten liegen bereits vor, aber ohne TMDB-Metas fehlen die Genre-Signale.
+        watchlistFlow.value = (1..5).map { entry(it) }
+        advanceUntilIdle()
+
+        assertTrue("cold start without meta publishes empty", service.recommendations.value.movies.isEmpty())
+        coVerify(exactly = 0) { tmdbMetaRepository.discoverMovieIds(any()) }
+
+        // Nur metaFlow aendert sich: 5 Metas der gesehenen Items kommen nach.
+        // Discover liefert tmdbIds 9101/9102 -> Katalog-Items 101/102.
+        coEvery { tmdbMetaRepository.discoverMovieIds(listOf(28)) } returns listOf(9101, 9102)
+        metaFlow.value = (1..5).associate { "movie:$it" to meta(28) }
+        advanceUntilIdle()
+
+        val recommendedIds = service.recommendations.value.movies.map { it.streamId }.toSet()
+        assertEquals(setOf(101, 102), recommendedIds)
+        coVerify(exactly = 1) { tmdbMetaRepository.discoverMovieIds(listOf(28)) }
+    }
+
+    @Test
     fun `Cold Start unter fuenf Signalen macht keine Discover-Calls`() = runTest(testDispatcher) {
         metaFlow.value = (1..3).associate { "movie:$it" to meta(28) }
         watchlistFlow.value = (1..3).map { entry(it) }
