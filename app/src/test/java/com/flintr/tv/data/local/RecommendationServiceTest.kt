@@ -40,6 +40,9 @@ class RecommendationServiceTest {
     private companion object {
         // RecommendationService.RATINGS_CACHE_TTL_MS is private; pinned here on purpose.
         const val RATINGS_CACHE_TTL_MS = 5 * 60 * 1000L
+
+        // RecommendationService.RECOMPUTE_DEBOUNCE_MS is private; pinned here on purpose.
+        const val RECOMPUTE_DEBOUNCE_MS = 300L
     }
 
     private val credentials = Credentials(serverUrl = "http://server", username = "chris", password = "pw")
@@ -240,6 +243,54 @@ class RecommendationServiceTest {
 
         assertTrue(service.recommendations.value.movies.isEmpty())
         assertTrue(service.recommendations.value.series.isEmpty())
+    }
+
+    // --- isLoading ---
+
+    @Test
+    fun `isLoading ist true waehrend des Recomputes und false nach dem Publish`() = runTest(testDispatcher) {
+        advanceUntilIdle()
+        assertFalse(service.isLoading.value)
+
+        metaFlow.value = (1..5).associate { "movie:$it" to meta(28) }
+        coEvery { tmdbMetaRepository.discoverMovieIds(listOf(28)) } returns listOf(9101, 9102)
+        coEvery { cacheService.loadCachedDataAsync() } coAnswers {
+            delay(1_000)
+            CachedData(
+                channels = emptyList(),
+                movies = (1..5).map { testVod(it, "Action") } + listOf(
+                    testVod(101, "Action", tmdbId = "9101"),
+                    testVod(102, "Action", tmdbId = "9102")
+                ),
+                series = emptyList(),
+                liveCategories = emptyList(),
+                vodCategories = emptyList(),
+                seriesCategories = emptyList()
+            )
+        }
+
+        watchlistFlow.value = (1..5).map { entry(it) }
+        // Nach dem Debounce, aber noch mitten im verzoegerten Cache-Load.
+        advanceTimeBy(RECOMPUTE_DEBOUNCE_MS + 50)
+        assertTrue("recompute must be in flight", service.isLoading.value)
+        assertTrue("recommendations must not have published yet", service.recommendations.value.movies.isEmpty())
+
+        advanceUntilIdle()
+        assertFalse("isLoading must clear right after publish", service.isLoading.value)
+        assertEquals(
+            setOf(101, 102),
+            service.recommendations.value.movies.map { it.streamId }.toSet()
+        )
+    }
+
+    @Test
+    fun `Cold-Start-Empty-Publish setzt isLoading ebenfalls auf false`() = runTest(testDispatcher) {
+        metaFlow.value = (1..3).associate { "movie:$it" to meta(28) }
+        watchlistFlow.value = (1..3).map { entry(it) }
+        advanceUntilIdle()
+
+        assertTrue("cold start must publish empty", service.recommendations.value.movies.isEmpty())
+        assertFalse("cold start must also clear isLoading", service.isLoading.value)
     }
 
     // --- toRecommendationSignal: pinnt die UserContentProfile-Schwellen 0.2 / 0.9 ---

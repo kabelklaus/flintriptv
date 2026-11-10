@@ -99,6 +99,10 @@ class RecommendationService(
     private val _recommendations = MutableStateFlow(RecommendationResult(emptyList(), emptyList()))
     val recommendations: StateFlow<RecommendationResult> = _recommendations.asStateFlow()
 
+    /** True waehrend eines Recompute-Laufs (jeder Input-Aenderung, auch Meta-Nachlaeufen); false sofort nach Publish. */
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
     /**
      * Read-through cache for ratings. Fresh ratings reach recommendations only after up to
      * [RATINGS_CACHE_TTL_MS] (5 min). Accepted trade-off: recompute cost > freshness.
@@ -133,6 +137,7 @@ class RecommendationService(
 
     private suspend fun recompute(input: RecommendationInput) {
         val trace = PerfTrace.start("flintr_recommendation_recompute")
+        _isLoading.value = true
         try {
             coroutineContext.ensureActive()
             val cached = cacheService.loadCachedDataAsync() ?: return
@@ -191,6 +196,7 @@ class RecommendationService(
             PerfTrace.increment(trace, "recommendation_series", result.series.size.toLong())
         } finally {
             PerfTrace.stop(trace)
+            _isLoading.value = false
         }
     }
 

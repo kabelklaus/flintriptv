@@ -27,6 +27,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -150,7 +151,7 @@ private data class CardInteractionHandlers(
 private data class ContentInfo(
     val coverImageUrl: String?,
     val title: String,
-    val rating: String?,
+    val rating: TmdbChipState,
     /** Live channels render a sender logo, not a poster: fit it instead of cropping. */
     val isLogo: Boolean = false
 )
@@ -162,7 +163,7 @@ private data class WatchState(
 )
 
 private data class CardOverlayParams(
-    val rating: String?,
+    val rating: TmdbChipState,
     val isInWatchlist: Boolean,
     val sourceBadge: String?,
     val watchState: WatchState,
@@ -203,7 +204,7 @@ fun VODCard(params: VODCardParams) {
         params.vod != null -> ContentInfo(
             coverImageUrl = params.vod.streamIcon ?: params.vod.cover,
             title = params.vod.name,
-            rating = rememberTmdbRating(
+            rating = rememberTmdbChipState(
                 kind = "movie",
                 tmdbId = params.vod.tmdbId,
                 year = params.vod.releaseDate?.take(4)?.toIntOrNull(),
@@ -214,7 +215,7 @@ fun VODCard(params: VODCardParams) {
         params.series != null -> ContentInfo(
             coverImageUrl = params.series.cover,
             title = params.series.name,
-            rating = rememberTmdbRating(
+            rating = rememberTmdbChipState(
                 kind = "tv",
                 tmdbId = params.series.tmdbId,
                 year = params.series.releaseDate?.take(4)?.toIntOrNull(),
@@ -493,7 +494,7 @@ fun LiveStreamCard(
             contentInfo = ContentInfo(
                 coverImageUrl = params.stream.streamIcon,
                 title = params.stream.name,
-                rating = null,
+                rating = TmdbChipState.Absent,
                 isLogo = true
             ),
             contentType = ContentType.Live(params.stream),
@@ -811,7 +812,7 @@ private fun ProgressWithRemainingLabel(
 private fun BoxScope.CardBadges(
     isInWatchlist: Boolean,
     sourceBadge: String?,
-    rating: String?,
+    rating: TmdbChipState,
     isWatched: Boolean
 ) {
     if (!sourceBadge.isNullOrBlank() || isInWatchlist) {
@@ -834,13 +835,23 @@ private fun BoxScope.CardBadges(
         }
     }
     
-    if (rating != null) {
-        RatingBadge(
-            rating = rating,
+    when (rating) {
+        is TmdbChipState.Loading -> SkeletonChip(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(
+                    top = Dimensions.contentCardRatingBadgeTop,
+                    end = Dimensions.contentCardRatingBadgeRight
+                )
+                .testTag("rating-skeleton")
+        )
+        is TmdbChipState.Value -> RatingBadge(
+            rating = rating.rating,
             modifier = Modifier.align(Alignment.TopEnd)
         )
+        TmdbChipState.Absent -> Unit
     }
-    
+
     if (isWatched) {
         WatchedBadge(
             modifier = Modifier.align(Alignment.Center)

@@ -20,13 +20,15 @@ internal const val DETAIL_LOAD_ERROR_MESSAGE = "Details konnten nicht geladen we
  * Fuehrt den TMDB-Meta-[lookup] aus und reicht einen Treffer an [onMeta] weiter. Ein Miss oder
  * Fehler wird nie propagiert: der bereits gezeigte Basis-State der Detail-ViewModels darf nicht
  * zurueckgenommen werden, nur weil die (langsamere, best-effort) Meta-Abfrage leer blieb.
+ * [onDone] laeuft immer - Treffer, Miss und Fehler gleich - und raeumt z.B. einen Meta-Loading-Flag ab.
  */
 internal suspend fun loadTmdbMeta(
     tag: String,
     failureMessage: String,
     tmdbMetaRepository: TmdbMetaRepository,
     lookup: suspend () -> TmdbMeta?,
-    onMeta: (TmdbMeta) -> Unit
+    onMeta: (TmdbMeta) -> Unit,
+    onDone: () -> Unit = {}
 ) {
     try {
         // detailMeta() laedt den Cache selbst; ein separates ensureLoaded() entfaellt.
@@ -35,6 +37,8 @@ internal suspend fun loadTmdbMeta(
         throw e
     } catch (e: Exception) {
         reportWarning(tag, failureMessage, e)
+    } finally {
+        onDone()
     }
 }
 

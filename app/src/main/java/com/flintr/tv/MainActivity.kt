@@ -25,6 +25,7 @@ import com.flintr.tv.data.local.RecommendationService
 import com.flintr.tv.data.local.WatchProgressService
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.ui.components.SkeletonPulseProvider
 import com.flintr.tv.ui.navigation.AppNavigation
 import com.flintr.tv.ui.navigation.AppNavigationDependencies
 import com.flintr.tv.ui.navigation.Screen
@@ -76,6 +77,7 @@ class MainActivity : ComponentActivity() {
         hideSystemUi()
         setContent {
             FlintRTVTheme {
+                SkeletonPulseProvider {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -106,6 +108,7 @@ class MainActivity : ComponentActivity() {
                             ioDispatcher = ioDispatcher
                         )
                     )
+                }
                 }
             }
         }

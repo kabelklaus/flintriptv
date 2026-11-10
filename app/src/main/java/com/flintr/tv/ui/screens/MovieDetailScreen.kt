@@ -123,6 +123,7 @@ fun MovieDetailScreen(
                 watchProgress = uiState.watchProgress,
                 recommendations = uiState.recommendations,
                 castPhotos = uiState.castPhotos,
+                isMetaLoading = uiState.isMetaLoading,
                 onWatchClick = onWatchClick,
                 onToggleWatchlist = onToggleWatchlist,
                 onMovieClick = onMovieClick
@@ -252,6 +253,7 @@ private fun MovieDetailContent(
     watchProgress: com.flintr.tv.data.model.WatchProgress?,
     recommendations: List<com.flintr.tv.data.model.VodStream>,
     castPhotos: Map<String, String>,
+    isMetaLoading: Boolean,
     onWatchClick: () -> Unit,
     onToggleWatchlist: () -> Unit,
     onMovieClick: (Int) -> Unit
@@ -364,6 +366,7 @@ private fun MovieDetailContent(
                         isInWatchlist = isInWatchlist,
                         trailerAvailable = !detail.youtubeTrailer.isNullOrBlank(),
                         watchProgress = watchProgressPercent,
+                        isMetaLoading = isMetaLoading,
                         onWatch = onWatchClick,
                         onTrailer = { openYouTubeTrailer(context, detail.youtubeTrailer) },
                         onToggleWatchlist = onToggleWatchlist

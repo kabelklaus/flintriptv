@@ -43,6 +43,8 @@ data class MovieDetailUiState(
     val watchProgress: WatchProgress? = null,
     val recommendations: List<VodStream> = emptyList(),
     val castPhotos: Map<String, String> = emptyMap(),
+    /** True zwischen Basis-Anzeige und dem TMDB-Meta-Nachlauf - steuert das Rating/Genre-Skeleton. */
+    val isMetaLoading: Boolean = false,
     val error: String? = null
 )
 
@@ -149,6 +151,7 @@ class MovieDetailViewModel @Inject constructor(
 
                 // TMDB-Meta nachschieben: Rating/Genres kommen ausschliesslich von hier,
                 // ein Fehler/Miss darf den bereits gezeigten Basis-State nicht zuruecknehmen.
+                _uiState.update { it.copy(isMetaLoading = true) }
                 loadTmdbMeta(
                     tag = TAG,
                     failureMessage = "TMDB meta failed for vodId=$vodId",
@@ -164,7 +167,8 @@ class MovieDetailViewModel @Inject constructor(
                     },
                     onMeta = { meta ->
                         _uiState.update { state -> state.copy(detail = mergeTmdbMeta(state.detail, meta)) }
-                    }
+                    },
+                    onDone = { _uiState.update { it.copy(isMetaLoading = false) } }
                 )
 
                 // Similar-Row kommt aus TMDB-Recommendations des Anchor-tmdbId; ohne Anchor

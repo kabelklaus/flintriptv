@@ -1,8 +1,11 @@
 package com.flintr.tv.ui.components
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.flintr.tv.data.local.WatchlistRepository
@@ -100,7 +103,7 @@ class ContentCardTmdbRatingTest {
     fun filmOhneTmdbIdOhneTrefferZeigtKeinenChip() {
         showMovie(null)
 
-        composeTestRule.onNodeWithText("8.4").assertDoesNotExist()
+        composeTestRule.onAllNodesWithText("8.4").assertCountEquals(0)
         assertTrue(requests.isEmpty())
     }
 
@@ -117,10 +120,22 @@ class ContentCardTmdbRatingTest {
     }
 
     @Test
+    fun filmMitTmdbIdZeigtSkeletonSolangeDerFlowKeinenTrefferHat() {
+        // metaFlow bleibt in diesem Test leer: request() laeuft (koalesziert/async), aber ohne
+        // Flow-Update bleibt der Chip deterministisch in "Loading" - keine Timer-Race auf einen
+        // bestimmten Frame noetig.
+        showMovie("14306")
+
+        composeTestRule.onNodeWithTag("rating-skeleton").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("8.4").assertCountEquals(0)
+        assertEquals(listOf("movie" to "14306"), requests)
+    }
+
+    @Test
     fun leererFlowZeigtChipErstNachMetaUpdate() {
         showMovie("14306")
 
-        composeTestRule.onNodeWithText("8.4").assertDoesNotExist()
+        composeTestRule.onAllNodesWithText("8.4").assertCountEquals(0)
 
         metaFlow.value = mapOf("movie:14306" to meta(14306, 8.4))
         composeTestRule.waitForIdle()

@@ -144,6 +144,7 @@ fun SeriesDetailScreen(
                 watchLabel = uiState.watchLabel,
                 watchProgress = uiState.watchProgress,
                 castPhotos = uiState.castPhotos,
+                isMetaLoading = uiState.isMetaLoading,
                 onToggleWatchlist = onToggleWatchlist,
                 onWatchClick = onWatchClick,
                 onSeasonClick = onSeasonClick,
@@ -273,6 +274,7 @@ private fun SeriesDetailContent(
     watchLabel: String,
     watchProgress: Float?,
     castPhotos: Map<String, String>,
+    isMetaLoading: Boolean,
     onToggleWatchlist: () -> Unit,
     onWatchClick: (Episode) -> Unit,
     onSeasonClick: (Int) -> Unit,
@@ -400,6 +402,7 @@ private fun SeriesDetailContent(
                         trailerAvailable = !detail.youtubeTrailer.isNullOrBlank(),
                         watchLabel = watchLabel,
                         watchProgress = watchProgress,
+                        isMetaLoading = isMetaLoading,
                         onWatch = { watchTarget?.episode?.let(onWatchClick) },
                         onTrailer = { openSeriesYouTubeTrailer(context, detail.youtubeTrailer) },
                         onToggleWatchlist = onToggleWatchlist
