@@ -56,6 +56,8 @@ class TmdbMetaClientTest {
     private fun client(okHttpClient: OkHttpClient): TmdbMetaClient =
         TmdbMetaClient(okHttpClient, Dispatchers.Unconfined)
 
+    private fun <T> TmdbResult<T>.dataOrNull(): T? = (this as? TmdbResult.Data<T>)?.value
+
     /** Live gegen api.themoviedb.org verifizierte Details (Godfather, 238). */
     private val movieJson = """
         {
@@ -118,7 +120,7 @@ class TmdbMetaClientTest {
             jsonResponse(request, 200, movieJson)
         }
 
-        val meta = client(okHttpClient).movieMeta("238")
+        val meta = client(okHttpClient).movieMeta("238").dataOrNull()
 
         assertEquals(1, hits.get())
         assertTrue(capturedUrl!!.contains("movie/238"))
@@ -136,7 +138,7 @@ class TmdbMetaClientTest {
         assumeTrue(apiKey.isNotBlank())
         val (okHttpClient, _) = fakeClient { request -> jsonResponse(request, 200, tvJson) }
 
-        val meta = client(okHttpClient).tvMeta("1396")
+        val meta = client(okHttpClient).tvMeta("1396").dataOrNull()
 
         assertEquals(1396, meta?.tmdbId)
         assertEquals(8.959, meta?.rating)
@@ -147,34 +149,34 @@ class TmdbMetaClientTest {
     }
 
     @Test
-    fun `404 auf Details liefert null`() = runBlocking {
+    fun `404 auf Details liefert Negative`() = runBlocking {
         assumeTrue(apiKey.isNotBlank())
         val (okHttpClient, hits) = fakeClient { request -> jsonResponse(request, 404, "") }
 
-        val meta = client(okHttpClient).movieMeta("999999")
+        val result = client(okHttpClient).movieMeta("999999")
 
-        assertNull(meta)
+        assertEquals(TmdbResult.Negative, result)
         assertEquals(1, hits.get())
     }
 
     @Test
-    fun `HTTP 500 liefert null`() = runBlocking {
+    fun `HTTP 500 liefert Transient`() = runBlocking {
         assumeTrue(apiKey.isNotBlank())
         val (okHttpClient, _) = fakeClient { request -> jsonResponse(request, 500, "server error") }
 
-        val meta = client(okHttpClient).movieMeta("238")
+        val result = client(okHttpClient).movieMeta("238")
 
-        assertNull(meta)
+        assertEquals(TmdbResult.Transient, result)
     }
 
     @Test
-    fun `unparsbarer Body liefert null`() = runBlocking {
+    fun `unparsbarer Body liefert Transient`() = runBlocking {
         assumeTrue(apiKey.isNotBlank())
         val (okHttpClient, _) = fakeClient { request -> jsonResponse(request, 200, "{not json") }
 
-        val meta = client(okHttpClient).movieMeta("238")
+        val result = client(okHttpClient).movieMeta("238")
 
-        assertNull(meta)
+        assertEquals(TmdbResult.Transient, result)
     }
 
     // -- Suche ----------------------------------------------------------
@@ -188,7 +190,7 @@ class TmdbMetaClientTest {
             jsonResponse(request, 200, searchMovieJson)
         }
 
-        val id = client(okHttpClient).searchMovieId("Marley & Me", null)
+        val id = client(okHttpClient).searchMovieId("Marley & Me", null).dataOrNull()
 
         assertEquals(14306, id)
         assertTrue(capturedUrl!!.contains("search/movie"))
@@ -200,21 +202,21 @@ class TmdbMetaClientTest {
         assumeTrue(apiKey.isNotBlank())
         val (okHttpClient, _) = fakeClient { request -> jsonResponse(request, 200, searchTvJson) }
 
-        val id = client(okHttpClient).searchTvId("Supernatural", null)
+        val id = client(okHttpClient).searchTvId("Supernatural", null).dataOrNull()
 
         assertEquals(1622, id)
     }
 
     @Test
-    fun `leere Suchergebnisse liefern null`() = runBlocking {
+    fun `leere Suchergebnisse liefern Negative`() = runBlocking {
         assumeTrue(apiKey.isNotBlank())
         val (okHttpClient, _) = fakeClient { request ->
             jsonResponse(request, 200, """{"page": 1, "results": [], "total_results": 0}""")
         }
 
-        val id = client(okHttpClient).searchMovieId("Nichts", null)
+        val result = client(okHttpClient).searchMovieId("Nichts", null)
 
-        assertNull(id)
+        assertEquals(TmdbResult.Negative, result)
     }
 
     @Test
@@ -238,12 +240,22 @@ class TmdbMetaClientTest {
     // -- Guards ---------------------------------------------------------
 
     @Test
-    fun `nicht-numerische tmdbId macht keinen Netz-Call`() = runBlocking {
+    fun `nicht-numerische tmdbId liefert Negative ohne Netz-Call`() = runBlocking {
         val (okHttpClient, hits) = fakeClient { request -> jsonResponse(request, 200, movieJson) }
 
-        val meta = client(okHttpClient).movieMeta("abc")
+        val result = client(okHttpClient).movieMeta("abc")
 
-        assertNull(meta)
+        assertEquals(TmdbResult.Negative, result)
+        assertEquals(0, hits.get())
+    }
+
+    @Test
+    fun `blanker Key liefert Transient ohne Netz-Call`() = runBlocking {
+        val (okHttpClient, hits) = fakeClient { request -> jsonResponse(request, 200, movieJson) }
+
+        val result = client(okHttpClient).movieMeta("  ")
+
+        assertEquals(TmdbResult.Transient, result)
         assertEquals(0, hits.get())
     }
 }

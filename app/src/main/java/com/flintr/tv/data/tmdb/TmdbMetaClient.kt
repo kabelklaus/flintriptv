@@ -14,13 +14,20 @@ import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
 
+/** Ergebnis eines TMDB-Calls: Erfolg, definitiv nicht vorhanden (404/leer) oder transienter Fehler. */
+sealed class TmdbResult<out T> {
+    data class Data<out T>(val value: T) : TmdbResult<T>()
+    data object Negative : TmdbResult<Nothing>()
+    data object Transient : TmdbResult<Nothing>()
+}
+
 /**
  * Laedt Rating, Genres und Basis-Daten eines Films bzw. einer Serie von TMDB und
  * loest Titel ueber die Suche einer tmdbId zu.
  *
  * Reines Add-on: ein leerer API-Key, ein 404 (unbekannte tmdbId), ein
- * Server-/Netzwerkfehler oder eine kaputte Antwort fuehren nur zu `null`,
- * nie zu einem Crash. Kein Caching - das uebernimmt das Repository.
+ * Server-/Netzwerkfehler oder eine kaputte Antwort fuehren nur zu einem
+ * [TmdbResult], nie zu einem Crash. Kein Caching - das uebernimmt das Repository.
  */
 @Singleton
 class TmdbMetaClient @Inject constructor(
@@ -45,21 +52,28 @@ class TmdbMetaClient @Inject constructor(
     private val tvAdapter = moshi.adapter(TmdbTvDetailResponse::class.java)
     private val searchAdapter = moshi.adapter(TmdbSearchResponse::class.java)
 
-    suspend fun movieMeta(tmdbId: String): TmdbMeta? = meta("movie", tmdbId)
+    suspend fun movieMeta(tmdbId: String): TmdbResult<TmdbMeta> = meta("movie", tmdbId)
 
-    suspend fun tvMeta(tmdbId: String): TmdbMeta? = meta("tv", tmdbId)
+    suspend fun tvMeta(tmdbId: String): TmdbResult<TmdbMeta> = meta("tv", tmdbId)
 
-    suspend fun searchMovieId(query: String, year: Int?): Int? = searchId("movie", query, year)
+    suspend fun searchMovieId(query: String, year: Int?): TmdbResult<Int> =
+        searchId("movie", query, year)
 
-    suspend fun searchTvId(query: String, year: Int?): Int? = searchId("tv", query, year)
+    suspend fun searchTvId(query: String, year: Int?): TmdbResult<Int> =
+        searchId("tv", query, year)
 
-    private suspend fun meta(kind: String, tmdbId: String): TmdbMeta? {
-        if (!NUMERIC_ID.matches(tmdbId)) return null
-        if (BuildConfig.TMDB_API_KEY.isBlank()) return null
+    private suspend fun meta(kind: String, tmdbId: String): TmdbResult<TmdbMeta> {
+        // Blanker Key ist ein Konfigurationsfehler (transient), eine nicht-numerische ID
+        // kann nie existieren und darf negativ gecacht werden.
+        if (tmdbId.isBlank()) return TmdbResult.Transient
+        if (!NUMERIC_ID.matches(tmdbId)) return TmdbResult.Negative
+        if (BuildConfig.TMDB_API_KEY.isBlank()) return TmdbResult.Transient
 
         return when (val result = withContext(ioDispatcher) { fetchMeta(kind, tmdbId) }) {
             is FetchResult.Cacheable -> result.meta
-            is FetchResult.Transient -> result.meta
+                ?.let { TmdbResult.Data(it) }
+                ?: TmdbResult.Negative
+            is FetchResult.Transient -> TmdbResult.Transient
         }
     }
 
@@ -96,9 +110,9 @@ class TmdbMetaClient @Inject constructor(
         }
     }
 
-    private suspend fun searchId(kind: String, query: String, year: Int?): Int? {
+    private suspend fun searchId(kind: String, query: String, year: Int?): TmdbResult<Int> {
         val apiKey = BuildConfig.TMDB_API_KEY
-        if (apiKey.isBlank()) return null
+        if (apiKey.isBlank()) return TmdbResult.Transient
 
         return withContext(ioDispatcher) {
             try {
@@ -110,24 +124,31 @@ class TmdbMetaClient @Inject constructor(
                 val request = Request.Builder().url(urlBuilder.build()).build()
 
                 okHttpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        reportHandled("$TAG.search.$kind", IOException("TMDB search HTTP ${response.code}"))
-                        return@withContext null
-                    }
-                    val json = response.body?.string()
-                    val results = json?.let { searchAdapter.fromJson(it)?.results }
-                    if (results == null) {
-                        reportHandled("$TAG.search.$kind", IOException("TMDB search unparsable body"))
-                        null
-                    } else {
-                        results.firstOrNull()?.id
+                    when {
+                        response.code == 404 -> TmdbResult.Negative
+                        !response.isSuccessful -> {
+                            reportHandled("$TAG.search.$kind", IOException("TMDB search HTTP ${response.code}"))
+                            TmdbResult.Transient
+                        }
+                        else -> {
+                            val json = response.body?.string()
+                            val results = json?.let { searchAdapter.fromJson(it)?.results }
+                            if (results == null) {
+                                reportHandled("$TAG.search.$kind", IOException("TMDB search unparsable body"))
+                                TmdbResult.Transient
+                            } else {
+                                results.firstOrNull()?.id
+                                    ?.let { TmdbResult.Data(it) }
+                                    ?: TmdbResult.Negative
+                            }
+                        }
                     }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 reportHandled("$TAG.search.$kind", e)
-                null
+                TmdbResult.Transient
             }
         }
     }
