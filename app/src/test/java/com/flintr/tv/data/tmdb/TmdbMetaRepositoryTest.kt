@@ -379,6 +379,110 @@ class TmdbMetaRepositoryTest {
         coVerify(exactly = 0) { client.movieMeta(any()) }
     }
 
+    // -- Katalog-Praefix-Strip -------------------------------------------
+
+    @Test
+    fun `resolveCardMeta strippt A-plus-Praefix vor der Suche`() = runBlocking {
+        coEvery { client.searchCandidates("movie", "luck", 2022) } returns
+            FetchResult.Data(listOf(TmdbSearchCandidate(100, "Luck", 2022)))
+        coEvery { client.movieMeta("100") } returns TmdbResult.Data(meta(100))
+        val repo = repository()
+
+        val result = repo.resolveCardMeta("movie", "A+ Luck (2022)", null, null)
+
+        assertEquals(meta(100), result)
+        coVerify(exactly = 1) { client.searchCandidates("movie", "luck", 2022) }
+    }
+
+    @Test
+    fun `resolveCardMeta strippt EN-Dash-Praefix vor der Suche`() = runBlocking {
+        coEvery { client.searchCandidates("movie", "the handmaid s tale", 2017) } returns
+            FetchResult.Data(listOf(TmdbSearchCandidate(200, "The Handmaid's Tale", 2017)))
+        coEvery { client.movieMeta("200") } returns TmdbResult.Data(meta(200))
+        val repo = repository()
+
+        val result = repo.resolveCardMeta("movie", "EN - The Handmaid's Tale (2017)", null, null)
+
+        assertEquals(meta(200), result)
+        coVerify(exactly = 1) { client.searchCandidates("movie", "the handmaid s tale", 2017) }
+    }
+
+    @Test
+    fun `resolveCardMeta strippt E T mit Punkt nicht`() = runBlocking {
+        coEvery { client.searchCandidates("movie", "e t", 1982) } returns
+            FetchResult.Data(listOf(TmdbSearchCandidate(300, "E.T.", 1982)))
+        coEvery { client.movieMeta("300") } returns TmdbResult.Data(meta(300))
+        val repo = repository()
+
+        val result = repo.resolveCardMeta("movie", "E.T. (1982)", null, null)
+
+        assertEquals(meta(300), result)
+        coVerify(exactly = 1) { client.searchCandidates("movie", "e t", 1982) }
+    }
+
+    @Test
+    fun `Suchtitel mit Pipe kollidiert nicht mit dem Key-Trennzeichen`() = runBlocking {
+        coEvery { client.searchCandidates("movie", "film | story", 2021) } returns
+            FetchResult.Data(listOf(TmdbSearchCandidate(400, "Film | Story", 2021)))
+        coEvery { client.movieMeta("400") } returns TmdbResult.Data(meta(400))
+        val repo = repository()
+
+        val result = repo.resolveCardMeta("movie", "Film | Story (2021)", 2021, null)
+
+        assertEquals(meta(400), result)
+        assertTrue(cache.loadAll().containsKey("search:movie:film   story|2021"))
+    }
+
+    // -- searchDetail synthetischer Marker --------------------------------
+
+    @Test
+    fun `searchDetail ignoriert frischen synthetischen Search-Key-Treffer`() = runBlocking {
+        val synthetic = TmdbMeta(tmdbId = 42, rating = 0.0, voteCount = 0, genres = emptyList())
+        cache.putAll(mapOf("search:movie:testfilm|2020" to entry(synthetic, nowRef.get())))
+        coEvery { client.searchMovieId("testfilm", 2020) } returns TmdbResult.Data(42)
+        coEvery { client.movieMeta("42") } returns TmdbResult.Data(meta(42))
+        val repo = repository()
+
+        val result = repo.detailMeta("movie", null, "Testfilm", 2020)
+
+        assertEquals(meta(42), result)
+        coVerify(exactly = 1) { client.searchMovieId("testfilm", 2020) }
+        coVerify(exactly = 1) { client.movieMeta("42") }
+    }
+
+    // -- cardMetaState ----------------------------------------------------
+
+    @Test
+    fun `cardMetaState mit negativ gecachter ID liefert Negative`() = runBlocking {
+        cache.putAll(mapOf("movie:5" to entry(null, nowRef.get(), negative = true)))
+        val repo = repository()
+
+        val state = repo.cardMetaState("movie", "5", null, null)
+
+        assertEquals(TmdbCardState.Negative, state)
+        coVerify(exactly = 0) { client.movieMeta(any()) }
+    }
+
+    @Test
+    fun `cardMetaState ohne tmdbId und ohne Match liefert Negative`() = runBlocking {
+        coEvery { client.searchCandidates("movie", "testfilm", 2020) } returns
+            FetchResult.Data(listOf(TmdbSearchCandidate(7, "Anderer Film", 2020)))
+        val repo = repository()
+
+        val state = repo.cardMetaState("movie", null, "Testfilm", 2020)
+
+        assertEquals(TmdbCardState.Negative, state)
+    }
+
+    @Test
+    fun `cardMetaState ohne ID und ohne Titel liefert Negative`() = runBlocking {
+        val repo = repository()
+
+        val state = repo.cardMetaState("movie", null, null, null)
+
+        assertEquals(TmdbCardState.Negative, state)
+    }
+
     @Test
     fun `recommendationsFor cached Hit und Miss am rec-Key`() = runBlocking {
         coEvery { discoverClient.movieRecommendations("238") } returns

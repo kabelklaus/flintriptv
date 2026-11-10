@@ -20,6 +20,13 @@ import javax.inject.Named
 import javax.inject.Singleton
 import kotlin.math.abs
 
+/** Karten-Zustand fuer [TmdbMetaRepository.cardMetaState]: UI unterscheidet negativ von noch-unterwegs. */
+sealed interface TmdbCardState {
+    data class Meta(val meta: TmdbMeta) : TmdbCardState
+    data object Negative : TmdbCardState
+    data object Transient : TmdbCardState
+}
+
 /**
  * Reaktive Schicht ueber [TmdbMetaClient] und [TmdbMetaCache].
  *
@@ -41,6 +48,8 @@ class TmdbMetaRepository @Inject constructor(
         const val COALESCE_MS = 100L
         const val MAX_PARALLEL = 8
         val NUMERIC_ID = Regex("\\d+")
+        val PREFIX_PLUS = Regex("^([A-Za-z]{1,3}\\+)\\s+")
+        val PREFIX_LANG_DASH = Regex("^([A-Za-z]{2})\\s*[-–—:]\\s+")
     }
 
     private val _metaFlow = MutableStateFlow<Map<String, TmdbMeta>>(emptyMap())
@@ -84,6 +93,65 @@ class TmdbMetaRepository @Inject constructor(
     }
 
     /**
+     * Karten-Zustand fuer die UI: unterscheidet "kein Treffer" (negativ gecacht) von
+     * "noch unterwegs" (Netzwerk-Puffer), damit Chips nicht endlos pulsieren.
+     * Numerische tmdbId laeuft ueber [request]; sonst ueber [resolveCardMeta]s Titelsuche.
+     * Fehlen ID und Titel, gibt es nichts zu holen und das Ergebnis ist [TmdbCardState.Negative].
+     */
+    suspend fun cardMetaState(
+        kind: String,
+        tmdbId: String?,
+        title: String?,
+        year: Int?
+    ): TmdbCardState {
+        ensureLoaded()
+
+        if (tmdbId != null && NUMERIC_ID.matches(tmdbId)) {
+            val key = metaKey(kind, tmdbId)
+            request(kind, tmdbId)
+            val meta = metaFlow.value[key]
+            if (meta != null) return TmdbCardState.Meta(meta)
+            val entry = cache.loadAll()[key]
+            return if (entry != null && isNegativeFresh(entry, now())) {
+                TmdbCardState.Negative
+            } else {
+                TmdbCardState.Transient
+            }
+        }
+
+        if (title.isNullOrBlank()) return TmdbCardState.Negative
+
+        val meta = resolveCardMeta(kind, title, year, tmdbId)
+        if (meta != null) return TmdbCardState.Meta(meta)
+
+        val (clean, titleYear) = normalizer.normalize(stripCatalogPrefixes(title))
+        if (clean.isBlank()) return TmdbCardState.Negative
+        val queryYear = year ?: titleYear
+        val entry = cache.loadAll()[searchKey(kind, clean, queryYear)]
+        return if (entry != null && isNegativeFresh(entry, now())) {
+            TmdbCardState.Negative
+        } else {
+            TmdbCardState.Transient
+        }
+    }
+
+    /**
+     * Strippt Katalog-Praefixe von Release-Groups vor der Normalisierung, max. zwei Runden:
+     * "A+ Luck (2022)" -> "Luck (2022)", "D+ Loki (2021)" -> "Loki (2021)",
+     * "EN - The Handmaid's Tale (2017)" -> "The Handmaid's Tale (2017)".
+     * "E.T. (1982)" matcht nicht: der zweite Buchstabe ist ein Punkt, kein Buchstabe+Leerzeichen.
+     */
+    private fun stripCatalogPrefixes(title: String): String {
+        var text = title
+        repeat(2) {
+            val stripped = PREFIX_LANG_DASH.replace(PREFIX_PLUS.replace(text, ""), "")
+            if (stripped == text) return text
+            text = stripped
+        }
+        return text
+    }
+
+    /**
      * Karten-Pfad: numerische tmdbId laeuft direkt, sonst strikter Title-Match ueber die Suche.
      * Die Suche selbst laeuft nicht durch den Leader-Drain; [searchMutex] verhindert nur
      * doppelte Suchen desselben Keys in einer Welle.
@@ -108,7 +176,7 @@ class TmdbMetaRepository @Inject constructor(
             return metaFlow.value[key]
         }
 
-        val (clean, titleYear) = normalizer.normalize(title)
+        val (clean, titleYear) = normalizer.normalize(stripCatalogPrefixes(title))
         if (clean.isBlank()) return null
 
         // Wie im Detail-Pfad: explizites Jahr gewinnt, sonst das Jahr aus dem Titel.
@@ -191,6 +259,10 @@ class TmdbMetaRepository @Inject constructor(
     private fun resolvedMeta(tmdbId: Int): TmdbMeta =
         TmdbMeta(tmdbId = tmdbId, rating = 0.0, voteCount = 0, genres = emptyList())
 
+    /** Erkennt den synthetischen Platzhalter aus [resolvedMeta], der kein echtes Detail-Meta ist. */
+    private fun isSyntheticMeta(meta: TmdbMeta?): Boolean =
+        meta != null && meta.rating == 0.0 && meta.voteCount == 0 && meta.genres.isEmpty()
+
     private fun negativeSearchEntry(): TmdbMetaCacheEntry =
         TmdbMetaCacheEntry(meta = null, fetchedAtMs = now(), negative = true)
 
@@ -221,7 +293,7 @@ class TmdbMetaRepository @Inject constructor(
     }
 
     private suspend fun searchDetail(kind: String, title: String, year: Int?): TmdbMeta? {
-        val (clean, titleYear) = normalizer.normalize(title)
+        val (clean, titleYear) = normalizer.normalize(stripCatalogPrefixes(title))
         if (clean.isBlank()) return null
 
         val queryYear = year ?: titleYear
@@ -229,7 +301,11 @@ class TmdbMetaRepository @Inject constructor(
         val now = now()
         val cached = cache.loadAll()[searchKey]
         if (cached != null) {
-            if (TmdbMetaCache.isFresh(cached, now)) return cached.meta
+            // Synthetische Resolve-Marker (aus cardMetaState) sind kein Detail-Ergebnis:
+            // bei frischem, synthetischem Treffer wird regulaer nachgesucht/-gefetcht.
+            if (TmdbMetaCache.isFresh(cached, now) && !isSyntheticMeta(cached.meta)) {
+                return cached.meta
+            }
             if (isNegativeFresh(cached, now)) return null
         }
 
@@ -485,8 +561,10 @@ class TmdbMetaRepository @Inject constructor(
 
     private fun metaKey(kind: String, tmdbId: String): String = "$kind:$tmdbId"
 
+    // clean kann ein "|" enthalten (TitleNormalizer strippt nur \p{P}, "|" ist Sm) und wuerde
+    // sonst mit dem "$clean|$year"-Trennzeichen von makeKey kollidieren.
     private fun searchKey(kind: String, clean: String, year: Int?): String =
-        "search:$kind:${normalizer.makeKey(clean, year)}"
+        "search:$kind:${normalizer.makeKey(clean.replace("|", " "), year)}"
 
     private fun isNegativeFresh(entry: TmdbMetaCacheEntry, nowMs: Long): Boolean =
         entry.negative && nowMs - entry.fetchedAtMs < TmdbMetaCache.TTL_MS
