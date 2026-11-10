@@ -19,6 +19,9 @@ import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.data.tmdb.TmdbCastClient
 import com.flintr.tv.data.tmdb.TmdbCastMember
 import com.flintr.tv.data.tmdb.TmdbMetaRepository
+import com.flintr.tv.data.tmdb.TmdbRecItem
+import com.flintr.tv.data.tmdb.TmdbResult
+import com.flintr.tv.data.tmdb.TitleNormalizer
 import com.flintr.tv.domain.recommendation.RecommendationEngine
 import com.flintr.tv.utils.error.reportWarning
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -34,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 data class MovieDetailUiState(
     val isLoading: Boolean = true,
@@ -234,15 +238,19 @@ class MovieDetailViewModel @Inject constructor(
     }
 
     /**
-     * Filme ohne Provider-tmdbId matchen ueber die gecachten Card-Resolves (T13); die Row
-     * fuellt sich mit dem Browsing.
+     * Movie-Recs: TMDB-Rec-Titel -> Katalog-Match (Provider hat keine Katalog-tmdbIds, 0/57291).
+     *
+     * F7 bleibt als erster, netzfreier Index: bereits gecachte Card-Resolves werden ueber ihre
+     * tmdbId gematcht. Danach liefert [TmdbMetaRepository.recommendationTitlesFor] die
+     * Rec-Titel aus demselben TMDB-Call, der vorher nur IDs lieferte; pro Titel wird gegen
+     * normalisierten Katalogtitel plus Jahr (+/-1, beidseitig null-tolerant) gematcht.
+     * Dedupe nach streamId, das Anchor-Item ist ausgeschlossen.
      */
     private suspend fun computeRecommendations(cached: CachedData?): List<VodStream> {
         if (cached == null) return emptyList()
         val anchorId = _uiState.value.detail?.tmdbId
             ?.takeIf { it.toIntOrNull() != null }
             ?: return emptyList()
-        val recIds = tmdbMetaRepository.recommendationsFor("movie", anchorId)
         val resolved = tmdbMetaRepository.cachedResolvedIds(
             kind = "movie",
             keyed = cached.movies.map {
@@ -253,12 +261,66 @@ class MovieDetailViewModel @Inject constructor(
             val tmdbId = movie.tmdbId?.toIntOrNull() ?: resolved[movie.streamId] ?: return@mapNotNull null
             tmdbId to movie
         }.toMap()
-        return RecommendationEngine.selectSimilarMovies(
-            anchorTmdbIds = recIds,
+
+        val recItems = when (val result = tmdbMetaRepository.recommendationTitlesFor("movie", anchorId)) {
+            is TmdbResult.Data -> result.value
+            TmdbResult.Negative, TmdbResult.Transient -> emptyList()
+        }
+        val selected = LinkedHashMap<Int, VodStream>()
+
+        // F7 zuerst: die Rec-IDs treffen den netzfreien Card-Resolve-Index, bevor Titel matchen.
+        RecommendationEngine.selectSimilarMovies(
+            anchorTmdbIds = recItems.map { it.id },
             index = index,
             excludedMovieIds = setOf(vodId)
-        )
+        ).forEach { selected[it.streamId] = it }
+
+        val catalogTitles = cached.movies.map { movie ->
+            val (cleanTitle, _) = TitleNormalizer.normalize(movie.name)
+            CatalogTitle(
+                cleanTitle = cleanTitle,
+                year = resolveYear(movie.name, movie.releaseDate),
+                movie = movie
+            )
+        }
+
+        for (item in recItems) {
+            if (selected.size >= RecommendationEngine.DEFAULT_LIMIT_PER_TYPE) break
+            val match = findCatalogMatch(item, catalogTitles, selected) ?: continue
+            selected[match.streamId] = match
+        }
+
+        return selected.values.take(RecommendationEngine.DEFAULT_LIMIT_PER_TYPE)
     }
+
+    private fun findCatalogMatch(
+        item: TmdbRecItem,
+        catalogTitles: List<CatalogTitle>,
+        selected: Map<Int, VodStream>
+    ): VodStream? {
+        val recTitle = item.title?.takeIf { it.isNotBlank() } ?: return null
+        val (cleanRecTitle, _) = TitleNormalizer.normalize(recTitle)
+        if (cleanRecTitle.isBlank()) return null
+        val recYear = resolveYear(item.title, item.releaseDate)
+        return catalogTitles.firstOrNull { candidate ->
+            candidate.movie.streamId != vodId &&
+                !selected.containsKey(candidate.movie.streamId) &&
+                candidate.cleanTitle == cleanRecTitle &&
+                yearCompatible(recYear, candidate.year)
+        }?.movie
+    }
+
+    /** Jahr +/-1; fehlt eine Seite, entscheidet alleine der normalisierte Titel. */
+    private fun yearCompatible(recYear: Int?, catalogYear: Int?): Boolean {
+        if (recYear == null || catalogYear == null) return true
+        return abs(recYear - catalogYear) <= 1
+    }
+
+    private data class CatalogTitle(
+        val cleanTitle: String,
+        val year: Int?,
+        val movie: VodStream
+    )
 
     /** Jahres-Auflösung fuer die TMDB-Suche: bevorzugt `releaseDate`, sonst der Titel. */
     private fun resolveYear(title: String?, releaseDate: String?): Int? =

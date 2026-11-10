@@ -529,6 +529,41 @@ class TmdbMetaRepository @Inject constructor(
         }
     }
 
+    /**
+     * Movie-Recommendations mit Titel und Release-Datum fuer den direkten Katalog-Match.
+     *
+     * Eigener Key `discover:rect:$kind:$tmdbId`, weil [TmdbMetaCacheEntry] neben
+     * [TmdbMetaCacheEntry.discoverIds] auch [TmdbMetaCacheEntry.recItems] traegt: derselbe
+     * 24-h-/Negative-Vertrag wie [recommendationsFor], aber ohne die ID-Liste zu ueberschreiben.
+     * Nur der Movie-Pfad ist ausgepraegt; TV liefert eine leere Liste (Serien-Recs laufen
+     * weiterhin ueber [recommendationsFor] und den tmdbId-Index).
+     */
+    suspend fun recommendationTitlesFor(kind: String, tmdbId: String): TmdbResult<List<TmdbRecItem>> {
+        if (kind != "movie") return TmdbResult.Data(emptyList())
+
+        val key = "discover:rect:$kind:$tmdbId"
+        val now = now()
+        val entry = cache.loadAll()[key]
+        if (entry != null) {
+            if (entry.recItems != null && TmdbMetaCache.isFresh(entry, now)) {
+                return TmdbResult.Data(entry.recItems)
+            }
+            if (isNegativeFresh(entry, now)) return TmdbResult.Negative
+        }
+
+        return when (val result = discoverClient.movieRecommendationTitles(tmdbId)) {
+            is TmdbResult.Data -> {
+                cache.putAll(mapOf(key to recTitlesEntry(result.value)))
+                TmdbResult.Data(result.value)
+            }
+            TmdbResult.Negative -> {
+                cache.putAll(mapOf(key to negativeRecTitlesEntry()))
+                TmdbResult.Negative
+            }
+            TmdbResult.Transient -> entry?.recItems?.let { TmdbResult.Data(it) } ?: TmdbResult.Transient
+        }
+    }
+
     /** Fetcht Pages sequenziell; Negative/leer bricht ab, Transient liefert stale IDs. */
     private suspend fun discoverIds(kind: String, genreIds: List<Int>, pages: Int): List<Int> {
         // Sortiert-distinct, damit ("28","18") und ("18","28") denselben Key treffen.
@@ -575,6 +610,12 @@ class TmdbMetaRepository @Inject constructor(
 
     private fun negativeDiscoverEntry(): TmdbMetaCacheEntry =
         TmdbMetaCacheEntry(discoverIds = null, fetchedAtMs = now(), meta = null, negative = true)
+
+    private fun recTitlesEntry(items: List<TmdbRecItem>): TmdbMetaCacheEntry =
+        TmdbMetaCacheEntry(recItems = items, fetchedAtMs = now(), meta = null, negative = false)
+
+    private fun negativeRecTitlesEntry(): TmdbMetaCacheEntry =
+        TmdbMetaCacheEntry(recItems = null, fetchedAtMs = now(), meta = null, negative = true)
 
     private suspend fun refreshFlow() {
         _metaFlow.value = cache.loadAll()

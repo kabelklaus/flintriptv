@@ -2,6 +2,7 @@ package com.flintr.tv.data.tmdb
 
 import com.flintr.tv.BuildConfig
 import com.flintr.tv.utils.error.reportHandled
+import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.CancellationException
@@ -18,9 +19,12 @@ import javax.inject.Singleton
 /**
  * Transport-Client fuer TMDB `/discover` und `/{movie,tv}/{id}/recommendations`.
  *
- * Liefert nur die tmdbIds der Ergebnisse. Ein blanker Key, HTTP-Fehler,
- * unparsbare Bodies und Netzfehler sind [TmdbResult.Transient]; 404 und leere
- * results sind [TmdbResult.Negative]. Kein Caching - das uebernimmt das Repository.
+ * [discoverMovies]/[discoverTv]/[movieRecommendations]/[tvRecommendations] liefern nur die
+ * tmdbIds der Ergebnisse. [movieRecommendationTitles] behaelt zusaetzlich Titel und
+ * Release-Datum der Recommendations, damit das Repository sie ohne Extra-Netz pro Kandidat
+ * gegen den Katalog matchen kann. Ein blanker Key, HTTP-Fehler, unparsbare Bodies und
+ * Netzfehler sind [TmdbResult.Transient]; 404 und leere results sind [TmdbResult.Negative].
+ * Kein Caching - das uebernimmt das Repository.
  */
 @Singleton
 class TmdbDiscoverClient @Inject constructor(
@@ -38,6 +42,7 @@ class TmdbDiscoverClient @Inject constructor(
     private val moshi = Moshi.Builder().build()
     private val discoverAdapter = moshi.adapter(TmdbDiscoverResponse::class.java)
     private val recommendationsAdapter = moshi.adapter(TmdbRecommendationsResponse::class.java)
+    private val recommendationTitlesAdapter = moshi.adapter(TmdbRecommendationTitlesResponse::class.java)
 
     suspend fun discoverMovies(
         genreIds: List<Int>,
@@ -56,6 +61,16 @@ class TmdbDiscoverClient @Inject constructor(
 
     suspend fun tvRecommendations(tmdbId: String, page: Int = 1): TmdbResult<List<Int>> =
         recommendations("tv", tmdbId, page)
+
+    /**
+     * Movie-Recommendations inklusive `title` und `release_date`. Der Endpoint ist derselbe
+     * wie bei [movieRecommendations]; nur das Mapping behaelt die fuer den Katalog-Match
+     * benoetigten Felder. Fehlende Felder bleiben null.
+     */
+    suspend fun movieRecommendationTitles(
+        tmdbId: String,
+        page: Int = 1
+    ): TmdbResult<List<TmdbRecItem>> = recommendationTitles("movie", tmdbId, page)
 
     private suspend fun discover(
         kind: String,
@@ -151,6 +166,51 @@ class TmdbDiscoverClient @Inject constructor(
             }
         }
     }
+
+    private suspend fun recommendationTitles(
+        kind: String,
+        tmdbId: String,
+        page: Int
+    ): TmdbResult<List<TmdbRecItem>> {
+        if (BuildConfig.TMDB_API_KEY.isBlank()) return TmdbResult.Transient
+        if (!NUMERIC_ID.matches(tmdbId)) return TmdbResult.Negative
+
+        return withContext(ioDispatcher) {
+            try {
+                val urlBuilder = "$BASE_URL/$kind/$tmdbId/recommendations".toHttpUrl().newBuilder()
+                    .addQueryParameter("api_key", BuildConfig.TMDB_API_KEY)
+                    .addQueryParameter("page", page.toString())
+                val request = Request.Builder().url(urlBuilder.build()).build()
+
+                okHttpClient.newCall(request).execute().use { response ->
+                    when {
+                        response.code == 404 -> TmdbResult.Negative
+                        !response.isSuccessful -> {
+                            reportHandled("$TAG.rect.$kind", IOException("TMDB recommendations HTTP ${response.code}"))
+                            TmdbResult.Transient
+                        }
+                        else -> {
+                            val json = response.body?.string()
+                            val items = json?.let { recommendationTitlesAdapter.fromJson(it)?.results }
+                            if (items == null) {
+                                reportHandled("$TAG.rect.$kind", IOException("TMDB recommendations unparsable body"))
+                                TmdbResult.Transient
+                            } else if (items.isEmpty()) {
+                                TmdbResult.Negative
+                            } else {
+                                TmdbResult.Data(items)
+                            }
+                        }
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                reportHandled("$TAG.rect.$kind", e)
+                TmdbResult.Transient
+            }
+        }
+    }
 }
 
 /** Antwort-Schema von `/discover/{movie,tv}`; nur die IDs werden gebraucht. */
@@ -173,4 +233,18 @@ internal data class TmdbRecommendationsResponse(
 @JsonClass(generateAdapter = true)
 internal data class TmdbRecommendationResult(
     val id: Int
+)
+
+/** Recommendation-Treffer mit den Feldern fuer den direkten Katalog-Match. */
+@JsonClass(generateAdapter = true)
+data class TmdbRecItem(
+    val id: Int,
+    val title: String? = null,
+    @Json(name = "release_date") val releaseDate: String? = null
+)
+
+/** Antwort-Schema von `/{movie,tv}/{id}/recommendations` inklusive Titel-Metadaten. */
+@JsonClass(generateAdapter = true)
+internal data class TmdbRecommendationTitlesResponse(
+    val results: List<TmdbRecItem> = emptyList()
 )

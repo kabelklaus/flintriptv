@@ -18,6 +18,8 @@ import com.flintr.tv.data.tmdb.TmdbCastMember
 import com.flintr.tv.data.tmdb.TmdbGenre
 import com.flintr.tv.data.tmdb.TmdbMeta
 import com.flintr.tv.data.tmdb.TmdbMetaRepository
+import com.flintr.tv.data.tmdb.TmdbRecItem
+import com.flintr.tv.data.tmdb.TmdbResult
 import com.flintr.tv.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -139,6 +141,8 @@ class MovieDetailViewModelTest {
         coEvery { watchProgressService.getWatchProgress("movie", vodId, null, null) } returns watchProgress
         coEvery { tmdbCastClient.movieCredits(any()) } returns emptyList()
         coEvery { tmdbMetaRepository.cachedResolvedIds(any(), any()) } returns emptyMap()
+        coEvery { tmdbMetaRepository.recommendationTitlesFor(any(), any()) } returns
+            TmdbResult.Data(emptyList())
     }
 
     @Test
@@ -390,9 +394,10 @@ class MovieDetailViewModelTest {
     }
 
     @Test
-    fun `load befuellt Empfehlungen aus recommendationsFor und schliesst sich selbst aus`() = runTest {
+    fun `load befuellt Empfehlungen aus Rec-IDs und schliesst sich selbst aus`() = runTest {
         stubHappyPath()
-        coEvery { tmdbMetaRepository.recommendationsFor("movie", "42") } returns listOf(777)
+        coEvery { tmdbMetaRepository.recommendationTitlesFor("movie", "42") } returns
+            TmdbResult.Data(listOf(TmdbRecItem(id = 777, title = "Empfohlen")))
         val recommendation = catalogMovie.copy(streamId = 888, name = "Empfohlen", tmdbId = "777")
         coEvery { cacheService.loadCachedDataAsync() } returns
             cachedData(movies = listOf(catalogMovie, recommendation))
@@ -405,7 +410,10 @@ class MovieDetailViewModelTest {
     @Test
     fun `load befuellt Empfehlungen fuer Katalog-Items ohne tmdbId aus dem Card-Resolve-Cache`() = runTest {
         stubHappyPath()
-        coEvery { tmdbMetaRepository.recommendationsFor("movie", "42") } returns listOf(777, 778)
+        coEvery { tmdbMetaRepository.recommendationTitlesFor("movie", "42") } returns
+            TmdbResult.Data(
+                listOf(TmdbRecItem(id = 777, title = null), TmdbRecItem(id = 778, title = null))
+            )
         val first = catalogMovie.copy(streamId = 888, name = "Empfohlen Eins", tmdbId = null)
         val second = catalogMovie.copy(streamId = 889, name = "Empfohlen Zwei", tmdbId = null)
         coEvery { cacheService.loadCachedDataAsync() } returns
@@ -416,6 +424,69 @@ class MovieDetailViewModelTest {
         val vm = viewModel()
 
         assertEquals(listOf(888, 889), vm.uiState.value.recommendations.map { it.streamId })
+    }
+
+    @Test
+    fun `load befuellt Empfehlungen aus Rec-Titeln per Katalog-Match`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.recommendationTitlesFor("movie", "42") } returns
+            TmdbResult.Data(
+                listOf(
+                    TmdbRecItem(id = 777, title = "Empfohlen", releaseDate = "2020-06-01"),
+                    TmdbRecItem(id = 778, title = "Daneben", releaseDate = "2020-06-01")
+                )
+            )
+        val recommendation = catalogMovie.copy(
+            streamId = 888,
+            name = "Empfohlen",
+            releaseDate = "2020-01-01",
+            tmdbId = null
+        )
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, recommendation))
+
+        val vm = viewModel()
+
+        assertEquals(listOf(888), vm.uiState.value.recommendations.map { it.streamId })
+    }
+
+    @Test
+    fun `Rec-Titel matcht Katalogtitel bei Jahr-Abweichung von einem Jahr`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.recommendationTitlesFor("movie", "42") } returns
+            TmdbResult.Data(
+                listOf(TmdbRecItem(id = 777, title = "Empfohlen", releaseDate = "2021-01-01"))
+            )
+        val recommendation = catalogMovie.copy(
+            streamId = 888,
+            name = "Empfohlen",
+            releaseDate = "2020-01-01",
+            tmdbId = null
+        )
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, recommendation))
+
+        val vm = viewModel()
+
+        assertEquals(listOf(888), vm.uiState.value.recommendations.map { it.streamId })
+    }
+
+    @Test
+    fun `Rec-Item ohne Titel wird beim Katalog-Match uebersprungen`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.recommendationTitlesFor("movie", "42") } returns
+            TmdbResult.Data(
+                listOf(
+                    TmdbRecItem(id = 777, title = null, releaseDate = "2020-01-01"),
+                    TmdbRecItem(id = 778, title = "  ", releaseDate = "2020-01-01")
+                )
+            )
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, catalogMovie.copy(streamId = 888, name = "Katalogtitel")))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.recommendations.isEmpty())
     }
 
     @Test
@@ -430,7 +501,7 @@ class MovieDetailViewModelTest {
         val vm = viewModel()
 
         assertTrue(vm.uiState.value.recommendations.isEmpty())
-        coVerify(exactly = 0) { tmdbMetaRepository.recommendationsFor(any(), any()) }
+        coVerify(exactly = 0) { tmdbMetaRepository.recommendationTitlesFor(any(), any()) }
     }
 
 }

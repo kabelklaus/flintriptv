@@ -63,6 +63,17 @@ class TmdbDiscoverClientTest {
         }
     """.trimIndent()
 
+    /** Recommendations-Form mit den fuer den Katalog-Match benoetigten Titel-Feldern. */
+    private val movieRecommendationTitlesJson = """
+        {
+          "page": 1,
+          "results": [
+            {"id": 240, "title": "The Godfather Part II", "release_date": "1974-12-20"},
+            {"id": 242}
+          ]
+        }
+    """.trimIndent()
+
     /** Live verifizierte Recommendations-Form (Movie 238). */
     private val movieRecommendationsJson = """
         {
@@ -172,6 +183,28 @@ class TmdbDiscoverClientTest {
         val ids = client(okHttpClient).movieRecommendations("238").dataOrNull()
 
         assertEquals(listOf(240, 242), ids)
+        assertTrue(captured!!.url.toString().contains("movie/238/recommendations"))
+        assertEquals("1", captured!!.url.queryParameter("page"))
+    }
+
+    @Test
+    fun `movieRecommendationTitles parst title und release_date tolerant`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        var captured: Request? = null
+        val (okHttpClient, _) = fakeClient { request ->
+            captured = request
+            jsonResponse(request, 200, movieRecommendationTitlesJson)
+        }
+
+        val items = client(okHttpClient).movieRecommendationTitles("238").dataOrNull()
+
+        assertEquals(
+            listOf(
+                TmdbRecItem(id = 240, title = "The Godfather Part II", releaseDate = "1974-12-20"),
+                TmdbRecItem(id = 242, title = null, releaseDate = null)
+            ),
+            items
+        )
         assertTrue(captured!!.url.toString().contains("movie/238/recommendations"))
         assertEquals("1", captured!!.url.queryParameter("page"))
     }

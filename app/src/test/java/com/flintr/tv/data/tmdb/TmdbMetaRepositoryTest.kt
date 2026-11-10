@@ -59,12 +59,14 @@ class TmdbMetaRepositoryTest {
         meta: TmdbMeta?,
         fetchedAtMs: Long = nowRef.get(),
         negative: Boolean = false,
-        discoverIds: List<Int>? = null
+        discoverIds: List<Int>? = null,
+        recItems: List<TmdbRecItem>? = null
     ) = TmdbMetaCacheEntry(
         meta = meta,
         fetchedAtMs = fetchedAtMs,
         negative = negative,
-        discoverIds = discoverIds
+        discoverIds = discoverIds,
+        recItems = recItems
     )
 
     private fun staleAt(): Long = nowRef.get() - TmdbMetaCache.TTL_MS - 60_000
@@ -499,6 +501,47 @@ class TmdbMetaRepositoryTest {
 
         assertEquals(first, second)
         coVerify(exactly = 1) { discoverClient.movieRecommendations("238") }
+    }
+
+    @Test
+    fun `recommendationTitlesFor cached Treffer am rect-Key und fetcht nur einmal`() = runBlocking {
+        coEvery { discoverClient.movieRecommendationTitles("238") } returns
+            TmdbResult.Data(
+                listOf(TmdbRecItem(id = 240, title = "The Godfather Part II", releaseDate = "1974-12-20"))
+            )
+        val repo = repository()
+
+        val first = repo.recommendationTitlesFor("movie", "238")
+        val stored = cache.loadAll()["discover:rect:movie:238"]
+
+        assertEquals(
+            TmdbResult.Data(
+                listOf(TmdbRecItem(id = 240, title = "The Godfather Part II", releaseDate = "1974-12-20"))
+            ),
+            first
+        )
+        assertEquals((first as TmdbResult.Data).value, stored!!.recItems)
+        assertFalse(stored.negative)
+
+        val second = repo.recommendationTitlesFor("movie", "238")
+
+        assertEquals(first, second)
+        coVerify(exactly = 1) { discoverClient.movieRecommendationTitles("238") }
+    }
+
+    @Test
+    fun `recommendationTitlesFor cached Negative und fetcht kein zweites Mal`() = runBlocking {
+        coEvery { discoverClient.movieRecommendationTitles("404") } returns TmdbResult.Negative
+        val repo = repository()
+
+        val first = repo.recommendationTitlesFor("movie", "404")
+        val stored = cache.loadAll()["discover:rect:movie:404"]
+        val second = repo.recommendationTitlesFor("movie", "404")
+
+        assertEquals(TmdbResult.Negative, first)
+        assertEquals(TmdbResult.Negative, second)
+        assertTrue(stored!!.negative)
+        coVerify(exactly = 1) { discoverClient.movieRecommendationTitles("404") }
     }
 
     @Test

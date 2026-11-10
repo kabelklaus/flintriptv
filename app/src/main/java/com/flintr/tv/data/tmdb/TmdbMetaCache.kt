@@ -28,14 +28,16 @@ import javax.inject.Singleton
 /**
  * Ein Eintrag im persistenten TMDB-Metadaten-Cache. [meta] ist null, wenn der
  * Eintrag ein negatives Ergebnis ([negative] = true, 404 bzw. Search-Miss)
- * repraesentiert. [discoverIds] haelt spaetere Discover-Result-Listen.
+ * repraesentiert. [discoverIds] haelt spaetere Discover-Result-Listen; [recItems]
+ * Recommendations inklusive Titel/Release-Datum fuer den direkten Katalog-Match.
  */
 @JsonClass(generateAdapter = true)
 data class TmdbMetaCacheEntry(
     val meta: TmdbMeta? = null,
     val fetchedAtMs: Long = 0,
     val negative: Boolean = false,
-    val discoverIds: List<Int>? = null
+    val discoverIds: List<Int>? = null,
+    val recItems: List<TmdbRecItem>? = null
 )
 
 /**
