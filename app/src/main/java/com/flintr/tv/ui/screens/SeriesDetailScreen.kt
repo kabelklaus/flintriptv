@@ -106,8 +106,8 @@ private fun CenteredHeaderBlock(viewportHeight: Dp, content: @Composable () -> U
  * season number to the Phase-4 route, which then opens [SeasonScreen]. The screen itself never
  * navigates.
  *
- * Genre/rating are rendered only when the ViewModel's IMDb enrichment matched; there is no Xtream
- * fallback. Focus starts on the first action button (never on a Lazy item) and moving down scrolls
+ * Genre/rating are rendered only when the ViewModel's TMDB meta lookup matched (rating and genres
+ * come from TmdbMetaRepository); there is no Xtream fallback. Focus starts on the first action button (never on a Lazy item) and moving down scrolls
  * the season row to the first tile *before* requesting focus, so a D-Pad press can never land on a
  * not-yet-composed node. Moving back up out of the lowest focusable section (season tiles, or
  * recommendation cards when there are no seasons) always lands back on the header's watch button

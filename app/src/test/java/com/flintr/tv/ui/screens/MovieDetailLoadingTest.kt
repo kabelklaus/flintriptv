@@ -81,7 +81,7 @@ class MovieDetailLoadingTest {
         composeTestRule.onNodeWithTag("movie-detail-poster").assertExists()
         composeTestRule.onNodeWithTag("movie-detail-loading-indicator").assertIsDisplayed()
         composeTestRule.onNodeWithText("Details werden geladen…").assertExists()
-        // Genre/Rating sind IMDb-exklusiv - im Katalog-Basisstand duerfen sie nicht erscheinen.
+        // Genre/Rating sind TMDB-exklusiv - im Katalog-Basisstand duerfen sie nicht erscheinen.
         composeTestRule.onNodeWithTag("movie-detail-rating").assertDoesNotExist()
         composeTestRule.onNodeWithTag("movie-detail-genres").assertDoesNotExist()
     }

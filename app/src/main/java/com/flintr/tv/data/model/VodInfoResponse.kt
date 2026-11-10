@@ -20,10 +20,10 @@ data class VodInfoResponse(
 /**
  * Movie metadata from get_vod_info. Field names mirror the live API response.
  *
- * [name] is part of the probe and is needed to build the IMDb lookup key
- * (title + release year). Xtream [genre] and [rating] are parsed because the
- * panel delivers them, but display selection is IMDb-only and happens in the
- * detail mapper — never here.
+ * [name] is an Xtream wire field from get_vod_info (not an IMDb lookup key).
+ * Xtream [genre] and [rating] are parsed because the panel delivers them, but
+ * display selection is TMDB-only and happens in the detail mapper via
+ * TmdbMetaRepository — never here.
  */
 @JsonClass(generateAdapter = true)
 data class VodInfo(
