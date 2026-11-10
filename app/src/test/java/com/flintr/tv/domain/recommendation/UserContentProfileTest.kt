@@ -7,6 +7,8 @@ import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.WatchedItem
+import com.flintr.tv.data.tmdb.TmdbGenre
+import com.flintr.tv.data.tmdb.TmdbMeta
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -61,6 +63,21 @@ private fun testSeries(seriesId: Int, genre: String?, name: String = "Series$ser
 
 private fun agoIso(days: Long): String = Instant.now().minusSeconds(days * 86_400).toString()
 
+/** Synchroner Fake: contentId -> TMDB-Genre-IDs; der kind-Parameter ist hier unerheblich. */
+private fun lookup(vararg entries: Pair<Int, List<Int>>): (String, Int) -> TmdbMeta? {
+    val byId = entries.toMap()
+    return { _, contentId ->
+        byId[contentId]?.let { ids ->
+            TmdbMeta(
+                tmdbId = contentId,
+                rating = 0.0,
+                voteCount = 0,
+                genres = ids.map { TmdbGenre(it, "Genre$it") }
+            )
+        }
+    }
+}
+
 class UserContentProfileTest {
 
     @Test
@@ -76,11 +93,12 @@ class UserContentProfileTest {
             watchProgress = emptyMap(),
             ratings = emptyMap(),
             movies = emptyList(),
-            series = series
+            series = series,
+            metaLookup = lookup(10 to listOf(28, 18))
         )
 
-        assertEquals(3.0, profile.weights["action"]!!, 0.001)
-        assertEquals(3.0, profile.weights["drama"]!!, 0.001)
+        assertEquals(3.0, profile.weights[28]!!, 0.001)
+        assertEquals(3.0, profile.weights[18]!!, 0.001)
         assertTrue(10 in profile.excludedSeriesIds)
     }
 
@@ -97,10 +115,11 @@ class UserContentProfileTest {
             watchProgress = progress,
             ratings = emptyMap(),
             movies = emptyList(),
-            series = series
+            series = series,
+            metaLookup = lookup(10 to listOf(28))
         )
 
-        assertEquals(2.5, profile.weights["action"]!!, 0.001)
+        assertEquals(2.5, profile.weights[28]!!, 0.001)
         assertTrue(10 in profile.excludedSeriesIds)
     }
 
@@ -117,10 +136,11 @@ class UserContentProfileTest {
             watchProgress = progress,
             ratings = emptyMap(),
             movies = emptyList(),
-            series = series
+            series = series,
+            metaLookup = lookup(10 to listOf(28))
         )
 
-        assertEquals(1.0, profile.weights["action"]!!, 0.001)
+        assertEquals(1.0, profile.weights[28]!!, 0.001)
     }
 
     @Test
@@ -136,10 +156,11 @@ class UserContentProfileTest {
             watchProgress = progress,
             ratings = emptyMap(),
             movies = movies,
-            series = emptyList()
+            series = emptyList(),
+            metaLookup = lookup(1 to listOf(27))
         )
 
-        assertEquals(1.5, profile.weights["horror"]!!, 0.001)
+        assertEquals(1.5, profile.weights[27]!!, 0.001)
         assertTrue(1 in profile.excludedMovieIds)
     }
 
@@ -156,10 +177,11 @@ class UserContentProfileTest {
             watchProgress = progress,
             ratings = emptyMap(),
             movies = movies,
-            series = emptyList()
+            series = emptyList(),
+            metaLookup = lookup(1 to listOf(27))
         )
 
-        assertEquals(-1.0, profile.weights["horror"]!!, 0.001)
+        assertEquals(-1.0, profile.weights[27]!!, 0.001)
     }
 
     @Test
@@ -181,10 +203,11 @@ class UserContentProfileTest {
             watchProgress = progress,
             ratings = emptyMap(),
             movies = movies,
-            series = emptyList()
+            series = emptyList(),
+            metaLookup = lookup(1 to listOf(27))
         )
 
-        assertTrue(profile.weights["horror"] == null || profile.weights["horror"] == 0.0)
+        assertTrue(profile.weights[27] == null || profile.weights[27] == 0.0)
     }
 
     @Test
@@ -200,10 +223,11 @@ class UserContentProfileTest {
             watchProgress = emptyMap(),
             ratings = ratings,
             movies = movies,
-            series = emptyList()
+            series = emptyList(),
+            metaLookup = lookup(1 to listOf(35))
         )
 
-        assertEquals(-2.0, profile.weights["comedy"]!!, 0.001)
+        assertEquals(-2.0, profile.weights[35]!!, 0.001)
     }
 
     @Test
@@ -219,11 +243,12 @@ class UserContentProfileTest {
             watchProgress = progress,
             ratings = emptyMap(),
             movies = movies,
-            series = emptyList()
+            series = emptyList(),
+            metaLookup = lookup(1 to listOf(27))
         )
 
         // weight = 1.5 * max(0.3, exp(-200/90)) = 1.5 * 0.3 (capped)
-        assertTrue(abs(profile.weights["horror"]!! - 0.45) < 0.01)
+        assertTrue(abs(profile.weights[27]!! - 0.45) < 0.01)
     }
 
     @Test
@@ -243,11 +268,12 @@ class UserContentProfileTest {
             watchProgress = progress,
             ratings = emptyMap(),
             movies = movies,
-            series = series
+            series = series,
+            metaLookup = lookup(1 to listOf(28), 10 to listOf(28))
         )
 
         // +3.0 (watchlist movie) + 2.5 (active series) = 5.5
-        assertEquals(5.5, profile.weights["action"]!!, 0.001)
+        assertEquals(5.5, profile.weights[28]!!, 0.001)
     }
 
     @Test
@@ -263,7 +289,8 @@ class UserContentProfileTest {
             watchProgress = progress,
             ratings = emptyMap(),
             movies = movies,
-            series = emptyList()
+            series = emptyList(),
+            metaLookup = lookup(1 to listOf(28))
         )
 
         // Abandoned-movie signal doesn't count toward the cold-start core signal count.

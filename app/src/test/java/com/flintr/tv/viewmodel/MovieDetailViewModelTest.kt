@@ -350,4 +350,33 @@ class MovieDetailViewModelTest {
         assertTrue(vm.uiState.value.castPhotos.isEmpty())
         coVerify(exactly = 0) { tmdbCastClient.movieCredits(any()) }
     }
+
+    @Test
+    fun `load befuellt Empfehlungen aus recommendationsFor und schliesst sich selbst aus`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.recommendationsFor("movie", "42") } returns listOf(777)
+        val recommendation = catalogMovie.copy(streamId = 888, name = "Empfohlen", tmdbId = "777")
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, recommendation))
+
+        val vm = viewModel()
+
+        assertEquals(listOf(888), vm.uiState.value.recommendations.map { it.streamId })
+    }
+
+    @Test
+    fun `load ohne Anchor-tmdbId liefert leere Empfehlungen`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(tmdbId = null))
+        coEvery { tmdbMetaRepository.detailMeta("movie", any(), any(), any()) } returns null
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, catalogMovie.copy(streamId = 888, tmdbId = "777")))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.recommendations.isEmpty())
+        coVerify(exactly = 0) { tmdbMetaRepository.recommendationsFor(any(), any()) }
+    }
+
 }

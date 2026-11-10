@@ -213,11 +213,10 @@ class SeriesDetailViewModel @Inject constructor(
                     }
                 )
 
-                // Genres kommen von TMDB und koennen daher null sein; RecommendationEngine liefert
-                // dann eine leere Reihe, sodass der Abschnitt ausblendet statt auf den
-                // (unzuverlaessigen) Xtream-Genre-String zurueckzufallen.
+                // Similar-Row kommt aus TMDB-Recommendations des Anchor-tmdbId; ohne Anchor
+                // bleibt die Reihe leer, statt auf Xtream-Genres zurueckzufallen.
                 val cached = cacheService.loadCachedDataAsync()
-                val recommendations = computeRecommendations(cached, _uiState.value.detail?.genres)
+                val recommendations = computeRecommendations(cached)
                 _uiState.update { it.copy(recommendations = recommendations) }
             } catch (e: CancellationException) {
                 throw e
@@ -267,16 +266,17 @@ class SeriesDetailViewModel @Inject constructor(
         )
     }
 
-    private fun computeRecommendations(cached: CachedData?, genres: List<String>?): List<Series> {
-        return if (cached != null) {
-            RecommendationEngine.recommendSimilarSeries(
-                anchorGenres = genres,
-                cached = cached,
-                excludedSeriesIds = setOf(seriesId)
-            )
-        } else {
-            emptyList()
-        }
+    private suspend fun computeRecommendations(cached: CachedData?): List<Series> {
+        if (cached == null) return emptyList()
+        val anchorId = _uiState.value.detail?.tmdbId
+            ?.takeIf { it.toIntOrNull() != null }
+            ?: return emptyList()
+        val recIds = tmdbMetaRepository.recommendationsFor("tv", anchorId)
+        return RecommendationEngine.selectSimilarSeries(
+            anchorTmdbIds = recIds,
+            cached = cached,
+            excludedSeriesIds = setOf(seriesId)
+        )
     }
 
     fun toggleWatchlist() {

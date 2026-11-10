@@ -124,7 +124,8 @@ class SeriesDetailViewModelTest {
         categoryName = null,
         youtubeTrailer = null,
         backdropPath = null,
-        seasons = null
+        seasons = null,
+        tmdbId = "5001"
     )
 
     private fun cachedData(series: List<Series> = listOf(recommendedSeries)) = CachedData(
@@ -301,14 +302,28 @@ class SeriesDetailViewModelTest {
     }
 
     @Test
-    fun `load befuellt Empfehlungen per Genre-Match und schliesst sich selbst aus`() = runTest {
-        stubHappyPath()
+    fun `load befuellt Empfehlungen aus recommendationsFor und schliesst sich selbst aus`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "1"))
+        coEvery { tmdbMetaRepository.recommendationsFor("tv", "1") } returns listOf(5001)
         coEvery { cacheService.loadCachedDataAsync() } returns
             cachedData(series = listOf(recommendedSeries, series))
 
         val vm = viewModel()
 
         assertEquals(listOf(2201), vm.uiState.value.recommendations.map { it.seriesId })
+    }
+
+    @Test
+    fun `load ohne Anchor-tmdbId liefert leere Empfehlungen`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.detailMeta("tv", any(), any(), any()) } returns null
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(series = listOf(recommendedSeries, series))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.recommendations.isEmpty())
+        coVerify(exactly = 0) { tmdbMetaRepository.recommendationsFor(any(), any()) }
     }
 
     @Test

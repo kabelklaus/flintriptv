@@ -5,6 +5,7 @@ import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.WatchedItem
 import com.flintr.tv.data.repository.UserRepository
+import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import com.flintr.tv.domain.recommendation.RecommendationEngine
 import com.flintr.tv.domain.recommendation.RecommendationResult
 import com.flintr.tv.domain.recommendation.UserContentProfile
@@ -49,10 +50,10 @@ private data class CachedRatings(
 )
 
 /**
- * Combines watchlist entries, watched history and watch progress into a [GenreProfile][com.flintr.tv.domain.recommendation.GenreProfile]
- * and scores the current catalog against it, exposing the "Für dich" recommendations as a
- * [StateFlow]. Ratings have no reactive StateFlow of their own, so they are fetched read-only
- * once and reused for [RATINGS_CACHE_TTL_MS].
+ * Baut aus Watchlist, Verlauf und Fortschritt ein [GenreProfile][com.flintr.tv.domain.recommendation.GenreProfile]
+ * (Genre-IDs aus TMDB-Meta) und laedt danach die Top-Genres ueber TMDB-Discover. Die Engine
+ * waehlt nur noch aus den bereits geladenen Listen aus; Cold Start spart alle Netz-Calls.
+ * Ratings haben keinen reaktiven Flow und werden fuer [RATINGS_CACHE_TTL_MS] gecacht.
  */
 @Singleton
 class RecommendationService(
@@ -62,6 +63,7 @@ class RecommendationService(
     private val userRepository: UserRepository,
     private val credentialsRepository: CredentialsRepository,
     private val cacheService: DataCacheService,
+    private val tmdbMetaRepository: TmdbMetaRepository,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher,
     private val nowMs: () -> Long = { System.currentTimeMillis() }
 ) {
@@ -74,6 +76,7 @@ class RecommendationService(
         userRepository: UserRepository,
         credentialsRepository: CredentialsRepository,
         cacheService: DataCacheService,
+        tmdbMetaRepository: TmdbMetaRepository,
         @Named("IO") ioDispatcher: CoroutineDispatcher
     ) : this(
         watchlistRepository = watchlistRepository,
@@ -82,6 +85,7 @@ class RecommendationService(
         userRepository = userRepository,
         credentialsRepository = credentialsRepository,
         cacheService = cacheService,
+        tmdbMetaRepository = tmdbMetaRepository,
         ioDispatcher = ioDispatcher,
         nowMs = { System.currentTimeMillis() }
     )
@@ -137,10 +141,43 @@ class RecommendationService(
                 watchProgress = input.watchProgress,
                 ratings = ratings,
                 movies = cached.movies,
-                series = cached.series
+                series = cached.series,
+                // Repository-Keys sind "movie:"/"tv:", das Profil fragt "series" an.
+                metaLookup = { kind, id ->
+                    val key = if (kind == "series") "tv:$id" else "movie:$id"
+                    tmdbMetaRepository.metaFlow.value[key]
+                }
             )
 
-            val result = RecommendationEngine.recommend(profile, cached)
+            // Cold Start vor jedem Netz-Call: ohne genug Kernsignale kein Discover.
+            if (profile.signalCount < RecommendationEngine.COLD_START_MIN_SIGNALS) {
+                _recommendations.value = RecommendationResult(emptyList(), emptyList())
+                return
+            }
+
+            val anchorGenreIds = profile.weights.entries
+                .filter { it.value > 0.0 }
+                .sortedWith(compareByDescending<Map.Entry<Int, Double>> { it.value }.thenBy { it.key })
+                .take(RecommendationEngine.TOP_GENRE_COUNT)
+                .map { it.key }
+
+            val discoveredMoviesByGenre = linkedMapOf<Int, List<Int>>()
+            val discoveredSeriesByGenre = linkedMapOf<Int, List<Int>>()
+            anchorGenreIds.forEach { genreId ->
+                coroutineContext.ensureActive()
+                discoveredMoviesByGenre[genreId] =
+                    tmdbMetaRepository.discoverMovieIds(listOf(genreId))
+                coroutineContext.ensureActive()
+                discoveredSeriesByGenre[genreId] =
+                    tmdbMetaRepository.discoverTvIds(listOf(genreId))
+            }
+
+            val result = RecommendationEngine.recommend(
+                profile = profile,
+                cached = cached,
+                discoveredMoviesByGenre = discoveredMoviesByGenre,
+                discoveredSeriesByGenre = discoveredSeriesByGenre
+            )
             // The engine itself is synchronous, so a cancelled run must not publish its stale result.
             coroutineContext.ensureActive()
             _recommendations.value = result

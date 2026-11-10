@@ -3,7 +3,6 @@ package com.flintr.tv.domain.recommendation
 import com.flintr.tv.data.local.CachedData
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
-import com.flintr.tv.utils.ContentParser
 
 data class RecommendationResult(
     val movies: List<VodStream>,
@@ -11,190 +10,154 @@ data class RecommendationResult(
 )
 
 /**
- * Scores the catalog against a [GenreProfile] and returns the top candidates per type,
- * per the scoring spec in .hermes-plan/task_plan.md.
+ * Reine Auswahl-Maschinerie: synchron und ohne Netz/Repository. Die Discovery-Listen kommen
+ * bereits in TMDB-Reihenfolge (vote_average) herein; diese Reihenfolge ist die Bewertung.
+ *
+ * Katalog-Items werden ausschliesslich ueber ihre numerische `tmdbId` zugeordnet. Items ohne
+ * Treffer im Discover-Ergebnis fallen weg statt synthetisch aufgefuellt zu werden.
  */
 object RecommendationEngine {
-    private const val COLD_START_MIN_SIGNALS = 5
-    private const val DEFAULT_LIMIT_PER_TYPE = 20
-    private const val DIVERSITY_MAX_PER_GENRE = 5
+    const val COLD_START_MIN_SIGNALS = 5
+    const val DEFAULT_LIMIT_PER_TYPE = 20
+    const val DIVERSITY_MAX_PER_GENRE = 5
+    const val TOP_GENRE_COUNT = 3
+
+    private val NUMERIC_ID = Regex("\\d+")
 
     fun recommend(
         profile: GenreProfile,
         cached: CachedData,
+        discoveredMoviesByGenre: Map<Int, List<Int>>,
+        discoveredSeriesByGenre: Map<Int, List<Int>>,
         limitPerType: Int = DEFAULT_LIMIT_PER_TYPE
     ): RecommendationResult {
-        if (profile.signalCount < COLD_START_MIN_SIGNALS) {
-            return RecommendationResult(emptyList(), emptyList())
-        }
+        val genreOrder = profile.weights.entries
+            .filter { it.value > 0.0 }
+            .sortedWith(compareByDescending<Map.Entry<Int, Double>> { it.value }.thenBy { it.key })
+            .map { it.key }
 
-        val genreMovies = selectWithGenreDiversity(
-            rankMovies(cached.movies, profile),
-            limitPerType,
-            profile
-        ) { it.genre }
+        val movieIndex = tmdbIndex(cached.movies, { it.streamId }, { it.tmdbId })
+        val seriesIndex = tmdbIndex(cached.series, { it.seriesId }, { it.tmdbId })
 
-        val movies = genreMovies.ifEmpty {
-            cached.movies
-                .asSequence()
-                .filter { it.streamId !in profile.excludedMovieIds }
-                .sortedWith(
-                    compareByDescending<VodStream> { ratingOf(it) }.thenBy { it.name }
-                )
-                .take(limitPerType)
-                .toList()
-        }
-
-        val genreSeries = selectWithGenreDiversity(
-            rankSeries(cached.series, profile),
-            limitPerType,
-            profile
-        ) { it.genre }
-
-        val series = genreSeries.ifEmpty {
-            cached.series
-                .asSequence()
-                .filter { it.seriesId !in profile.excludedSeriesIds }
-                .sortedWith(
-                    compareByDescending<Series> { ratingOf(it) }.thenBy { it.name }
-                )
-                .take(limitPerType)
-                .toList()
-        }
-
-        return RecommendationResult(movies = movies, series = series)
-    }
-
-    /**
-     * Similar-Movie row for a detail screen: reuses the exact same scoring and diversity
-     * pipeline as [recommend], only the profile is built from the anchor movie's genres instead
-     * of the user's signals. Deliberately no fallback list - without a genre match the section
-     * stays hidden rather than showing unrelated titles.
-     */
-    fun recommendSimilar(
-        anchorGenres: List<String>?,
-        cached: CachedData,
-        excludedMovieIds: Set<Int> = emptySet(),
-        limit: Int = DEFAULT_LIMIT_PER_TYPE
-    ): List<VodStream> {
-        val tokens = anchorGenres.orEmpty()
-            .flatMap { GenreNormalizer.normalize(it) }
-            .distinct()
-        if (tokens.isEmpty()) return emptyList()
-
-        val anchorProfile = GenreProfile(
-            weights = tokens.associateWith { 1.0 },
-            signalCount = tokens.size,
-            excludedMovieIds = excludedMovieIds
-        )
-        return selectWithGenreDiversity(
-            rankMovies(cached.movies, anchorProfile),
-            limit,
-            anchorProfile
-        ) { it.genre }
-    }
-
-    /**
-     * Similar-Series row for SeriesDetailScreen: mirrors [recommendSimilar] but ranks the series
-     * catalog instead of movies, since the detail screen's anchor is a series, not a movie.
-     * Same scoring/diversity pipeline, no second matching implementation.
-     */
-    fun recommendSimilarSeries(
-        anchorGenres: List<String>?,
-        cached: CachedData,
-        excludedSeriesIds: Set<Int> = emptySet(),
-        limit: Int = DEFAULT_LIMIT_PER_TYPE
-    ): List<Series> {
-        val tokens = anchorGenres.orEmpty()
-            .flatMap { GenreNormalizer.normalize(it) }
-            .distinct()
-        if (tokens.isEmpty()) return emptyList()
-
-        val anchorProfile = GenreProfile(
-            weights = tokens.associateWith { 1.0 },
-            signalCount = tokens.size,
-            excludedSeriesIds = excludedSeriesIds
-        )
-        return selectWithGenreDiversity(
-            rankSeries(cached.series, anchorProfile),
-            limit,
-            anchorProfile
-        ) { it.genre }
-    }
-
-    private fun rankMovies(movies: List<VodStream>, profile: GenreProfile): List<VodStream> =
-        movies
-            .asSequence()
-            .filter { it.streamId !in profile.excludedMovieIds }
-            .map { it to score(it.genre, profile) }
-            .filter { (_, score) -> score > 0.0 }
-            .sortedWith(
-                compareByDescending<Pair<VodStream, Double>> { it.second }
-                    .thenByDescending { ratingOf(it.first) }
-                    .thenBy { it.first.name }
+        return RecommendationResult(
+            movies = selectFromDiscover(
+                genreOrder = genreOrder,
+                discoveredByGenre = discoveredMoviesByGenre,
+                index = movieIndex,
+                excludedIds = profile.excludedMovieIds,
+                idOf = { it.streamId },
+                limit = limitPerType
+            ),
+            series = selectFromDiscover(
+                genreOrder = genreOrder,
+                discoveredByGenre = discoveredSeriesByGenre,
+                index = seriesIndex,
+                excludedIds = profile.excludedSeriesIds,
+                idOf = { it.seriesId },
+                limit = limitPerType
             )
-            .map { it.first }
-            .toList()
-
-    private fun rankSeries(series: List<Series>, profile: GenreProfile): List<Series> =
-        series
-            .asSequence()
-            .filter { it.seriesId !in profile.excludedSeriesIds }
-            .map { it to score(it.genre, profile) }
-            .filter { (_, score) -> score > 0.0 }
-            .sortedWith(
-                compareByDescending<Pair<Series, Double>> { it.second }
-                    .thenByDescending { ratingOf(it.first) }
-                    .thenBy { it.first.name }
-            )
-            .map { it.first }
-            .toList()
-
-    private fun score(rawGenre: String?, profile: GenreProfile): Double {
-        return GenreNormalizer.normalize(rawGenre).sumOf { genre -> profile.weights[genre] ?: 0.0 }
+        )
     }
 
-    /**
-     * Caps the genre-sorted [sorted] candidates at [DIVERSITY_MAX_PER_GENRE] per anchor genre
-     * (phase 1), then fills any remaining slots up to [limitPerType] from the leftover
-     * candidates in the same order, ignoring the cap (phase 2).
-     */
-    private fun <T> selectWithGenreDiversity(
-        sorted: List<T>,
-        limitPerType: Int,
-        profile: GenreProfile,
-        genreOf: (T) -> String?
+    /** Similar-Row: TMDB-Reihenfolge der Recommendations bleibt erhalten. */
+    fun selectSimilarMovies(
+        anchorTmdbIds: List<Int>,
+        cached: CachedData,
+        excludedMovieIds: Set<Int>,
+        limit: Int = DEFAULT_LIMIT_PER_TYPE
+    ): List<VodStream> = selectSimilar(
+        anchorTmdbIds = anchorTmdbIds,
+        index = tmdbIndex(cached.movies, { it.streamId }, { it.tmdbId }),
+        excludedIds = excludedMovieIds,
+        idOf = { it.streamId },
+        limit = limit
+    )
+
+    fun selectSimilarSeries(
+        anchorTmdbIds: List<Int>,
+        cached: CachedData,
+        excludedSeriesIds: Set<Int>,
+        limit: Int = DEFAULT_LIMIT_PER_TYPE
+    ): List<Series> = selectSimilar(
+        anchorTmdbIds = anchorTmdbIds,
+        index = tmdbIndex(cached.series, { it.seriesId }, { it.tmdbId }),
+        excludedIds = excludedSeriesIds,
+        idOf = { it.seriesId },
+        limit = limit
+    )
+
+    private fun <T> selectFromDiscover(
+        genreOrder: List<Int>,
+        discoveredByGenre: Map<Int, List<Int>>,
+        index: Map<Int, T>,
+        excludedIds: Set<Int>,
+        idOf: (T) -> Int,
+        limit: Int
     ): List<T> {
-        val perGenreCount = mutableMapOf<String, Int>()
-        val taken = BooleanArray(sorted.size)
-        val result = ArrayList<T>(minOf(limitPerType, sorted.size))
+        if (limit <= 0) return emptyList()
+        val result = ArrayList<T>(limit)
+        val used = mutableSetOf<Int>()
 
-        for (index in sorted.indices) {
-            if (result.size >= limitPerType) break
-            val anchor = anchorGenre(genreOf(sorted[index]), profile)
-            val count = perGenreCount.getOrDefault(anchor, 0)
-            if (count < DIVERSITY_MAX_PER_GENRE) {
-                result += sorted[index]
-                perGenreCount[anchor] = count + 1
-                taken[index] = true
+        // Phase 1: pro Genre max. DIVERSITY_MAX_PER_GENRE Katalog-Treffer.
+        for (genreId in genreOrder) {
+            if (result.size >= limit) break
+            var takenForGenre = 0
+            for (tmdbId in discoveredByGenre[genreId].orEmpty()) {
+                if (result.size >= limit || takenForGenre >= DIVERSITY_MAX_PER_GENRE) break
+                val item = index[tmdbId] ?: continue
+                val itemId = idOf(item)
+                if (itemId in excludedIds || !used.add(itemId)) continue
+                result += item
+                takenForGenre++
             }
         }
 
-        if (result.size < limitPerType) {
-            for (index in sorted.indices) {
-                if (result.size >= limitPerType) break
-                if (!taken[index]) result += sorted[index]
+        // Phase 2: Rest in derselben Genre-/TMDB-Reihenfolge auffuellen, ohne Cap.
+        if (result.size < limit) {
+            for (genreId in genreOrder) {
+                for (tmdbId in discoveredByGenre[genreId].orEmpty()) {
+                    if (result.size >= limit) break
+                    val item = index[tmdbId] ?: continue
+                    val itemId = idOf(item)
+                    if (itemId in excludedIds || !used.add(itemId)) continue
+                    used += itemId
+                    result += item
+                }
             }
         }
 
         return result
     }
 
-    private fun anchorGenre(rawGenre: String?, profile: GenreProfile): String {
-        return GenreNormalizer.normalize(rawGenre)
-            .sortedWith(compareByDescending<String> { profile.weights[it] ?: 0.0 }.thenBy { it })
-            .first()
+    private fun <T> selectSimilar(
+        anchorTmdbIds: List<Int>,
+        index: Map<Int, T>,
+        excludedIds: Set<Int>,
+        idOf: (T) -> Int,
+        limit: Int
+    ): List<T> {
+        if (limit <= 0) return emptyList()
+        val result = ArrayList<T>(minOf(limit, anchorTmdbIds.size))
+        val used = mutableSetOf<Int>()
+        for (tmdbId in anchorTmdbIds) {
+            if (result.size >= limit) break
+            val item = index[tmdbId] ?: continue
+            val itemId = idOf(item)
+            if (itemId in excludedIds || !used.add(itemId)) continue
+            result += item
+        }
+        return result
     }
 
-    private fun ratingOf(item: Any): Double = ContentParser.getRating(item)?.toDoubleOrNull() ?: 0.0
+    private fun <T> tmdbIndex(
+        items: List<T>,
+        idOf: (T) -> Int,
+        tmdbIdOf: (T) -> String?
+    ): Map<Int, T> = items
+        .asSequence()
+        .mapNotNull { item ->
+            val tmdbId = tmdbIdOf(item)?.takeIf { NUMERIC_ID.matches(it) }?.toIntOrNull() ?: return@mapNotNull null
+            tmdbId to item
+        }
+        .associateBy({ it.first }, { it.second })
 }

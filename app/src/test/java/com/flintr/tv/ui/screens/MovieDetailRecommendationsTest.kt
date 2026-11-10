@@ -27,7 +27,7 @@ class MovieDetailRecommendationsTest {
     @get:Rule
     val composeTestRule = createComposeRule()
 
-    private fun movie(id: Int, name: String, genre: String = "Action") = VodStream(
+    private fun movie(id: Int, name: String, genre: String = "Action", tmdbId: String? = null) = VodStream(
         num = null,
         name = name,
         streamType = "movie",
@@ -50,7 +50,7 @@ class MovieDetailRecommendationsTest {
         backdropPath = null,
         youtubeTrailer = null,
         cover = null,
-        tmdbId = null
+        tmdbId = tmdbId
     )
 
     private fun detail() = DetailDisplayData(
@@ -113,14 +113,18 @@ class MovieDetailRecommendationsTest {
         composeTestRule.onNodeWithTag("movie-detail-recommendations").assertDoesNotExist()
     }
 
+    /**
+     * Exclusion des aktuellen Films — TMDB-/recommendations liefern ihn normalerweise nicht,
+     * die Engine schließt ihn defensiv aus.
+     */
     @Test
     fun engineEmpfehlungNutztGenreMatchUndSchliesstAktuellenFilmAus() {
         val cached = CachedData(
             channels = emptyList(),
             movies = listOf(
-                movie(1, "Aktueller Film"),
-                movie(2, "Action Treffer"),
-                movie(3, "Drama ohne Match", genre = "Drama")
+                movie(1, "Aktueller Film", tmdbId = "1001"),
+                movie(2, "Action Treffer", tmdbId = "1002"),
+                movie(3, "Drama ohne Match", genre = "Drama", tmdbId = "1003")
             ),
             series = emptyList(),
             liveCategories = emptyList(),
@@ -128,8 +132,8 @@ class MovieDetailRecommendationsTest {
             seriesCategories = emptyList()
         )
 
-        val result = RecommendationEngine.recommendSimilar(
-            anchorGenres = listOf("Action"),
+        val result = RecommendationEngine.selectSimilarMovies(
+            anchorTmdbIds = listOf(1001, 1002),
             cached = cached,
             excludedMovieIds = setOf(1)
         )
@@ -140,7 +144,7 @@ class MovieDetailRecommendationsTest {
     }
 
     @Test
-    fun engineOhneGenresLiefertKeineEmpfehlungen() {
+    fun engineOhneAnchorIdsLiefertKeineEmpfehlungen() {
         val cached = CachedData(
             channels = emptyList(),
             movies = listOf(movie(2, "Action Treffer")),
@@ -150,6 +154,6 @@ class MovieDetailRecommendationsTest {
             seriesCategories = emptyList()
         )
 
-        assertTrue(RecommendationEngine.recommendSimilar(null, cached).isEmpty())
+        assertTrue(RecommendationEngine.selectSimilarMovies(emptyList(), cached, emptySet()).isEmpty())
     }
 }

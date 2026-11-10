@@ -167,10 +167,9 @@ class MovieDetailViewModel @Inject constructor(
                     }
                 )
 
-                // Genres kommen von TMDB und koennen daher null sein; RecommendationEngine liefert
-                // dann eine leere Reihe, sodass der Abschnitt ausblendet statt auf den
-                // (unzuverlaessigen) Xtream-Genre-String zurueckzufallen.
-                val recommendations = computeRecommendations(cached, _uiState.value.detail?.genres)
+                // Similar-Row kommt aus TMDB-Recommendations des Anchor-tmdbId; ohne Anchor
+                // bleibt die Reihe leer, statt auf Xtream-Genres zurueckzufallen.
+                val recommendations = computeRecommendations(cached)
                 _uiState.update { it.copy(recommendations = recommendations) }
             } catch (e: CancellationException) {
                 throw e
@@ -223,16 +222,17 @@ class MovieDetailViewModel @Inject constructor(
         )
     }
 
-    private fun computeRecommendations(cached: CachedData?, genres: List<String>?): List<VodStream> {
-        return if (cached != null) {
-            RecommendationEngine.recommendSimilar(
-                anchorGenres = genres,
-                cached = cached,
-                excludedMovieIds = setOf(vodId)
-            )
-        } else {
-            emptyList()
-        }
+    private suspend fun computeRecommendations(cached: CachedData?): List<VodStream> {
+        if (cached == null) return emptyList()
+        val anchorId = _uiState.value.detail?.tmdbId
+            ?.takeIf { it.toIntOrNull() != null }
+            ?: return emptyList()
+        val recIds = tmdbMetaRepository.recommendationsFor("movie", anchorId)
+        return RecommendationEngine.selectSimilarMovies(
+            anchorTmdbIds = recIds,
+            cached = cached,
+            excludedMovieIds = setOf(vodId)
+        )
     }
 
     /** Jahres-Auflösung fuer die TMDB-Suche: bevorzugt `releaseDate`, sonst der Titel. */
