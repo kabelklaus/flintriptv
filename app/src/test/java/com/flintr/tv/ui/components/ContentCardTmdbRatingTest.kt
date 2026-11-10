@@ -2,6 +2,7 @@ package com.flintr.tv.ui.components
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -11,6 +12,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
+import com.flintr.tv.data.tmdb.TmdbCardState
 import com.flintr.tv.data.tmdb.TmdbMeta
 import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import com.flintr.tv.ui.theme.FlintRTVTheme
@@ -27,8 +29,8 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * Grid-Chip: mit tmdbId direkt aus [TmdbMetaRepository.metaFlow], ohne ID aus dem
- * strikten Search-Resolve von [TmdbMetaRepository.resolveCardMeta].
+ * Grid-Chip: Treffer in [TmdbMetaRepository.metaFlow] zeigt sofort, sonst entscheidet
+ * [TmdbMetaRepository.cardMetaState] zwischen Meta, Negative (Chip aus) und Transient (Skeleton).
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35], qualifiers = "w1280dp-h720dp-land")
@@ -51,10 +53,22 @@ class ContentCardTmdbRatingTest {
             requests += firstArg<String>() to secondArg<String>()
         }
         coEvery {
-            repository.resolveCardMeta(any(), any(), any(), any())
-        } returns null
+            repository.cardMetaState(any(), any(), any(), any())
+        } returns TmdbCardState.Negative
         watchlistRepository = mockk(relaxed = true)
         every { watchlistRepository.isInWatchlist(any()) } returns false
+    }
+
+    private fun stubCardState(state: TmdbCardState, recordRequest: Boolean = false) {
+        coEvery {
+            repository.cardMetaState(any(), any(), any(), any())
+        } coAnswers {
+            if (recordRequest) {
+                val tmdbId = secondArg<String?>()
+                if (tmdbId != null) requests += firstArg<String>() to tmdbId
+            }
+            state
+        }
     }
 
     private fun showMovie(tmdbId: String?) {
@@ -92,6 +106,7 @@ class ContentCardTmdbRatingTest {
     @Test
     fun filmMetaZeigtChipMitFormatierterBewertung() {
         metaFlow.value = mapOf("movie:14306" to meta(14306, 8.4))
+        stubCardState(TmdbCardState.Transient, recordRequest = true)
 
         showMovie("14306")
 
@@ -104,26 +119,29 @@ class ContentCardTmdbRatingTest {
         showMovie(null)
 
         composeTestRule.onAllNodesWithText("8.4").assertCountEquals(0)
+        composeTestRule.onAllNodesWithTag("rating-skeleton").assertCountEquals(0)
         assertTrue(requests.isEmpty())
     }
 
     @Test
     fun filmOhneTmdbIdZeigtChipNachSearchResolve() {
         coEvery {
-            repository.resolveCardMeta("movie", "Testfilm", null, null)
-        } returns meta(14306, 8.4)
+            repository.cardMetaState("movie", null, "Testfilm", null)
+        } returns TmdbCardState.Meta(meta(14306, 8.4))
 
         showMovie(null)
 
         composeTestRule.onNodeWithText("8.4").assertIsDisplayed()
+        composeTestRule.onAllNodesWithTag("rating-skeleton").assertCountEquals(0)
         assertTrue(requests.isEmpty())
     }
 
     @Test
     fun filmMitTmdbIdZeigtSkeletonSolangeDerFlowKeinenTrefferHat() {
-        // metaFlow bleibt in diesem Test leer: request() laeuft (koalesziert/async), aber ohne
-        // Flow-Update bleibt der Chip deterministisch in "Loading" - keine Timer-Race auf einen
-        // bestimmten Frame noetig.
+        // metaFlow bleibt in diesem Test leer und cardMetaState meldet Transient: der Chip bleibt
+        // deterministisch in "Loading" - keine Timer-Race auf einen bestimmten Frame noetig.
+        stubCardState(TmdbCardState.Transient, recordRequest = true)
+
         showMovie("14306")
 
         composeTestRule.onNodeWithTag("rating-skeleton").assertIsDisplayed()
@@ -132,7 +150,29 @@ class ContentCardTmdbRatingTest {
     }
 
     @Test
+    fun filmMitNegativerIdZeigtWederChipNochSkeleton() {
+        stubCardState(TmdbCardState.Negative)
+
+        showMovie("99999")
+
+        composeTestRule.onAllNodesWithText("8.4").assertCountEquals(0)
+        composeTestRule.onAllNodesWithTag("rating-skeleton").assertCountEquals(0)
+    }
+
+    @Test
+    fun filmMitTransienterIdZeigtSkeleton() {
+        stubCardState(TmdbCardState.Transient)
+
+        showMovie("99999")
+
+        composeTestRule.onNodeWithTag("rating-skeleton").assertIsDisplayed()
+        composeTestRule.onAllNodesWithText("8.4").assertCountEquals(0)
+    }
+
+    @Test
     fun leererFlowZeigtChipErstNachMetaUpdate() {
+        stubCardState(TmdbCardState.Transient, recordRequest = true)
+
         showMovie("14306")
 
         composeTestRule.onAllNodesWithText("8.4").assertCountEquals(0)
@@ -146,6 +186,7 @@ class ContentCardTmdbRatingTest {
     @Test
     fun serieMetaZeigtChipMitFormatierterBewertung() {
         metaFlow.value = mapOf("tv:1396" to meta(1396, 9.0))
+        stubCardState(TmdbCardState.Transient, recordRequest = true)
 
         showSeries("1396")
 

@@ -8,7 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import com.flintr.tv.data.tmdb.TmdbMeta
+import com.flintr.tv.data.tmdb.TmdbCardState
 import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import java.util.Locale
 
@@ -26,12 +26,12 @@ sealed interface TmdbChipState {
 }
 
 /**
- * Tri-State-Pendant zu [rememberTmdbRating]: mit tmdbId der direkte [TmdbMetaRepository.request]-
- * Pfad (reaktiv über [TmdbMetaRepository.metaFlow] - Treffer ist sofort [TmdbChipState.Value],
- * sonst [TmdbChipState.Loading]), ohne ID der strikte Title-Search-Pfad über
- * [TmdbMetaRepository.resolveCardMeta] ([TmdbChipState.Loading] während die Suche läuft, danach
- * [TmdbChipState.Value]/[TmdbChipState.Absent]). Ohne Titel und ohne tmdbId gibt es nichts zu
- * laden - direkt [TmdbChipState.Absent].
+ * Tri-State-Pendant zu [rememberTmdbRating]: ein Treffer in [TmdbMetaRepository.metaFlow]
+ * ("$kind:$id") ist sofort [TmdbChipState.Value]. Sonst fragt [LaunchedEffect]
+ * [TmdbMetaRepository.cardMetaState]: [TmdbCardState.Meta] wird [TmdbChipState.Value],
+ * [TmdbCardState.Negative] wird [TmdbChipState.Absent], [TmdbCardState.Transient] bleibt
+ * [TmdbChipState.Loading]. Negative schaltet den Chip ab (Board-Required), Transient pulsiert
+ * weiter. Ohne Titel und ohne tmdbId gibt es nichts zu laden - direkt [TmdbChipState.Absent].
  */
 @Composable
 fun rememberTmdbChipState(
@@ -42,44 +42,24 @@ fun rememberTmdbChipState(
 ): TmdbChipState {
     val repository = LocalTmdbMetaRepository.current ?: return TmdbChipState.Absent
     val id = tmdbId?.takeIf { it.isNotBlank() && it.all { c -> c.isDigit() } }
+    if (id == null && title.isNullOrBlank()) return TmdbChipState.Absent
 
-    return if (id != null) {
-        rememberChipStateById(repository, kind, id)
-    } else if (!title.isNullOrBlank()) {
-        rememberChipStateBySearch(repository, kind, tmdbId, title, year)
-    } else {
-        TmdbChipState.Absent
-    }
-}
-
-@Composable
-private fun rememberChipStateById(
-    repository: TmdbMetaRepository,
-    kind: String,
-    id: String
-): TmdbChipState {
     val metaFlow by repository.metaFlow.collectAsState()
-    LaunchedEffect(kind, id) { repository.request(kind, id) }
-    val meta = metaFlow["$kind:$id"]
-    return if (meta != null) TmdbChipState.Value(formatRating(meta.rating)) else TmdbChipState.Loading
-}
-
-@Composable
-private fun rememberChipStateBySearch(
-    repository: TmdbMetaRepository,
-    kind: String,
-    tmdbId: String?,
-    title: String,
-    year: Int?
-): TmdbChipState {
-    var resolved by remember(kind, title, year) {
-        mutableStateOf<TmdbChipState>(TmdbChipState.Loading)
+    val cachedMeta = id?.let { metaFlow["$kind:$it"] }
+    var resolved by remember(kind, tmdbId, title, year) {
+        mutableStateOf<TmdbChipState>(
+            cachedMeta?.let { TmdbChipState.Value(formatRating(it.rating)) }
+                ?: TmdbChipState.Loading
+        )
     }
-    LaunchedEffect(kind, title, year, tmdbId) {
-        val meta: TmdbMeta? = repository.resolveCardMeta(kind, title, year, tmdbId)
-        resolved = meta?.let { TmdbChipState.Value(formatRating(it.rating)) } ?: TmdbChipState.Absent
+    LaunchedEffect(kind, tmdbId, title, year) {
+        resolved = when (val state = repository.cardMetaState(kind, tmdbId, title, year)) {
+            is TmdbCardState.Meta -> TmdbChipState.Value(formatRating(state.meta.rating))
+            TmdbCardState.Negative -> TmdbChipState.Absent
+            TmdbCardState.Transient -> TmdbChipState.Loading
+        }
     }
-    return resolved
+    return cachedMeta?.let { TmdbChipState.Value(formatRating(it.rating)) } ?: resolved
 }
 
 /** Alter String?-Rückgabetyp für externe Call-Sites; mappt den Tri-State auf [TmdbChipState.Value]. */
