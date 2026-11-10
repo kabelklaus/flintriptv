@@ -500,4 +500,28 @@ class TmdbMetaRepositoryTest {
         assertEquals(first, second)
         coVerify(exactly = 1) { discoverClient.movieRecommendations("238") }
     }
+
+    @Test
+    fun `cachedResolvedIds liest stale positive Card-Resolves und ignoriert Negative`() = runBlocking {
+        cache.putAll(
+            mapOf(
+                // Stale, aber positiv: Reverse-Index akzeptiert ihn bewusst.
+                "search:movie:katalogtitel|2020" to entry(meta(999), staleAt()),
+                "search:movie:negativ|2021" to entry(null, negative = true)
+            )
+        )
+        val repo = repository()
+
+        val result = repo.cachedResolvedIds(
+            "movie",
+            listOf(
+                Triple(4711, "Katalogtitel", 2020),
+                Triple(4712, "Negativ", 2021),
+                Triple(4713, "Unbekannt", 2022)
+            )
+        )
+
+        assertEquals(mapOf(4711 to 999), result)
+        coVerify(exactly = 0) { client.movieMeta(any()) }
+    }
 }

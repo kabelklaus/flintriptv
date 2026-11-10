@@ -65,9 +65,25 @@ object RecommendationEngine {
         cached: CachedData,
         excludedMovieIds: Set<Int>,
         limit: Int = DEFAULT_LIMIT_PER_TYPE
-    ): List<VodStream> = selectSimilar(
+    ): List<VodStream> = selectSimilarMovies(
         anchorTmdbIds = anchorTmdbIds,
         index = tmdbIndex(cached.movies, { it.streamId }, { it.tmdbId }),
+        excludedMovieIds = excludedMovieIds,
+        limit = limit
+    )
+
+    /**
+     * Ueberladung mit fertigem tmdbId -> Katalog-Item-Index. Der Aufrufer kann dort auch
+     * Reverse-Index-Treffer aus dem Search-Cache einmischen (Filme ohne Provider-tmdbId).
+     */
+    fun selectSimilarMovies(
+        anchorTmdbIds: List<Int>,
+        index: Map<Int, VodStream>,
+        excludedMovieIds: Set<Int>,
+        limit: Int = DEFAULT_LIMIT_PER_TYPE
+    ): List<VodStream> = selectSimilar(
+        anchorTmdbIds = anchorTmdbIds,
+        index = index,
         excludedIds = excludedMovieIds,
         idOf = { it.streamId },
         limit = limit
@@ -78,9 +94,22 @@ object RecommendationEngine {
         cached: CachedData,
         excludedSeriesIds: Set<Int>,
         limit: Int = DEFAULT_LIMIT_PER_TYPE
-    ): List<Series> = selectSimilar(
+    ): List<Series> = selectSimilarSeries(
         anchorTmdbIds = anchorTmdbIds,
         index = tmdbIndex(cached.series, { it.seriesId }, { it.tmdbId }),
+        excludedSeriesIds = excludedSeriesIds,
+        limit = limit
+    )
+
+    /** Serien-Analog zu [selectSimilarMovies] mit fertigem Index. */
+    fun selectSimilarSeries(
+        anchorTmdbIds: List<Int>,
+        index: Map<Int, Series>,
+        excludedSeriesIds: Set<Int>,
+        limit: Int = DEFAULT_LIMIT_PER_TYPE
+    ): List<Series> = selectSimilar(
+        anchorTmdbIds = anchorTmdbIds,
+        index = index,
         excludedIds = excludedSeriesIds,
         idOf = { it.seriesId },
         limit = limit

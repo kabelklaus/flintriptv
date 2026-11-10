@@ -75,8 +75,13 @@ class MovieDetailViewModel @Inject constructor(
         private const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w185"
         private val COMBINING_MARKS = Regex("\\p{M}")
         private val WHITESPACE = Regex("\\s+")
-        /** Mindestgroesse fuer den TMDB-Cast-Fallback - schuetzt vor einem winzigen/falschen Treffer. */
-        private const val MIN_CAST_FALLBACK_SIZE = 4
+        /**
+         * Mindestgroesse fuer den TMDB-Cast-Fallback. Bewusst niedrig: die tmdbId kommt direkt aus
+         * der Provider-VodInfo, es gibt also kein Such-Falsch-Treffer-Risiko; ein 2er-TMDB-Cast ist
+         * besser als gar keiner (Emulator-Beweis: Film 277386 hat nur 2 TMDB-Cast-Members und zeigte
+         * ohne Fallback GAR keinen Cast).
+         */
+        private const val MIN_CAST_FALLBACK_SIZE = 2
     }
 
     private val vodId: Int = savedStateHandle.get<Int>(ARG_VOD_ID)
@@ -228,15 +233,29 @@ class MovieDetailViewModel @Inject constructor(
         )
     }
 
+    /**
+     * Filme ohne Provider-tmdbId matchen ueber die gecachten Card-Resolves (T13); die Row
+     * fuellt sich mit dem Browsing.
+     */
     private suspend fun computeRecommendations(cached: CachedData?): List<VodStream> {
         if (cached == null) return emptyList()
         val anchorId = _uiState.value.detail?.tmdbId
             ?.takeIf { it.toIntOrNull() != null }
             ?: return emptyList()
         val recIds = tmdbMetaRepository.recommendationsFor("movie", anchorId)
+        val resolved = tmdbMetaRepository.cachedResolvedIds(
+            kind = "movie",
+            keyed = cached.movies.map {
+                Triple(it.streamId, it.name, resolveYear(it.name, it.releaseDate))
+            }
+        )
+        val index = cached.movies.mapNotNull { movie ->
+            val tmdbId = movie.tmdbId?.toIntOrNull() ?: resolved[movie.streamId] ?: return@mapNotNull null
+            tmdbId to movie
+        }.toMap()
         return RecommendationEngine.selectSimilarMovies(
             anchorTmdbIds = recIds,
-            cached = cached,
+            index = index,
             excludedMovieIds = setOf(vodId)
         )
     }

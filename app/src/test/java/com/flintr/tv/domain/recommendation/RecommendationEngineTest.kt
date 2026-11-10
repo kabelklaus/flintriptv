@@ -211,6 +211,29 @@ class RecommendationEngineTest {
     }
 
     @Test
+    fun `selectSimilarMovies mit fertigem Index behaelt Reihenfolge, excludiert und limitiert`() {
+        val movies = listOf(
+            testVod(streamId = 1, tmdbId = null),
+            testVod(streamId = 2, tmdbId = null),
+            testVod(streamId = 3, tmdbId = null)
+        )
+        val index = mapOf(
+            7001 to movies[0],
+            7002 to movies[1],
+            7003 to movies[2]
+        )
+
+        val result = RecommendationEngine.selectSimilarMovies(
+            anchorTmdbIds = listOf(7003, 7999, 7001, 7002, 7003),
+            index = index,
+            excludedMovieIds = setOf(2),
+            limit = 2
+        )
+
+        assertEquals(listOf(3, 1), result.map { it.streamId })
+    }
+
+    @Test
     fun `Series werden getrennt ueber eigene tmdbIds gemappt`() {
         val series = listOf(
             testSeries(seriesId = 10, tmdbId = "8001"),

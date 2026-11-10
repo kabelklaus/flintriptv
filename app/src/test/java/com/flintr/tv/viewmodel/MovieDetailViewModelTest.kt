@@ -138,6 +138,7 @@ class MovieDetailViewModelTest {
         every { watchlistRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchProgress("movie", vodId, null, null) } returns watchProgress
         coEvery { tmdbCastClient.movieCredits(any()) } returns emptyList()
+        coEvery { tmdbMetaRepository.cachedResolvedIds(any(), any()) } returns emptyMap()
     }
 
     @Test
@@ -340,42 +341,34 @@ class MovieDetailViewModelTest {
     }
 
     @Test
-    fun `leerer Xtream Cast wird aus TMDB Credits gefuellt`() = runTest {
-        stubHappyPath()
-        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
-            Result.success(vodInfo.copy(cast = null))
-        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
-            TmdbCastMember(id = 1, name = "Eve", profilePath = "/eve.jpg"),
-            TmdbCastMember(id = 2, name = "Frank", profilePath = null),
-            TmdbCastMember(id = 3, name = "Grace", profilePath = "/grace.jpg"),
-            TmdbCastMember(id = 4, name = "Heidi", profilePath = "/heidi.jpg"),
-            TmdbCastMember(id = 5, name = "Ivan", profilePath = null)
-        )
-
-        val vm = viewModel()
-
-        assertEquals(
-            listOf("Eve", "Frank", "Grace", "Heidi", "Ivan"),
-            vm.uiState.value.detail!!.cast
-        )
-        assertEquals(
-            mapOf(
-                "Eve" to "https://image.tmdb.org/t/p/w185/eve.jpg",
-                "Grace" to "https://image.tmdb.org/t/p/w185/grace.jpg",
-                "Heidi" to "https://image.tmdb.org/t/p/w185/heidi.jpg"
-            ),
-            vm.uiState.value.castPhotos
-        )
-    }
-
-    @Test
-    fun `leerer Xtream Cast bleibt leer wenn TMDB zu wenige Mitglieder liefert`() = runTest {
+    fun `leerer Xtream Cast wird ab 2 TMDB Credits gefuellt`() = runTest {
         stubHappyPath()
         coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
             Result.success(vodInfo.copy(cast = null))
         coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
             TmdbCastMember(id = 1, name = "Eve", profilePath = "/eve.jpg"),
             TmdbCastMember(id = 2, name = "Frank", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertEquals(
+            listOf("Eve", "Frank"),
+            vm.uiState.value.detail!!.cast
+        )
+        assertEquals(
+            mapOf("Eve" to "https://image.tmdb.org/t/p/w185/eve.jpg"),
+            vm.uiState.value.castPhotos
+        )
+    }
+
+    @Test
+    fun `leerer Xtream Cast bleibt leer wenn TMDB weniger als 2 Mitglieder liefert`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(cast = null))
+        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
+            TmdbCastMember(id = 1, name = "Eve", profilePath = "/eve.jpg")
         )
 
         val vm = viewModel()
@@ -407,6 +400,22 @@ class MovieDetailViewModelTest {
         val vm = viewModel()
 
         assertEquals(listOf(888), vm.uiState.value.recommendations.map { it.streamId })
+    }
+
+    @Test
+    fun `load befuellt Empfehlungen fuer Katalog-Items ohne tmdbId aus dem Card-Resolve-Cache`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.recommendationsFor("movie", "42") } returns listOf(777, 778)
+        val first = catalogMovie.copy(streamId = 888, name = "Empfohlen Eins", tmdbId = null)
+        val second = catalogMovie.copy(streamId = 889, name = "Empfohlen Zwei", tmdbId = null)
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, first, second))
+        coEvery { tmdbMetaRepository.cachedResolvedIds("movie", any()) } returns
+            mapOf(888 to 777, 889 to 778)
+
+        val vm = viewModel()
+
+        assertEquals(listOf(888, 889), vm.uiState.value.recommendations.map { it.streamId })
     }
 
     @Test

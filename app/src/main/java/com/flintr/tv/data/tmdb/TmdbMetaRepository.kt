@@ -267,6 +267,32 @@ class TmdbMetaRepository @Inject constructor(
         TmdbMetaCacheEntry(meta = null, fetchedAtMs = now(), negative = true)
 
     /**
+     * Reverse-Index aus den Card-Search-Keys (T13); kein Netz, nur gecachte Resolves.
+     *
+     * Pro Item (streamId, title, year) wird der Search-Key wie im Karten-Pfad gebildet und
+     * gegen den Cache geprueft. Positive Treffer zaehlen auch, wenn sie stale sind; negative
+     * Eintraege und nicht-numerische IDs werden ignoriert. Rueckgabe: streamId -> tmdbId
+     * ausschliesslich fuer aufgeloeste Items.
+     */
+    suspend fun cachedResolvedIds(
+        kind: String,
+        keyed: List<Triple<Int, String, Int?>>
+    ): Map<Int, Int> {
+        ensureLoaded()
+        val snapshot = cache.loadAll()
+        val result = LinkedHashMap<Int, Int>()
+        for ((streamId, title, year) in keyed) {
+            val (clean, titleYear) = normalizer.normalize(stripCatalogPrefixes(title))
+            if (clean.isBlank()) continue
+            val entry = snapshot[searchKey(kind, clean, year ?: titleYear)] ?: continue
+            if (entry.negative) continue
+            val tmdbId = entry.meta?.tmdbId ?: continue
+            result[streamId] = tmdbId
+        }
+        return result
+    }
+
+    /**
      * Detail-Pfad. Mit numerischer ID wird direkt geladen, sonst ueber die Suche.
      * Transiente Fehler liefern die stale Meta zurueck, sofern vorhanden.
      */
