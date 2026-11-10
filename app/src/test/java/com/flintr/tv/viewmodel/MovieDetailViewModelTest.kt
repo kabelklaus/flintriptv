@@ -340,6 +340,51 @@ class MovieDetailViewModelTest {
     }
 
     @Test
+    fun `leerer Xtream Cast wird aus TMDB Credits gefuellt`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(cast = null))
+        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
+            TmdbCastMember(id = 1, name = "Eve", profilePath = "/eve.jpg"),
+            TmdbCastMember(id = 2, name = "Frank", profilePath = null),
+            TmdbCastMember(id = 3, name = "Grace", profilePath = "/grace.jpg"),
+            TmdbCastMember(id = 4, name = "Heidi", profilePath = "/heidi.jpg"),
+            TmdbCastMember(id = 5, name = "Ivan", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertEquals(
+            listOf("Eve", "Frank", "Grace", "Heidi", "Ivan"),
+            vm.uiState.value.detail!!.cast
+        )
+        assertEquals(
+            mapOf(
+                "Eve" to "https://image.tmdb.org/t/p/w185/eve.jpg",
+                "Grace" to "https://image.tmdb.org/t/p/w185/grace.jpg",
+                "Heidi" to "https://image.tmdb.org/t/p/w185/heidi.jpg"
+            ),
+            vm.uiState.value.castPhotos
+        )
+    }
+
+    @Test
+    fun `leerer Xtream Cast bleibt leer wenn TMDB zu wenige Mitglieder liefert`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(cast = null))
+        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
+            TmdbCastMember(id = 1, name = "Eve", profilePath = "/eve.jpg"),
+            TmdbCastMember(id = 2, name = "Frank", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.detail!!.cast.isEmpty())
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+    }
+
+    @Test
     fun `load mit leerer tmdbId ruft TMDB Cast-Client nicht auf`() = runTest {
         stubHappyPath()
         coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns

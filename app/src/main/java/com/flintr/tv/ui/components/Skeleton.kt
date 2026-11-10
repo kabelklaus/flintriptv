@@ -55,7 +55,16 @@ fun SkeletonPulseProvider(content: @Composable () -> Unit) {
     }
 }
 
-/** Dezenter Puls-Platzhalter fuer TMDB-Felder, die noch nachladen; [width] = null fuellt die Breite. */
+private const val SKELETON_CONTRAST_FACTOR = 0.22f
+
+/**
+ * Dezenter Puls-Platzhalter fuer TMDB-Felder, die noch nachladen; [width] = null fuellt die Breite.
+ *
+ * Bewusst Kontrastfarbe (bgCard auf bgCard waere unsichtbar): die Pille faerbt sich aus
+ * [AppColors.textPrimary] statt aus `bgCard`, skaliert mit [SKELETON_CONTRAST_FACTOR] auf eine
+ * effektive Deckung von max. ~0.15 - im Dark-Theme hell genug, um auf der dunklen Karte sichtbar
+ * zu pulsen, aber dezent genug, um nicht wie Text auszusehen.
+ */
 @Composable
 fun SkeletonBar(
     width: Dp?,
@@ -69,7 +78,7 @@ fun SkeletonBar(
         modifier = modifier
             .then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
             .height(height)
-            .background(colors.bgCard.copy(alpha = alpha), shape)
+            .background(colors.textPrimary.copy(alpha = alpha * SKELETON_CONTRAST_FACTOR), shape)
     )
 }
 
