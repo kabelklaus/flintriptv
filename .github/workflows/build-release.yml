@@ -246,6 +246,9 @@ jobs:
           GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true
           GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+          # Board-Critical (Security+PO): ohne Key wäre die Release-BuildConfig leer und
+          # das Release-APK hätte gar keine TMDB-Features (Blank-Key-Guard im Client).
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
 
       - name: Rename APK for release
         run: |
