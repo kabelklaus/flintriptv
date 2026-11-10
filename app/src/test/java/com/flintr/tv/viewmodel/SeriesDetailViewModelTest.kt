@@ -9,8 +9,6 @@ import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.LastInteraction
 import com.flintr.tv.data.local.SmartResumeTarget
 import com.flintr.tv.data.local.WatchProgressService
-import com.flintr.tv.data.local.imdb.ImdbEnrichment
-import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.EpisodeInfo
 import com.flintr.tv.data.model.WatchlistEntry
@@ -21,6 +19,9 @@ import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.data.tmdb.TmdbCastClient
 import com.flintr.tv.data.tmdb.TmdbCastMember
+import com.flintr.tv.data.tmdb.TmdbGenre
+import com.flintr.tv.data.tmdb.TmdbMeta
+import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import com.flintr.tv.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -47,7 +48,7 @@ class SeriesDetailViewModelTest {
     private val seriesId = 2200
     private val repository = mockk<XtreamRepository>()
     private val credentialsRepository = mockk<CredentialsRepository>()
-    private val imdbEnrichmentService = mockk<ImdbEnrichmentService>(relaxed = true)
+    private val tmdbMetaRepository = mockk<TmdbMetaRepository>(relaxed = true)
     private val watchlistRepository = mockk<WatchlistRepository>(relaxed = true)
     private val watchProgressService = mockk<WatchProgressService>(relaxed = true)
     private val cacheService = mockk<DataCacheService>(relaxed = true)
@@ -141,7 +142,7 @@ class SeriesDetailViewModelTest {
         ),
         repository = repository,
         credentialsRepository = credentialsRepository,
-        imdbEnrichmentService = imdbEnrichmentService,
+        tmdbMetaRepository = tmdbMetaRepository,
         watchlistRepository = watchlistRepository,
         watchProgressService = watchProgressService,
         cacheService = cacheService,
@@ -153,8 +154,13 @@ class SeriesDetailViewModelTest {
         every { credentialsRepository.getCredentials() } returns
             Credentials(serverUrl = "http://srv", username = "chris", password = "pw")
         coEvery { repository.getSeriesInfo("chris", "pw", seriesId) } returns Result.success(seriesResult)
-        every { imdbEnrichmentService.lookup(any()) } returns
-            ImdbEnrichment(rating = 8.1, numVotes = 999, genres = listOf("Drama", "Mystery"))
+        coEvery { tmdbMetaRepository.detailMeta("tv", any(), any(), any()) } returns
+            TmdbMeta(
+                tmdbId = 1,
+                rating = 8.1,
+                voteCount = 999,
+                genres = listOf(TmdbGenre(18, "Drama"), TmdbGenre(9648, "Mystery"))
+            )
         every { watchlistRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchedEpisodeIds(seriesId) } returns emptySet()
         coEvery { watchProgressService.getLastInteraction(seriesId, series) } returns null
@@ -238,7 +244,7 @@ class SeriesDetailViewModelTest {
     }
 
     @Test
-    fun `Genre und Rating kommen exklusiv aus IMDb`() = runTest {
+    fun `Genre und Rating kommen exklusiv aus TMDB`() = runTest {
         stubHappyPath()
 
         val vm = viewModel()
@@ -251,9 +257,9 @@ class SeriesDetailViewModelTest {
     }
 
     @Test
-    fun `ohne IMDb Match bleiben Genre und Rating null`() = runTest {
+    fun `ohne TMDB Match bleiben Genre und Rating null`() = runTest {
         stubHappyPath()
-        every { imdbEnrichmentService.lookup(any()) } returns null
+        coEvery { tmdbMetaRepository.detailMeta("tv", any(), any(), any()) } returns null
 
         val vm = viewModel()
 

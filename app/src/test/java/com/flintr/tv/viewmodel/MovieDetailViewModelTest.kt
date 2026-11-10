@@ -7,8 +7,6 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
-import com.flintr.tv.data.local.imdb.ImdbEnrichment
-import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.VodInfo
@@ -17,6 +15,9 @@ import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.data.tmdb.TmdbCastClient
 import com.flintr.tv.data.tmdb.TmdbCastMember
+import com.flintr.tv.data.tmdb.TmdbGenre
+import com.flintr.tv.data.tmdb.TmdbMeta
+import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import com.flintr.tv.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -44,7 +45,7 @@ class MovieDetailViewModelTest {
     private val vodId = 4711
     private val repository = mockk<XtreamRepository>()
     private val credentialsRepository = mockk<CredentialsRepository>()
-    private val imdbEnrichmentService = mockk<ImdbEnrichmentService>(relaxed = true)
+    private val tmdbMetaRepository = mockk<TmdbMetaRepository>(relaxed = true)
     private val watchlistRepository = mockk<WatchlistRepository>(relaxed = true)
     private val watchProgressService = mockk<WatchProgressService>(relaxed = true)
     private val cacheService = mockk<DataCacheService>(relaxed = true)
@@ -114,7 +115,7 @@ class MovieDetailViewModelTest {
         savedStateHandle = SavedStateHandle(mapOf(MovieDetailViewModel.ARG_VOD_ID to vodId)),
         repository = repository,
         credentialsRepository = credentialsRepository,
-        imdbEnrichmentService = imdbEnrichmentService,
+        tmdbMetaRepository = tmdbMetaRepository,
         watchlistRepository = watchlistRepository,
         watchProgressService = watchProgressService,
         cacheService = cacheService,
@@ -127,15 +128,20 @@ class MovieDetailViewModelTest {
             Credentials(serverUrl = "http://srv", username = "chris", password = "pw")
         coEvery { cacheService.loadCachedDataAsync() } returns cachedData()
         coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns Result.success(vodInfo)
-        every { imdbEnrichmentService.lookup(any()) } returns
-            ImdbEnrichment(rating = 8.4, numVotes = 1234, genres = listOf("Action", "Drama"))
+        coEvery { tmdbMetaRepository.detailMeta("movie", any(), any(), any()) } returns
+            TmdbMeta(
+                tmdbId = 1,
+                rating = 8.4,
+                voteCount = 1234,
+                genres = listOf(TmdbGenre(28, "Action"), TmdbGenre(18, "Drama"))
+            )
         every { watchlistRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchProgress("movie", vodId, null, null) } returns watchProgress
         coEvery { tmdbCastClient.movieCredits(any()) } returns emptyList()
     }
 
     @Test
-    fun `loadErfolg mappt Details mit IMDb Genres und Rating`() = runTest {
+    fun `loadErfolg mappt Details mit TMDB Genres und Rating`() = runTest {
         stubHappyPath()
 
         val vm = viewModel()
@@ -152,9 +158,9 @@ class MovieDetailViewModelTest {
     }
 
     @Test
-    fun `loadErfolg ohne IMDb Match laesst Genres und Rating null`() = runTest {
+    fun `loadErfolg ohne TMDB Match laesst Genres und Rating null`() = runTest {
         stubHappyPath()
-        every { imdbEnrichmentService.lookup(any()) } returns null
+        coEvery { tmdbMetaRepository.detailMeta("movie", any(), any(), any()) } returns null
 
         val vm = viewModel()
 
@@ -262,7 +268,6 @@ class MovieDetailViewModelTest {
         coEvery { cacheService.loadCachedDataAsync() } returns null
         coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
             Result.failure(Exception("kaputt"))
-        every { imdbEnrichmentService.lookup(any()) } returns null
         every { watchlistRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchProgress("movie", vodId, null, null) } returns null
 

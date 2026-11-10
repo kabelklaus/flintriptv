@@ -9,7 +9,6 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
-import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.DetailDisplayData
 import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.WatchlistEntryType
@@ -19,6 +18,7 @@ import com.flintr.tv.data.model.mapVodInfoToDetail
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.data.tmdb.TmdbCastClient
 import com.flintr.tv.data.tmdb.TmdbCastMember
+import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import com.flintr.tv.domain.recommendation.RecommendationEngine
 import com.flintr.tv.utils.error.reportWarning
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -47,7 +47,7 @@ data class MovieDetailUiState(
 )
 
 /**
- * Loads one movie's detail metadata (get_vod_info), its IMDb-only genre/rating enrichment,
+ * Loads one movie's detail metadata (get_vod_info), its TMDB genre/rating meta,
  * watchlist state, watch progress and a similar-movie row.
  *
  * The screen does not navigate itself: the movie id arrives through the navigation route's
@@ -58,7 +58,7 @@ class MovieDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
-    private val imdbEnrichmentService: ImdbEnrichmentService,
+    private val tmdbMetaRepository: TmdbMetaRepository,
     private val watchlistRepository: WatchlistRepository,
     private val watchProgressService: WatchProgressService,
     private val cacheService: DataCacheService,
@@ -70,7 +70,6 @@ class MovieDetailViewModel @Inject constructor(
         const val ARG_VOD_ID = "vodId"
         private const val TAG = "MovieDetailViewModel"
         private val YEAR_PATTERN = Regex("(?:19|20)\\d{2}")
-        private val TITLE_YEAR_PATTERN = Regex("\\((?:19|20)\\d{2}\\)")
         private const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w185"
         private val COMBINING_MARKS = Regex("\\p{M}")
         private val WHITESPACE = Regex("\\s+")
@@ -100,7 +99,7 @@ class MovieDetailViewModel @Inject constructor(
                 val cached = cacheService.loadCachedDataAsync()
                 val catalogMovie = cached?.movies?.firstOrNull { it.streamId == vodId }
                 // Katalog ist bereits lokal vorhanden - Basisdaten (Poster/Titel) sofort
-                // zeigen, statt bis zum VodInfo-Call + IMDb-Enrichment leer zu bleiben.
+                // zeigen, statt bis zum VodInfo-Call + TMDB-Meta leer zu bleiben.
                 showCachedBaseStream(catalogMovie)
 
                 val result = repository.loadVodInfo(
@@ -125,12 +124,11 @@ class MovieDetailViewModel @Inject constructor(
                 }
                 val info = result.getOrNull()
 
-                // Basisdaten sofort mappen, ohne auf das (teure) IMDb-Enrichment zu warten -
+                // Basisdaten sofort mappen, ohne auf die (teure) TMDB-Meta-Abfrage zu warten -
                 // genres/rating bleiben hier bewusst null, siehe DetailDisplayData.
                 val baseDetail = mapVodInfoToDetail(
                     info = info,
-                    catalogTitle = catalogMovie?.name,
-                    imdbLookup = { null }
+                    catalogTitle = catalogMovie?.name
                 )
                 if (baseDetail == null) {
                     _uiState.update {
@@ -149,23 +147,29 @@ class MovieDetailViewModel @Inject constructor(
                 // blockieren (ohne tmdbId/Match bleiben die Briefmarken/Initial-Kreis stehen).
                 viewModelScope.launch(ioDispatcher) { loadCastPhotos(baseDetail) }
 
-                // IMDb-Enrichment nachschieben: Rating/Genres kommen ausschliesslich von hier,
+                // TMDB-Meta nachschieben: Rating/Genres kommen ausschliesslich von hier,
                 // ein Fehler/Miss darf den bereits gezeigten Basis-State nicht zuruecknehmen.
-                loadImdbEnrichment(
+                loadTmdbMeta(
                     tag = TAG,
-                    failureMessage = "IMDb enrichment failed for vodId=$vodId",
-                    imdbEnrichmentService = imdbEnrichmentService,
+                    failureMessage = "TMDB meta failed for vodId=$vodId",
+                    tmdbMetaRepository = tmdbMetaRepository,
                     lookup = {
-                        resolveImdbLookupName(baseDetail.title, baseDetail.releaseDate)
-                            ?.let(imdbEnrichmentService::lookup)
+                        val detail = _uiState.value.detail
+                        tmdbMetaRepository.detailMeta(
+                            kind = "movie",
+                            tmdbId = detail?.tmdbId?.takeIf { it.isNotBlank() },
+                            title = detail?.title ?: "",
+                            year = resolveYear(detail?.title, detail?.releaseDate)
+                        )
+                    },
+                    onMeta = { meta ->
+                        _uiState.update { state -> state.copy(detail = mergeTmdbMeta(state.detail, meta)) }
                     }
-                ) { enrichment ->
-                    _uiState.update { state -> state.copy(detail = mergeImdbEnrichment(state.detail, enrichment)) }
-                }
+                )
 
-                // Genres are IMDb-only and therefore may be null; RecommendationEngine returns
-                // an empty row in that case, so the section hides instead of falling back to
-                // the (untrusted) Xtream genre string.
+                // Genres kommen von TMDB und koennen daher null sein; RecommendationEngine liefert
+                // dann eine leere Reihe, sodass der Abschnitt ausblendet statt auf den
+                // (unzuverlaessigen) Xtream-Genre-String zurueckzufallen.
                 val recommendations = computeRecommendations(cached, _uiState.value.detail?.genres)
                 _uiState.update { it.copy(recommendations = recommendations) }
             } catch (e: CancellationException) {
@@ -231,18 +235,10 @@ class MovieDetailViewModel @Inject constructor(
         }
     }
 
-    private fun resolveImdbLookupName(title: String?, releaseDate: String?): String? {
-        val yearFromTitle = title?.let { YEAR_PATTERN.find(it)?.value?.toInt() }
-        val year = releaseDate?.let { YEAR_PATTERN.find(it)?.value?.toInt() } ?: yearFromTitle
-        return title?.let { rawTitle ->
-            val lookupTitle = if (yearFromTitle != null) {
-                rawTitle.replace(TITLE_YEAR_PATTERN, "").trim()
-            } else {
-                rawTitle
-            }
-            if (year != null) "$lookupTitle ($year)" else lookupTitle
-        }
-    }
+    /** Jahres-Auflösung fuer die TMDB-Suche: bevorzugt `releaseDate`, sonst der Titel. */
+    private fun resolveYear(title: String?, releaseDate: String?): Int? =
+        releaseDate?.let { YEAR_PATTERN.find(it)?.value?.toInt() }
+            ?: title?.let { YEAR_PATTERN.find(it)?.value?.toInt() }
 
     /**
      * Loads cast photos from TMDB for [detail]'s tmdbId and matches them onto [detail]'s cast

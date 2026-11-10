@@ -9,8 +9,6 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
-import com.flintr.tv.data.local.imdb.ImdbEnrichment
-import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.DetailDisplayData
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.WatchlistEntry
@@ -20,6 +18,7 @@ import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.repository.XtreamRepository
 import com.flintr.tv.data.tmdb.TmdbCastClient
 import com.flintr.tv.data.tmdb.TmdbCastMember
+import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import com.flintr.tv.domain.recommendation.RecommendationEngine
 import com.flintr.tv.utils.error.reportWarning
 import com.flintr.tv.utils.parseTimestampMillisOrZero
@@ -86,7 +85,7 @@ data class SeriesDetailUiState(
  * Loads a series' detail metadata (get_series_info), aggregates its seasons with watched counts
  * and resolves watchlist state.
  *
- * Genre/rating are IMDb-only, exactly like MovieDetail: without an enrichment match both stay
+ * Genre/rating come from TMDB, exactly like MovieDetail: without a meta match both stay
  * null and the UI hides them; the Xtream `genre`/`rating` strings are never used as a fallback.
  *
  * Navigation stays in Phase 4: the series id arrives through [ARG_SERIES_ID] and the screen
@@ -97,7 +96,7 @@ class SeriesDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
-    private val imdbEnrichmentService: ImdbEnrichmentService,
+    private val tmdbMetaRepository: TmdbMetaRepository,
     private val watchlistRepository: WatchlistRepository,
     private val watchProgressService: WatchProgressService,
     private val cacheService: DataCacheService,
@@ -111,7 +110,6 @@ class SeriesDetailViewModel @Inject constructor(
         private const val NO_SEASONS_HINT =
             "Für diese Serie sind derzeit keine Staffeln und Episoden verfügbar."
         private val YEAR_PATTERN = Regex("(?:19|20)\\d{2}")
-        private val TITLE_YEAR_PATTERN = Regex("\\((?:19|20)\\d{2}\\)")
         private const val CAST_SEPARATOR = ","
         private const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w185"
         private val COMBINING_MARKS = Regex("\\p{M}")
@@ -195,20 +193,29 @@ class SeriesDetailViewModel @Inject constructor(
                 // blockieren (ohne tmdbId/Match bleiben die Briefmarken/Initial-Kreis stehen).
                 viewModelScope.launch(ioDispatcher) { loadCastPhotos(_uiState.value.detail) }
 
-                // IMDb-Enrichment nachschieben: Rating/Genres kommen ausschliesslich von hier,
+                // TMDB-Meta nachschieben: Rating/Genres kommen ausschliesslich von hier,
                 // ein Fehler/Miss darf den bereits gezeigten Basis-State nicht zuruecknehmen.
-                loadImdbEnrichment(
+                loadTmdbMeta(
                     tag = TAG,
-                    failureMessage = "IMDb enrichment failed for seriesId=$seriesId",
-                    imdbEnrichmentService = imdbEnrichmentService,
-                    lookup = { lookupEnrichment(loadedSeries) }
-                ) { enrichment ->
-                    _uiState.update { state -> state.copy(detail = mergeImdbEnrichment(state.detail, enrichment)) }
-                }
+                    failureMessage = "TMDB meta failed for seriesId=$seriesId",
+                    tmdbMetaRepository = tmdbMetaRepository,
+                    lookup = {
+                        val detail = _uiState.value.detail
+                        tmdbMetaRepository.detailMeta(
+                            kind = "tv",
+                            tmdbId = detail?.tmdbId?.takeIf { it.isNotBlank() },
+                            title = detail?.title ?: "",
+                            year = resolveYear(detail?.title, detail?.releaseDate)
+                        )
+                    },
+                    onMeta = { meta ->
+                        _uiState.update { state -> state.copy(detail = mergeTmdbMeta(state.detail, meta)) }
+                    }
+                )
 
-                // Genres are IMDb-only and therefore may be null; RecommendationEngine returns
-                // an empty row in that case, so the section hides instead of falling back to
-                // the (untrusted) Xtream genre string.
+                // Genres kommen von TMDB und koennen daher null sein; RecommendationEngine liefert
+                // dann eine leere Reihe, sodass der Abschnitt ausblendet statt auf den
+                // (unzuverlaessigen) Xtream-Genre-String zurueckzufallen.
                 val cached = cacheService.loadCachedDataAsync()
                 val recommendations = computeRecommendations(cached, _uiState.value.detail?.genres)
                 _uiState.update { it.copy(recommendations = recommendations) }
@@ -241,7 +248,7 @@ class SeriesDetailViewModel @Inject constructor(
     private suspend fun buildLoadedState(loadedSeries: Series): SeriesDetailUiState {
         val watchedEpisodeIds = watchProgressService.getWatchedEpisodeIds(seriesId)
         val seasons = buildSeasons(loadedSeries, watchedEpisodeIds)
-        // Basisdaten sofort mappen, ohne auf das (teure) IMDb-Enrichment zu warten -
+        // Basisdaten sofort mappen, ohne auf die (teure) TMDB-Meta-Abfrage zu warten -
         // genres/rating bleiben hier bewusst null, siehe DetailDisplayData.
         val baseDetail = buildDetail(loadedSeries)
         val watchTarget = resolveWatchTarget(loadedSeries, watchedEpisodeIds)
@@ -393,8 +400,8 @@ class SeriesDetailViewModel @Inject constructor(
 
     /**
      * Builds the shared detail display model from SeriesInfo. Genre/rating come exclusively from
-     * the IMDb enrichment (see [lookupEnrichment]) and start out null here - they are filled in by
-     * a later state update once the (slower) IMDb lookup completes.
+     * TMDB (see [loadTmdbMeta]) and start out null here - they are filled in by a later state
+     * update once the (slower) TMDB lookup completes.
      */
     private fun buildDetail(series: Series): DetailDisplayData {
         val title = series.name.takeIf { it.isNotBlank() }
@@ -418,22 +425,10 @@ class SeriesDetailViewModel @Inject constructor(
         )
     }
 
-    /**
-     * Looks up the IMDb-only genre/rating enrichment; the lookup key mirrors
-     * mapVodInfoToDetail ("title (year)").
-     */
-    private fun lookupEnrichment(series: Series): ImdbEnrichment? {
-        val title = series.name.takeIf { it.isNotBlank() } ?: return null
-        val yearFromTitle = YEAR_PATTERN.find(title)?.value?.toInt()
-        val year = series.releaseDate?.let { YEAR_PATTERN.find(it)?.value?.toInt() } ?: yearFromTitle
-        val lookupTitle = if (yearFromTitle != null) {
-            title.replace(TITLE_YEAR_PATTERN, "").trim()
-        } else {
-            title
-        }
-        val lookupName = if (year != null) "$lookupTitle ($year)" else lookupTitle
-        return imdbEnrichmentService.lookup(lookupName)
-    }
+    /** Jahres-Auflösung fuer die TMDB-Suche: bevorzugt `releaseDate`, sonst der Titel. */
+    private fun resolveYear(title: String?, releaseDate: String?): Int? =
+        releaseDate?.let { YEAR_PATTERN.find(it)?.value?.toInt() }
+            ?: title?.let { YEAR_PATTERN.find(it)?.value?.toInt() }
 
     /**
      * Loads the cast for [detail]'s tmdbId from TMDB's aggregate_credits (full series cast,

@@ -3,10 +3,10 @@ package com.flintr.tv.viewmodel
 import com.flintr.tv.data.local.Credentials
 import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.WatchlistRepository
-import com.flintr.tv.data.local.imdb.ImdbEnrichment
-import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.DetailDisplayData
 import com.flintr.tv.data.model.WatchlistEntry
+import com.flintr.tv.data.tmdb.TmdbMeta
+import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import com.flintr.tv.utils.error.reportWarning
 import kotlinx.coroutines.CancellationException
 
@@ -17,20 +17,20 @@ import kotlinx.coroutines.CancellationException
 internal const val DETAIL_LOAD_ERROR_MESSAGE = "Details konnten nicht geladen werden"
 
 /**
- * Runs the IMDb-only genre/rating enrichment [lookup] and feeds a hit to [onEnriched]. A miss or
- * a failure never propagates: the base state both detail ViewModels already show must not be
- * retracted just because the (slower, best-effort) enrichment missed or failed.
+ * Fuehrt den TMDB-Meta-[lookup] aus und reicht einen Treffer an [onMeta] weiter. Ein Miss oder
+ * Fehler wird nie propagiert: der bereits gezeigte Basis-State der Detail-ViewModels darf nicht
+ * zurueckgenommen werden, nur weil die (langsamere, best-effort) Meta-Abfrage leer blieb.
  */
-internal suspend fun loadImdbEnrichment(
+internal suspend fun loadTmdbMeta(
     tag: String,
     failureMessage: String,
-    imdbEnrichmentService: ImdbEnrichmentService,
-    lookup: () -> ImdbEnrichment?,
-    onEnriched: (ImdbEnrichment) -> Unit
+    tmdbMetaRepository: TmdbMetaRepository,
+    lookup: suspend () -> TmdbMeta?,
+    onMeta: (TmdbMeta) -> Unit
 ) {
     try {
-        imdbEnrichmentService.ensureLoaded()
-        lookup()?.let(onEnriched)
+        // detailMeta() laedt den Cache selbst; ein separates ensureLoaded() entfaellt.
+        lookup()?.let(onMeta)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -38,9 +38,9 @@ internal suspend fun loadImdbEnrichment(
     }
 }
 
-/** Applies an IMDb enrichment hit onto a shared [DetailDisplayData]; genres/rating are IMDb-only. */
-internal fun mergeImdbEnrichment(detail: DetailDisplayData?, enrichment: ImdbEnrichment): DetailDisplayData? =
-    detail?.copy(genres = enrichment.genres, rating = enrichment.rating)
+/** Wendet einen TMDB-Treffer auf die gemeinsamen [DetailDisplayData] an; Genres/Rating kommen von TMDB. */
+internal fun mergeTmdbMeta(detail: DetailDisplayData?, meta: TmdbMeta): DetailDisplayData? =
+    detail?.copy(genres = meta.genres.map { it.name }, rating = meta.rating)
 
 /**
  * Returns [credentialsRepository]'s stored credentials, invoking [onMissing] to set the
