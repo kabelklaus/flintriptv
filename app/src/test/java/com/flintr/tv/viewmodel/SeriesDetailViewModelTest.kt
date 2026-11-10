@@ -28,6 +28,11 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -137,7 +142,7 @@ class SeriesDetailViewModelTest {
         seriesCategories = emptyList()
     )
 
-    private fun viewModel() = SeriesDetailViewModel(
+    private fun viewModel(castClient: TmdbCastClient = tmdbCastClient) = SeriesDetailViewModel(
         savedStateHandle = SavedStateHandle(
             mapOf(SeriesDetailViewModel.ARG_SERIES_ID to seriesId)
         ),
@@ -147,7 +152,7 @@ class SeriesDetailViewModelTest {
         watchlistRepository = watchlistRepository,
         watchProgressService = watchProgressService,
         cacheService = cacheService,
-        tmdbCastClient = tmdbCastClient,
+        tmdbCastClient = castClient,
         ioDispatcher = mainDispatcherRule.dispatcher
     )
 
@@ -703,5 +708,63 @@ class SeriesDetailViewModelTest {
         val vm = viewModel()
 
         assertNull(vm.uiState.value.seasons[0].posterUrl)
+    }
+
+    @Test
+    fun `echte TmdbCastClient-Kette befuellt das Staffel-Poster im UI-State`() = runTest {
+        val fixture = javaClass.classLoader!!.getResource("tmdb_tv_67280.json")!!.readText()
+        val server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.path.orEmpty()
+                return if (path.contains("/aggregate_credits")) {
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setHeader("Content-Type", "application/json")
+                        .setBody("""{"cast":[]}""")
+                } else {
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setHeader("Content-Type", "application/json")
+                        .setBody(fixture)
+                }
+            }
+        }
+        server.start()
+        try {
+            val serverUrl = server.url("/")
+            val okHttpClient = OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    val redirectedUrl = request.url.newBuilder()
+                        .scheme(serverUrl.scheme)
+                        .host(serverUrl.host)
+                        .port(serverUrl.port)
+                        .build()
+                    chain.proceed(request.newBuilder().url(redirectedUrl).build())
+                }
+                .build()
+            val realCastClient = TmdbCastClient(okHttpClient, mainDispatcherRule.dispatcher)
+            val coverlessSeasons = listOf(1, 2, 3).map { number ->
+                season(number, listOf(episode(number * 100, 1))).copy(cover = null)
+            }
+            stubHappyPath(
+                series.copy(
+                    tmdbId = "67280",
+                    cover = null,
+                    backdropPath = null,
+                    seasons = coverlessSeasons
+                )
+            )
+
+            val vm = viewModel(realCastClient)
+            val state = vm.uiState.value
+
+            assertNotNull(state.seasons[0].posterUrl)
+            assertTrue(state.seasons[0].posterUrl!!.startsWith("https://image.tmdb.org/t/p/w342/"))
+            assertTrue(state.seasons[0].posterUrl!!.endsWith("/mmfzlTNTMTq2q0pmUwQYhq93dUf.jpg"))
+        } finally {
+            server.shutdown()
+        }
     }
 }

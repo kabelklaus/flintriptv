@@ -1,5 +1,6 @@
 package com.flintr.tv.data.tmdb
 
+import android.util.Log
 import com.flintr.tv.BuildConfig
 import com.flintr.tv.utils.error.reportHandled
 import com.squareup.moshi.Json
@@ -152,13 +153,16 @@ class TmdbCastClient @Inject constructor(
                 if (!response.isSuccessful) return@use emptyMap()
                 val json = response.body?.string() ?: return@use emptyMap()
                 val seasons = seasonsResponseAdapter.fromJson(json)?.seasons ?: return@use emptyMap()
-                seasons
+                val result = seasons
                     .filter { it.seasonNumber >= 1 && !it.posterPath.isNullOrBlank() }
                     .associate { it.seasonNumber to "$TMDB_IMAGE_BASE_URL${it.posterPath}" }
+                Log.d(TAG, "seasonPosters($tmdbId): ${result.size} entries")
+                result
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            Log.w(TAG, "seasonPosters failed: ${e.javaClass.simpleName}: ${e.message}")
             emptyMap()
         }
     }

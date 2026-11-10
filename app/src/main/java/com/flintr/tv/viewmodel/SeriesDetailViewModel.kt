@@ -1,5 +1,6 @@
 package com.flintr.tv.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -486,6 +487,7 @@ class SeriesDetailViewModel @Inject constructor(
     private suspend fun loadSeasonPosters(detail: DetailDisplayData?) {
         val tmdbId = detail?.tmdbId?.takeIf { it.isNotBlank() } ?: return
         val tmdbPosters = tmdbCastClient.seasonPosters(tmdbId)
+        Log.d(TAG, "seasonPosters merged: ${tmdbPosters.size} for ${_uiState.value.seasons.size} seasons")
         if (tmdbPosters.isEmpty()) return
 
         _uiState.update { state ->

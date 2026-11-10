@@ -5,6 +5,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
@@ -423,6 +425,49 @@ class TmdbCastClientTest {
         assertEquals("https://image.tmdb.org/t/p/w342/season1.jpg", result[1])
         assertNull(result[0])
         assertNull(result[2])
+    }
+
+    @Test
+    fun `seasonPosters parst echtes tv 67280 Fixture zu Map 1 bis 3`() = runBlocking {
+        assumeTrue(apiKey.isNotBlank())
+        val fixture = javaClass.classLoader!!.getResource("tmdb_tv_67280.json")!!.readText()
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody(fixture)
+        )
+        server.start()
+        try {
+            val serverUrl = server.url("/")
+            // Der Client hat eine feste TMDB-Base-URL; der Interceptor leitet den Request auf
+            // den MockWebServer um, damit Pfad/Query unveraendert bleiben.
+            val okHttpClient = OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    val redirectedUrl = request.url.newBuilder()
+                        .scheme(serverUrl.scheme)
+                        .host(serverUrl.host)
+                        .port(serverUrl.port)
+                        .build()
+                    chain.proceed(request.newBuilder().url(redirectedUrl).build())
+                }
+                .build()
+
+            val result = client(okHttpClient).seasonPosters("67280")
+
+            assertEquals(setOf(1, 2, 3), result.keys)
+            result.forEach { (season, url) ->
+                assertTrue(url.startsWith("https://image.tmdb.org/t/p/w342/"))
+            }
+            assertTrue(result.getValue(1).endsWith("/mmfzlTNTMTq2q0pmUwQYhq93dUf.jpg"))
+            assertTrue(result.getValue(2).endsWith("/b8nxpt72qQTcu7Ue9rZu7r9ADuC.jpg"))
+            assertTrue(result.getValue(3).endsWith("/1guXVT5XwvDTBjsvrFpk1p2E9Fd.jpg"))
+            assertEquals("/3/tv/67280?api_key=$apiKey", server.takeRequest().path)
+        } finally {
+            server.shutdown()
+        }
     }
 
     @Test
