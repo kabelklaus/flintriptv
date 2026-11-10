@@ -668,12 +668,12 @@ class SeriesDetailViewModelTest {
         val state = vm.uiState.value
 
         assertEquals("https://image.tmdb.org/t/p/w342/season1.jpg", state.seasons[0].posterUrl)
-        // Staffel 2 hat bereits ein Xtream-Cover - TMDB darf es nicht ueberschreiben.
+        // Staffel 2 hat kein TMDB-Poster - Xtream-Cover bleibt Fallback.
         assertEquals("https://img/season-2.jpg", state.seasons[1].posterUrl)
     }
 
     @Test
-    fun `Staffel mit Xtream-Cover behaelt Xtream-Poster trotz TMDB-Treffer`() = runTest {
+    fun `TMDB-Poster gewinnt ueber Xtream-Proxy-Cover (Proxy-URLs sind tot, Box-Beweis)`() = runTest {
         stubHappyPath(series.copy(tmdbId = "99"))
         coEvery { tmdbCastClient.seasonPosters("99") } returns mapOf(
             1 to "https://image.tmdb.org/t/p/w342/season1.jpg"
@@ -681,7 +681,7 @@ class SeriesDetailViewModelTest {
 
         val vm = viewModel()
 
-        assertEquals("https://img/season-1.jpg", vm.uiState.value.seasons[0].posterUrl)
+        assertEquals("https://image.tmdb.org/t/p/w342/season1.jpg", vm.uiState.value.seasons[0].posterUrl)
     }
 
     @Test

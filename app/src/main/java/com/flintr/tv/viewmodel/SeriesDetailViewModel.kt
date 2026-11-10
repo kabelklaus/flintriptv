@@ -317,17 +317,18 @@ class SeriesDetailViewModel @Inject constructor(
             .map { season ->
                 val episodes = season.episodes.orEmpty()
                 val watchedCount = episodes.count { it.id in watchedEpisodeIds }
-                SeasonUiModel(
-                    season = season,
-                    title = season.name.takeIf { it.isNotBlank() } ?: "Staffel ${season.seasonNumber}",
-                    posterUrl = season.cover?.takeIf { it.isNotBlank() }
-                        ?: seasonPosters[season.seasonNumber]?.takeIf { it.isNotBlank() }
+                val resolvedUrl = seasonPosters[season.seasonNumber]?.takeIf { it.isNotBlank() }
+                        ?: season.cover?.takeIf { it.isNotBlank() }
                         ?: series.cover?.takeIf { it.isNotBlank() }
                         ?: episodes.firstNotNullOfOrNull { episode ->
                             episode.info?.movieImage?.takeIf { it.isNotBlank() }
                         }
-                        ?: series.backdropPath?.firstOrNull { it.isNotBlank() },
-                    episodeCount = episodes.size,
+                        ?: series.backdropPath?.firstOrNull { it.isNotBlank() }
+                    SeasonUiModel(
+                        season = season,
+                        title = season.name.takeIf { it.isNotBlank() } ?: "Staffel ${season.seasonNumber}",
+                        posterUrl = resolvedUrl,
+                        episodeCount = episodes.size,
                     watchedCount = watchedCount,
                     isFullyWatched = episodes.isNotEmpty() && watchedCount >= episodes.size
                 )
