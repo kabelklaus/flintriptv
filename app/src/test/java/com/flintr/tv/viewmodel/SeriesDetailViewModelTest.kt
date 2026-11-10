@@ -648,8 +648,8 @@ class SeriesDetailViewModelTest {
     @Test
     fun `Staffel ohne jeden Xtream-Fallback bekommt Poster aus TMDB`() = runTest {
         // Kein Staffel-/Serien-Cover, kein Episoden-Still, kein Backdrop - posterUrl ist null,
-        // bevor der TMDB-Job laeuft (siehe `ohne Cover und Episoden-Stills faellt Poster auf
-        // Serien-Backdrop zurueck` fuer dieselbe Fallback-Kette ohne TMDB).
+        // bis TMDB liefert. loadSeasonPosters wird jetzt vor dem ersten State-Bau awaited, daher
+        // ist das Poster unmittelbar nach load()-Abschluss gesetzt (kein Recomposition-Race).
         val coverlessSeason = season(1, listOf(episode(11, 1))).copy(cover = null)
         stubHappyPath(
             series.copy(
@@ -664,6 +664,7 @@ class SeriesDetailViewModelTest {
         )
 
         val vm = viewModel()
+        vm.load()
         val state = vm.uiState.value
 
         assertEquals("https://image.tmdb.org/t/p/w342/season1.jpg", state.seasons[0].posterUrl)

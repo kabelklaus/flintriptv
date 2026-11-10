@@ -190,16 +190,16 @@ class SeriesDetailViewModel @Inject constructor(
                     return@launch
                 }
 
-                _uiState.value = buildLoadedState(loadedSeries)
+                // Staffel-Poster VOR dem ersten State-Bau holen: Provider liefert info.seasons leer
+                // (verifiziert) - nachtraegliche Updates an bereits gerenderte Kacheln sind fehler-
+                // anfaellig (v6-Beweis: Merge-Log da, Kacheln leer). ~100ms TMDB-Latenz ist ok;
+                // Rating/Genres/Empfehlungen bleiben weiter nachgelagert und blocken nicht.
+                val seasonPosters = loadSeasonPosters(loadedSeries)
+                _uiState.value = buildLoadedState(loadedSeries, seasonPosters)
 
                 // TMDB-Cast-Fotos laufen in eigenem Job: duerfen Rating/Genres/Empfehlungen nicht
                 // blockieren (ohne tmdbId/Match bleiben die Briefmarken/Initial-Kreis stehen).
                 viewModelScope.launch(ioDispatcher) { loadCastPhotos(_uiState.value.detail) }
-
-                // Staffel-Poster laufen ebenfalls in eigenem Job: duerfen Rating/Genres nicht
-                // blockieren (Provider liefert info.seasons leer, verifiziert - ohne Treffer
-                // bleiben die Staffel-Kacheln ohne Bild stehen).
-                viewModelScope.launch(ioDispatcher) { loadSeasonPosters(_uiState.value.detail) }
 
                 // TMDB-Meta nachschieben: Rating/Genres kommen ausschliesslich von hier,
                 // ein Fehler/Miss darf den bereits gezeigten Basis-State nicht zuruecknehmen.
@@ -254,9 +254,12 @@ class SeriesDetailViewModel @Inject constructor(
         )
     }
 
-    private suspend fun buildLoadedState(loadedSeries: Series): SeriesDetailUiState {
+    private suspend fun buildLoadedState(
+        loadedSeries: Series,
+        seasonPosters: Map<Int, String>
+    ): SeriesDetailUiState {
         val watchedEpisodeIds = watchProgressService.getWatchedEpisodeIds(seriesId)
-        val seasons = buildSeasons(loadedSeries, watchedEpisodeIds)
+        val seasons = buildSeasons(loadedSeries, watchedEpisodeIds, seasonPosters)
         // Basisdaten sofort mappen, ohne auf die (teure) TMDB-Meta-Abfrage zu warten -
         // genres/rating bleiben hier bewusst null, siehe DetailDisplayData.
         val baseDetail = buildDetail(loadedSeries)
@@ -305,7 +308,8 @@ class SeriesDetailViewModel @Inject constructor(
 
     private fun buildSeasons(
         series: Series,
-        watchedEpisodeIds: Set<Int>
+        watchedEpisodeIds: Set<Int>,
+        seasonPosters: Map<Int, String>
     ): List<SeasonUiModel> {
         return series.seasons
             .orEmpty()
@@ -317,6 +321,7 @@ class SeriesDetailViewModel @Inject constructor(
                     season = season,
                     title = season.name.takeIf { it.isNotBlank() } ?: "Staffel ${season.seasonNumber}",
                     posterUrl = season.cover?.takeIf { it.isNotBlank() }
+                        ?: seasonPosters[season.seasonNumber]?.takeIf { it.isNotBlank() }
                         ?: series.cover?.takeIf { it.isNotBlank() }
                         ?: episodes.firstNotNullOfOrNull { episode ->
                             episode.info?.movieImage?.takeIf { it.isNotBlank() }
@@ -482,23 +487,21 @@ class SeriesDetailViewModel @Inject constructor(
     /**
      * Provider liefert info.seasons leer (verifiziert) - Poster aus TMDB. Xtream gewinnt (schon in
      * [buildSeasons] als [SeasonUiModel.posterUrl] aufgeloest), TMDB fuellt nur die Luecken ueber
-     * die Staffelnummer.
+     * die Staffelnummer. Wird vor dem ersten State-Bau awaited, damit die Kacheln nie ohne Bild
+     * gerendert werden.
      */
-    private suspend fun loadSeasonPosters(detail: DetailDisplayData?) {
-        val tmdbId = detail?.tmdbId?.takeIf { it.isNotBlank() } ?: return
-        val tmdbPosters = tmdbCastClient.seasonPosters(tmdbId)
-        Log.d(TAG, "seasonPosters merged: ${tmdbPosters.size} for ${_uiState.value.seasons.size} seasons")
-        if (tmdbPosters.isEmpty()) return
-
-        _uiState.update { state ->
-            state.copy(
-                seasons = state.seasons.map { season ->
-                    season.posterUrl?.let { season } ?: tmdbPosters[season.seasonNumber]?.let {
-                        season.copy(posterUrl = it)
-                    } ?: season
-                }
-            )
+    private suspend fun loadSeasonPosters(series: Series): Map<Int, String> {
+        val tmdbId = series.tmdbId?.takeIf { it.isNotBlank() } ?: return emptyMap()
+        val tmdbPosters = try {
+            tmdbCastClient.seasonPosters(tmdbId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "seasonPosters failed for tmdbId=$tmdbId", e)
+            return emptyMap()
         }
+        Log.d(TAG, "seasonPosters merged: ${tmdbPosters.size}")
+        return tmdbPosters
     }
 
     private fun matchCastPhotos(castNames: List<String>, members: List<TmdbCastMember>): Map<String, String> {
