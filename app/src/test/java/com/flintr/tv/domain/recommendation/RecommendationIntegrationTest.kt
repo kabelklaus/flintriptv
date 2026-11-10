@@ -73,7 +73,7 @@ class RecommendationIntegrationTest {
 
     @Test
     fun `Genre-28-Signale fuehren zu Discover-Treffern des Genres im Result`() {
-        val signalMovies = (901..905).map { testVod(it) }
+        val signalMovies = (901..905).map { testVod(it, tmdbId = "60$it") }
         val profile = UserContentProfile.build(
             watchlistEntries = watchlist(901, 902, 903, 904, 905),
             watchedHistory = emptyMap(),
@@ -81,7 +81,8 @@ class RecommendationIntegrationTest {
             ratings = emptyMap(),
             movies = signalMovies,
             series = emptyList(),
-            metaLookup = metaLookup(*(901..905).map { it to listOf(28) }.toTypedArray())
+            // Genre-Lookup ueber die tmdbId (60xxx), nicht ueber die Xtream-streamId (90x).
+            metaLookup = metaLookup(*(901..905).map { "60$it".toInt() to listOf(28) }.toTypedArray())
         )
         assertEquals(5, profile.signalCount)
 
@@ -108,9 +109,9 @@ class RecommendationIntegrationTest {
             watchedHistory = emptyMap(),
             watchProgress = emptyMap(),
             ratings = emptyMap(),
-            movies = (801..803).map { testVod(it) },
+            movies = (801..803).map { testVod(it, tmdbId = "60$it") },
             series = emptyList(),
-            metaLookup = metaLookup(801 to listOf(28), 802 to listOf(28), 803 to listOf(28))
+            metaLookup = metaLookup(60801 to listOf(28), 60802 to listOf(28), 60803 to listOf(28))
         )
         assertTrue(profile.signalCount < 5)
 
@@ -132,12 +133,12 @@ class RecommendationIntegrationTest {
             watchedHistory = emptyMap(),
             watchProgress = emptyMap(),
             ratings = emptyMap(),
-            movies = (901..905).map { testVod(it) },
+            movies = (901..905).map { testVod(it, tmdbId = "60$it") },
             series = emptyList(),
             // 28 ist staerker gewichtet als 18, damit die Genre-Reihenfolge deterministisch ist.
             metaLookup = metaLookup(
-                901 to listOf(28), 902 to listOf(28), 903 to listOf(28),
-                904 to listOf(28, 18), 905 to listOf(28, 18)
+                60901 to listOf(28), 60902 to listOf(28), 60903 to listOf(28),
+                60904 to listOf(28, 18), 60905 to listOf(28, 18)
             )
         )
 

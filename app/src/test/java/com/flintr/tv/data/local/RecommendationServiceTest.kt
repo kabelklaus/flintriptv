@@ -79,6 +79,9 @@ class RecommendationServiceTest {
         tmdbId = tmdbId
     )
 
+    /** Absichtlich != streamId, damit die Tests beweisen, dass der Cache-Key die tmdbId ist. */
+    private fun tmdbOf(streamId: Int): String = (9000 + streamId).toString()
+
     private fun meta(genreId: Int) = TmdbMeta(
         tmdbId = 0, rating = 0.0, voteCount = 0,
         genres = listOf(TmdbGenre(genreId, "Genre$genreId"))
@@ -110,7 +113,7 @@ class RecommendationServiceTest {
         every { credentialsRepository.getCredentials() } returns credentials
         coEvery { userRepository.loadAllRatings(any()) } returns Result.success(emptyMap())
 
-        val catalogMovies = (1..5).map { testVod(it, "Action") } + listOf(
+        val catalogMovies = (1..5).map { testVod(it, "Action", tmdbId = tmdbOf(it)) } + listOf(
             testVod(101, "Action", tmdbId = "9101"),
             testVod(102, "Action", tmdbId = "9102")
         )
@@ -167,7 +170,7 @@ class RecommendationServiceTest {
         advanceUntilIdle()
         assertTrue(service.recommendations.value.movies.isEmpty())
 
-        metaFlow.value = (1..5).associate { "movie:$it" to meta(28) }
+        metaFlow.value = (1..5).associate { "movie:${tmdbOf(it)}" to meta(28) }
         coEvery { tmdbMetaRepository.discoverMovieIds(listOf(28)) } returns listOf(9101, 9102)
 
         watchlistFlow.value = (1..5).map { entry(it) }
@@ -190,7 +193,7 @@ class RecommendationServiceTest {
         // Nur metaFlow aendert sich: 5 Metas der gesehenen Items kommen nach.
         // Discover liefert tmdbIds 9101/9102 -> Katalog-Items 101/102.
         coEvery { tmdbMetaRepository.discoverMovieIds(listOf(28)) } returns listOf(9101, 9102)
-        metaFlow.value = (1..5).associate { "movie:$it" to meta(28) }
+        metaFlow.value = (1..5).associate { "movie:${tmdbOf(it)}" to meta(28) }
         advanceUntilIdle()
 
         val recommendedIds = service.recommendations.value.movies.map { it.streamId }.toSet()
@@ -200,7 +203,7 @@ class RecommendationServiceTest {
 
     @Test
     fun `Cold Start unter fuenf Signalen macht keine Discover-Calls`() = runTest(testDispatcher) {
-        metaFlow.value = (1..3).associate { "movie:$it" to meta(28) }
+        metaFlow.value = (1..3).associate { "movie:${tmdbOf(it)}" to meta(28) }
         watchlistFlow.value = (1..3).map { entry(it) }
         advanceUntilIdle()
 
@@ -211,17 +214,17 @@ class RecommendationServiceTest {
 
     @Test
     fun `volle Kette mappt Discover-IDs auf Katalog-Items`() = runTest(testDispatcher) {
-        metaFlow.value = (1..5).associate { "movie:$it" to meta(28) }
+        metaFlow.value = (1..5).associate { "movie:${tmdbOf(it)}" to meta(28) }
         coEvery { tmdbMetaRepository.discoverMovieIds(listOf(28)) } returns listOf(101, 102)
         coEvery { tmdbMetaRepository.discoverTvIds(listOf(28)) } returns listOf(201)
         coEvery { cacheService.loadCachedDataAsync() } returns catalog(
             testVod(101, "Xtream-Action", tmdbId = "101"),
             testVod(102, "Xtream-Action", tmdbId = "102"),
-            testVod(1, "Xtream-Action", tmdbId = "1"),
-            testVod(2, "Xtream-Action", tmdbId = "2"),
-            testVod(3, "Xtream-Action", tmdbId = "3"),
-            testVod(4, "Xtream-Action", tmdbId = "4"),
-            testVod(5, "Xtream-Action", tmdbId = "5"),
+            testVod(1, "Xtream-Action", tmdbId = tmdbOf(1)),
+            testVod(2, "Xtream-Action", tmdbId = tmdbOf(2)),
+            testVod(3, "Xtream-Action", tmdbId = tmdbOf(3)),
+            testVod(4, "Xtream-Action", tmdbId = tmdbOf(4)),
+            testVod(5, "Xtream-Action", tmdbId = tmdbOf(5)),
             series = listOf(testSeries(201, tmdbId = "201"))
         )
 
@@ -234,7 +237,7 @@ class RecommendationServiceTest {
 
     @Test
     fun `leere Discover-Antwort liefert leere Empfehlungen statt Crash`() = runTest(testDispatcher) {
-        metaFlow.value = (1..5).associate { "movie:$it" to meta(28) }
+        metaFlow.value = (1..5).associate { "movie:${tmdbOf(it)}" to meta(28) }
         coEvery { tmdbMetaRepository.discoverMovieIds(any()) } returns emptyList()
         coEvery { tmdbMetaRepository.discoverTvIds(any()) } returns emptyList()
 
@@ -245,6 +248,39 @@ class RecommendationServiceTest {
         assertTrue(service.recommendations.value.series.isEmpty())
     }
 
+    @Test
+    fun `Genre-Signale kommen aus dem tmdbId-Cache-Key statt aus der Xtream-ID`() = runTest(testDispatcher) {
+        // Fuenf Kernsignale: streamId 7 mit tmdbId 300 plus vier Items ohne tmdbId.
+        val signals = listOf(testVod(7, "Xtream", tmdbId = "300")) +
+            (8..11).map { testVod(it, "Xtream") }
+        coEvery { cacheService.loadCachedDataAsync() } returns catalog(*signals.toTypedArray())
+        metaFlow.value = mapOf(
+            "movie:300" to meta(28),
+            // Ein Treffer unter der Xtream-ID darf nicht mehr als Genre-Signal zaehlen.
+            "movie:7" to meta(18)
+        )
+
+        watchlistFlow.value = listOf(entry(7)) + (8..11).map { entry(it) }
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { tmdbMetaRepository.discoverMovieIds(listOf(28)) }
+        coVerify(exactly = 0) { tmdbMetaRepository.discoverMovieIds(listOf(18)) }
+    }
+
+    @Test
+    fun `Item ohne tmdbId zaehlt als Kernsignal, liefert aber kein Genre-Gewicht`() = runTest(testDispatcher) {
+        // Nur Items ohne tmdbId: signalCount = 5, aber keine Genre-Gewichte -> kein Discover.
+        val signals = (7..11).map { testVod(it, "Xtream") }
+        coEvery { cacheService.loadCachedDataAsync() } returns catalog(*signals.toTypedArray())
+        metaFlow.value = (7..11).associate { "movie:$it" to meta(28) }
+
+        watchlistFlow.value = (7..11).map { entry(it) }
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { tmdbMetaRepository.discoverMovieIds(any()) }
+        coVerify(exactly = 0) { tmdbMetaRepository.discoverTvIds(any()) }
+    }
+
     // --- isLoading ---
 
     @Test
@@ -252,13 +288,13 @@ class RecommendationServiceTest {
         advanceUntilIdle()
         assertFalse(service.isLoading.value)
 
-        metaFlow.value = (1..5).associate { "movie:$it" to meta(28) }
+        metaFlow.value = (1..5).associate { "movie:${tmdbOf(it)}" to meta(28) }
         coEvery { tmdbMetaRepository.discoverMovieIds(listOf(28)) } returns listOf(9101, 9102)
         coEvery { cacheService.loadCachedDataAsync() } coAnswers {
             delay(1_000)
             CachedData(
                 channels = emptyList(),
-                movies = (1..5).map { testVod(it, "Action") } + listOf(
+                movies = (1..5).map { testVod(it, "Action", tmdbId = tmdbOf(it)) } + listOf(
                     testVod(101, "Action", tmdbId = "9101"),
                     testVod(102, "Action", tmdbId = "9102")
                 ),
@@ -285,7 +321,7 @@ class RecommendationServiceTest {
 
     @Test
     fun `Cold-Start-Empty-Publish setzt isLoading ebenfalls auf false`() = runTest(testDispatcher) {
-        metaFlow.value = (1..3).associate { "movie:$it" to meta(28) }
+        metaFlow.value = (1..3).associate { "movie:${tmdbOf(it)}" to meta(28) }
         watchlistFlow.value = (1..3).map { entry(it) }
         advanceUntilIdle()
 
@@ -358,23 +394,23 @@ class RecommendationServiceTest {
         fun progress(vararg streamIds: Int) = streamIds.associate { streamId ->
             "movie:$streamId" to WatchProgress(950L, 1_000L, "2026-07-16T10:00:00Z", "Movie$streamId")
         }
-        metaFlow.value = (1..5).associate { "movie:$it" to meta(28) } +
-            (200..204).associate { "movie:$it" to meta(18) }
+        metaFlow.value = (1..5).associate { "movie:${tmdbOf(it)}" to meta(28) } +
+            (200..204).associate { "movie:${tmdbOf(it)}" to meta(18) }
         coEvery { tmdbMetaRepository.discoverMovieIds(listOf(28)) } returns listOf(100, 101)
         coEvery { tmdbMetaRepository.discoverMovieIds(listOf(18)) } returns listOf(300, 301)
         val cachedCatalog = catalog(
-            testVod(1, "Xtream"),
-            testVod(2, "Xtream"),
-            testVod(3, "Xtream"),
-            testVod(4, "Xtream"),
-            testVod(5, "Xtream"),
+            testVod(1, "Xtream", tmdbId = tmdbOf(1)),
+            testVod(2, "Xtream", tmdbId = tmdbOf(2)),
+            testVod(3, "Xtream", tmdbId = tmdbOf(3)),
+            testVod(4, "Xtream", tmdbId = tmdbOf(4)),
+            testVod(5, "Xtream", tmdbId = tmdbOf(5)),
             testVod(100, "Xtream", tmdbId = "100"),
             testVod(101, "Xtream", tmdbId = "101"),
-            testVod(200, "Xtream"),
-            testVod(201, "Xtream"),
-            testVod(202, "Xtream"),
-            testVod(203, "Xtream"),
-            testVod(204, "Xtream"),
+            testVod(200, "Xtream", tmdbId = tmdbOf(200)),
+            testVod(201, "Xtream", tmdbId = tmdbOf(201)),
+            testVod(202, "Xtream", tmdbId = tmdbOf(202)),
+            testVod(203, "Xtream", tmdbId = tmdbOf(203)),
+            testVod(204, "Xtream", tmdbId = tmdbOf(204)),
             testVod(300, "Xtream", tmdbId = "300"),
             testVod(301, "Xtream", tmdbId = "301")
         )
@@ -412,23 +448,23 @@ class RecommendationServiceTest {
         fun progress(vararg streamIds: Int) = streamIds.associate { streamId ->
             "movie:$streamId" to WatchProgress(950L, 1_000L, "2026-07-16T10:00:00Z", "Movie$streamId")
         }
-        metaFlow.value = (1..5).associate { "movie:$it" to meta(28) } +
-            (200..204).associate { "movie:$it" to meta(18) }
+        metaFlow.value = (1..5).associate { "movie:${tmdbOf(it)}" to meta(28) } +
+            (200..204).associate { "movie:${tmdbOf(it)}" to meta(18) }
         coEvery { tmdbMetaRepository.discoverMovieIds(listOf(28)) } returns listOf(100, 101)
         coEvery { tmdbMetaRepository.discoverMovieIds(listOf(18)) } returns listOf(300, 301)
         val cachedCatalog = catalog(
-            testVod(1, "Xtream"),
-            testVod(2, "Xtream"),
-            testVod(3, "Xtream"),
-            testVod(4, "Xtream"),
-            testVod(5, "Xtream"),
+            testVod(1, "Xtream", tmdbId = tmdbOf(1)),
+            testVod(2, "Xtream", tmdbId = tmdbOf(2)),
+            testVod(3, "Xtream", tmdbId = tmdbOf(3)),
+            testVod(4, "Xtream", tmdbId = tmdbOf(4)),
+            testVod(5, "Xtream", tmdbId = tmdbOf(5)),
             testVod(100, "Xtream", tmdbId = "100"),
             testVod(101, "Xtream", tmdbId = "101"),
-            testVod(200, "Xtream"),
-            testVod(201, "Xtream"),
-            testVod(202, "Xtream"),
-            testVod(203, "Xtream"),
-            testVod(204, "Xtream"),
+            testVod(200, "Xtream", tmdbId = tmdbOf(200)),
+            testVod(201, "Xtream", tmdbId = tmdbOf(201)),
+            testVod(202, "Xtream", tmdbId = tmdbOf(202)),
+            testVod(203, "Xtream", tmdbId = tmdbOf(203)),
+            testVod(204, "Xtream", tmdbId = tmdbOf(204)),
             testVod(300, "Xtream", tmdbId = "300"),
             testVod(301, "Xtream", tmdbId = "301")
         )

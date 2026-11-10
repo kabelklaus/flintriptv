@@ -153,7 +153,7 @@ class RecommendationService(
                 ratings = ratings,
                 movies = cached.movies,
                 series = cached.series,
-                // Repository-Keys sind "movie:"/"tv:", das Profil fragt "series" an.
+                // Key = tmdbId des Items (UserContentProfile), series->tv-Uebersetzung bleibt.
                 metaLookup = { kind, id ->
                     val key = if (kind == "series") "tv:$id" else "movie:$id"
                     tmdbMetaRepository.metaFlow.value[key]
