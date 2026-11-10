@@ -4,8 +4,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import androidx.core.content.edit
-import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
-import com.flintr.tv.data.local.imdb.ImdbEnrichmentTrace
 import com.flintr.tv.data.model.*
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonReader
@@ -15,11 +13,8 @@ import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -98,7 +93,6 @@ class DataCacheService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val moshi: Moshi,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher,
-    private val imdbEnrichmentService: ImdbEnrichmentService
 ) {
     private val sharedPreferences: SharedPreferences = context.getSharedPreferences(
         "iptv_cache_prefs",
@@ -114,15 +108,6 @@ class DataCacheService @Inject constructor(
 
     // Bumped by save/clear so a parse that raced with them cannot memoize stale files.
     private val cacheGeneration = AtomicInteger(0)
-
-    private val backgroundScope = CoroutineScope(SupervisorJob() + ioDispatcher)
-
-    // Serializes the IMDb DB enrichment phase of saveCachedData against the background
-    // >14d refresh's ensureLoaded(): without this, a refresh can close/reopen the DB
-    // mid-enrichment of the next save, making lookups return null. A Mutex (rather than
-    // tracking/joining the refresh Job) keeps both sides symmetric and lets an
-    // unrelated save proceed immediately when no refresh is in flight.
-    private val imdbDbMutex = Mutex()
 
     // Catalog lists are streamed to files instead of SharedPreferences: a
     // 57k-movie list as one String OOMs the 256 MB heap, and prefs keep every
@@ -160,8 +145,8 @@ class DataCacheService @Inject constructor(
     companion object {
         /**
          * Format version of the files in [CACHE_DIR_NAME]. Bump it whenever a change makes
-         * existing cache files unreadable or semantically wrong (field renames, changed
-         * enrichment rules, a different container format): on startup a stored version that
+         * existing cache files unreadable or semantically wrong (field renames, a different
+         * container format): on startup a stored version that
          * differs from this one deletes the cache files and their prefs metadata, forcing a
          * full resync. Version 0 was the prefs-string format, handled by [LEGACY_JSON_KEYS].
          */
@@ -256,7 +241,7 @@ class DataCacheService @Inject constructor(
 
     /**
      * Streams the catalog to the cache files in chunks of [SAVE_CHUNK_SIZE]: each chunk is
-     * enriched and written on [ioDispatcher], then [onProgress] receives the running total of
+     * written on [ioDispatcher], then [onProgress] receives the running total of
      * written channels + movies + series in the caller's context (safe to `emit` from a flow).
      * The file format is the same JSON array the list adapter writes, so [readList] is unchanged.
      */
@@ -280,7 +265,6 @@ class DataCacheService @Inject constructor(
         }
         val trace = PerfTrace.start("flintr_cache_save")
         try {
-            val imdbWasOpen = imdbEnrichmentService.isAvailable
             val timestamp = ZonedDateTime.now().format(ISO8601_FORMAT)
 
             var savedItems = 0
@@ -289,20 +273,9 @@ class DataCacheService @Inject constructor(
                 PerfTrace.increment(trace, "chunks_written")
                 onProgress(savedItems)
             }
-            writeListChunked(FILE_CHANNELS, LiveStream::class.java, channels, transform = null, onChunkWritten)
-            // Held for the whole enrichment phase so a concurrent background refresh
-            // (see imdbDbMutex) can't close/reopen the DB mid-lookup.
-            val (enrichedMovies, enrichedSeries) = imdbDbMutex.withLock {
-                val enricher = imdbEnricher()
-                ImdbEnrichmentTrace.start()
-                try {
-                    val enrichedMovies = writeListChunked(FILE_MOVIES, VodStream::class.java, movies, enricher?.let { it::enrichMovie }, onChunkWritten)
-                    val enrichedSeries = writeListChunked(FILE_SERIES, Series::class.java, series, enricher?.let { it::enrichSeries }, onChunkWritten)
-                    enrichedMovies to enrichedSeries
-                } finally {
-                    ImdbEnrichmentTrace.stop()
-                }
-            }
+            writeListChunked(FILE_CHANNELS, LiveStream::class.java, channels, onChunkWritten)
+            writeListChunked(FILE_MOVIES, VodStream::class.java, movies, onChunkWritten)
+            writeListChunked(FILE_SERIES, Series::class.java, series, onChunkWritten)
 
             withContext(ioDispatcher) {
                 val categoryAdapter = listAdapter(Category::class.java)
@@ -314,18 +287,13 @@ class DataCacheService @Inject constructor(
             sharedPreferences.edit {
                 putString(KEY_CACHE_TIMESTAMP, timestamp)
                 putInt(KEY_CACHE_CHANNELS_COUNT, channels.size)
-                putInt(KEY_CACHE_MOVIES_COUNT, enrichedMovies.size)
-                putInt(KEY_CACHE_SERIES_COUNT, enrichedSeries.size)
+                putInt(KEY_CACHE_MOVIES_COUNT, movies.size)
+                putInt(KEY_CACHE_SERIES_COUNT, series.size)
                 putInt(KEY_CACHE_VERSION, CACHE_VERSION)
             }
             cacheGeneration.incrementAndGet()
-            memoizedCache = CachedData(channels, enrichedMovies, enrichedSeries, liveCategories, vodCategories, seriesCategories)
-            android.util.Log.d("DataCacheService", "Cache saved successfully: $timestamp | Channels: ${channels.size}, Movies: ${enrichedMovies.size}, Series: ${enrichedSeries.size}")
-            // The >14d IMDb refresh is a multi-MB download. With a DB already open this save
-            // used it as-is; the refresh runs afterwards so it neither delays the save nor
-            // closes the DB mid-enrichment. The next save picks up the new DB. imdbDbMutex
-            // keeps this refresh from overlapping that next save's own enrichment phase.
-            if (imdbWasOpen) backgroundScope.launch { imdbDbMutex.withLock { imdbEnrichmentService.ensureLoaded() } }
+            memoizedCache = CachedData(channels, movies, series, liveCategories, vodCategories, seriesCategories)
+            android.util.Log.d("DataCacheService", "Cache saved successfully: $timestamp | Channels: ${channels.size}, Movies: ${movies.size}, Series: ${series.size}")
             PerfTrace.increment(trace, "items_saved", savedItems.toLong())
             return true
         } catch (e: CancellationException) {
@@ -339,48 +307,6 @@ class DataCacheService @Inject constructor(
         }
     }
 
-    /**
-     * Reichert Movies/Series einmalig vor dem Schreiben mit IMDb-Daten an (Chris-Spec 30.10.):
-     * Genres kommen exklusiv aus IMDb, Xtream-Ratings werden abgeloest. Ist der Enrichment-Service
-     * nicht verfuegbar (z.B. noch kein Download), liefert dies null und die Xtream-Rohwerte bleiben
-     * unveraendert -- nur ein versuchter Lookup ohne Treffer nullt die Felder.
-     */
-    private suspend fun imdbEnricher(): ImdbEnricher? {
-        if (!imdbEnrichmentService.isAvailable) imdbEnrichmentService.ensureLoaded()
-        if (!imdbEnrichmentService.isAvailable) {
-            android.util.Log.d("DataCacheService", "IMDb enrichment unavailable, keeping Xtream genre/rating values")
-            return null
-        }
-        return ImdbEnricher(imdbEnrichmentService)
-    }
-
-    private class ImdbEnricher(private val service: ImdbEnrichmentService) {
-        // IMDb ratings have ~100 distinct values: format each once instead of
-        // allocating a Formatter for every one of the ~70k titles.
-        private val ratingLabels = HashMap<Double, String>()
-
-        fun enrichMovie(movie: VodStream): VodStream {
-            val enrichment = service.lookup(movie.name)
-            return movie.copy(
-                genre = enrichment?.genres?.joinToString(", "),
-                rating = enrichment?.rating?.let(::ratingLabel),
-                rating5Based = enrichment?.rating?.let { it / 2.0 }
-            )
-        }
-
-        fun enrichSeries(item: Series): Series {
-            val enrichment = service.lookup(item.name)
-            return item.copy(
-                genre = enrichment?.genres?.joinToString(", "),
-                rating = enrichment?.rating?.let(::ratingLabel),
-                rating5Based = enrichment?.rating?.let { it / 2.0 }
-            )
-        }
-
-        private fun ratingLabel(rating: Double): String =
-            ratingLabels.getOrPut(rating) { String.format(Locale.US, "%.1f", rating) }
-    }
-
     private fun <T> listAdapter(itemClass: Class<T>): JsonAdapter<List<T>> =
         moshi.adapter(Types.newParameterizedType(List::class.java, itemClass))
 
@@ -391,28 +317,23 @@ class DataCacheService @Inject constructor(
 
     /**
      * Writes [items] as one JSON array, [SAVE_CHUNK_SIZE] elements at a time, yielding between
-     * chunks. Returns the stored list: [items] itself without [transform], otherwise the
-     * transformed items (kept for the memoized cache).
+     * chunks.
      */
     private suspend fun <T> writeListChunked(
         fileName: String,
         itemClass: Class<T>,
         items: List<T>,
-        transform: ((T) -> T)?,
         onChunkWritten: suspend (Int) -> Unit
-    ): List<T> {
+    ) {
         val callerContext = coroutineContext
-        return withContext(ioDispatcher) {
+        withContext(ioDispatcher) {
             val adapter = moshi.adapter(itemClass)
-            val transformed: MutableList<T>? = transform?.let { ArrayList(items.size) }
             writeAtomically(fileName) { writer ->
                 writer.beginArray()
                 for (start in items.indices step SAVE_CHUNK_SIZE) {
                     val end = minOf(start + SAVE_CHUNK_SIZE, items.size)
                     for (index in start until end) {
-                        val item = if (transform != null) transform(items[index]) else items[index]
-                        transformed?.add(item)
-                        adapter.toJson(writer, item)
+                        adapter.toJson(writer, items[index])
                     }
                     withContext(callerContext) {
                         onChunkWritten(end - start)
@@ -421,7 +342,6 @@ class DataCacheService @Inject constructor(
                 }
                 writer.endArray()
             }
-            transformed ?: items
         }
     }
 
