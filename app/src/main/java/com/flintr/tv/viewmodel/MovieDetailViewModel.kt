@@ -359,7 +359,7 @@ class MovieDetailViewModel @Inject constructor(
         val members = tmdbCastClient.movieCredits(tmdbId)
 
         if (castNames.isEmpty()) {
-            val nonBlankMembers = members.filter { it.name.isNotBlank() }
+            val nonBlankMembers = members.filter { it.name.isNotBlank() }.take(20)
             if (nonBlankMembers.size < MIN_CAST_FALLBACK_SIZE) return
             val photos = dedupeByNormalizedName(nonBlankMembers).values.mapNotNull { member ->
                 member.validProfilePath()?.let { path -> member.name to "$TMDB_IMAGE_BASE_URL$path" }

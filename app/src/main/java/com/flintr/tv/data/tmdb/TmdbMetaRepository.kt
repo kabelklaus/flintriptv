@@ -1,6 +1,5 @@
 package com.flintr.tv.data.tmdb
 
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
@@ -57,7 +56,7 @@ class TmdbMetaRepository @Inject constructor(
 
     private val ensureMutex = Mutex()
 
-    /** Serialisiert Cache-Recheck plus Suche, damit derselbe Search-Key nur einmal HTTP sieht. */
+    /** Schuetzt nur Cache-Read/Write der Suche; der HTTP-Call laeuft bewusst ohne Lock. */
     private val searchMutex = Mutex()
 
     /** Serialisiert [refreshFlow], damit aeltere Aufrufe keinen neueren Flow-Stand ueberschreiben. */
@@ -159,8 +158,9 @@ class TmdbMetaRepository @Inject constructor(
 
     /**
      * Karten-Pfad: numerische tmdbId laeuft direkt, sonst strikter Title-Match ueber die Suche.
-     * Die Suche selbst laeuft nicht durch den Leader-Drain; [searchMutex] verhindert nur
-     * doppelte Suchen desselben Keys in einer Welle.
+     * Die Suche selbst laeuft nicht durch den Leader-Drain; [searchMutex] schuetzt nur den
+     * Cache-Zugriff. Der Netz-Call laeuft ohne Lock, damit unabhaengige Titel nicht serialisiert
+     * werden; ein Doppel-Fetch bei gleichen Titeln ist bewusst akzeptiert.
      */
     suspend fun resolveCardMeta(
         kind: String,
@@ -198,15 +198,21 @@ class TmdbMetaRepository @Inject constructor(
             }
         }
 
-        val resolvedId = searchMutex.withLock {
-            // Zweiter Check unter dem Lock: derselbe Key in einer Welle sucht nur einmal.
+        // Zweiter Cache-Check: nur der Read laeuft unter dem Lock, danach ist er sofort frei.
+        val (cacheHit, cachedId) = searchMutex.withLock {
             val current = cache.loadAll()[key]
             val lockNow = now()
-            if (current != null) {
-                if (isNegativeFresh(current, lockNow)) return@withLock null
-                if (TmdbMetaCache.isFresh(current, lockNow)) return@withLock current.meta?.tmdbId
+            when {
+                current != null && isNegativeFresh(current, lockNow) -> true to null
+                current != null && TmdbMetaCache.isFresh(current, lockNow) -> true to current.meta?.tmdbId
+                else -> false to null
             }
+        }
 
+        val resolvedId = if (cacheHit) {
+            cachedId
+        } else {
+            // Netz-Call bewusst ohne searchMutex: unabhaengige Suchen laufen parallel.
             when (val result = client.searchCandidates(kind, clean, queryYear)) {
                 is FetchResult.Data -> {
                     val match = result.value.firstOrNull { candidate ->
@@ -214,28 +220,34 @@ class TmdbMetaRepository @Inject constructor(
                             yearMatches(queryYear, candidate.year)
                     }
                     if (match == null) {
-                        cache.putAll(mapOf(key to negativeSearchEntry()))
-                        refreshFlow()
+                        searchMutex.withLock {
+                            cache.putAll(mapOf(key to negativeSearchEntry()))
+                            refreshFlow()
+                        }
                         null
                     } else {
                         val id = match.tmdbId.toInt()
                         // Positiver Search-Key haelt nur die aufgeloeste tmdbId, nicht die Details.
-                        cache.putAll(
-                            mapOf(
-                                key to TmdbMetaCacheEntry(
-                                    meta = resolvedMeta(id),
-                                    fetchedAtMs = now(),
-                                    negative = false
+                        searchMutex.withLock {
+                            cache.putAll(
+                                mapOf(
+                                    key to TmdbMetaCacheEntry(
+                                        meta = resolvedMeta(id),
+                                        fetchedAtMs = now(),
+                                        negative = false
+                                    )
                                 )
                             )
-                        )
-                        refreshFlow()
+                            refreshFlow()
+                        }
                         id
                     }
                 }
                 FetchResult.Negative -> {
-                    cache.putAll(mapOf(key to negativeSearchEntry()))
-                    refreshFlow()
+                    searchMutex.withLock {
+                        cache.putAll(mapOf(key to negativeSearchEntry()))
+                        refreshFlow()
+                    }
                     null
                 }
                 FetchResult.Transient -> null
@@ -407,9 +419,9 @@ class TmdbMetaRepository @Inject constructor(
      * laufen unter derselben [pendingMutex], damit ein Caller nach dem Drain Leader
      * einer neuen Welle wird statt Follower einer bereits abgeschlossenen. Die Welle
      * wird erst NACH dem Fetch abgeschlossen, damit Followers erst resumen, wenn ihre
-     * Daten im Cache/Flow sind. Schlaegt Fetch oder Drain fehl, schliesst der Abort die
-     * Welle auch nach dem Drain noch exceptional ab, damit lokale Followers des
-     * gepackten Deferred nicht haengen bleiben.
+     * Daten im Cache/Flow sind. Schlaegt Fetch oder Drain fehl, schliesst ausschliesslich
+     * das nach dem Drain gepackte Deferred exceptional ab - der Fehler einer Welle kann
+     * keine fremde (neue) Welle mehr treffen.
      */
     private suspend fun coalescedFetch(key: String) {
         val completion: CompletableDeferred<Unit>
@@ -426,38 +438,24 @@ class TmdbMetaRepository @Inject constructor(
             return
         }
 
-        // Lokale Referenz auf die gepackte Welle: nach dem Drain ist waveCompletion null,
-        // abortWave allein wuerde die wartenden Followers dieses Deferred nicht mehr erreichen.
+        // Muss ausserhalb des try stehen, damit der catch-Zweig das gepackte Deferred sieht.
         var done: CompletableDeferred<Unit>? = null
         try {
             delay(COALESCE_MS)
-            val (keys, d) = pendingMutex.withLock {
+            // Nach dem Drain gehoert das Deferred ausschliesslich dieser Welle; der Fehlerpfad
+            // darf waveCompletion nicht mehr lesen, sonst bricht er eine fremde Welle ab.
+            val (keys, packed) = pendingMutex.withLock {
                 val k = pending.toList().also { pending.clear() }
-                val packed = waveCompletion
+                val d = waveCompletion
                 waveCompletion = null
-                k to packed
+                k to d
             }
-            done = d
+            done = packed
             fetchWave(keys)
             done?.complete(Unit)
-        } catch (e: CancellationException) {
-            abortWave(e)
+        } catch (e: Throwable) {
             done?.completeExceptionally(e)
             throw e
-        } catch (e: Exception) {
-            abortWave(e)
-            done?.completeExceptionally(e)
-            throw e
-        }
-    }
-
-    /** Bricht eine laufende Welle ab, damit wartende Caller nicht haengen bleiben. */
-    private suspend fun abortWave(cause: Throwable) {
-        pendingMutex.withLock {
-            pending.clear()
-            val done = waveCompletion
-            waveCompletion = null
-            done?.completeExceptionally(cause)
         }
     }
 
