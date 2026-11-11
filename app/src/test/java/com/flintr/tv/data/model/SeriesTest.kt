@@ -3,15 +3,12 @@ package com.flintr.tv.data.model
 import com.squareup.moshi.Moshi
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 
 /**
  * Regressionstest fuer den Xtream-`tmdb`-Feldnamen: die API liefert die TMDB-ID der Serie
  * als `"tmdb"`, nicht als `"tmdb_id"` - mit dem falschen JSON-Namen parst [Series.tmdbId]
  * immer null, siehe TMDB-Cast-Fotos-Slice.
  */
-@RunWith(RobolectricTestRunner::class)
 class SeriesTest {
 
     private val moshi = Moshi.Builder().build()

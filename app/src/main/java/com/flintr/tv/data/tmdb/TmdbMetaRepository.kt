@@ -49,7 +49,7 @@ class TmdbMetaRepository @Inject constructor(
         const val MAX_PARALLEL = 8
         val NUMERIC_ID = Regex("\\d+")
         val PREFIX_PLUS = Regex("^([A-Za-z]{1,3}\\+)\\s+")
-        val PREFIX_LANG_DASH = Regex("^([A-Za-z]{2})\\s*[-–—:]\\s+")
+        val PREFIX_LANG_DASH = Regex("^([A-Z]{2})\\s*[-–—:]\\s+")
     }
 
     private val _metaFlow = MutableStateFlow<Map<String, TmdbMeta>>(emptyMap())
@@ -403,9 +403,11 @@ class TmdbMetaRepository @Inject constructor(
 
     /**
      * Leader-Drain: der erste Caller wartet [COALESCE_MS], sammelt dann einmalig alle
-     * Pending-Keys und fetcht die gesammelten Keys. Die Welle wird erst NACH dem Fetch
-     * abgeschlossen, damit Followers erst resumen, wenn ihre Daten im Cache/Flow sind.
-     * Neue Anfragen waehrend des Fetches reihen sich in die naechste Welle ein.
+     * Pending-Keys und fetcht die gesammelten Keys. Drain und `waveCompletion = null`
+     * laufen unter derselben [pendingMutex], damit ein Caller nach dem Drain Leader
+     * einer neuen Welle wird statt Follower einer bereits abgeschlossenen. Die Welle
+     * wird erst NACH dem Fetch abgeschlossen, damit Followers erst resumen, wenn ihre
+     * Daten im Cache/Flow sind.
      */
     private suspend fun coalescedFetch(key: String) {
         val completion: CompletableDeferred<Unit>
@@ -424,15 +426,14 @@ class TmdbMetaRepository @Inject constructor(
 
         try {
             delay(COALESCE_MS)
-            val keys = pendingMutex.withLock {
-                pending.toList().also { pending.clear() }
+            val (keys, done) = pendingMutex.withLock {
+                val k = pending.toList().also { pending.clear() }
+                val d = waveCompletion
+                waveCompletion = null
+                k to d
             }
             fetchWave(keys)
-            pendingMutex.withLock {
-                val done = waveCompletion
-                waveCompletion = null
-                done?.complete(Unit)
-            }
+            done?.complete(Unit)
         } catch (e: CancellationException) {
             abortWave(e)
             throw e

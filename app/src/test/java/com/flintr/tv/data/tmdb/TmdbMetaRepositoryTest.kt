@@ -15,14 +15,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
-@RunWith(RobolectricTestRunner::class)
 class TmdbMetaRepositoryTest {
 
     private val tempDir: File = Files.createTempDirectory("tmdb-meta-repo").toFile()
