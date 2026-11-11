@@ -60,6 +60,9 @@ class TmdbMetaRepository @Inject constructor(
     /** Serialisiert Cache-Recheck plus Suche, damit derselbe Search-Key nur einmal HTTP sieht. */
     private val searchMutex = Mutex()
 
+    /** Serialisiert [refreshFlow], damit aeltere Aufrufe keinen neueren Flow-Stand ueberschreiben. */
+    private val refreshMutex = Mutex()
+
     @Volatile
     private var loaded = false
 
@@ -272,19 +275,25 @@ class TmdbMetaRepository @Inject constructor(
     /**
      * Reverse-Index aus den Card-Search-Keys (T13); kein Netz, nur gecachte Resolves.
      *
-     * Pro Item (streamId, title, year) wird der Search-Key wie im Karten-Pfad gebildet und
-     * gegen den Cache geprueft. Positive Treffer zaehlen auch, wenn sie stale sind; negative
-     * Eintraege und nicht-numerische IDs werden ignoriert. Rueckgabe: streamId -> tmdbId
-     * ausschliesslich fuer aufgeloeste Items.
+     * Pro Item werden ID, Titel und Jahr ueber die Selektoren gelesen, der Search-Key wie im
+     * Karten-Pfad gebildet und gegen den Cache geprueft. Positive Treffer zaehlen auch, wenn sie
+     * stale sind; negative Eintraege werden ignoriert.
+     * Rueckgabe: streamId -> tmdbId ausschliesslich fuer aufgeloeste Items.
      */
-    suspend fun cachedResolvedIds(
+    suspend fun <T> cachedResolvedIds(
         kind: String,
-        keyed: List<Triple<Int, String, Int?>>
+        items: List<T>,
+        idSelector: (T) -> Int,
+        titleSelector: (T) -> String,
+        yearSelector: (T) -> Int?
     ): Map<Int, Int> {
         ensureLoaded()
         val snapshot = cache.loadAll()
         val result = LinkedHashMap<Int, Int>()
-        for ((streamId, title, year) in keyed) {
+        for (item in items) {
+            val streamId = idSelector(item)
+            val title = titleSelector(item)
+            val year = yearSelector(item)
             val (clean, titleYear) = normalizer.normalize(stripCatalogPrefixes(title))
             if (clean.isBlank()) continue
             val entry = snapshot[searchKey(kind, clean, year ?: titleYear)] ?: continue
@@ -394,8 +403,9 @@ class TmdbMetaRepository @Inject constructor(
 
     /**
      * Leader-Drain: der erste Caller wartet [COALESCE_MS], sammelt dann einmalig alle
-     * Pending-Keys, schliesst seine Welle ab und fetcht die gesammelten Keys. Neue
-     * Anfragen waehrend des Fetches eroeffnen eine neue Welle mit eigenem Delay.
+     * Pending-Keys und fetcht die gesammelten Keys. Die Welle wird erst NACH dem Fetch
+     * abgeschlossen, damit Followers erst resumen, wenn ihre Daten im Cache/Flow sind.
+     * Neue Anfragen waehrend des Fetches reihen sich in die naechste Welle ein.
      */
     private suspend fun coalescedFetch(key: String) {
         val completion: CompletableDeferred<Unit>
@@ -415,14 +425,14 @@ class TmdbMetaRepository @Inject constructor(
         try {
             delay(COALESCE_MS)
             val keys = pendingMutex.withLock {
-                pending.toList().also {
-                    pending.clear()
-                    val done = waveCompletion
-                    waveCompletion = null
-                    done?.complete(Unit)
-                }
+                pending.toList().also { pending.clear() }
             }
             fetchWave(keys)
+            pendingMutex.withLock {
+                val done = waveCompletion
+                waveCompletion = null
+                done?.complete(Unit)
+            }
         } catch (e: CancellationException) {
             abortWave(e)
             throw e
@@ -618,12 +628,14 @@ class TmdbMetaRepository @Inject constructor(
         TmdbMetaCacheEntry(recItems = null, fetchedAtMs = now(), meta = null, negative = true)
 
     private suspend fun refreshFlow() {
-        _metaFlow.value = cache.loadAll()
-            .mapNotNull { (key, entry) ->
-                val meta = entry.meta
-                if (!entry.negative && meta != null) key to meta else null
-            }
-            .toMap()
+        refreshMutex.withLock {
+            _metaFlow.value = cache.loadAll()
+                .mapNotNull { (key, entry) ->
+                    val meta = entry.meta
+                    if (!entry.negative && meta != null) key to meta else null
+                }
+                .toMap()
+        }
     }
 
     private fun metaKey(kind: String, tmdbId: String): String = "$kind:$tmdbId"

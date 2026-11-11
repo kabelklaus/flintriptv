@@ -260,9 +260,10 @@ class MovieDetailViewModel @Inject constructor(
             ?: return emptyList()
         val resolved = tmdbMetaRepository.cachedResolvedIds(
             kind = "movie",
-            keyed = cached.movies.map {
-                Triple(it.streamId, it.name, resolveYear(it.name, it.releaseDate))
-            }
+            items = cached.movies,
+            idSelector = { it.streamId },
+            titleSelector = { it.name },
+            yearSelector = { resolveYear(it.name, it.releaseDate) }
         )
         val index = cached.movies.mapNotNull { movie ->
             val tmdbId = movie.tmdbId?.toIntOrNull() ?: resolved[movie.streamId] ?: return@mapNotNull null

@@ -140,7 +140,7 @@ class MovieDetailViewModelTest {
         every { watchlistRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchProgress("movie", vodId, null, null) } returns watchProgress
         coEvery { tmdbCastClient.movieCredits(any()) } returns emptyList()
-        coEvery { tmdbMetaRepository.cachedResolvedIds(any(), any()) } returns emptyMap()
+        coEvery { tmdbMetaRepository.cachedResolvedIds<VodStream>(any(), any(), any(), any(), any()) } returns emptyMap()
         coEvery { tmdbMetaRepository.recommendationTitlesFor(any(), any()) } returns
             TmdbResult.Data(emptyList())
     }
@@ -418,8 +418,11 @@ class MovieDetailViewModelTest {
         val second = catalogMovie.copy(streamId = 889, name = "Empfohlen Zwei", tmdbId = null)
         coEvery { cacheService.loadCachedDataAsync() } returns
             cachedData(movies = listOf(catalogMovie, first, second))
-        coEvery { tmdbMetaRepository.cachedResolvedIds("movie", any()) } returns
-            mapOf(888 to 777, 889 to 778)
+        coEvery {
+            tmdbMetaRepository.cachedResolvedIds<VodStream>(
+                "movie", any(), any(), any(), any()
+            )
+        } returns mapOf(888 to 777, 889 to 778)
 
         val vm = viewModel()
 

@@ -557,11 +557,14 @@ class TmdbMetaRepositoryTest {
 
         val result = repo.cachedResolvedIds(
             "movie",
-            listOf(
+            items = listOf(
                 Triple(4711, "Katalogtitel", 2020),
                 Triple(4712, "Negativ", 2021),
                 Triple(4713, "Unbekannt", 2022)
-            )
+            ),
+            idSelector = { it.first },
+            titleSelector = { it.second },
+            yearSelector = { it.third }
         )
 
         assertEquals(mapOf(4711 to 999), result)
