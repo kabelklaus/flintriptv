@@ -1,5 +1,6 @@
 package com.flintr.tv.data.tmdb
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
@@ -422,6 +423,11 @@ class TmdbMetaRepository @Inject constructor(
      * Daten im Cache/Flow sind. Schlaegt Fetch oder Drain fehl, schliesst ausschliesslich
      * das nach dem Drain gepackte Deferred exceptional ab - der Fehler einer Welle kann
      * keine fremde (neue) Welle mehr treffen.
+     *
+     * Stirbt der Leader bereits im Delay-Fenster (Cancellation), wird die Welle unter
+     * [pendingMutex] geschlossen: `waveCompletion` wird genullt und `pending` geleert,
+     * das Deferred wird exceptional abgeschlossen, damit wartende Followers sauber
+     * canceln statt ewig zu haengen.
      */
     private suspend fun coalescedFetch(key: String) {
         val completion: CompletableDeferred<Unit>
@@ -442,6 +448,16 @@ class TmdbMetaRepository @Inject constructor(
         var done: CompletableDeferred<Unit>? = null
         try {
             delay(COALESCE_MS)
+        } catch (ce: CancellationException) {
+            pendingMutex.withLock {
+                val d = waveCompletion
+                waveCompletion = null
+                pending.clear()
+                d
+            }?.completeExceptionally(ce)
+            throw ce
+        }
+        try {
             // Nach dem Drain gehoert das Deferred ausschliesslich dieser Welle; der Fehlerpfad
             // darf waveCompletion nicht mehr lesen, sonst bricht er eine fremde Welle ab.
             val (keys, packed) = pendingMutex.withLock {
