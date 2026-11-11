@@ -67,6 +67,9 @@ class TmdbMetaRepository @Inject constructor(
     private val pending = mutableSetOf<String>()
     private var waveCompletion: CompletableDeferred<Unit>? = null
 
+    /** Globales Request-Limit ueber alle Wellen hinweg. */
+    private val waveSemaphore = Semaphore(MAX_PARALLEL)
+
     /** Laedt den Cache einmalig und fuellt [metaFlow]; idempotent und memoized. */
     suspend fun ensureLoaded() {
         if (loaded) return
@@ -390,8 +393,9 @@ class TmdbMetaRepository @Inject constructor(
     }
 
     /**
-     * Leader-Drain: der erste Caller wartet [COALESCE_MS], sammelt dann alle Pending-Keys
-     * und fetcht sie parallel. Folgecaller warten auf die Completion derselben Welle.
+     * Leader-Drain: der erste Caller wartet [COALESCE_MS], sammelt dann einmalig alle
+     * Pending-Keys, schliesst seine Welle ab und fetcht die gesammelten Keys. Neue
+     * Anfragen waehrend des Fetches eroeffnen eine neue Welle mit eigenem Delay.
      */
     private suspend fun coalescedFetch(key: String) {
         val completion: CompletableDeferred<Unit>
@@ -410,18 +414,15 @@ class TmdbMetaRepository @Inject constructor(
 
         try {
             delay(COALESCE_MS)
-            while (true) {
-                val keys = pendingMutex.withLock {
-                    if (pending.isEmpty()) {
-                        val done = waveCompletion
-                        waveCompletion = null
-                        done?.complete(Unit)
-                        return
-                    }
-                    pending.toList().also { pending.clear() }
+            val keys = pendingMutex.withLock {
+                pending.toList().also {
+                    pending.clear()
+                    val done = waveCompletion
+                    waveCompletion = null
+                    done?.complete(Unit)
                 }
-                fetchWave(keys)
             }
+            fetchWave(keys)
         } catch (e: CancellationException) {
             abortWave(e)
             throw e
@@ -444,11 +445,10 @@ class TmdbMetaRepository @Inject constructor(
     /** Baut die Update-Map der Welle in einem Zug und refresht den Flow danach einmal. */
     private suspend fun fetchWave(keys: Collection<String>) = withContext(ioDispatcher) {
         val updates = coroutineScope {
-            val semaphore = Semaphore(MAX_PARALLEL)
             keys.distinct()
                 .map { key ->
                     async {
-                        semaphore.withPermit { fetchEntry(key) }
+                        waveSemaphore.withPermit { fetchEntry(key) }
                     }
                 }
                 .awaitAll()

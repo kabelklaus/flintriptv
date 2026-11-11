@@ -1,7 +1,6 @@
 package com.flintr.tv.data.tmdb
 
 import android.content.Context
-import android.os.Build
 import android.util.Log
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
@@ -19,9 +18,6 @@ import okio.sink
 import okio.source
 import java.io.File
 import java.io.IOException
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -155,24 +151,10 @@ class TmdbMetaCache internal constructor(
     }
 
     /**
-     * API >= 26 nutzt [Files.move] mit [StandardCopyOption.ATOMIC_MOVE] und
-     * [StandardCopyOption.REPLACE_EXISTING] kombiniert, darunter bleibt [File.renameTo]
-     * (desugar_jdk_libs hat kein java.nio.file).
+     * Rename(2) ist auf Android/Linux im selben Verzeichnis atomar und ersetzt
+     * existierende Ziele.
      */
     private fun moveIntoPlace(tmp: File, target: File) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                Files.move(
-                    tmp.toPath(),
-                    target.toPath(),
-                    StandardCopyOption.ATOMIC_MOVE,
-                    StandardCopyOption.REPLACE_EXISTING
-                )
-            } catch (e: AtomicMoveNotSupportedException) {
-                Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            }
-        } else if (!tmp.renameTo(target)) {
-            throw IOException("rename failed: $FILE_NAME")
-        }
+        if (!tmp.renameTo(target)) throw IOException("rename failed: $FILE_NAME")
     }
 }
