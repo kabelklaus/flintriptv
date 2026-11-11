@@ -15,6 +15,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -46,6 +47,7 @@ class TmdbMetaRepository @Inject constructor(
 
     private companion object {
         const val COALESCE_MS = 100L
+        const val WAVE_AWAIT_TIMEOUT_MS = 15_000L
         const val MAX_PARALLEL = 8
         val NUMERIC_ID = Regex("\\d+")
         val PREFIX_PLUS = Regex("^([A-Za-z]{1,3}\\+)\\s+")
@@ -428,6 +430,11 @@ class TmdbMetaRepository @Inject constructor(
      * [pendingMutex] geschlossen: `waveCompletion` wird genullt und `pending` geleert,
      * das Deferred wird exceptional abgeschlossen, damit wartende Followers sauber
      * canceln statt ewig zu haengen.
+     *
+     * Sicherheitsnetz: Selbst wenn ein Leader-Coroutine-Tod ein Fenster laesst, kehren
+     * Followers nach [WAVE_AWAIT_TIMEOUT_MS] zurueck (Skeleton wird resolved, Fallback
+     * greift). Die Fenster Delay-Abbruch und Fetch-Fehler sind bereits strukturell
+     * abgedeckt (R8/R7).
      */
     private suspend fun coalescedFetch(key: String) {
         val completion: CompletableDeferred<Unit>
@@ -440,7 +447,7 @@ class TmdbMetaRepository @Inject constructor(
         }
 
         if (!isLeader) {
-            completion.await()
+            withTimeoutOrNull(WAVE_AWAIT_TIMEOUT_MS) { completion.await() }
             return
         }
 
