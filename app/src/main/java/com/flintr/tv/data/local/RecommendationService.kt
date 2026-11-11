@@ -14,6 +14,9 @@ import com.google.firebase.perf.metrics.Trace
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -174,13 +177,22 @@ class RecommendationService(
 
             val discoveredMoviesByGenre = linkedMapOf<Int, List<Int>>()
             val discoveredSeriesByGenre = linkedMapOf<Int, List<Int>>()
-            anchorGenreIds.forEach { genreId ->
-                coroutineContext.ensureActive()
-                discoveredMoviesByGenre[genreId] =
-                    tmdbMetaRepository.discoverMovieIds(listOf(genreId))
-                coroutineContext.ensureActive()
-                discoveredSeriesByGenre[genreId] =
-                    tmdbMetaRepository.discoverTvIds(listOf(genreId))
+            // Die Genre-Abfragen sind unabhaengig: parallel ausfuehren, awaitAll erhaelt die
+            // Reihenfolge der anchorGenreIds (awaitAll liefert dieselbe Ordnung wie map).
+            val discoveredByGenre = coroutineScope {
+                anchorGenreIds.map { genreId ->
+                    async {
+                        coroutineContext.ensureActive()
+                        val movies = tmdbMetaRepository.discoverMovieIds(listOf(genreId))
+                        coroutineContext.ensureActive()
+                        val series = tmdbMetaRepository.discoverTvIds(listOf(genreId))
+                        genreId to (movies to series)
+                    }
+                }.awaitAll()
+            }
+            discoveredByGenre.forEach { (genreId, result) ->
+                discoveredMoviesByGenre[genreId] = result.first
+                discoveredSeriesByGenre[genreId] = result.second
             }
 
             val result = RecommendationEngine.recommend(

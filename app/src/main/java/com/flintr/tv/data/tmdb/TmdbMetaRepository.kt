@@ -407,7 +407,9 @@ class TmdbMetaRepository @Inject constructor(
      * laufen unter derselben [pendingMutex], damit ein Caller nach dem Drain Leader
      * einer neuen Welle wird statt Follower einer bereits abgeschlossenen. Die Welle
      * wird erst NACH dem Fetch abgeschlossen, damit Followers erst resumen, wenn ihre
-     * Daten im Cache/Flow sind.
+     * Daten im Cache/Flow sind. Schlaegt Fetch oder Drain fehl, schliesst der Abort die
+     * Welle auch nach dem Drain noch exceptional ab, damit lokale Followers des
+     * gepackten Deferred nicht haengen bleiben.
      */
     private suspend fun coalescedFetch(key: String) {
         val completion: CompletableDeferred<Unit>
@@ -424,21 +426,27 @@ class TmdbMetaRepository @Inject constructor(
             return
         }
 
+        // Lokale Referenz auf die gepackte Welle: nach dem Drain ist waveCompletion null,
+        // abortWave allein wuerde die wartenden Followers dieses Deferred nicht mehr erreichen.
+        var done: CompletableDeferred<Unit>? = null
         try {
             delay(COALESCE_MS)
-            val (keys, done) = pendingMutex.withLock {
+            val (keys, d) = pendingMutex.withLock {
                 val k = pending.toList().also { pending.clear() }
-                val d = waveCompletion
+                val packed = waveCompletion
                 waveCompletion = null
-                k to d
+                k to packed
             }
+            done = d
             fetchWave(keys)
             done?.complete(Unit)
         } catch (e: CancellationException) {
             abortWave(e)
+            done?.completeExceptionally(e)
             throw e
         } catch (e: Exception) {
             abortWave(e)
+            done?.completeExceptionally(e)
             throw e
         }
     }
