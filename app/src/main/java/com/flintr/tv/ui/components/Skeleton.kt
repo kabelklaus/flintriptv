@@ -20,6 +20,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.flintr.tv.ui.theme.Dimensions
@@ -35,8 +36,13 @@ private const val SKELETON_ALPHA_MAX = 0.7f
  * independent animation timers on a TV box. [SkeletonPulseProvider] starts the single shared
  * clock once near the composition root (see MainActivity). Call sites without a provider (e.g.
  * component previews/tests) fall back to a static mid-alpha - still visible, just not animated.
+ *
+ * Der Wert wird bewusst als Lambda bereitgestellt und erst in der Draw-Phase gelesen
+ * ([graphicsLayer]), damit der Puls keine Recomposition pro Frame ausloest.
  */
-private val LocalSkeletonPulseAlpha = compositionLocalOf { (SKELETON_ALPHA_MIN + SKELETON_ALPHA_MAX) / 2f }
+private val LocalSkeletonPulseAlpha = compositionLocalOf<() -> Float> {
+    { (SKELETON_ALPHA_MIN + SKELETON_ALPHA_MAX) / 2f }
+}
 
 @Composable
 fun SkeletonPulseProvider(content: @Composable () -> Unit) {
@@ -50,7 +56,7 @@ fun SkeletonPulseProvider(content: @Composable () -> Unit) {
         ),
         label = "skeletonPulseAlpha"
     )
-    CompositionLocalProvider(LocalSkeletonPulseAlpha provides alpha) {
+    CompositionLocalProvider(LocalSkeletonPulseAlpha provides ({ alpha })) {
         content()
     }
 }
@@ -73,12 +79,13 @@ fun SkeletonBar(
     modifier: Modifier = Modifier
 ) {
     val colors = appColors()
-    val alpha = LocalSkeletonPulseAlpha.current
+    val pulseAlpha = LocalSkeletonPulseAlpha.current
     Box(
         modifier = modifier
             .then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
             .height(height)
-            .background(colors.textPrimary.copy(alpha = alpha * SKELETON_CONTRAST_FACTOR), shape)
+            .graphicsLayer { alpha = pulseAlpha() }
+            .background(colors.textPrimary.copy(alpha = SKELETON_CONTRAST_FACTOR), shape)
     )
 }
 

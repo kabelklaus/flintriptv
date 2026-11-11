@@ -106,6 +106,7 @@ class TmdbCastClient @Inject constructor(
         private const val BASE_URL = "https://api.themoviedb.org/3"
         private const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w342"
         private const val CACHE_CAPACITY = 250
+        private const val POSTER_CACHE_CAPACITY = 50
         private const val TV_CAST_CAP = 25
         private val NUMERIC_ID = Regex("\\d+")
     }
@@ -127,6 +128,13 @@ class TmdbCastClient @Inject constructor(
             size > CACHE_CAPACITY
     }
 
+    /** Staffel-Poster pro tmdbId; Poster aendern sich selten, Cache-Scope ist die App-Laufzeit. */
+    private val posterCacheMutex = Mutex()
+    private val posterCache = object : LinkedHashMap<String, Map<Int, String>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Map<Int, String>>): Boolean =
+            size > POSTER_CACHE_CAPACITY
+    }
+
     suspend fun movieCredits(tmdbId: String): List<TmdbCastMember> = credits("movie", tmdbId)
 
     suspend fun tvCredits(tmdbId: String): List<TmdbCastMember> = credits("tv", tmdbId)
@@ -142,7 +150,11 @@ class TmdbCastClient @Inject constructor(
         val apiKey = BuildConfig.TMDB_API_KEY
         if (apiKey.isBlank()) return emptyMap()
 
-        return withContext(ioDispatcher) { fetchSeasonPosters(tmdbId, apiKey) }
+        posterCacheMutex.withLock { posterCache[tmdbId] }?.let { return it }
+
+        val fetched = withContext(ioDispatcher) { fetchSeasonPosters(tmdbId, apiKey) }
+        posterCacheMutex.withLock { posterCache[tmdbId] = fetched }
+        return fetched
     }
 
     private fun fetchSeasonPosters(tmdbId: String, apiKey: String): Map<Int, String> {
