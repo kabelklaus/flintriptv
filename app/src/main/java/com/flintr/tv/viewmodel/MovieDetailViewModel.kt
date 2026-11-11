@@ -92,6 +92,13 @@ class MovieDetailViewModel @Inject constructor(
         ?: savedStateHandle.get<String>(ARG_VOD_ID)?.toIntOrNull()
         ?: -1
 
+    /**
+     * Memoized Katalog-Titel (Quell-Movies plus normalisierte Titel/Jahre). Die Referenz auf
+     * `cached.movies` ist pro Katalog-Load stabil, daher genuegt Identitaetsvergleich.
+     * Zugriff nur aus [viewModelScope] auf dem Main-Thread, kein Lock noetig.
+     */
+    private var catalogTitleCache: Pair<List<VodStream>, List<CatalogTitle>>? = null
+
     private val _uiState = MutableStateFlow(MovieDetailUiState())
     val uiState: StateFlow<MovieDetailUiState> = _uiState.asStateFlow()
 
@@ -275,13 +282,18 @@ class MovieDetailViewModel @Inject constructor(
             excludedMovieIds = setOf(vodId)
         ).forEach { selected[it.streamId] = it }
 
-        val catalogTitles = cached.movies.map { movie ->
-            val (cleanTitle, _) = TitleNormalizer.normalize(movie.name)
-            CatalogTitle(
-                cleanTitle = cleanTitle,
-                year = resolveYear(movie.name, movie.releaseDate),
-                movie = movie
-            )
+        val cachedTitles = catalogTitleCache
+        val catalogTitles = if (cachedTitles != null && cachedTitles.first === cached.movies) {
+            cachedTitles.second
+        } else {
+            cached.movies.map { movie ->
+                val (cleanTitle, _) = TitleNormalizer.normalize(movie.name)
+                CatalogTitle(
+                    cleanTitle = cleanTitle,
+                    year = resolveYear(movie.name, movie.releaseDate),
+                    movie = movie
+                )
+            }.also { catalogTitleCache = cached.movies to it }
         }
 
         for (item in recItems) {

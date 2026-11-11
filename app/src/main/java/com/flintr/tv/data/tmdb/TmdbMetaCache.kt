@@ -155,13 +155,19 @@ class TmdbMetaCache internal constructor(
     }
 
     /**
-     * API >= 26 nutzt [Files.move] mit [StandardCopyOption.ATOMIC_MOVE], darunter
-     * bleibt [File.renameTo] (desugar_jdk_libs hat kein java.nio.file).
+     * API >= 26 nutzt [Files.move] mit [StandardCopyOption.ATOMIC_MOVE] und
+     * [StandardCopyOption.REPLACE_EXISTING] kombiniert, darunter bleibt [File.renameTo]
+     * (desugar_jdk_libs hat kein java.nio.file).
      */
     private fun moveIntoPlace(tmp: File, target: File) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
-                Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+                Files.move(
+                    tmp.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING
+                )
             } catch (e: AtomicMoveNotSupportedException) {
                 Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }

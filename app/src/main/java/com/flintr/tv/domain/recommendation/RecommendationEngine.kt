@@ -149,7 +149,6 @@ object RecommendationEngine {
                     val item = index[tmdbId] ?: continue
                     val itemId = idOf(item)
                     if (itemId in excludedIds || !used.add(itemId)) continue
-                    used += itemId
                     result += item
                 }
             }
