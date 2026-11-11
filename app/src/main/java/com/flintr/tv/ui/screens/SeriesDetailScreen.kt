@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -30,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -38,6 +42,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -383,10 +390,10 @@ private fun SeriesDetailContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // Padding NACH verticalScroll = Content-Padding: vergrößert den
+                // Scrollbereich, damit die letzte Reihe samt Fokus-Ring nicht am
+                // Viewport-Unterrand klebt.
                 .verticalScroll(scrollState)
-                // Letzte Reihe darf nicht am Screen-Unterrand ankleben: ohne dieses Padding
-                // scrollt der Fokus die unterste Karte (inkl. Titelzeile) exakt bis zum
-                // Viewport-Rand, wo der Fokus-Scale/-Ring sichtbar beschnitten wird.
                 .padding(bottom = Dimensions.spacingXL)
         ) {
             CenteredHeaderBlock(viewportHeight = viewportHeight) {
@@ -436,8 +443,15 @@ private fun SeriesDetailContent(
                         horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingMD),
                         // Analog zur Besetzungsreihe (DetailCastSection): ohne contentPadding
                         // klebt die fokussierte Randkachel am eigenen Clip-Rand der LazyRow und
-                        // ihr Fokus-Ring/-Scale wird dort beschnitten.
-                        contentPadding = PaddingValues(horizontal = Dimensions.spacingXS),
+                        // ihr Fokus-Ring/-Scale wird dort beschnitten. Vertikal schafft das
+                        // Padding Raum fuer den Scale-UEberhang des Fokus-Rings (1.04), damit
+                        // der untere Rand nicht von der naechsten Sektion abgeschnitten wird.
+                        contentPadding = PaddingValues(
+                            start = Dimensions.spacingXS,
+                            end = Dimensions.spacingXS,
+                            top = Dimensions.spacingSM,
+                            bottom = Dimensions.spacingSM
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("series-detail-season-row")
@@ -516,6 +530,7 @@ private fun SeriesDetailContent(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun SeasonTile(
     season: SeasonUiModel,
     focusRequester: FocusRequester?,
@@ -528,12 +543,31 @@ private fun SeasonTile(
     val internalFocusRequester = remember { FocusRequester() }
     val actualFocusRequester = focusRequester ?: internalFocusRequester
     val shape = RoundedCornerShape(Dimensions.radiusMD)
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    var cardSize by remember { mutableStateOf(IntSize.Zero) }
 
     Column(
         modifier = Modifier
             .width(160.dp)
+            .onSizeChanged { cardSize = it }
+            .bringIntoViewRequester(bringIntoViewRequester)
             .focusRequester(actualFocusRequester)
-            .onFocusChanged { isFocused = it.isFocused }
+            .onFocusChanged {
+                isFocused = it.isFocused
+                // Fokus-Ring skaliert 1.04 und ragt unterhalb der Layout-Bounds —
+                // bringIntoView mit erweitertem Rect, damit der untere Rand nicht
+                // am Screen-Unterrand abgeschnitten wird.
+                if (it.isFocused && cardSize != IntSize.Zero) {
+                    val extra = with(density) { Dimensions.spacingLG.toPx() }
+                    scope.launch {
+                        bringIntoViewRequester.bringIntoView(
+                            Rect(0f, 0f, cardSize.width.toFloat(), cardSize.height + extra)
+                        )
+                    }
+                }
+            }
             .focusable()
             .onDpadDirection(onUp = { onUp(); true }, onDown = onDown)
             .onClick(onClick = onClick)
