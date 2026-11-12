@@ -26,6 +26,17 @@ sonar {
         property("sonar.exclusions", "**/test/**,**/androidTest/**,**/*Test.kt,**/*Tests.kt")
         property("sonar.test.exclusions", "**/*")
 
+        // Bewusste Won't-Fix-Entscheidungen (siehe NOSONAR-Kommentare im Code); NOSONAR wirkt nicht auf external_android-lint/xml-Rules, daher scanner-seitig:
+        property("sonar.issue.ignore.multicriteria", "e1,e2,e3,e4")
+        property("sonar.issue.ignore.e1.ruleKey", "external_android-lint:ChromeOsAbiSupport")
+        property("sonar.issue.ignore.e1.resourceKey", "app/build.gradle.kts")
+        property("sonar.issue.ignore.e2.ruleKey", "external_android-lint:GradleDependency")
+        property("sonar.issue.ignore.e2.resourceKey", "app/build.gradle.kts")
+        property("sonar.issue.ignore.e3.ruleKey", "external_android-lint:OldTargetApi")
+        property("sonar.issue.ignore.e3.resourceKey", "app/build.gradle.kts")
+        property("sonar.issue.ignore.e4.ruleKey", "xml:S5332")
+        property("sonar.issue.ignore.e4.resourceKey", "app/src/main/AndroidManifest.xml")
+
         // Coverage exclusions: code that cannot be meaningfully unit-tested locally.
         // - DI wiring, Android entry points: pure framework glue
         // - DebugOverlay: developer tooling, not user-facing behavior
