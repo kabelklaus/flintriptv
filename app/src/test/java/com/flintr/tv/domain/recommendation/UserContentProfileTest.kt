@@ -99,12 +99,14 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            watchlistEntries = entries,
-            watchedHistory = emptyMap(),
-            watchProgress = emptyMap(),
-            ratings = emptyMap(),
-            movies = emptyList(),
-            series = series,
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = entries,
+                watchedHistory = emptyMap(),
+                watchProgress = emptyMap(),
+                ratings = emptyMap(),
+                movies = emptyList(),
+                series = series
+            ),
             metaLookup = lookup(310 to listOf(28, 18))
         )
 
@@ -121,12 +123,14 @@ class UserContentProfileTest {
         }
 
         val profile = UserContentProfile.build(
-            watchlistEntries = emptyList(),
-            watchedHistory = emptyMap(),
-            watchProgress = progress,
-            ratings = emptyMap(),
-            movies = emptyList(),
-            series = series,
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = emptyList(),
+                watchedHistory = emptyMap(),
+                watchProgress = progress,
+                ratings = emptyMap(),
+                movies = emptyList(),
+                series = series
+            ),
             metaLookup = lookup(310 to listOf(28))
         )
 
@@ -142,12 +146,14 @@ class UserContentProfileTest {
         }
 
         val profile = UserContentProfile.build(
-            watchlistEntries = emptyList(),
-            watchedHistory = emptyMap(),
-            watchProgress = progress,
-            ratings = emptyMap(),
-            movies = emptyList(),
-            series = series,
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = emptyList(),
+                watchedHistory = emptyMap(),
+                watchProgress = progress,
+                ratings = emptyMap(),
+                movies = emptyList(),
+                series = series
+            ),
             metaLookup = lookup(310 to listOf(28))
         )
 
@@ -162,12 +168,14 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            watchlistEntries = emptyList(),
-            watchedHistory = emptyMap(),
-            watchProgress = progress,
-            ratings = emptyMap(),
-            movies = movies,
-            series = emptyList(),
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = emptyList(),
+                watchedHistory = emptyMap(),
+                watchProgress = progress,
+                ratings = emptyMap(),
+                movies = movies,
+                series = emptyList()
+            ),
             metaLookup = lookup(301 to listOf(27))
         )
 
@@ -183,12 +191,14 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            watchlistEntries = emptyList(),
-            watchedHistory = emptyMap(),
-            watchProgress = progress,
-            ratings = emptyMap(),
-            movies = movies,
-            series = emptyList(),
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = emptyList(),
+                watchedHistory = emptyMap(),
+                watchProgress = progress,
+                ratings = emptyMap(),
+                movies = movies,
+                series = emptyList()
+            ),
             metaLookup = lookup(301 to listOf(27))
         )
 
@@ -209,12 +219,14 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            watchlistEntries = emptyList(),
-            watchedHistory = watchedHistory,
-            watchProgress = progress,
-            ratings = emptyMap(),
-            movies = movies,
-            series = emptyList(),
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = emptyList(),
+                watchedHistory = watchedHistory,
+                watchProgress = progress,
+                ratings = emptyMap(),
+                movies = movies,
+                series = emptyList()
+            ),
             metaLookup = lookup(301 to listOf(27))
         )
 
@@ -229,12 +241,14 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            watchlistEntries = emptyList(),
-            watchedHistory = emptyMap(),
-            watchProgress = emptyMap(),
-            ratings = ratings,
-            movies = movies,
-            series = emptyList(),
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = emptyList(),
+                watchedHistory = emptyMap(),
+                watchProgress = emptyMap(),
+                ratings = ratings,
+                movies = movies,
+                series = emptyList()
+            ),
             metaLookup = lookup(301 to listOf(35))
         )
 
@@ -249,12 +263,14 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            watchlistEntries = emptyList(),
-            watchedHistory = emptyMap(),
-            watchProgress = progress,
-            ratings = emptyMap(),
-            movies = movies,
-            series = emptyList(),
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = emptyList(),
+                watchedHistory = emptyMap(),
+                watchProgress = progress,
+                ratings = emptyMap(),
+                movies = movies,
+                series = emptyList()
+            ),
             metaLookup = lookup(301 to listOf(27))
         )
 
@@ -274,12 +290,14 @@ class UserContentProfileTest {
         }
 
         val profile = UserContentProfile.build(
-            watchlistEntries = entries,
-            watchedHistory = emptyMap(),
-            watchProgress = progress,
-            ratings = emptyMap(),
-            movies = movies,
-            series = series,
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = entries,
+                watchedHistory = emptyMap(),
+                watchProgress = progress,
+                ratings = emptyMap(),
+                movies = movies,
+                series = series
+            ),
             metaLookup = lookup(301 to listOf(28), 310 to listOf(28))
         )
 
@@ -295,12 +313,14 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            watchlistEntries = emptyList(),
-            watchedHistory = emptyMap(),
-            watchProgress = progress,
-            ratings = emptyMap(),
-            movies = movies,
-            series = emptyList(),
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = emptyList(),
+                watchedHistory = emptyMap(),
+                watchProgress = progress,
+                ratings = emptyMap(),
+                movies = movies,
+                series = emptyList()
+            ),
             metaLookup = lookup(301 to listOf(28))
         )
 
@@ -316,12 +336,14 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            watchlistEntries = entries,
-            watchedHistory = emptyMap(),
-            watchProgress = emptyMap(),
-            ratings = emptyMap(),
-            movies = movies,
-            series = emptyList(),
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = entries,
+                watchedHistory = emptyMap(),
+                watchProgress = emptyMap(),
+                ratings = emptyMap(),
+                movies = movies,
+                series = emptyList()
+            ),
             // Cache-Key ist movie:300 (tmdbId), nicht movie:7 (streamId).
             metaLookup = lookup(300 to listOf(28))
         )
@@ -339,12 +361,14 @@ class UserContentProfileTest {
         )
 
         val profile = UserContentProfile.build(
-            watchlistEntries = entries,
-            watchedHistory = emptyMap(),
-            watchProgress = emptyMap(),
-            ratings = emptyMap(),
-            movies = movies,
-            series = emptyList(),
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = entries,
+                watchedHistory = emptyMap(),
+                watchProgress = emptyMap(),
+                ratings = emptyMap(),
+                movies = movies,
+                series = emptyList()
+            ),
             // Ein Eintrag unter der Xtream-ID darf nicht mehr gelesen werden.
             metaLookup = lookup(7 to listOf(28))
         )

@@ -150,12 +150,14 @@ class RecommendationService(
 
             coroutineContext.ensureActive()
             val profile = UserContentProfile.build(
-                watchlistEntries = input.entries,
-                watchedHistory = input.watchedHistory,
-                watchProgress = input.watchProgress,
-                ratings = ratings,
-                movies = cached.movies,
-                series = cached.series,
+                signals = UserContentProfile.UserSignalData(
+                    watchlistEntries = input.entries,
+                    watchedHistory = input.watchedHistory,
+                    watchProgress = input.watchProgress,
+                    ratings = ratings,
+                    movies = cached.movies,
+                    series = cached.series
+                ),
                 // Key = tmdbId des Items (UserContentProfile), series->tv-Uebersetzung bleibt.
                 metaLookup = { kind, id ->
                     val key = if (kind == "series") "tv:$id" else "movie:$id"

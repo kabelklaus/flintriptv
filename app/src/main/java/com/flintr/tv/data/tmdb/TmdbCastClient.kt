@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Named
@@ -203,24 +204,7 @@ class TmdbCastClient @Inject constructor(
             val url = "$BASE_URL/$kind/$tmdbId/$endpoint?api_key=$apiKey"
             val request = Request.Builder().url(url).build()
             okHttpClient.newCall(request).execute().use { response ->
-                when {
-                    response.code == 404 -> FetchResult.Cacheable(emptyList())
-                    !response.isSuccessful -> {
-                        reportHandled("$TAG.$kind", IOException("TMDB credits HTTP ${response.code}"))
-                        FetchResult.Transient(emptyList())
-                    }
-                    else -> {
-                        val json = response.body?.string()
-                        val members = json?.let { if (isMovie) parseMovieCast(it) else parseTvCast(it) }
-                        if (members == null) {
-                            reportHandled("$TAG.$kind", IOException("TMDB credits unparsable body"))
-                            FetchResult.Transient(emptyList())
-                        } else {
-                            val sorted = members.sortedBy { it.order }
-                            FetchResult.Cacheable(if (isMovie) sorted else sorted.take(TV_CAST_CAP))
-                        }
-                    }
-                }
+                classifyCreditsResponse(response, kind, isMovie)
             }
         } catch (e: CancellationException) {
             throw e
@@ -228,6 +212,27 @@ class TmdbCastClient @Inject constructor(
             reportHandled("$TAG.$kind", e)
             FetchResult.Transient(emptyList())
         }
+    }
+
+    private fun classifyCreditsResponse(response: Response, kind: String, isMovie: Boolean): FetchResult =
+        when {
+            response.code == 404 -> FetchResult.Cacheable(emptyList())
+            !response.isSuccessful -> {
+                reportHandled("$TAG.$kind", IOException("TMDB credits HTTP ${response.code}"))
+                FetchResult.Transient(emptyList())
+            }
+            else -> parseCreditsBody(response, kind, isMovie)
+        }
+
+    private fun parseCreditsBody(response: Response, kind: String, isMovie: Boolean): FetchResult {
+        val json = response.body?.string()
+        val members = json?.let { if (isMovie) parseMovieCast(it) else parseTvCast(it) }
+        if (members == null) {
+            reportHandled("$TAG.$kind", IOException("TMDB credits unparsable body"))
+            return FetchResult.Transient(emptyList())
+        }
+        val sorted = members.sortedBy { it.order }
+        return FetchResult.Cacheable(if (isMovie) sorted else sorted.take(TV_CAST_CAP))
     }
 
     private fun parseMovieCast(json: String): List<TmdbCastMember>? =

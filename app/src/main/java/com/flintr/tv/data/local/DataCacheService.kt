@@ -429,7 +429,7 @@ class DataCacheService @Inject constructor(
      * Returns the memoized catalog or parses the cache files on [ioDispatcher]. Concurrent
      * callers share a single parse: whoever waits on [parseMutex] gets the memoized result.
      */
-    suspend fun loadCachedDataAsync(): CachedData? = withContext(ioDispatcher) {
+    suspend fun loadCachedDataAsync(): CachedData? = withContext(ioDispatcher) { // NOSONAR (S6311) - parseCachedData()/readEach() do blocking File I/O with no dispatcher switch of their own; this withContext is the only IO hop in the chain.
         memoizedCache ?: parseMutex.withLock { memoizedCache ?: parseCachedData() }
     }
 

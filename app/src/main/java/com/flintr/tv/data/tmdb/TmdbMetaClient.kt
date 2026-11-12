@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Named
@@ -116,25 +117,7 @@ class TmdbMetaClient @Inject constructor(
                 val request = Request.Builder().url(urlBuilder.build()).build()
 
                 okHttpClient.newCall(request).execute().use { response ->
-                    when {
-                        response.code == 404 -> FetchResult.Negative
-                        !response.isSuccessful -> {
-                            reportHandled("$TAG.searchCandidates.$kind", IOException("TMDB search HTTP ${response.code}"))
-                            FetchResult.Transient
-                        }
-                        else -> {
-                            val json = response.body?.string()
-                            val results = json?.let { candidatesAdapter.fromJson(it)?.results }
-                            if (results == null) {
-                                reportHandled("$TAG.searchCandidates.$kind", IOException("TMDB search unparsable body"))
-                                FetchResult.Transient
-                            } else if (results.isEmpty()) {
-                                FetchResult.Negative
-                            } else {
-                                FetchResult.Data(results.map { it.toCandidate() })
-                            }
-                        }
-                    }
+                    classifySearchCandidatesResponse(response, kind)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -142,6 +125,32 @@ class TmdbMetaClient @Inject constructor(
                 reportHandled("$TAG.searchCandidates.$kind", e)
                 FetchResult.Transient
             }
+        }
+    }
+
+    private fun classifySearchCandidatesResponse(
+        response: Response,
+        kind: String
+    ): FetchResult<List<TmdbSearchCandidate>> =
+        when {
+            response.code == 404 -> FetchResult.Negative
+            !response.isSuccessful -> {
+                reportHandled("$TAG.searchCandidates.$kind", IOException("TMDB search HTTP ${response.code}"))
+                FetchResult.Transient
+            }
+            else -> parseSearchCandidatesBody(response, kind)
+        }
+
+    private fun parseSearchCandidatesBody(response: Response, kind: String): FetchResult<List<TmdbSearchCandidate>> {
+        val json = response.body?.string()
+        val results = json?.let { candidatesAdapter.fromJson(it)?.results }
+        return when {
+            results == null -> {
+                reportHandled("$TAG.searchCandidates.$kind", IOException("TMDB search unparsable body"))
+                FetchResult.Transient
+            }
+            results.isEmpty() -> FetchResult.Negative
+            else -> FetchResult.Data(results.map { it.toCandidate() })
         }
     }
 

@@ -75,8 +75,8 @@ private const val SKELETON_CONTRAST_FACTOR = 0.22f
 fun SkeletonBar(
     width: Dp?,
     height: Dp,
-    shape: Shape = RoundedCornerShape(Dimensions.radiusSM),
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(Dimensions.radiusSM)
 ) {
     val colors = appColors()
     val pulseAlpha = LocalSkeletonPulseAlpha.current

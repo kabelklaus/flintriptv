@@ -174,15 +174,7 @@ class TmdbMetaRepository @Inject constructor(
         ensureLoaded()
 
         if (tmdbId != null && NUMERIC_ID.matches(tmdbId)) {
-            val key = metaKey(kind, tmdbId)
-            val now = now()
-            val entry = cache.loadAll()[key]
-            if (entry != null) {
-                if (TmdbMetaCache.isFresh(entry, now)) return entry.meta
-                if (isNegativeFresh(entry, now)) return null
-            }
-            request(kind, tmdbId)
-            return metaFlow.value[key]
+            return resolveCardMetaById(kind, tmdbId)
         }
 
         val (clean, titleYear) = normalizer.normalize(stripCatalogPrefixes(title))
@@ -191,16 +183,48 @@ class TmdbMetaRepository @Inject constructor(
         // Wie im Detail-Pfad: explizites Jahr gewinnt, sonst das Jahr aus dem Titel.
         val queryYear = year ?: titleYear
         val key = searchKey(kind, clean, queryYear)
-        val now = now()
-        val cached = cache.loadAll()[key]
-        if (cached != null) {
-            if (isNegativeFresh(cached, now)) return null
-            if (TmdbMetaCache.isFresh(cached, now)) {
-                val resolvedId = cached.meta?.tmdbId ?: return null
-                return requestResolved(kind, resolvedId)
-            }
+
+        when (val cacheResult = freshSearchCacheResult(key, kind)) {
+            is SearchCacheResult.Done -> return cacheResult.meta
+            SearchCacheResult.NotCached -> Unit
         }
 
+        val resolvedId = resolveSearchId(kind, clean, queryYear, key)
+        return resolvedId?.let { requestResolved(kind, it) }
+    }
+
+    private suspend fun resolveCardMetaById(kind: String, tmdbId: String): TmdbMeta? {
+        val key = metaKey(kind, tmdbId)
+        val now = now()
+        val entry = cache.loadAll()[key]
+        if (entry != null) {
+            if (TmdbMetaCache.isFresh(entry, now)) return entry.meta
+            if (isNegativeFresh(entry, now)) return null
+        }
+        request(kind, tmdbId)
+        return metaFlow.value[key]
+    }
+
+    /** Zwischenergebnis von [freshSearchCacheResult]: [Done] liefert direkt, [NotCached] faellt auf die Suche zurueck. */
+    private sealed class SearchCacheResult {
+        data class Done(val meta: TmdbMeta?) : SearchCacheResult()
+        data object NotCached : SearchCacheResult()
+    }
+
+    private suspend fun freshSearchCacheResult(key: String, kind: String): SearchCacheResult {
+        val now = now()
+        val cached = cache.loadAll()[key]
+        if (cached == null) return SearchCacheResult.NotCached
+        if (isNegativeFresh(cached, now)) return SearchCacheResult.Done(null)
+        if (TmdbMetaCache.isFresh(cached, now)) {
+            val resolvedId = cached.meta?.tmdbId ?: return SearchCacheResult.Done(null)
+            return SearchCacheResult.Done(requestResolved(kind, resolvedId))
+        }
+        return SearchCacheResult.NotCached
+    }
+
+    /** Zweiter Cache-Check unter Lock, sonst Netz-Suche; liefert die aufgeloeste tmdbId oder null. */
+    private suspend fun resolveSearchId(kind: String, clean: String, queryYear: Int?, key: String): Int? {
         // Zweiter Cache-Check: nur der Read laeuft unter dem Lock, danach ist er sofort frei.
         val (cacheHit, cachedId) = searchMutex.withLock {
             val current = cache.loadAll()[key]
@@ -212,52 +236,54 @@ class TmdbMetaRepository @Inject constructor(
             }
         }
 
-        val resolvedId = if (cacheHit) {
-            cachedId
-        } else {
-            // Netz-Call bewusst ohne searchMutex: unabhaengige Suchen laufen parallel.
-            when (val result = client.searchCandidates(kind, clean, queryYear)) {
-                is FetchResult.Data -> {
-                    val match = result.value.firstOrNull { candidate ->
-                        normalizer.normalize(candidate.title).first == clean &&
-                            yearMatches(queryYear, candidate.year)
-                    }
-                    if (match == null) {
-                        searchMutex.withLock {
-                            cache.putAll(mapOf(key to negativeSearchEntry()))
-                            refreshFlow()
-                        }
-                        null
-                    } else {
-                        val id = match.tmdbId.toInt()
-                        // Positiver Search-Key haelt nur die aufgeloeste tmdbId, nicht die Details.
-                        searchMutex.withLock {
-                            cache.putAll(
-                                mapOf(
-                                    key to TmdbMetaCacheEntry(
-                                        meta = resolvedMeta(id),
-                                        fetchedAtMs = now(),
-                                        negative = false
-                                    )
-                                )
-                            )
-                            refreshFlow()
-                        }
-                        id
-                    }
-                }
-                FetchResult.Negative -> {
-                    searchMutex.withLock {
-                        cache.putAll(mapOf(key to negativeSearchEntry()))
-                        refreshFlow()
-                    }
-                    null
-                }
-                FetchResult.Transient -> null
-            }
-        }
+        if (cacheHit) return cachedId
 
-        return resolvedId?.let { requestResolved(kind, it) }
+        // Netz-Call bewusst ohne searchMutex: unabhaengige Suchen laufen parallel.
+        return when (val result = client.searchCandidates(kind, clean, queryYear)) {
+            is FetchResult.Data -> resolveFromSearchCandidates(result.value, clean, queryYear, key)
+            FetchResult.Negative -> {
+                searchMutex.withLock {
+                    cache.putAll(mapOf(key to negativeSearchEntry()))
+                    refreshFlow()
+                }
+                null
+            }
+            FetchResult.Transient -> null
+        }
+    }
+
+    private suspend fun resolveFromSearchCandidates(
+        candidates: List<TmdbSearchCandidate>,
+        clean: String,
+        queryYear: Int?,
+        key: String
+    ): Int? {
+        val match = candidates.firstOrNull { candidate ->
+            normalizer.normalize(candidate.title).first == clean &&
+                yearMatches(queryYear, candidate.year)
+        }
+        if (match == null) {
+            searchMutex.withLock {
+                cache.putAll(mapOf(key to negativeSearchEntry()))
+                refreshFlow()
+            }
+            return null
+        }
+        val id = match.tmdbId.toInt()
+        // Positiver Search-Key haelt nur die aufgeloeste tmdbId, nicht die Details.
+        searchMutex.withLock {
+            cache.putAll(
+                mapOf(
+                    key to TmdbMetaCacheEntry(
+                        meta = resolvedMeta(id),
+                        fetchedAtMs = now(),
+                        negative = false
+                    )
+                )
+            )
+            refreshFlow()
+        }
+        return id
     }
 
     /** Detail-Fetch nach aufgeloester Suche; laeuft bewusst durch Koaleszenz/Semaphore. */

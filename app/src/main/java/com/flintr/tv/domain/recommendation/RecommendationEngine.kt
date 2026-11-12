@@ -36,8 +36,8 @@ object RecommendationEngine {
             .sortedWith(compareByDescending<Map.Entry<Int, Double>> { it.value }.thenBy { it.key })
             .map { it.key }
 
-        val movieIndex = tmdbIndex(cached.movies, { it.streamId }, { it.tmdbId })
-        val seriesIndex = tmdbIndex(cached.series, { it.seriesId }, { it.tmdbId })
+        val movieIndex = tmdbIndex(cached.movies) { it.tmdbId }
+        val seriesIndex = tmdbIndex(cached.series) { it.tmdbId }
 
         return RecommendationResult(
             movies = selectFromDiscover(
@@ -67,7 +67,7 @@ object RecommendationEngine {
         limit: Int = DEFAULT_LIMIT_PER_TYPE
     ): List<VodStream> = selectSimilarMovies(
         anchorTmdbIds = anchorTmdbIds,
-        index = tmdbIndex(cached.movies, { it.streamId }, { it.tmdbId }),
+        index = tmdbIndex(cached.movies) { it.tmdbId },
         excludedMovieIds = excludedMovieIds,
         limit = limit
     )
@@ -96,7 +96,7 @@ object RecommendationEngine {
         limit: Int = DEFAULT_LIMIT_PER_TYPE
     ): List<Series> = selectSimilarSeries(
         anchorTmdbIds = anchorTmdbIds,
-        index = tmdbIndex(cached.series, { it.seriesId }, { it.tmdbId }),
+        index = tmdbIndex(cached.series) { it.tmdbId },
         excludedSeriesIds = excludedSeriesIds,
         limit = limit
     )
@@ -115,6 +115,15 @@ object RecommendationEngine {
         limit = limit
     )
 
+    /** Bundelt [selectFromDiscover]'s Lookup-/Filter-Eingaben, damit die Helper unter dem Parameter-Limit bleiben. */
+    private class DiscoverContext<T>(
+        val genreOrder: List<Int>,
+        val discoveredByGenre: Map<Int, List<Int>>,
+        val index: Map<Int, T>,
+        val excludedIds: Set<Int>,
+        val idOf: (T) -> Int
+    )
+
     private fun <T> selectFromDiscover(
         genreOrder: List<Int>,
         discoveredByGenre: Map<Int, List<Int>>,
@@ -126,35 +135,59 @@ object RecommendationEngine {
         if (limit <= 0) return emptyList()
         val result = ArrayList<T>(limit)
         val used = mutableSetOf<Int>()
+        val context = DiscoverContext(genreOrder, discoveredByGenre, index, excludedIds, idOf)
 
-        // Phase 1: pro Genre max. DIVERSITY_MAX_PER_GENRE Katalog-Treffer.
-        for (genreId in genreOrder) {
-            if (result.size >= limit) break
-            var takenForGenre = 0
-            for (tmdbId in discoveredByGenre[genreId].orEmpty()) {
-                if (result.size >= limit || takenForGenre >= DIVERSITY_MAX_PER_GENRE) break
-                val item = index[tmdbId] ?: continue
-                val itemId = idOf(item)
-                if (itemId in excludedIds || !used.add(itemId)) continue
-                result += item
-                takenForGenre++
-            }
-        }
-
-        // Phase 2: Rest in derselben Genre-/TMDB-Reihenfolge auffuellen, ohne Cap.
+        fillDiverseByGenre(context, limit, result, used)
         if (result.size < limit) {
-            for (genreId in genreOrder) {
-                for (tmdbId in discoveredByGenre[genreId].orEmpty()) {
-                    if (result.size >= limit) break
-                    val item = index[tmdbId] ?: continue
-                    val itemId = idOf(item)
-                    if (itemId in excludedIds || !used.add(itemId)) continue
-                    result += item
-                }
-            }
+            fillRemaining(context, limit, result, used)
         }
 
         return result
+    }
+
+    /** Phase 1: pro Genre max. DIVERSITY_MAX_PER_GENRE Katalog-Treffer. */
+    private fun <T> fillDiverseByGenre(
+        context: DiscoverContext<T>,
+        limit: Int,
+        result: ArrayList<T>,
+        used: MutableSet<Int>
+    ) {
+        for (genreId in context.genreOrder) {
+            if (result.size >= limit) break
+            var takenForGenre = 0
+            for (tmdbId in context.discoveredByGenre[genreId].orEmpty()) {
+                if (result.size >= limit || takenForGenre >= DIVERSITY_MAX_PER_GENRE) break
+                if (addIfEligible(context, tmdbId, used, result)) takenForGenre++
+            }
+        }
+    }
+
+    /** Phase 2: Rest in derselben Genre-/TMDB-Reihenfolge auffuellen, ohne Cap. */
+    private fun <T> fillRemaining(
+        context: DiscoverContext<T>,
+        limit: Int,
+        result: ArrayList<T>,
+        used: MutableSet<Int>
+    ) {
+        for (genreId in context.genreOrder) {
+            for (tmdbId in context.discoveredByGenre[genreId].orEmpty()) {
+                if (result.size >= limit) break
+                addIfEligible(context, tmdbId, used, result)
+            }
+        }
+    }
+
+    private fun <T> addIfEligible(
+        context: DiscoverContext<T>,
+        tmdbId: Int,
+        used: MutableSet<Int>,
+        result: ArrayList<T>
+    ): Boolean {
+        val item = context.index[tmdbId] ?: return false
+        val itemId = context.idOf(item)
+        if (itemId in context.excludedIds || !used.add(itemId)) return false
+        result += item
+        return true
     }
 
     private fun <T> selectSimilar(
@@ -179,7 +212,6 @@ object RecommendationEngine {
 
     private fun <T> tmdbIndex(
         items: List<T>,
-        idOf: (T) -> Int,
         tmdbIdOf: (T) -> String?
     ): Map<Int, T> = items
         .asSequence()

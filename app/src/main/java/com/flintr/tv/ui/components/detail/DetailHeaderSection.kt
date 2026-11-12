@@ -97,9 +97,9 @@ fun DetailHeaderSection(
     watchFocusRequester: FocusRequester,
     trailerFocusRequester: FocusRequester,
     watchlistFocusRequester: FocusRequester,
+    modifier: Modifier = Modifier,
     onButtonRowDown: (() -> Boolean)? = null,
-    scrollState: ScrollState? = null,
-    modifier: Modifier = Modifier
+    scrollState: ScrollState? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
     val overviewToggleFocusRequester = remember { FocusRequester() }

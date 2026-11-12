@@ -6,7 +6,6 @@ import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.model.DetailDisplayData
 import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.tmdb.TmdbMeta
-import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import com.flintr.tv.utils.error.reportWarning
 import kotlinx.coroutines.CancellationException
 
@@ -25,7 +24,6 @@ internal const val DETAIL_LOAD_ERROR_MESSAGE = "Details konnten nicht geladen we
 internal suspend fun loadTmdbMeta(
     tag: String,
     failureMessage: String,
-    tmdbMetaRepository: TmdbMetaRepository,
     lookup: suspend () -> TmdbMeta?,
     onMeta: (TmdbMeta) -> Unit,
     onDone: () -> Unit = {}

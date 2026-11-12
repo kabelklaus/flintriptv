@@ -199,7 +199,7 @@ class SeriesDetailViewModel @Inject constructor(
 
                 // TMDB-Cast-Fotos laufen in eigenem Job: duerfen Rating/Genres/Empfehlungen nicht
                 // blockieren (ohne tmdbId/Match bleiben die Briefmarken/Initial-Kreis stehen).
-                viewModelScope.launch(ioDispatcher) { loadCastPhotos(_uiState.value.detail) }
+                viewModelScope.launch { loadCastPhotos(_uiState.value.detail) }
 
                 // TMDB-Meta nachschieben: Rating/Genres kommen ausschliesslich von hier,
                 // ein Fehler/Miss darf den bereits gezeigten Basis-State nicht zuruecknehmen.
@@ -207,7 +207,6 @@ class SeriesDetailViewModel @Inject constructor(
                 loadTmdbMeta(
                     tag = TAG,
                     failureMessage = "TMDB meta failed for seriesId=$seriesId",
-                    tmdbMetaRepository = tmdbMetaRepository,
                     lookup = {
                         val detail = _uiState.value.detail
                         tmdbMetaRepository.detailMeta(

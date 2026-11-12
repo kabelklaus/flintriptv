@@ -9,6 +9,7 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -19,6 +20,7 @@ import okio.source
 import java.io.File
 import java.io.IOException
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 
 /**
@@ -51,13 +53,18 @@ data class TmdbMetaCacheEntry(
 @Singleton
 class TmdbMetaCache internal constructor(
     private val directory: File,
-    private val clock: () -> Long
+    private val clock: () -> Long,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 
     @Inject
-    constructor(@ApplicationContext context: Context) : this(
+    constructor(
+        @ApplicationContext context: Context,
+        @Named("IO") ioDispatcher: CoroutineDispatcher
+    ) : this(
         directory = context.filesDir,
-        clock = System::currentTimeMillis
+        clock = System::currentTimeMillis,
+        ioDispatcher = ioDispatcher
     )
 
     companion object {
@@ -89,16 +96,16 @@ class TmdbMetaCache internal constructor(
 
     /** Liefert den memoisierten Cache oder liest ihn einmalig von der Platte. */
     suspend fun loadAll(): Map<String, TmdbMetaCacheEntry> = mutex.withLock {
-        memoized ?: withContext(Dispatchers.IO) { readFromDisk() }.also { memoized = it }
+        memoized ?: withContext(ioDispatcher) { readFromDisk() }.also { memoized = it }
     }
 
     /** Merged [entries] in den Cache, prunt auf [CAP] und schreibt atomar. */
     suspend fun putAll(entries: Map<String, TmdbMetaCacheEntry>) = mutex.withLock {
-        val current = memoized ?: withContext(Dispatchers.IO) { readFromDisk() }
+        val current = memoized ?: withContext(ioDispatcher) { readFromDisk() }
         val merged = LinkedHashMap(current).apply { putAll(entries) }
         val pruned = if (merged.size <= CAP) merged else prune(merged)
         memoized = pruned
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             try {
                 writeAtomically(pruned)
             } catch (e: CancellationException) {

@@ -75,12 +75,14 @@ class RecommendationIntegrationTest {
     fun `Genre-28-Signale fuehren zu Discover-Treffern des Genres im Result`() {
         val signalMovies = (901..905).map { testVod(it, tmdbId = "60$it") }
         val profile = UserContentProfile.build(
-            watchlistEntries = watchlist(901, 902, 903, 904, 905),
-            watchedHistory = emptyMap(),
-            watchProgress = emptyMap(),
-            ratings = emptyMap(),
-            movies = signalMovies,
-            series = emptyList(),
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = watchlist(901, 902, 903, 904, 905),
+                watchedHistory = emptyMap(),
+                watchProgress = emptyMap(),
+                ratings = emptyMap(),
+                movies = signalMovies,
+                series = emptyList()
+            ),
             // Genre-Lookup ueber die tmdbId (60xxx), nicht ueber die Xtream-streamId (90x).
             metaLookup = metaLookup(*(901..905).map { "60$it".toInt() to listOf(28) }.toTypedArray())
         )
@@ -105,12 +107,14 @@ class RecommendationIntegrationTest {
     @Test
     fun `ohne genug Signale bleibt das Result bei leeren Discover-Maps leer`() {
         val profile = UserContentProfile.build(
-            watchlistEntries = watchlist(801, 802, 803),
-            watchedHistory = emptyMap(),
-            watchProgress = emptyMap(),
-            ratings = emptyMap(),
-            movies = (801..803).map { testVod(it, tmdbId = "60$it") },
-            series = emptyList(),
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = watchlist(801, 802, 803),
+                watchedHistory = emptyMap(),
+                watchProgress = emptyMap(),
+                ratings = emptyMap(),
+                movies = (801..803).map { testVod(it, tmdbId = "60$it") },
+                series = emptyList()
+            ),
             metaLookup = metaLookup(60801 to listOf(28), 60802 to listOf(28), 60803 to listOf(28))
         )
         assertTrue(profile.signalCount < 5)
@@ -129,12 +133,14 @@ class RecommendationIntegrationTest {
     @Test
     fun `Diversitaets-Cap haelt auch durch die volle Kette`() {
         val profile = UserContentProfile.build(
-            watchlistEntries = watchlist(901, 902, 903, 904, 905),
-            watchedHistory = emptyMap(),
-            watchProgress = emptyMap(),
-            ratings = emptyMap(),
-            movies = (901..905).map { testVod(it, tmdbId = "60$it") },
-            series = emptyList(),
+            signals = UserContentProfile.UserSignalData(
+                watchlistEntries = watchlist(901, 902, 903, 904, 905),
+                watchedHistory = emptyMap(),
+                watchProgress = emptyMap(),
+                ratings = emptyMap(),
+                movies = (901..905).map { testVod(it, tmdbId = "60$it") },
+                series = emptyList()
+            ),
             // 28 ist staerker gewichtet als 18, damit die Genre-Reihenfolge deterministisch ist.
             metaLookup = metaLookup(
                 60901 to listOf(28), 60902 to listOf(28), 60903 to listOf(28),

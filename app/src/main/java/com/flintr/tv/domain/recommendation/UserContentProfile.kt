@@ -65,36 +65,42 @@ object UserContentProfile {
         val excludedSeriesIds: MutableSet<Int>
     )
 
+    /** Bundles [build]'s raw signal sources so the function stays under the parameter-count limit. */
+    data class UserSignalData(
+        val watchlistEntries: List<WatchlistEntry>,
+        val watchedHistory: Map<String, WatchedItem>,
+        val watchProgress: Map<String, WatchProgress>,
+        val ratings: Map<String, RatingEntry>,
+        val movies: List<VodStream>,
+        val series: List<Series>
+    )
+
     fun build(
-        watchlistEntries: List<WatchlistEntry>,
-        watchedHistory: Map<String, WatchedItem>,
-        watchProgress: Map<String, WatchProgress>,
-        ratings: Map<String, RatingEntry>,
-        movies: List<VodStream>,
-        series: List<Series>,
+        signals: UserSignalData,
         metaLookup: (kind: String, contentId: Int) -> TmdbMeta?,
         nowMs: Long = System.currentTimeMillis()
     ): GenreProfile {
-        val moviesById = movies.associateBy { it.streamId }
-        val seriesById = series.associateBy { it.seriesId }
+        val moviesById = signals.movies.associateBy { it.streamId }
+        val seriesById = signals.series.associateBy { it.seriesId }
 
         val weights = mutableMapOf<Int, Double>()
         val coreSignalKeys = mutableSetOf<String>()
         val excludedMovieIds = mutableSetOf<Int>()
         val excludedSeriesIds = mutableSetOf<Int>()
+        val accumulator = ProfileAccumulator(weights, coreSignalKeys, excludedMovieIds, excludedSeriesIds)
 
         applyWatchlistSignals(
-            watchlistEntries,
+            signals.watchlistEntries,
             moviesById,
             seriesById,
             nowMs,
             metaLookup,
-            ProfileAccumulator(weights, coreSignalKeys, excludedMovieIds, excludedSeriesIds)
+            accumulator
         )
-        applyWatchedMovieExclusions(watchedHistory, excludedMovieIds)
-        applyMovieProgressSignals(watchProgress, watchedHistory, moviesById, nowMs, metaLookup, weights, coreSignalKeys, excludedMovieIds)
-        applySeriesProgressSignals(watchProgress, seriesById, nowMs, metaLookup, weights, coreSignalKeys, excludedSeriesIds)
-        applyRatingSignals(ratings, moviesById, seriesById, nowMs, metaLookup, weights)
+        applyWatchedMovieExclusions(signals.watchedHistory, excludedMovieIds)
+        applyMovieProgressSignals(signals.watchProgress, signals.watchedHistory, moviesById, nowMs, metaLookup, accumulator)
+        applySeriesProgressSignals(signals.watchProgress, seriesById, nowMs, metaLookup, weights, coreSignalKeys, excludedSeriesIds)
+        applyRatingSignals(signals.ratings, moviesById, seriesById, nowMs, metaLookup, weights)
 
         return GenreProfile(
             weights = weights,
@@ -154,9 +160,7 @@ object UserContentProfile {
         moviesById: Map<Int, VodStream>,
         nowMs: Long,
         metaLookup: (kind: String, contentId: Int) -> TmdbMeta?,
-        weights: MutableMap<Int, Double>,
-        coreSignalKeys: MutableSet<String>,
-        excludedMovieIds: MutableSet<Int>
+        accumulator: ProfileAccumulator
     ) {
         watchProgress.forEach { (key, progress) ->
             if (!key.startsWith(UiConstants.PROGRESS_KEY_MOVIE_PREFIX)) return@forEach
@@ -167,12 +171,12 @@ object UserContentProfile {
             val ageMs = parseInstantMs(progress.lastWatched)
             when {
                 ratio >= MOVIE_COMPLETED_THRESHOLD -> {
-                    excludedMovieIds += streamId
-                    if (tmdbIdInt != null) addGenreWeights(weights, genreIds(metaLookup, "movie", tmdbIdInt), WEIGHT_MOVIE_COMPLETED, ageMs, nowMs)
-                    coreSignalKeys += "movie_done_$streamId"
+                    accumulator.excludedMovieIds += streamId
+                    if (tmdbIdInt != null) addGenreWeights(accumulator.weights, genreIds(metaLookup, "movie", tmdbIdInt), WEIGHT_MOVIE_COMPLETED, ageMs, nowMs)
+                    accumulator.coreSignalKeys += "movie_done_$streamId"
                 }
                 ratio > 0.0 && ratio < MOVIE_ABANDONED_MAX_PROGRESS && key !in watchedHistory -> {
-                    if (tmdbIdInt != null) addGenreWeights(weights, genreIds(metaLookup, "movie", tmdbIdInt), WEIGHT_MOVIE_ABANDONED, ageMs, nowMs)
+                    if (tmdbIdInt != null) addGenreWeights(accumulator.weights, genreIds(metaLookup, "movie", tmdbIdInt), WEIGHT_MOVIE_ABANDONED, ageMs, nowMs)
                 }
             }
         }
