@@ -116,7 +116,11 @@ class DataCacheService @Inject constructor(
 
     init {
         // A process killed mid-save leaves its temp file behind; nothing else ever removes it.
-        cacheDir.listFiles { file -> file.name.endsWith(TMP_SUFFIX) }?.forEach { it.delete() }
+        cacheDir.listFiles { file -> file.name.endsWith(TMP_SUFFIX) }?.forEach { leftover ->
+            if (!leftover.delete()) {
+                android.util.Log.w("DataCacheService", "Verwaiste Temp-Datei nicht geloescht: ${leftover.name}")
+            }
+        }
 
         // Version 0 stored the lists as prefs strings. Drop them so the ~50 MB prefs
         // XML stops being loaded on startup; the next refresh rewrites the catalog in

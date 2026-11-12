@@ -68,7 +68,7 @@ fun rememberTmdbChipState(
     ReplaceWith("rememberTmdbChipState(kind, tmdbId, year, title)")
 )
 @Composable
-fun rememberTmdbRating(
+fun rememberTmdbRating( // NOSONAR (S1133) - bewusster Deprecation-Pfad, Entfernung geplant
     kind: String,
     tmdbId: String?,
     year: Int? = null,

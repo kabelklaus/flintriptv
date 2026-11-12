@@ -152,7 +152,7 @@ class TmdbMetaCache internal constructor(
             }
             moveIntoPlace(tmp, target)
         } catch (e: Exception) {
-            tmp.delete()
+            if (!tmp.delete()) Log.w(TAG, "Temp-Datei nach Fehler nicht geloescht: ${tmp.name}")
             throw e
         }
     }
