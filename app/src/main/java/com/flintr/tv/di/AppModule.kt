@@ -18,6 +18,7 @@ import com.flintr.tv.data.model.VodInfoResponseAdapterFactory
 import com.flintr.tv.data.repository.UpdateRepository
 import com.flintr.tv.data.repository.UserRepository
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.data.tmdb.TitleNormalizer
 import com.flintr.tv.utils.UpdateDownloadService
 import com.flintr.tv.utils.UpdateInstaller
 import com.flintr.tv.utils.error.CrashlyticsErrorReporter
@@ -53,6 +54,10 @@ object AppModule {
     @Singleton
     fun provideErrorReporter(): ErrorReporter =
         CrashlyticsErrorReporter(FirebaseCrashlyticsSink())
+
+    @Provides
+    @Singleton
+    fun provideTitleNormalizer(): TitleNormalizer = TitleNormalizer
 
     @Provides
     @Singleton
@@ -169,6 +174,18 @@ object AppModule {
         return UserRepository()
     }
     
+    @Provides
+    @Singleton
+    @Named("Tmdb")
+    fun provideTmdbOkHttpClient(): OkHttpClient {
+        return OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .writeTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(5, TimeUnit.SECONDS)
+            .build()
+    }
+
     @Provides
     @Singleton
     @Named("Download")

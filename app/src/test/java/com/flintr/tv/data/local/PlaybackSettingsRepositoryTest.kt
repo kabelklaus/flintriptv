@@ -136,17 +136,17 @@ class PlaybackSettingsRepositoryTest {
     }
 
     @Test
-    fun `AutoPlayNext ist standardmaessig false`() {
-        assertFalse(repository.isAutoPlayNextEnabled())
+    fun `AutoPlayNext ist standardmaessig true`() {
+        assertTrue(repository.isAutoPlayNextEnabled())
     }
 
     @Test
     fun `AutoPlayNext wird persistiert und wieder gelesen`() {
-        repository.setAutoPlayNextEnabled(true)
-        assertTrue(repository.isAutoPlayNextEnabled())
-
         repository.setAutoPlayNextEnabled(false)
         assertFalse(repository.isAutoPlayNextEnabled())
+
+        repository.setAutoPlayNextEnabled(true)
+        assertTrue(repository.isAutoPlayNextEnabled())
     }
 
     @Test

@@ -73,4 +73,5 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: ./gradlew :app:lintReportDebug :app:jacocoDebugUnitTestReport sonar --info -Dsonar.scanner.skipJreProvisioning=true

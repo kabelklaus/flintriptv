@@ -76,7 +76,8 @@ data class SeriesInfoResponse(
             categoryName = null,
             youtubeTrailer = seriesInfo?.youtubeTrailer,
             backdropPath = seriesInfo?.backdropPath,
-            seasons = seasonsWithEpisodes
+            seasons = seasonsWithEpisodes,
+            tmdbId = seriesInfo?.tmdbId
         )
     }
 }
@@ -108,5 +109,7 @@ data class SeriesInfo(
     @Json(name = "youtube_trailer")
     val youtubeTrailer: String?,
     @Json(name = "backdrop_path")
-    val backdropPath: List<String>?
+    val backdropPath: List<String>?,
+    @Json(name = "tmdb")
+    val tmdbId: String? = null
 )

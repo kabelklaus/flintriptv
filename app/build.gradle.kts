@@ -34,15 +34,15 @@ plugins {
 android {
     namespace = "com.flintr.tv"
     compileSdk {
-        version = release(36)
+        version = release(36) // NOSONAR (GradleDependency) - compileSdk-Bump = eigene Story, nicht im Release-PR
     }
 
     defaultConfig {
         applicationId = "com.flintr.tv"
         minSdk = 24
-        targetSdk = 36
-        versionCode = 117
-        versionName = "2.54.1"
+        targetSdk = 36 // NOSONAR (OldTargetApi) - targetSdk-Bump = eigene Story, nicht im Release-PR
+        versionCode = 118
+        versionName = "2.55.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -61,6 +61,18 @@ android {
                 ""
             }
         buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
+
+        // TMDB API key: from environment variable (CI/CD) or local.properties (local builds)
+        val tmdbApiKey = System.getenv("TMDB_API_KEY")
+            ?: if (localPropertiesFile.exists()) {
+                val props = Properties().apply {
+                    localPropertiesFile.inputStream().use(::load)
+                }
+                props.getProperty("tmdb.api.key", "")
+            } else {
+                ""
+            }
+        buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
     }
 
     signingConfigs {
@@ -99,7 +111,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             // armeabi-v7a is required: many TV boxes run a 32-bit userland
-            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") } // NOSONAR (ChromeOsAbiSupport) - x86_64 bewusst nicht im Release (APK-Groesse, Ziel sind TV-Boxen arm64/v7a)
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

@@ -1,6 +1,7 @@
 package com.flintr.tv.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
@@ -63,6 +65,7 @@ import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.components.MainLayout
 import com.flintr.tv.ui.components.MainLayoutParams
+import com.flintr.tv.ui.components.LocalTmdbMetaRepository
 import com.flintr.tv.ui.screens.DataLoadingScreen
 import com.flintr.tv.ui.screens.EPGContent
 import com.flintr.tv.ui.screens.HomeDestination
@@ -92,6 +95,7 @@ import com.flintr.tv.ui.screens.SeriesDetailScreen
 import com.flintr.tv.viewmodel.MainViewModel
 import com.flintr.tv.viewmodel.MovieDetailViewModel
 import com.flintr.tv.viewmodel.SeriesDetailViewModel
+import com.flintr.tv.viewmodel.TmdbMetaViewModel
 import com.flintr.tv.viewmodel.UpdateViewModel
 import com.flintr.tv.viewmodel.NextEpisodeInfo
 import com.flintr.tv.data.model.UpdateInfo
@@ -693,6 +697,10 @@ fun AppNavigation(
     dependencies: AppNavigationDependencies,
     mainViewModel: MainViewModel = hiltViewModel()
 ) {
+    val tmdbMetaViewModel: TmdbMetaViewModel = hiltViewModel()
+    CompositionLocalProvider(
+        LocalTmdbMetaRepository provides tmdbMetaViewModel.repository
+    ) {
     NavHost(
         navController = navController,
         startDestination = Screen.InitialRouting.route
@@ -884,6 +892,7 @@ fun AppNavigation(
                 navController = navController
             )
         }
+    }
     }
 }
 
@@ -1325,13 +1334,61 @@ private fun InProgressContentSection(params: MainContentBodyParams) {
     )
 }
 
+/** Anzahl Platzhalter-Karten, solange "Für dich" nach einem Input-Wechsel noch leer neu rechnet. */
+private const val RECOMMENDED_SKELETON_CARD_COUNT = 4
+
+/**
+ * Platzhalter-Reihe fuer "Für dich": nur gezeigt, solange [RecommendationService.isLoading] UND
+ * die Liste noch leer ist - ein Recompute auf bereits gefuelltem Content zeigt keine Skeletons
+ * (kein Flackern beim Nachschaerfen durch Meta-Nachlaeufe).
+ */
+@Composable
+private fun RecommendedSkeletonGrid(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(
+                top = Dimensions.contentCardGridPadding * 2,
+                start = Dimensions.contentCardGridPadding
+            ),
+        horizontalArrangement = Arrangement.spacedBy(Dimensions.contentCardCrossAxisSpacing)
+    ) {
+        repeat(RECOMMENDED_SKELETON_CARD_COUNT) {
+            RecommendedSkeletonCard()
+        }
+    }
+}
+
+@Composable
+private fun RecommendedSkeletonCard() {
+    val cardHeight = Dimensions.contentCardMaxCrossAxisExtent / Dimensions.contentCardAspectRatio
+    Column(modifier = Modifier.width(Dimensions.contentCardMaxCrossAxisExtent)) {
+        com.flintr.tv.ui.components.SkeletonBar(
+            width = Dimensions.contentCardMaxCrossAxisExtent,
+            height = cardHeight,
+            shape = RoundedCornerShape(Dimensions.radiusMD)
+        )
+        com.flintr.tv.ui.components.SkeletonBar(
+            width = Dimensions.contentCardMaxCrossAxisExtent,
+            height = 14.dp,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+    }
+}
+
 /**
  * Renders the "Für dich" recommendations grid for VOD movies.
  */
 @Composable
 private fun RecommendedVodContentSection(params: MainContentBodyParams) {
     val recommendations by params.dependencies.recommendationService.recommendations.collectAsState()
+    val isRecomputing by params.dependencies.recommendationService.isLoading.collectAsState()
     val onVodClick = createVodClickHandler(params)
+
+    if (isRecomputing && recommendations.movies.isEmpty()) {
+        RecommendedSkeletonGrid()
+        return
+    }
 
     ContentGridLayout(
         params = ContentGridLayoutParams(
@@ -1369,7 +1426,13 @@ private fun RecommendedVodContentSection(params: MainContentBodyParams) {
 @Composable
 private fun RecommendedSeriesContentSection(params: MainContentBodyParams) {
     val recommendations by params.dependencies.recommendationService.recommendations.collectAsState()
+    val isRecomputing by params.dependencies.recommendationService.isLoading.collectAsState()
     val onSeriesClick = createSeriesClickHandler(params)
+
+    if (isRecomputing && recommendations.series.isEmpty()) {
+        RecommendedSkeletonGrid()
+        return
+    }
 
     ContentGridLayout(
         params = ContentGridLayoutParams(

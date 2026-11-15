@@ -59,6 +59,8 @@ jobs:
           echo "$JSON_CONTENT" > app/google-services.json
 
       - name: Build debug APK
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: ./gradlew :app:assembleDebug
 
   unit-tests:
@@ -108,6 +110,8 @@ jobs:
           echo "$JSON_CONTENT" > app/google-services.json
 
       - name: Run unit tests
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: ./gradlew :app:testDebugUnitTest
 
       - name: Upload test results

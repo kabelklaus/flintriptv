@@ -66,6 +66,24 @@ class MovieDetailCastTest {
     }
 
     @Test
+    fun zeigtBriefmarkeAlsUnterlayAuchMitCastPhotoMatch() {
+        setContent(
+            MovieDetailUiState(
+                isLoading = false,
+                detail = detail(cast = listOf("Alice", "Bob"), director = "Regisseurin"),
+                castPhotos = mapOf("Alice" to "https://img/alice.jpg")
+            )
+        )
+
+        composeTestRule.onNodeWithTag("movie-detail-cast").performScrollTo().assertIsDisplayed()
+        // Die Initialen-Briefmarke liegt als Unterlay immer da, unabhaengig vom Ladeergebnis
+        // des TMDB-Fotos - ein Fehler beim Laden darf nie zu einer leeren Kachel fuehren.
+        composeTestRule.onNodeWithText("A").assertExists()
+        // Bob bleibt ohne Match ebenfalls bei der Briefmarke.
+        composeTestRule.onNodeWithText("B").assertExists()
+    }
+
+    @Test
     fun blendetCastUndRegieOhneDatenAus() {
         setContent(
             MovieDetailUiState(

@@ -1,5 +1,6 @@
 package com.flintr.tv.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,8 +10,6 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
-import com.flintr.tv.data.local.imdb.ImdbEnrichment
-import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.DetailDisplayData
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.WatchlistEntry
@@ -18,12 +17,16 @@ import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.data.tmdb.TmdbCastClient
+import com.flintr.tv.data.tmdb.TmdbCastMember
+import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import com.flintr.tv.domain.recommendation.RecommendationEngine
 import com.flintr.tv.utils.error.reportWarning
 import com.flintr.tv.utils.parseTimestampMillisOrZero
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import javax.inject.Named
+import java.text.Normalizer
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
@@ -75,6 +78,9 @@ data class SeriesDetailUiState(
     val watchTarget: WatchTargetUiModel? = null,
     val watchLabel: String = "Ansehen",
     val watchProgress: Float? = null,
+    val castPhotos: Map<String, String> = emptyMap(),
+    /** True zwischen Basis-Anzeige und dem TMDB-Meta-Nachlauf - steuert das Rating/Genre-Skeleton. */
+    val isMetaLoading: Boolean = false,
     val error: String? = null
 )
 
@@ -82,7 +88,7 @@ data class SeriesDetailUiState(
  * Loads a series' detail metadata (get_series_info), aggregates its seasons with watched counts
  * and resolves watchlist state.
  *
- * Genre/rating are IMDb-only, exactly like MovieDetail: without an enrichment match both stay
+ * Genre/rating come from TMDB, exactly like MovieDetail: without a meta match both stay
  * null and the UI hides them; the Xtream `genre`/`rating` strings are never used as a fallback.
  *
  * Navigation stays in Phase 4: the series id arrives through [ARG_SERIES_ID] and the screen
@@ -93,10 +99,11 @@ class SeriesDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: XtreamRepository,
     private val credentialsRepository: CredentialsRepository,
-    private val imdbEnrichmentService: ImdbEnrichmentService,
+    private val tmdbMetaRepository: TmdbMetaRepository,
     private val watchlistRepository: WatchlistRepository,
     private val watchProgressService: WatchProgressService,
     private val cacheService: DataCacheService,
+    private val tmdbCastClient: TmdbCastClient,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
@@ -106,8 +113,10 @@ class SeriesDetailViewModel @Inject constructor(
         private const val NO_SEASONS_HINT =
             "Für diese Serie sind derzeit keine Staffeln und Episoden verfügbar."
         private val YEAR_PATTERN = Regex("(?:19|20)\\d{2}")
-        private val TITLE_YEAR_PATTERN = Regex("\\((?:19|20)\\d{2}\\)")
         private const val CAST_SEPARATOR = ","
+        private const val TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w185"
+        private val COMBINING_MARKS = Regex("\\p{M}")
+        private val WHITESPACE = Regex("\\s+")
 
         /**
          * In-process handoff from a series-grid click to the detail destination: the grid handler
@@ -181,24 +190,42 @@ class SeriesDetailViewModel @Inject constructor(
                     return@launch
                 }
 
-                _uiState.value = buildLoadedState(loadedSeries)
+                // Staffel-Poster VOR dem ersten State-Bau holen: Provider liefert info.seasons leer
+                // (verifiziert) - nachtraegliche Updates an bereits gerenderte Kacheln sind fehler-
+                // anfaellig (v6-Beweis: Merge-Log da, Kacheln leer). ~100ms TMDB-Latenz ist ok;
+                // Rating/Genres/Empfehlungen bleiben weiter nachgelagert und blocken nicht.
+                val seasonPosters = loadSeasonPosters(loadedSeries)
+                _uiState.value = buildLoadedState(loadedSeries, seasonPosters)
 
-                // IMDb-Enrichment nachschieben: Rating/Genres kommen ausschliesslich von hier,
+                // TMDB-Cast-Fotos laufen in eigenem Job: duerfen Rating/Genres/Empfehlungen nicht
+                // blockieren (ohne tmdbId/Match bleiben die Briefmarken/Initial-Kreis stehen).
+                viewModelScope.launch { loadCastPhotos(_uiState.value.detail) }
+
+                // TMDB-Meta nachschieben: Rating/Genres kommen ausschliesslich von hier,
                 // ein Fehler/Miss darf den bereits gezeigten Basis-State nicht zuruecknehmen.
-                loadImdbEnrichment(
+                _uiState.update { it.copy(isMetaLoading = true) }
+                loadTmdbMeta(
                     tag = TAG,
-                    failureMessage = "IMDb enrichment failed for seriesId=$seriesId",
-                    imdbEnrichmentService = imdbEnrichmentService,
-                    lookup = { lookupEnrichment(loadedSeries) }
-                ) { enrichment ->
-                    _uiState.update { state -> state.copy(detail = mergeImdbEnrichment(state.detail, enrichment)) }
-                }
+                    failureMessage = "TMDB meta failed for seriesId=$seriesId",
+                    lookup = {
+                        val detail = _uiState.value.detail
+                        tmdbMetaRepository.detailMeta(
+                            kind = "tv",
+                            tmdbId = detail?.tmdbId?.takeIf { it.isNotBlank() },
+                            title = detail?.title ?: "",
+                            year = resolveYear(detail?.title, detail?.releaseDate)
+                        )
+                    },
+                    onMeta = { meta ->
+                        _uiState.update { state -> state.copy(detail = mergeTmdbMeta(state.detail, meta)) }
+                    },
+                    onDone = { _uiState.update { it.copy(isMetaLoading = false) } }
+                )
 
-                // Genres are IMDb-only and therefore may be null; RecommendationEngine returns
-                // an empty row in that case, so the section hides instead of falling back to
-                // the (untrusted) Xtream genre string.
+                // Similar-Row kommt aus TMDB-Recommendations des Anchor-tmdbId; ohne Anchor
+                // bleibt die Reihe leer, statt auf Xtream-Genres zurueckzufallen.
                 val cached = cacheService.loadCachedDataAsync()
-                val recommendations = computeRecommendations(cached, _uiState.value.detail?.genres)
+                val recommendations = computeRecommendations(cached)
                 _uiState.update { it.copy(recommendations = recommendations) }
             } catch (e: CancellationException) {
                 throw e
@@ -226,10 +253,13 @@ class SeriesDetailViewModel @Inject constructor(
         )
     }
 
-    private suspend fun buildLoadedState(loadedSeries: Series): SeriesDetailUiState {
+    private suspend fun buildLoadedState(
+        loadedSeries: Series,
+        seasonPosters: Map<Int, String>
+    ): SeriesDetailUiState {
         val watchedEpisodeIds = watchProgressService.getWatchedEpisodeIds(seriesId)
-        val seasons = buildSeasons(loadedSeries, watchedEpisodeIds)
-        // Basisdaten sofort mappen, ohne auf das (teure) IMDb-Enrichment zu warten -
+        val seasons = buildSeasons(loadedSeries, watchedEpisodeIds, seasonPosters)
+        // Basisdaten sofort mappen, ohne auf die (teure) TMDB-Meta-Abfrage zu warten -
         // genres/rating bleiben hier bewusst null, siehe DetailDisplayData.
         val baseDetail = buildDetail(loadedSeries)
         val watchTarget = resolveWatchTarget(loadedSeries, watchedEpisodeIds)
@@ -248,16 +278,17 @@ class SeriesDetailViewModel @Inject constructor(
         )
     }
 
-    private fun computeRecommendations(cached: CachedData?, genres: List<String>?): List<Series> {
-        return if (cached != null) {
-            RecommendationEngine.recommendSimilarSeries(
-                anchorGenres = genres,
-                cached = cached,
-                excludedSeriesIds = setOf(seriesId)
-            )
-        } else {
-            emptyList()
-        }
+    private suspend fun computeRecommendations(cached: CachedData?): List<Series> {
+        if (cached == null) return emptyList()
+        val anchorId = _uiState.value.detail?.tmdbId
+            ?.takeIf { it.toIntOrNull() != null }
+            ?: return emptyList()
+        val recIds = tmdbMetaRepository.recommendationsFor("tv", anchorId)
+        return RecommendationEngine.selectSimilarSeries(
+            anchorTmdbIds = recIds,
+            cached = cached,
+            excludedSeriesIds = setOf(seriesId)
+        )
     }
 
     fun toggleWatchlist() {
@@ -276,7 +307,8 @@ class SeriesDetailViewModel @Inject constructor(
 
     private fun buildSeasons(
         series: Series,
-        watchedEpisodeIds: Set<Int>
+        watchedEpisodeIds: Set<Int>,
+        seasonPosters: Map<Int, String>
     ): List<SeasonUiModel> {
         return series.seasons
             .orEmpty()
@@ -284,16 +316,18 @@ class SeriesDetailViewModel @Inject constructor(
             .map { season ->
                 val episodes = season.episodes.orEmpty()
                 val watchedCount = episodes.count { it.id in watchedEpisodeIds }
-                SeasonUiModel(
-                    season = season,
-                    title = season.name.takeIf { it.isNotBlank() } ?: "Staffel ${season.seasonNumber}",
-                    posterUrl = season.cover?.takeIf { it.isNotBlank() }
+                val resolvedUrl = seasonPosters[season.seasonNumber]?.takeIf { it.isNotBlank() }
+                        ?: season.cover?.takeIf { it.isNotBlank() }
                         ?: series.cover?.takeIf { it.isNotBlank() }
                         ?: episodes.firstNotNullOfOrNull { episode ->
                             episode.info?.movieImage?.takeIf { it.isNotBlank() }
                         }
-                        ?: series.backdropPath?.firstOrNull { it.isNotBlank() },
-                    episodeCount = episodes.size,
+                        ?: series.backdropPath?.firstOrNull { it.isNotBlank() }
+                    SeasonUiModel(
+                        season = season,
+                        title = season.name.takeIf { it.isNotBlank() } ?: "Staffel ${season.seasonNumber}",
+                        posterUrl = resolvedUrl,
+                        episodeCount = episodes.size,
                     watchedCount = watchedCount,
                     isFullyWatched = episodes.isNotEmpty() && watchedCount >= episodes.size
                 )
@@ -381,8 +415,8 @@ class SeriesDetailViewModel @Inject constructor(
 
     /**
      * Builds the shared detail display model from SeriesInfo. Genre/rating come exclusively from
-     * the IMDb enrichment (see [lookupEnrichment]) and start out null here - they are filled in by
-     * a later state update once the (slower) IMDb lookup completes.
+     * TMDB (see [loadTmdbMeta]) and start out null here - they are filled in by a later state
+     * update once the (slower) TMDB lookup completes.
      */
     private fun buildDetail(series: Series): DetailDisplayData {
         val title = series.name.takeIf { it.isNotBlank() }
@@ -400,26 +434,106 @@ class SeriesDetailViewModel @Inject constructor(
             youtubeTrailer = series.youtubeTrailer,
             backdropPath = series.backdropPath,
             posterUrl = series.cover?.takeIf { it.isNotBlank() },
-            tmdbId = null,
+            tmdbId = series.tmdbId,
             genres = null,
             rating = null
         )
     }
 
+    /** Jahres-Auflösung fuer die TMDB-Suche: bevorzugt `releaseDate`, sonst der Titel. */
+    private fun resolveYear(title: String?, releaseDate: String?): Int? =
+        releaseDate?.let { YEAR_PATTERN.find(it)?.value?.toInt() }
+            ?: title?.let { YEAR_PATTERN.find(it)?.value?.toInt() }
+
     /**
-     * Looks up the IMDb-only genre/rating enrichment; the lookup key mirrors
-     * mapVodInfoToDetail ("title (year)").
+     * Loads the cast for [detail]'s tmdbId from TMDB's aggregate_credits (full series cast,
+     * already capped to 25 by [TmdbCastClient]).
+     *
+     * Liefert TMDB mindestens so viele Mitglieder wie Xtream (`detail.cast`) UND taucht darunter
+     * mindestens ein Anubis-Name wieder auf, wird TMDB zur Anzeige-Quelle: Xtream-Serien wie
+     * Supernatural liefern oft nur die aktuelle Staffel (3 Namen), TMDB die gesamte Besetzung.
+     * Namen und Fotos kommen dann 1:1 aus derselben Liste, kein Name-Matching noetig. Der
+     * Namens-Treffer ist ein Plausibilitaets-Check gegen eine falsche tmdbId: ohne ihn wuerde eine
+     * zufaellig groessere, aber komplett fremde Besetzung die korrekten Anubis-Namen ersetzen.
+     * Fehlt der Treffer oder liefert TMDB weniger Mitglieder, bleiben die Xtream-Namen und Fotos
+     * werden wie bisher per Namens-Matching zugeordnet.
      */
-    private fun lookupEnrichment(series: Series): ImdbEnrichment? {
-        val title = series.name.takeIf { it.isNotBlank() } ?: return null
-        val yearFromTitle = YEAR_PATTERN.find(title)?.value?.toInt()
-        val year = series.releaseDate?.let { YEAR_PATTERN.find(it)?.value?.toInt() } ?: yearFromTitle
-        val lookupTitle = if (yearFromTitle != null) {
-            title.replace(TITLE_YEAR_PATTERN, "").trim()
-        } else {
-            title
+    private suspend fun loadCastPhotos(detail: DetailDisplayData?) {
+        val tmdbId = detail?.tmdbId?.takeIf { it.isNotBlank() } ?: return
+        val castNames = detail.cast
+        if (castNames.isEmpty()) return
+
+        val members = tmdbCastClient.tvCredits(tmdbId)
+        val nonBlankMembers = members.filter { it.name.isNotBlank() }
+        val hasPlausibleMatch = nonBlankMembers.any { member ->
+            castNames.any { name -> normalizeCastName(name) == normalizeCastName(member.name) }
         }
-        val lookupName = if (year != null) "$lookupTitle ($year)" else lookupTitle
-        return imdbEnrichmentService.lookup(lookupName)
+        if (nonBlankMembers.size >= castNames.size && hasPlausibleMatch) {
+            val photos = dedupeByNormalizedName(nonBlankMembers).values.mapNotNull { member ->
+                member.validProfilePath()?.let { path -> member.name to "$TMDB_IMAGE_BASE_URL$path" }
+            }.toMap()
+            _uiState.update { state ->
+                state.copy(
+                    detail = state.detail?.copy(cast = nonBlankMembers.map { it.name }),
+                    castPhotos = photos
+                )
+            }
+        } else {
+            val photos = matchCastPhotos(castNames, members)
+            _uiState.update { it.copy(castPhotos = photos) }
+        }
+    }
+
+    /**
+     * Provider liefert info.seasons leer (verifiziert) - Poster aus TMDB. Xtream gewinnt (schon in
+     * [buildSeasons] als [SeasonUiModel.posterUrl] aufgeloest), TMDB fuellt nur die Luecken ueber
+     * die Staffelnummer. Wird vor dem ersten State-Bau awaited, damit die Kacheln nie ohne Bild
+     * gerendert werden.
+     */
+    private suspend fun loadSeasonPosters(series: Series): Map<Int, String> {
+        val tmdbId = series.tmdbId?.takeIf { it.isNotBlank() } ?: return emptyMap()
+        val tmdbPosters = try {
+            tmdbCastClient.seasonPosters(tmdbId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "seasonPosters failed for tmdbId=$tmdbId", e)
+            return emptyMap()
+        }
+        Log.d(TAG, "seasonPosters merged: ${tmdbPosters.size}")
+        return tmdbPosters
+    }
+
+    private fun matchCastPhotos(castNames: List<String>, members: List<TmdbCastMember>): Map<String, String> {
+        if (members.isEmpty()) return emptyMap()
+        val membersByNormalizedName = dedupeByNormalizedName(members)
+        return castNames.mapNotNull { name ->
+            val profilePath = membersByNormalizedName[normalizeCastName(name)]?.validProfilePath()
+                ?: return@mapNotNull null
+            name to "$TMDB_IMAGE_BASE_URL$profilePath"
+        }.toMap()
+    }
+
+    /**
+     * Bei normalisierten Namens-Duplikaten gewinnt deterministisch der Eintrag mit Foto, statt
+     * von der (zufaelligen) API-Reihenfolge abzuhaengen.
+     */
+    private fun dedupeByNormalizedName(members: List<TmdbCastMember>): Map<String, TmdbCastMember> {
+        val result = mutableMapOf<String, TmdbCastMember>()
+        for (member in members) {
+            val key = normalizeCastName(member.name)
+            val existing = result[key]
+            if (existing == null || (existing.validProfilePath() == null && member.validProfilePath() != null)) {
+                result[key] = member
+            }
+        }
+        return result
+    }
+
+    private fun TmdbCastMember.validProfilePath(): String? = profilePath?.takeIf { it.startsWith("/") }
+
+    private fun normalizeCastName(name: String): String {
+        val withoutDiacritics = Normalizer.normalize(name, Normalizer.Form.NFD).replace(COMBINING_MARKS, "")
+        return WHITESPACE.replace(withoutDiacritics.lowercase(Locale.ROOT).trim(), " ")
     }
 }

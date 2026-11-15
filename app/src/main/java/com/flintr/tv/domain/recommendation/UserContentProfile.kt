@@ -7,25 +7,32 @@ import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.WatchedItem
+import com.flintr.tv.data.tmdb.TmdbMeta
 import com.flintr.tv.ui.common.UiConstants
 import java.time.Instant
 import kotlin.math.exp
 import kotlin.math.max
 
 /**
- * Genre-weight map built from a user's signals, plus the content IDs that must never be
- * recommended because the user already knows them (on the watchlist, finished, or in progress).
+ * Genre-Gewichte (Key = TMDB-Genre-ID) aus den Nutzer-Signalen, plus die IDs, die nie
+ * empfohlen werden duerfen (Watchlist, abgeschlossen, angefangen).
  */
 data class GenreProfile(
-    val weights: Map<String, Double>,
+    val weights: Map<Int, Double>,
     val signalCount: Int,
     val excludedMovieIds: Set<Int> = emptySet(),
     val excludedSeriesIds: Set<Int> = emptySet()
 )
 
 /**
- * Builds a [GenreProfile] from watchlist entries, watch progress, watched history and ratings,
- * per the scoring spec in .hermes-plan/task_plan.md.
+ * Baut ein [GenreProfile] aus Watchlist, Fortschritt, Verlauf und Ratings.
+ *
+ * Genre-Signale kommen ausschliesslich aus [TmdbMeta.genres] (TMDB-IDs) via [metaLookup].
+ * [metaLookup] wird mit der tmdbId des Katalog-Items aufgerufen (Cache-Key, siehe
+ * `TmdbMetaRepository.metaFlow`) - NICHT mit der Xtream-ID. Nutzer-IDs (streamId/seriesId)
+ * bleiben fuer coreSignalKeys/Exclusions bestehen, da diese ueber Nutzerdaten dedupen.
+ * Items ohne tmdbId liefern kein Genre-Signal; Xtream-`genre`/`rating` werden nicht gelesen.
+ * Der Lookup ist synchron und darf stale sein (der Aufrufer liest den Meta-Flow).
  */
 object UserContentProfile {
     private const val WEIGHT_WATCHLIST = 3.0
@@ -52,40 +59,48 @@ object UserContentProfile {
      * caller's locals) so the function stays under the parameter-count limit.
      */
     private data class ProfileAccumulator(
-        val weights: MutableMap<String, Double>,
+        val weights: MutableMap<Int, Double>,
         val coreSignalKeys: MutableSet<String>,
         val excludedMovieIds: MutableSet<Int>,
         val excludedSeriesIds: MutableSet<Int>
     )
 
+    /** Bundles [build]'s raw signal sources so the function stays under the parameter-count limit. */
+    data class UserSignalData(
+        val watchlistEntries: List<WatchlistEntry>,
+        val watchedHistory: Map<String, WatchedItem>,
+        val watchProgress: Map<String, WatchProgress>,
+        val ratings: Map<String, RatingEntry>,
+        val movies: List<VodStream>,
+        val series: List<Series>
+    )
+
     fun build(
-        watchlistEntries: List<WatchlistEntry>,
-        watchedHistory: Map<String, WatchedItem>,
-        watchProgress: Map<String, WatchProgress>,
-        ratings: Map<String, RatingEntry>,
-        movies: List<VodStream>,
-        series: List<Series>,
+        signals: UserSignalData,
+        metaLookup: (kind: String, contentId: Int) -> TmdbMeta?,
         nowMs: Long = System.currentTimeMillis()
     ): GenreProfile {
-        val moviesById = movies.associateBy { it.streamId }
-        val seriesById = series.associateBy { it.seriesId }
+        val moviesById = signals.movies.associateBy { it.streamId }
+        val seriesById = signals.series.associateBy { it.seriesId }
 
-        val weights = mutableMapOf<String, Double>()
+        val weights = mutableMapOf<Int, Double>()
         val coreSignalKeys = mutableSetOf<String>()
         val excludedMovieIds = mutableSetOf<Int>()
         val excludedSeriesIds = mutableSetOf<Int>()
+        val accumulator = ProfileAccumulator(weights, coreSignalKeys, excludedMovieIds, excludedSeriesIds)
 
         applyWatchlistSignals(
-            watchlistEntries,
+            signals.watchlistEntries,
             moviesById,
             seriesById,
             nowMs,
-            ProfileAccumulator(weights, coreSignalKeys, excludedMovieIds, excludedSeriesIds)
+            metaLookup,
+            accumulator
         )
-        applyWatchedMovieExclusions(watchedHistory, excludedMovieIds)
-        applyMovieProgressSignals(watchProgress, watchedHistory, moviesById, nowMs, weights, coreSignalKeys, excludedMovieIds)
-        applySeriesProgressSignals(watchProgress, seriesById, nowMs, weights, coreSignalKeys, excludedSeriesIds)
-        applyRatingSignals(ratings, moviesById, seriesById, nowMs, weights)
+        applyWatchedMovieExclusions(signals.watchedHistory, excludedMovieIds)
+        applyMovieProgressSignals(signals.watchProgress, signals.watchedHistory, moviesById, nowMs, metaLookup, accumulator)
+        applySeriesProgressSignals(signals.watchProgress, seriesById, nowMs, metaLookup, weights, coreSignalKeys, excludedSeriesIds)
+        applyRatingSignals(signals.ratings, moviesById, seriesById, nowMs, metaLookup, weights)
 
         return GenreProfile(
             weights = weights,
@@ -95,11 +110,13 @@ object UserContentProfile {
         )
     }
 
+    /** Genre-Signale gehen ueber die tmdbId (Cache-Key); coreSignalKeys/Exclusions bleiben Xtream-IDs. */
     private fun applyWatchlistSignals(
         watchlistEntries: List<WatchlistEntry>,
         moviesById: Map<Int, VodStream>,
         seriesById: Map<Int, Series>,
         nowMs: Long,
+        metaLookup: (kind: String, contentId: Int) -> TmdbMeta?,
         accumulator: ProfileAccumulator
     ) {
         watchlistEntries.forEach { entry ->
@@ -107,13 +124,17 @@ object UserContentProfile {
                 WatchlistEntryType.MOVIE -> {
                     accumulator.excludedMovieIds += entry.streamId
                     val vod = moviesById[entry.streamId] ?: return@forEach
-                    addGenreWeights(accumulator.weights, GenreNormalizer.normalize(vod.genre), WEIGHT_WATCHLIST, parseInstantMs(entry.addedAt), nowMs)
+                    vod.tmdbId?.toIntOrNull()?.let { tmdbIdInt ->
+                        addGenreWeights(accumulator.weights, genreIds(metaLookup, "movie", tmdbIdInt), WEIGHT_WATCHLIST, parseInstantMs(entry.addedAt), nowMs)
+                    }
                     accumulator.coreSignalKeys += "fav_movie_${entry.streamId}"
                 }
                 WatchlistEntryType.SERIES -> {
                     accumulator.excludedSeriesIds += entry.streamId
                     val show = seriesById[entry.streamId] ?: return@forEach
-                    addGenreWeights(accumulator.weights, GenreNormalizer.normalize(show.genre), WEIGHT_WATCHLIST, parseInstantMs(entry.addedAt), nowMs)
+                    show.tmdbId?.toIntOrNull()?.let { tmdbIdInt ->
+                        addGenreWeights(accumulator.weights, genreIds(metaLookup, "series", tmdbIdInt), WEIGHT_WATCHLIST, parseInstantMs(entry.addedAt), nowMs)
+                    }
                     accumulator.coreSignalKeys += "fav_series_${entry.streamId}"
                 }
                 WatchlistEntryType.LIVE -> Unit
@@ -132,29 +153,30 @@ object UserContentProfile {
         }
     }
 
+    /** Genre-Signale gehen ueber die tmdbId (Cache-Key); coreSignalKeys/Exclusions bleiben Xtream-IDs. */
     private fun applyMovieProgressSignals(
         watchProgress: Map<String, WatchProgress>,
         watchedHistory: Map<String, WatchedItem>,
         moviesById: Map<Int, VodStream>,
         nowMs: Long,
-        weights: MutableMap<String, Double>,
-        coreSignalKeys: MutableSet<String>,
-        excludedMovieIds: MutableSet<Int>
+        metaLookup: (kind: String, contentId: Int) -> TmdbMeta?,
+        accumulator: ProfileAccumulator
     ) {
         watchProgress.forEach { (key, progress) ->
             if (!key.startsWith(UiConstants.PROGRESS_KEY_MOVIE_PREFIX)) return@forEach
             val streamId = key.removePrefix(UiConstants.PROGRESS_KEY_MOVIE_PREFIX).toIntOrNull() ?: return@forEach
             val vod = moviesById[streamId] ?: return@forEach
+            val tmdbIdInt = vod.tmdbId?.toIntOrNull()
             val ratio = progressRatio(progress)
             val ageMs = parseInstantMs(progress.lastWatched)
             when {
                 ratio >= MOVIE_COMPLETED_THRESHOLD -> {
-                    excludedMovieIds += streamId
-                    addGenreWeights(weights, GenreNormalizer.normalize(vod.genre), WEIGHT_MOVIE_COMPLETED, ageMs, nowMs)
-                    coreSignalKeys += "movie_done_$streamId"
+                    accumulator.excludedMovieIds += streamId
+                    if (tmdbIdInt != null) addGenreWeights(accumulator.weights, genreIds(metaLookup, "movie", tmdbIdInt), WEIGHT_MOVIE_COMPLETED, ageMs, nowMs)
+                    accumulator.coreSignalKeys += "movie_done_$streamId"
                 }
                 ratio > 0.0 && ratio < MOVIE_ABANDONED_MAX_PROGRESS && key !in watchedHistory -> {
-                    addGenreWeights(weights, GenreNormalizer.normalize(vod.genre), WEIGHT_MOVIE_ABANDONED, ageMs, nowMs)
+                    if (tmdbIdInt != null) addGenreWeights(accumulator.weights, genreIds(metaLookup, "movie", tmdbIdInt), WEIGHT_MOVIE_ABANDONED, ageMs, nowMs)
                 }
             }
         }
@@ -169,7 +191,8 @@ object UserContentProfile {
         watchProgress: Map<String, WatchProgress>,
         seriesById: Map<Int, Series>,
         nowMs: Long,
-        weights: MutableMap<String, Double>,
+        metaLookup: (kind: String, contentId: Int) -> TmdbMeta?,
+        weights: MutableMap<Int, Double>,
         coreSignalKeys: MutableSet<String>,
         excludedSeriesIds: MutableSet<Int>
     ) {
@@ -186,6 +209,7 @@ object UserContentProfile {
         episodeProgressBySeriesId.forEach { (seriesId, episodeProgresses) ->
             excludedSeriesIds += seriesId
             val show = seriesById[seriesId] ?: return@forEach
+            val tmdbIdInt = show.tmdbId?.toIntOrNull()
 
             val started = episodeProgresses.filter { progressRatio(it) >= EPISODE_STARTED_THRESHOLD }
             val completed = episodeProgresses.filter { progressRatio(it) >= EPISODE_COMPLETED_THRESHOLD }
@@ -196,47 +220,58 @@ object UserContentProfile {
                 isActive -> {
                     val mostRecentMs = started.maxOfOrNull { parseInstantMs(it.lastWatched) ?: Long.MIN_VALUE }
                         ?.takeIf { it != Long.MIN_VALUE }
-                    addGenreWeights(weights, GenreNormalizer.normalize(show.genre), WEIGHT_SERIES_ACTIVE, mostRecentMs, nowMs)
+                    if (tmdbIdInt != null) addGenreWeights(weights, genreIds(metaLookup, "series", tmdbIdInt), WEIGHT_SERIES_ACTIVE, mostRecentMs, nowMs)
                     coreSignalKeys += "series_active_$seriesId"
                 }
                 started.size in 1..4 -> {
                     val mostRecentMs = started.maxOfOrNull { parseInstantMs(it.lastWatched) ?: Long.MIN_VALUE }
                         ?.takeIf { it != Long.MIN_VALUE }
-                    addGenreWeights(weights, GenreNormalizer.normalize(show.genre), WEIGHT_SERIES_STARTED, mostRecentMs, nowMs)
+                    if (tmdbIdInt != null) addGenreWeights(weights, genreIds(metaLookup, "series", tmdbIdInt), WEIGHT_SERIES_STARTED, mostRecentMs, nowMs)
                 }
             }
         }
     }
 
+    /** Genre-Signale gehen ueber die tmdbId (Cache-Key) der Rating-Items; die Rating-Keys bleiben Xtream-IDs. */
     private fun applyRatingSignals(
         ratings: Map<String, RatingEntry>,
         moviesById: Map<Int, VodStream>,
         seriesById: Map<Int, Series>,
         nowMs: Long,
-        weights: MutableMap<String, Double>
+        metaLookup: (kind: String, contentId: Int) -> TmdbMeta?,
+        weights: MutableMap<Int, Double>
     ) {
         ratings.values.forEach { entry ->
             val genres = when (entry.contentType) {
-                "movie" -> moviesById[entry.contentId]?.genre
-                "series" -> seriesById[entry.contentId]?.genre
-                else -> null
-            }?.let { GenreNormalizer.normalize(it) } ?: return@forEach
+                "movie" -> moviesById[entry.contentId]?.tmdbId?.toIntOrNull()
+                    ?.let { genreIds(metaLookup, "movie", it) }.orEmpty()
+                "series" -> seriesById[entry.contentId]?.tmdbId?.toIntOrNull()
+                    ?.let { genreIds(metaLookup, "series", it) }.orEmpty()
+                else -> return@forEach
+            }
+            if (genres.isEmpty()) return@forEach
 
             val weight = if (entry.rating == 1) WEIGHT_THUMB_UP else WEIGHT_THUMB_DOWN
             addGenreWeights(weights, genres, weight, parseInstantMs(entry.ratedAt), nowMs)
         }
     }
 
+    private fun genreIds(
+        metaLookup: (kind: String, contentId: Int) -> TmdbMeta?,
+        kind: String,
+        contentId: Int
+    ): List<Int> = metaLookup(kind, contentId)?.genres.orEmpty().map { it.id }
+
     private fun addGenreWeights(
-        weights: MutableMap<String, Double>,
-        genres: List<String>,
+        weights: MutableMap<Int, Double>,
+        genres: List<Int>,
         weight: Double,
         signalMs: Long?,
         nowMs: Long
     ) {
         if (genres.isEmpty()) return
         val weighted = weight * ageDecayFactor(nowMs, signalMs)
-        genres.forEach { genre -> weights[genre] = (weights[genre] ?: 0.0) + weighted }
+        genres.forEach { genreId -> weights[genreId] = (weights[genreId] ?: 0.0) + weighted }
     }
 
     private fun progressRatio(progress: WatchProgress): Double {

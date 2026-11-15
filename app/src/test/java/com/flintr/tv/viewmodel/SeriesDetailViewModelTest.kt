@@ -9,8 +9,6 @@ import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.LastInteraction
 import com.flintr.tv.data.local.SmartResumeTarget
 import com.flintr.tv.data.local.WatchProgressService
-import com.flintr.tv.data.local.imdb.ImdbEnrichment
-import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.Episode
 import com.flintr.tv.data.model.EpisodeInfo
 import com.flintr.tv.data.model.WatchlistEntry
@@ -19,12 +17,22 @@ import com.flintr.tv.data.model.Season
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.data.tmdb.TmdbCastClient
+import com.flintr.tv.data.tmdb.TmdbCastMember
+import com.flintr.tv.data.tmdb.TmdbGenre
+import com.flintr.tv.data.tmdb.TmdbMeta
+import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import com.flintr.tv.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -45,10 +53,11 @@ class SeriesDetailViewModelTest {
     private val seriesId = 2200
     private val repository = mockk<XtreamRepository>()
     private val credentialsRepository = mockk<CredentialsRepository>()
-    private val imdbEnrichmentService = mockk<ImdbEnrichmentService>(relaxed = true)
+    private val tmdbMetaRepository = mockk<TmdbMetaRepository>(relaxed = true)
     private val watchlistRepository = mockk<WatchlistRepository>(relaxed = true)
     private val watchProgressService = mockk<WatchProgressService>(relaxed = true)
     private val cacheService = mockk<DataCacheService>(relaxed = true)
+    private val tmdbCastClient = mockk<TmdbCastClient>(relaxed = true)
 
     private fun episode(id: Int, episodeNum: Int) = Episode(
         id = id,
@@ -120,7 +129,8 @@ class SeriesDetailViewModelTest {
         categoryName = null,
         youtubeTrailer = null,
         backdropPath = null,
-        seasons = null
+        seasons = null,
+        tmdbId = "5001"
     )
 
     private fun cachedData(series: List<Series> = listOf(recommendedSeries)) = CachedData(
@@ -132,16 +142,17 @@ class SeriesDetailViewModelTest {
         seriesCategories = emptyList()
     )
 
-    private fun viewModel() = SeriesDetailViewModel(
+    private fun viewModel(castClient: TmdbCastClient = tmdbCastClient) = SeriesDetailViewModel(
         savedStateHandle = SavedStateHandle(
             mapOf(SeriesDetailViewModel.ARG_SERIES_ID to seriesId)
         ),
         repository = repository,
         credentialsRepository = credentialsRepository,
-        imdbEnrichmentService = imdbEnrichmentService,
+        tmdbMetaRepository = tmdbMetaRepository,
         watchlistRepository = watchlistRepository,
         watchProgressService = watchProgressService,
         cacheService = cacheService,
+        tmdbCastClient = castClient,
         ioDispatcher = mainDispatcherRule.dispatcher
     )
 
@@ -149,13 +160,19 @@ class SeriesDetailViewModelTest {
         every { credentialsRepository.getCredentials() } returns
             Credentials(serverUrl = "http://srv", username = "chris", password = "pw")
         coEvery { repository.getSeriesInfo("chris", "pw", seriesId) } returns Result.success(seriesResult)
-        every { imdbEnrichmentService.lookup(any()) } returns
-            ImdbEnrichment(rating = 8.1, numVotes = 999, genres = listOf("Drama", "Mystery"))
+        coEvery { tmdbMetaRepository.detailMeta("tv", any(), any(), any()) } returns
+            TmdbMeta(
+                tmdbId = 1,
+                rating = 8.1,
+                voteCount = 999,
+                genres = listOf(TmdbGenre(18, "Drama"), TmdbGenre(9648, "Mystery"))
+            )
         every { watchlistRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchedEpisodeIds(seriesId) } returns emptySet()
         coEvery { watchProgressService.getLastInteraction(seriesId, series) } returns null
         coEvery { watchProgressService.getSmartResumeTarget(seriesId, series) } returns null
         coEvery { cacheService.loadCachedDataAsync() } returns cachedData()
+        coEvery { tmdbCastClient.tvCredits(any()) } returns emptyList()
     }
 
     @Test
@@ -233,7 +250,7 @@ class SeriesDetailViewModelTest {
     }
 
     @Test
-    fun `Genre und Rating kommen exklusiv aus IMDb`() = runTest {
+    fun `Genre und Rating kommen exklusiv aus TMDB`() = runTest {
         stubHappyPath()
 
         val vm = viewModel()
@@ -246,9 +263,9 @@ class SeriesDetailViewModelTest {
     }
 
     @Test
-    fun `ohne IMDb Match bleiben Genre und Rating null`() = runTest {
+    fun `ohne TMDB Match bleiben Genre und Rating null`() = runTest {
         stubHappyPath()
-        every { imdbEnrichmentService.lookup(any()) } returns null
+        coEvery { tmdbMetaRepository.detailMeta("tv", any(), any(), any()) } returns null
 
         val vm = viewModel()
 
@@ -290,14 +307,28 @@ class SeriesDetailViewModelTest {
     }
 
     @Test
-    fun `load befuellt Empfehlungen per Genre-Match und schliesst sich selbst aus`() = runTest {
-        stubHappyPath()
+    fun `load befuellt Empfehlungen aus recommendationsFor und schliesst sich selbst aus`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "1"))
+        coEvery { tmdbMetaRepository.recommendationsFor("tv", "1") } returns listOf(5001)
         coEvery { cacheService.loadCachedDataAsync() } returns
             cachedData(series = listOf(recommendedSeries, series))
 
         val vm = viewModel()
 
         assertEquals(listOf(2201), vm.uiState.value.recommendations.map { it.seriesId })
+    }
+
+    @Test
+    fun `load ohne Anchor-tmdbId liefert leere Empfehlungen`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.detailMeta("tv", any(), any(), any()) } returns null
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(series = listOf(recommendedSeries, series))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.recommendations.isEmpty())
+        coVerify(exactly = 0) { tmdbMetaRepository.recommendationsFor(any(), any()) }
     }
 
     @Test
@@ -459,5 +490,282 @@ class SeriesDetailViewModelTest {
 
         assertFalse(vm.uiState.value.isLoading)
         assertNotNull(vm.uiState.value.error)
+    }
+
+    @Test
+    fun `load mit tmdbId laedt Cast-Fotos von TMDB`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "99"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "Alice", profilePath = "/alice.jpg"),
+            TmdbCastMember(id = 2, name = "Bob", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertEquals(
+            mapOf("Alice" to "https://image.tmdb.org/t/p/w185/alice.jpg"),
+            vm.uiState.value.castPhotos
+        )
+        coVerify(exactly = 1) { tmdbCastClient.tvCredits("99") }
+    }
+
+    @Test
+    fun `load ohne tmdbId ruft TMDB Cast-Client nicht auf`() = runTest {
+        stubHappyPath(series.copy(tmdbId = null))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+        coVerify(exactly = 0) { tmdbCastClient.tvCredits(any()) }
+    }
+
+    @Test
+    fun `nicht matchende TMDB Namen erzeugen keine Foto-Eintraege`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "99"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 3, name = "Charlie", profilePath = "/charlie.jpg")
+        )
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+    }
+
+    @Test
+    fun `Cast-Name mit Umlaut und doppeltem Leerzeichen matcht normalisierten TMDB Namen im Fallback-Pfad`() = runTest {
+        // Xtream liefert 2 Namen, TMDB nur 1 Treffer - TMDB unterliegt Xtream an Groesse, der
+        // Namens-Matching-Fallback bleibt also aktiv und muss die Umlaut-Normalisierung testen.
+        stubHappyPath(series.copy(tmdbId = "99", cast = "Penélope  Cruz, Other"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "penelope cruz", profilePath = "/penelope.jpg")
+        )
+
+        val vm = viewModel()
+
+        assertEquals(
+            mapOf("Penélope  Cruz" to "https://image.tmdb.org/t/p/w185/penelope.jpg"),
+            vm.uiState.value.castPhotos
+        )
+        assertEquals(listOf("Penélope  Cruz", "Other"), vm.uiState.value.detail?.cast)
+    }
+
+    @Test
+    fun `TMDB-Cast grösser als Xtream-Cast wird zur Anzeige-Quelle`() = runTest {
+        // Supernatural-Fall: Xtream liefert nur 3 Namen (letzte Staffel), TMDB (aggregate_credits)
+        // liefert die gesamte Besetzung - TMDB gewinnt, Namen/Fotos kommen 1:1 aus derselben Liste.
+        // "Jared Padalecki" taucht in beiden Listen auf und erfuellt damit den Plausibilitaets-Check (R1).
+        stubHappyPath(series.copy(tmdbId = "99", cast = "Jared Padalecki, Bob, Charlie"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "Jared Padalecki", profilePath = "/jared.jpg"),
+            TmdbCastMember(id = 2, name = "Jensen Ackles", profilePath = "/jensen.jpg"),
+            TmdbCastMember(id = 3, name = "Misha Collins", profilePath = null),
+            TmdbCastMember(id = 4, name = "Mark Sheppard", profilePath = "/mark.jpg"),
+            TmdbCastMember(id = 5, name = "Samantha Smith", profilePath = "/samantha.jpg")
+        )
+
+        val vm = viewModel()
+        val state = vm.uiState.value
+
+        assertEquals(
+            listOf("Jared Padalecki", "Jensen Ackles", "Misha Collins", "Mark Sheppard", "Samantha Smith"),
+            state.detail?.cast
+        )
+        assertEquals(
+            mapOf(
+                "Jared Padalecki" to "https://image.tmdb.org/t/p/w185/jared.jpg",
+                "Jensen Ackles" to "https://image.tmdb.org/t/p/w185/jensen.jpg",
+                "Mark Sheppard" to "https://image.tmdb.org/t/p/w185/mark.jpg",
+                "Samantha Smith" to "https://image.tmdb.org/t/p/w185/samantha.jpg"
+            ),
+            state.castPhotos
+        )
+    }
+
+    @Test
+    fun `TMDB-Cast kleiner als Xtream-Cast behaelt Xtream-Namen mit Match-Fotos`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "99", cast = "Alice, Bob, Charlie"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "Alice", profilePath = "/alice.jpg"),
+            TmdbCastMember(id = 2, name = "Bob", profilePath = "/bob.jpg")
+        )
+
+        val vm = viewModel()
+        val state = vm.uiState.value
+
+        assertEquals(listOf("Alice", "Bob", "Charlie"), state.detail?.cast)
+        assertEquals(
+            mapOf(
+                "Alice" to "https://image.tmdb.org/t/p/w185/alice.jpg",
+                "Bob" to "https://image.tmdb.org/t/p/w185/bob.jpg"
+            ),
+            state.castPhotos
+        )
+    }
+
+    @Test
+    fun `TMDB- und Xtream-Cast gleicher Groesse mit passendem Namen lassen TMDB gewinnen`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "99", cast = "Alice, Bob, Charlie"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "Alice", profilePath = "/alice.jpg"),
+            TmdbCastMember(id = 2, name = "Dana", profilePath = "/dana.jpg"),
+            TmdbCastMember(id = 3, name = "Eve", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertEquals(listOf("Alice", "Dana", "Eve"), vm.uiState.value.detail?.cast)
+    }
+
+    @Test
+    fun `TMDB-Cast ohne jeden passenden Namen bleibt trotz gleicher oder groesserer Groesse Fallback`() = runTest {
+        // Plausibilitaets-Check (R1): eine falsche tmdbId darf die korrekten Anubis-Namen nicht
+        // durch eine komplett fremde Besetzung ersetzen, auch wenn diese zahlenmaessig passt.
+        stubHappyPath(series.copy(tmdbId = "99", cast = "Alice, Bob, Charlie"))
+        coEvery { tmdbCastClient.tvCredits("99") } returns listOf(
+            TmdbCastMember(id = 1, name = "Dana", profilePath = "/dana.jpg"),
+            TmdbCastMember(id = 2, name = "Eve", profilePath = "/eve.jpg"),
+            TmdbCastMember(id = 3, name = "Frank", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertEquals(listOf("Alice", "Bob", "Charlie"), vm.uiState.value.detail?.cast)
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+    }
+
+    @Test
+    fun `load mit leerer tmdbId ruft TMDB Cast-Client nicht auf`() = runTest {
+        stubHappyPath(series.copy(tmdbId = ""))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+        coVerify(exactly = 0) { tmdbCastClient.tvCredits(any()) }
+    }
+
+    // -- Staffel-Poster aus TMDB (get_series_info liefert info.seasons leer) ---------------
+
+    @Test
+    fun `Staffel ohne jeden Xtream-Fallback bekommt Poster aus TMDB`() = runTest {
+        // Kein Staffel-/Serien-Cover, kein Episoden-Still, kein Backdrop - posterUrl ist null,
+        // bis TMDB liefert. loadSeasonPosters wird jetzt vor dem ersten State-Bau awaited, daher
+        // ist das Poster unmittelbar nach load()-Abschluss gesetzt (kein Recomposition-Race).
+        val coverlessSeason = season(1, listOf(episode(11, 1))).copy(cover = null)
+        stubHappyPath(
+            series.copy(
+                tmdbId = "99",
+                cover = null,
+                backdropPath = null,
+                seasons = listOf(coverlessSeason, seasonTwo)
+            )
+        )
+        coEvery { tmdbCastClient.seasonPosters("99") } returns mapOf(
+            1 to "https://image.tmdb.org/t/p/w342/season1.jpg"
+        )
+
+        val vm = viewModel()
+        vm.load()
+        val state = vm.uiState.value
+
+        assertEquals("https://image.tmdb.org/t/p/w342/season1.jpg", state.seasons[0].posterUrl)
+        // Staffel 2 hat kein TMDB-Poster - Xtream-Cover bleibt Fallback.
+        assertEquals("https://img/season-2.jpg", state.seasons[1].posterUrl)
+    }
+
+    @Test
+    fun `TMDB-Poster gewinnt ueber Xtream-Proxy-Cover (Proxy-URLs sind tot, Box-Beweis)`() = runTest {
+        stubHappyPath(series.copy(tmdbId = "99"))
+        coEvery { tmdbCastClient.seasonPosters("99") } returns mapOf(
+            1 to "https://image.tmdb.org/t/p/w342/season1.jpg"
+        )
+
+        val vm = viewModel()
+
+        assertEquals("https://image.tmdb.org/t/p/w342/season1.jpg", vm.uiState.value.seasons[0].posterUrl)
+    }
+
+    @Test
+    fun `load ohne tmdbId ruft TMDB Staffel-Poster nicht auf`() = runTest {
+        stubHappyPath(series.copy(tmdbId = null))
+
+        val vm = viewModel()
+
+        coVerify(exactly = 0) { tmdbCastClient.seasonPosters(any()) }
+    }
+
+    @Test
+    fun `leere TMDB Staffel-Poster-Map laesst Seasons unveraendert`() = runTest {
+        val coverlessSeason = season(1, listOf(episode(11, 1))).copy(cover = null)
+        stubHappyPath(
+            series.copy(
+                tmdbId = "99",
+                cover = null,
+                backdropPath = null,
+                seasons = listOf(coverlessSeason)
+            )
+        )
+        coEvery { tmdbCastClient.seasonPosters("99") } returns emptyMap()
+
+        val vm = viewModel()
+
+        assertNull(vm.uiState.value.seasons[0].posterUrl)
+    }
+
+    @Test
+    fun `echte TmdbCastClient-Kette befuellt das Staffel-Poster im UI-State`() = runTest {
+        val fixture = javaClass.classLoader!!.getResource("tmdb_tv_67280.json")!!.readText()
+        val server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.path.orEmpty()
+                return if (path.contains("/aggregate_credits")) {
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setHeader("Content-Type", "application/json")
+                        .setBody("""{"cast":[]}""")
+                } else {
+                    MockResponse()
+                        .setResponseCode(200)
+                        .setHeader("Content-Type", "application/json")
+                        .setBody(fixture)
+                }
+            }
+        }
+        server.start()
+        try {
+            val serverUrl = server.url("/")
+            val okHttpClient = OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    val redirectedUrl = request.url.newBuilder()
+                        .scheme(serverUrl.scheme)
+                        .host(serverUrl.host)
+                        .port(serverUrl.port)
+                        .build()
+                    chain.proceed(request.newBuilder().url(redirectedUrl).build())
+                }
+                .build()
+            val realCastClient = TmdbCastClient(okHttpClient, mainDispatcherRule.dispatcher)
+            val coverlessSeasons = listOf(1, 2, 3).map { number ->
+                season(number, listOf(episode(number * 100, 1))).copy(cover = null)
+            }
+            stubHappyPath(
+                series.copy(
+                    tmdbId = "67280",
+                    cover = null,
+                    backdropPath = null,
+                    seasons = coverlessSeasons
+                )
+            )
+
+            val vm = viewModel(realCastClient)
+            val state = vm.uiState.value
+
+            assertNotNull(state.seasons[0].posterUrl)
+            assertTrue(state.seasons[0].posterUrl!!.startsWith("https://image.tmdb.org/t/p/w342/"))
+            assertTrue(state.seasons[0].posterUrl!!.endsWith("/mmfzlTNTMTq2q0pmUwQYhq93dUf.jpg"))
+        } finally {
+            server.shutdown()
+        }
     }
 }

@@ -129,3 +129,4 @@ konzept-backup.md
 .reconcile_ref/
 .hermes-plan/
 *.tmp.md
+.gradle-home/

@@ -79,20 +79,26 @@ class FlintRTVApplication : Application(), ImageLoaderFactory {
     override fun newImageLoader(): ImageLoader =
         imageLoader ?: buildFlintrImageLoader(this).also { imageLoader = it }
 
+    // TRIM_MEMORY_RUNNING_LOW/_CRITICAL/_COMPLETE sind seit API 35 deprecated und werden ab API 34
+    // nicht mehr zugestellt, bleiben hier aber fuer Geraete < API 34 (minSdk 24) relevant.
+    @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         when (level) {
             // Normal browsing pressure: drop the large in-RAM catalog memo, but keep the bitmap
             // cache so posters do not flicker back in.
-            ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> {
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> { // NOSONAR (S1874) - seit API 35 deprecated, wird < API 34 noch benoetigt (minSdk 24), Verhalten bewusst beibehalten
                 if (::dataCacheService.isInitialized) dataCacheService.trimCachedCatalog()
             }
             // Genuinely critical / process about to be killed: drop both caches.
-            ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
-            ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL, // NOSONAR (S1874) - seit API 35 deprecated, wird < API 34 noch benoetigt (minSdk 24), Verhalten bewusst beibehalten
+            ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> { // NOSONAR (S1874) - seit API 35 deprecated, wird < API 34 noch benoetigt (minSdk 24), Verhalten bewusst beibehalten
                 if (::dataCacheService.isInitialized) dataCacheService.trimCachedCatalog()
                 imageLoader?.memoryCache?.clear()
             }
+            // MODERATE/BACKGROUND/UI_HIDDEN/RUNNING_MODERATE: kein zusaetzliches Trim-Signal fuer
+            // diese Zwischenstufen vorgesehen, bewusst kein Handling.
+            else -> {}
         }
     }
 

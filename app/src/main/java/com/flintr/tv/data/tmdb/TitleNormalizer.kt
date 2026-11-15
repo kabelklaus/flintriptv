@@ -1,12 +1,13 @@
-package com.flintr.tv.data.local.imdb
+package com.flintr.tv.data.tmdb
 
 import java.text.Normalizer
 import java.util.Locale
 
 /**
- * Kotlin mirror of `tools/imdb_enrichment/normalize.py`. Keep both in sync.
+ * Normalizes catalog titles (e.g. `"EN - The Bride! (2026) (MULTI SUB) FRANKENSTEIN"`)
+ * into a `(cleanTitle, year)` pair for TMDB search queries and builds cache keys.
  */
-object ImdbKeyNormalizer {
+object TitleNormalizer {
 
     private val BRACKET_TAGS = Regex("\\[[^\\]]*\\]")
     private val LANG_PREFIX = Regex("^[A-Z0-9]{2,4}\\s*-\\s*")
@@ -37,7 +38,7 @@ object ImdbKeyNormalizer {
         return text to year
     }
 
-    /** Builds the lookup key used to match normalized titles against the IMDb dataset. */
+    /** Builds the cache key used to match normalized titles against TMDB search results. */
     fun makeKey(clean: String, year: Int?): String =
         if (year == null) "$clean|" else "$clean|$year"
 }

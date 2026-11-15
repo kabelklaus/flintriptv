@@ -5,6 +5,7 @@ import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.model.WatchedItem
 import com.flintr.tv.data.repository.UserRepository
+import com.flintr.tv.data.tmdb.TmdbMetaRepository
 import com.flintr.tv.domain.recommendation.RecommendationEngine
 import com.flintr.tv.domain.recommendation.RecommendationResult
 import com.flintr.tv.domain.recommendation.UserContentProfile
@@ -13,6 +14,9 @@ import com.google.firebase.perf.metrics.Trace
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +25,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Named
@@ -39,7 +44,9 @@ private const val PROGRESS_SIGNAL_DURATION = 100L
 private data class RecommendationInput(
     val entries: List<WatchlistEntry>,
     val watchedHistory: Map<String, WatchedItem>,
-    val watchProgress: Map<String, WatchProgress>
+    val watchProgress: Map<String, WatchProgress>,
+    // Nur Trigger: Meta-Nachlaeufe aendern die Genre-Signale, nicht das Nutzerprofil selbst.
+    val metaCount: Int
 )
 
 private data class CachedRatings(
@@ -49,10 +56,11 @@ private data class CachedRatings(
 )
 
 /**
- * Combines watchlist entries, watched history and watch progress into a [GenreProfile][com.flintr.tv.domain.recommendation.GenreProfile]
- * and scores the current catalog against it, exposing the "Für dich" recommendations as a
- * [StateFlow]. Ratings have no reactive StateFlow of their own, so they are fetched read-only
- * once and reused for [RATINGS_CACHE_TTL_MS].
+ * Baut aus Watchlist, Verlauf und Fortschritt ein [GenreProfile][com.flintr.tv.domain.recommendation.GenreProfile]
+ * (Genre-IDs aus TMDB-Meta) und laedt danach die Top-Genres ueber TMDB-Discover. Die Engine
+ * waehlt nur noch aus den bereits geladenen Listen aus; Cold Start spart alle Netz-Calls.
+ * Meta-Nachlaeufe re-triggern, weil Genre-Signale aus TMDB-Meta kommen, die erst nach dem Start ankommen.
+ * Ratings haben keinen reaktiven Flow und werden fuer [RATINGS_CACHE_TTL_MS] gecacht.
  */
 @Singleton
 class RecommendationService(
@@ -62,6 +70,7 @@ class RecommendationService(
     private val userRepository: UserRepository,
     private val credentialsRepository: CredentialsRepository,
     private val cacheService: DataCacheService,
+    private val tmdbMetaRepository: TmdbMetaRepository,
     @Named("IO") private val ioDispatcher: CoroutineDispatcher,
     private val nowMs: () -> Long = { System.currentTimeMillis() }
 ) {
@@ -74,6 +83,7 @@ class RecommendationService(
         userRepository: UserRepository,
         credentialsRepository: CredentialsRepository,
         cacheService: DataCacheService,
+        tmdbMetaRepository: TmdbMetaRepository,
         @Named("IO") ioDispatcher: CoroutineDispatcher
     ) : this(
         watchlistRepository = watchlistRepository,
@@ -82,6 +92,7 @@ class RecommendationService(
         userRepository = userRepository,
         credentialsRepository = credentialsRepository,
         cacheService = cacheService,
+        tmdbMetaRepository = tmdbMetaRepository,
         ioDispatcher = ioDispatcher,
         nowMs = { System.currentTimeMillis() }
     )
@@ -90,6 +101,10 @@ class RecommendationService(
 
     private val _recommendations = MutableStateFlow(RecommendationResult(emptyList(), emptyList()))
     val recommendations: StateFlow<RecommendationResult> = _recommendations.asStateFlow()
+
+    /** True waehrend eines Recompute-Laufs (jeder Input-Aenderung, auch Meta-Nachlaeufen); false sofort nach Publish. */
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     /**
      * Read-through cache for ratings. Fresh ratings reach recommendations only after up to
@@ -103,14 +118,16 @@ class RecommendationService(
             combine(
                 watchlistRepository.entries,
                 watchedHistoryService.watchedHistory,
-                watchProgressService.watchProgress
-            ) { entries, watchedHistory, watchProgress ->
+                watchProgressService.watchProgress,
+                tmdbMetaRepository.metaFlow.map { it.size }
+            ) { entries, watchedHistory, watchProgress, metaCount ->
                 RecommendationInput(
                     entries = entries,
                     watchedHistory = watchedHistory,
                     watchProgress = watchProgress.mapValues { (_, progress) ->
                         progress.toRecommendationSignal()
-                    }
+                    },
+                    metaCount = metaCount
                 )
             }
                 .distinctUntilChanged()
@@ -123,6 +140,7 @@ class RecommendationService(
 
     private suspend fun recompute(input: RecommendationInput) {
         val trace = PerfTrace.start("flintr_recommendation_recompute")
+        _isLoading.value = true
         try {
             coroutineContext.ensureActive()
             val cached = cacheService.loadCachedDataAsync() ?: return
@@ -132,15 +150,59 @@ class RecommendationService(
 
             coroutineContext.ensureActive()
             val profile = UserContentProfile.build(
-                watchlistEntries = input.entries,
-                watchedHistory = input.watchedHistory,
-                watchProgress = input.watchProgress,
-                ratings = ratings,
-                movies = cached.movies,
-                series = cached.series
+                signals = UserContentProfile.UserSignalData(
+                    watchlistEntries = input.entries,
+                    watchedHistory = input.watchedHistory,
+                    watchProgress = input.watchProgress,
+                    ratings = ratings,
+                    movies = cached.movies,
+                    series = cached.series
+                ),
+                // Key = tmdbId des Items (UserContentProfile), series->tv-Uebersetzung bleibt.
+                metaLookup = { kind, id ->
+                    val key = if (kind == "series") "tv:$id" else "movie:$id"
+                    tmdbMetaRepository.metaFlow.value[key]
+                }
             )
 
-            val result = RecommendationEngine.recommend(profile, cached)
+            // Cold Start vor jedem Netz-Call: ohne genug Kernsignale kein Discover.
+            if (profile.signalCount < RecommendationEngine.COLD_START_MIN_SIGNALS) {
+                _recommendations.value = RecommendationResult(emptyList(), emptyList())
+                return
+            }
+
+            val anchorGenreIds = profile.weights.entries
+                .filter { it.value > 0.0 }
+                .sortedWith(compareByDescending<Map.Entry<Int, Double>> { it.value }.thenBy { it.key })
+                .take(RecommendationEngine.TOP_GENRE_COUNT)
+                .map { it.key }
+
+            val discoveredMoviesByGenre = linkedMapOf<Int, List<Int>>()
+            val discoveredSeriesByGenre = linkedMapOf<Int, List<Int>>()
+            // Die Genre-Abfragen sind unabhaengig: parallel ausfuehren, awaitAll erhaelt die
+            // Reihenfolge der anchorGenreIds (awaitAll liefert dieselbe Ordnung wie map).
+            val discoveredByGenre = coroutineScope {
+                anchorGenreIds.map { genreId ->
+                    async {
+                        coroutineContext.ensureActive()
+                        val movies = tmdbMetaRepository.discoverMovieIds(listOf(genreId))
+                        coroutineContext.ensureActive()
+                        val series = tmdbMetaRepository.discoverTvIds(listOf(genreId))
+                        genreId to (movies to series)
+                    }
+                }.awaitAll()
+            }
+            discoveredByGenre.forEach { (genreId, result) ->
+                discoveredMoviesByGenre[genreId] = result.first
+                discoveredSeriesByGenre[genreId] = result.second
+            }
+
+            val result = RecommendationEngine.recommend(
+                profile = profile,
+                cached = cached,
+                discoveredMoviesByGenre = discoveredMoviesByGenre,
+                discoveredSeriesByGenre = discoveredSeriesByGenre
+            )
             // The engine itself is synchronous, so a cancelled run must not publish its stale result.
             coroutineContext.ensureActive()
             _recommendations.value = result
@@ -148,6 +210,7 @@ class RecommendationService(
             PerfTrace.increment(trace, "recommendation_series", result.series.size.toLong())
         } finally {
             PerfTrace.stop(trace)
+            _isLoading.value = false
         }
     }
 

@@ -27,6 +27,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,13 +48,13 @@ import com.flintr.tv.data.model.LiveStream
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.ui.components.detail.formatRuntime
+import com.flintr.tv.ui.theme.CardTitleStyle
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.SharedColors
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.theme.tvFocusRing
 import com.flintr.tv.ui.utils.onDpadDirection
 import com.flintr.tv.ui.utils.onLongPress
-import com.flintr.tv.utils.ContentParser
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.res.stringResource
 import com.flintr.tv.R
@@ -68,7 +69,7 @@ private val ContentCardBorderRadius = 8.dp // radiusMD
 private val ContentCardTitleOverlayPadding = 1.dp
 private val ContentCardTitleContainerPaddingH = 1.dp
 private val ContentCardTitleContainerPaddingV = 1.dp
-private val ContentCardTitleFontSize = 14.sp
+private val ContentCardTitleFontSize = CardTitleStyle.fontSize
 private val ContentCardTitleMaxLines = 2
 private val ContentCardTitleGradientAlpha = 0.7f
 private val ContentCardTitleBgAlpha = 0.75f
@@ -83,10 +84,14 @@ private val ContentCardWatchlistIconSize = 12.dp
 private val ContentCardBadgeSpacing = 3.dp
 private val ContentCardLogoPadding = 8.dp
 
+// Rating-Badge-Zahl: bewusst alter Stil, bleibt wie vor dem Titel-Resizing (14sp/Bold).
+private val ContentCardRatingFontSize = 14.sp
+private val ContentCardRatingFontWeight = FontWeight.Bold
+
 // Content Card Colors (from Flutter AppTheme)
 private val ContentCardTextColor = Color.White
 private val ContentCardBgColor = SharedColors.contentCardBgColor
-private val ContentCardTextFontWeight = FontWeight.Bold
+private val ContentCardTextFontWeight = CardTitleStyle.fontWeight
 
 // Content Card Title Line Height
 private const val ContentCardTitleLineHeightFactor = 1.2f
@@ -146,7 +151,7 @@ private data class CardInteractionHandlers(
 private data class ContentInfo(
     val coverImageUrl: String?,
     val title: String,
-    val rating: String?,
+    val rating: TmdbChipState,
     /** Live channels render a sender logo, not a poster: fit it instead of cropping. */
     val isLogo: Boolean = false
 )
@@ -158,7 +163,7 @@ private data class WatchState(
 )
 
 private data class CardOverlayParams(
-    val rating: String?,
+    val rating: TmdbChipState,
     val isInWatchlist: Boolean,
     val sourceBadge: String?,
     val watchState: WatchState,
@@ -199,13 +204,23 @@ fun VODCard(params: VODCardParams) {
         params.vod != null -> ContentInfo(
             coverImageUrl = params.vod.streamIcon ?: params.vod.cover,
             title = params.vod.name,
-            rating = ContentParser.getRating(params.vod),
+            rating = rememberTmdbChipState(
+                kind = "movie",
+                tmdbId = params.vod.tmdbId,
+                year = params.vod.releaseDate?.take(4)?.toIntOrNull(),
+                title = params.vod.name
+            ),
             isLogo = false
         )
         params.series != null -> ContentInfo(
             coverImageUrl = params.series.cover,
             title = params.series.name,
-            rating = ContentParser.getRating(params.series),
+            rating = rememberTmdbChipState(
+                kind = "tv",
+                tmdbId = params.series.tmdbId,
+                year = params.series.releaseDate?.take(4)?.toIntOrNull(),
+                title = params.series.name
+            ),
             isLogo = false
         )
         else -> throw IllegalArgumentException("Either vod or series must be provided")
@@ -479,7 +494,7 @@ fun LiveStreamCard(
             contentInfo = ContentInfo(
                 coverImageUrl = params.stream.streamIcon,
                 title = params.stream.name,
-                rating = null,
+                rating = TmdbChipState.Absent,
                 isLogo = true
             ),
             contentType = ContentType.Live(params.stream),
@@ -797,7 +812,7 @@ private fun ProgressWithRemainingLabel(
 private fun BoxScope.CardBadges(
     isInWatchlist: Boolean,
     sourceBadge: String?,
-    rating: String?,
+    rating: TmdbChipState,
     isWatched: Boolean
 ) {
     if (!sourceBadge.isNullOrBlank() || isInWatchlist) {
@@ -820,13 +835,23 @@ private fun BoxScope.CardBadges(
         }
     }
     
-    if (rating != null) {
-        RatingBadge(
-            rating = rating,
+    when (rating) {
+        is TmdbChipState.Loading -> SkeletonChip(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(
+                    top = Dimensions.contentCardRatingBadgeTop,
+                    end = Dimensions.contentCardRatingBadgeRight
+                )
+                .testTag("rating-skeleton")
+        )
+        is TmdbChipState.Value -> RatingBadge(
+            rating = rating.rating,
             modifier = Modifier.align(Alignment.TopEnd)
         )
+        TmdbChipState.Absent -> Unit
     }
-    
+
     if (isWatched) {
         WatchedBadge(
             modifier = Modifier.align(Alignment.Center)
@@ -852,7 +877,7 @@ private fun SourceBadge(
             text = badge,
             fontSize = ContentCardFriendAvatarFontSize,
             color = SharedColors.avatarAccentText,
-            fontWeight = ContentCardTextFontWeight,
+            fontWeight = FontWeight.Bold,
             maxLines = 1
         )
     }
@@ -913,9 +938,9 @@ private fun RatingBadge(
             )
             Text(
                 text = rating,
-                fontSize = ContentCardTitleFontSize,
+                fontSize = ContentCardRatingFontSize,
                 color = ContentCardTextColor,
-                fontWeight = ContentCardTextFontWeight
+                fontWeight = ContentCardRatingFontWeight
             )
         }
     }

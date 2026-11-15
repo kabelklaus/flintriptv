@@ -7,14 +7,19 @@ import com.flintr.tv.data.local.CredentialsRepository
 import com.flintr.tv.data.local.DataCacheService
 import com.flintr.tv.data.local.WatchlistRepository
 import com.flintr.tv.data.local.WatchProgressService
-import com.flintr.tv.data.local.imdb.ImdbEnrichment
-import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.WatchlistEntry
 import com.flintr.tv.data.model.WatchlistEntryType
 import com.flintr.tv.data.model.VodInfo
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.WatchProgress
 import com.flintr.tv.data.repository.XtreamRepository
+import com.flintr.tv.data.tmdb.TmdbCastClient
+import com.flintr.tv.data.tmdb.TmdbCastMember
+import com.flintr.tv.data.tmdb.TmdbGenre
+import com.flintr.tv.data.tmdb.TmdbMeta
+import com.flintr.tv.data.tmdb.TmdbMetaRepository
+import com.flintr.tv.data.tmdb.TmdbRecItem
+import com.flintr.tv.data.tmdb.TmdbResult
 import com.flintr.tv.testutil.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -42,10 +47,11 @@ class MovieDetailViewModelTest {
     private val vodId = 4711
     private val repository = mockk<XtreamRepository>()
     private val credentialsRepository = mockk<CredentialsRepository>()
-    private val imdbEnrichmentService = mockk<ImdbEnrichmentService>(relaxed = true)
+    private val tmdbMetaRepository = mockk<TmdbMetaRepository>(relaxed = true)
     private val watchlistRepository = mockk<WatchlistRepository>(relaxed = true)
     private val watchProgressService = mockk<WatchProgressService>(relaxed = true)
     private val cacheService = mockk<DataCacheService>(relaxed = true)
+    private val tmdbCastClient = mockk<TmdbCastClient>(relaxed = true)
 
     private val catalogMovie = VodStream(
         num = 1,
@@ -111,10 +117,11 @@ class MovieDetailViewModelTest {
         savedStateHandle = SavedStateHandle(mapOf(MovieDetailViewModel.ARG_VOD_ID to vodId)),
         repository = repository,
         credentialsRepository = credentialsRepository,
-        imdbEnrichmentService = imdbEnrichmentService,
+        tmdbMetaRepository = tmdbMetaRepository,
         watchlistRepository = watchlistRepository,
         watchProgressService = watchProgressService,
         cacheService = cacheService,
+        tmdbCastClient = tmdbCastClient,
         ioDispatcher = mainDispatcherRule.dispatcher
     )
 
@@ -123,14 +130,23 @@ class MovieDetailViewModelTest {
             Credentials(serverUrl = "http://srv", username = "chris", password = "pw")
         coEvery { cacheService.loadCachedDataAsync() } returns cachedData()
         coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns Result.success(vodInfo)
-        every { imdbEnrichmentService.lookup(any()) } returns
-            ImdbEnrichment(rating = 8.4, numVotes = 1234, genres = listOf("Action", "Drama"))
+        coEvery { tmdbMetaRepository.detailMeta("movie", any(), any(), any()) } returns
+            TmdbMeta(
+                tmdbId = 1,
+                rating = 8.4,
+                voteCount = 1234,
+                genres = listOf(TmdbGenre(28, "Action"), TmdbGenre(18, "Drama"))
+            )
         every { watchlistRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchProgress("movie", vodId, null, null) } returns watchProgress
+        coEvery { tmdbCastClient.movieCredits(any()) } returns emptyList()
+        coEvery { tmdbMetaRepository.cachedResolvedIds<VodStream>(any(), any(), any(), any(), any()) } returns emptyMap()
+        coEvery { tmdbMetaRepository.recommendationTitlesFor(any(), any()) } returns
+            TmdbResult.Data(emptyList())
     }
 
     @Test
-    fun `loadErfolg mappt Details mit IMDb Genres und Rating`() = runTest {
+    fun `loadErfolg mappt Details mit TMDB Genres und Rating`() = runTest {
         stubHappyPath()
 
         val vm = viewModel()
@@ -147,9 +163,9 @@ class MovieDetailViewModelTest {
     }
 
     @Test
-    fun `loadErfolg ohne IMDb Match laesst Genres und Rating null`() = runTest {
+    fun `loadErfolg ohne TMDB Match laesst Genres und Rating null`() = runTest {
         stubHappyPath()
-        every { imdbEnrichmentService.lookup(any()) } returns null
+        coEvery { tmdbMetaRepository.detailMeta("movie", any(), any(), any()) } returns null
 
         val vm = viewModel()
 
@@ -257,7 +273,6 @@ class MovieDetailViewModelTest {
         coEvery { cacheService.loadCachedDataAsync() } returns null
         coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
             Result.failure(Exception("kaputt"))
-        every { imdbEnrichmentService.lookup(any()) } returns null
         every { watchlistRepository.getAllWatchlistEntries() } returns emptyList()
         coEvery { watchProgressService.getWatchProgress("movie", vodId, null, null) } returns null
 
@@ -270,4 +285,226 @@ class MovieDetailViewModelTest {
         assertNull(vm.uiState.value.error)
         assertNotNull(vm.uiState.value.detail)
     }
+
+    @Test
+    fun `load mit tmdbId laedt Cast-Fotos von TMDB`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
+            TmdbCastMember(id = 1, name = "Alice", profilePath = "/alice.jpg"),
+            TmdbCastMember(id = 2, name = "Bob", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertEquals(
+            mapOf("Alice" to "https://image.tmdb.org/t/p/w185/alice.jpg"),
+            vm.uiState.value.castPhotos
+        )
+        coVerify(exactly = 1) { tmdbCastClient.movieCredits("42") }
+    }
+
+    @Test
+    fun `load ohne tmdbId ruft TMDB Cast-Client nicht auf`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(tmdbId = null))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+        coVerify(exactly = 0) { tmdbCastClient.movieCredits(any()) }
+    }
+
+    @Test
+    fun `nicht matchende TMDB Namen erzeugen keine Foto-Eintraege`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
+            TmdbCastMember(id = 3, name = "Charlie", profilePath = "/charlie.jpg")
+        )
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+    }
+
+    @Test
+    fun `Cast-Name mit Umlaut und doppeltem Leerzeichen matcht normalisierten TMDB Namen`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(cast = "Penélope  Cruz"))
+        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
+            TmdbCastMember(id = 1, name = "penelope cruz", profilePath = "/penelope.jpg")
+        )
+
+        val vm = viewModel()
+
+        assertEquals(
+            mapOf("Penélope  Cruz" to "https://image.tmdb.org/t/p/w185/penelope.jpg"),
+            vm.uiState.value.castPhotos
+        )
+    }
+
+    @Test
+    fun `leerer Xtream Cast wird ab 2 TMDB Credits gefuellt`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(cast = null))
+        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
+            TmdbCastMember(id = 1, name = "Eve", profilePath = "/eve.jpg"),
+            TmdbCastMember(id = 2, name = "Frank", profilePath = null)
+        )
+
+        val vm = viewModel()
+
+        assertEquals(
+            listOf("Eve", "Frank"),
+            vm.uiState.value.detail!!.cast
+        )
+        assertEquals(
+            mapOf("Eve" to "https://image.tmdb.org/t/p/w185/eve.jpg"),
+            vm.uiState.value.castPhotos
+        )
+    }
+
+    @Test
+    fun `leerer Xtream Cast bleibt leer wenn TMDB weniger als 2 Mitglieder liefert`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(cast = null))
+        coEvery { tmdbCastClient.movieCredits("42") } returns listOf(
+            TmdbCastMember(id = 1, name = "Eve", profilePath = "/eve.jpg")
+        )
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.detail!!.cast.isEmpty())
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+    }
+
+    @Test
+    fun `load mit leerer tmdbId ruft TMDB Cast-Client nicht auf`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(tmdbId = ""))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.castPhotos.isEmpty())
+        coVerify(exactly = 0) { tmdbCastClient.movieCredits(any()) }
+    }
+
+    @Test
+    fun `load befuellt Empfehlungen aus Rec-IDs und schliesst sich selbst aus`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.recommendationTitlesFor("movie", "42") } returns
+            TmdbResult.Data(listOf(TmdbRecItem(id = 777, title = "Empfohlen")))
+        val recommendation = catalogMovie.copy(streamId = 888, name = "Empfohlen", tmdbId = "777")
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, recommendation))
+
+        val vm = viewModel()
+
+        assertEquals(listOf(888), vm.uiState.value.recommendations.map { it.streamId })
+    }
+
+    @Test
+    fun `load befuellt Empfehlungen fuer Katalog-Items ohne tmdbId aus dem Card-Resolve-Cache`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.recommendationTitlesFor("movie", "42") } returns
+            TmdbResult.Data(
+                listOf(TmdbRecItem(id = 777, title = null), TmdbRecItem(id = 778, title = null))
+            )
+        val first = catalogMovie.copy(streamId = 888, name = "Empfohlen Eins", tmdbId = null)
+        val second = catalogMovie.copy(streamId = 889, name = "Empfohlen Zwei", tmdbId = null)
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, first, second))
+        coEvery {
+            tmdbMetaRepository.cachedResolvedIds<VodStream>(
+                "movie", any(), any(), any(), any()
+            )
+        } returns mapOf(888 to 777, 889 to 778)
+
+        val vm = viewModel()
+
+        assertEquals(listOf(888, 889), vm.uiState.value.recommendations.map { it.streamId })
+    }
+
+    @Test
+    fun `load befuellt Empfehlungen aus Rec-Titeln per Katalog-Match`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.recommendationTitlesFor("movie", "42") } returns
+            TmdbResult.Data(
+                listOf(
+                    TmdbRecItem(id = 777, title = "Empfohlen", releaseDate = "2020-06-01"),
+                    TmdbRecItem(id = 778, title = "Daneben", releaseDate = "2020-06-01")
+                )
+            )
+        val recommendation = catalogMovie.copy(
+            streamId = 888,
+            name = "Empfohlen",
+            releaseDate = "2020-01-01",
+            tmdbId = null
+        )
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, recommendation))
+
+        val vm = viewModel()
+
+        assertEquals(listOf(888), vm.uiState.value.recommendations.map { it.streamId })
+    }
+
+    @Test
+    fun `Rec-Titel matcht Katalogtitel bei Jahr-Abweichung von einem Jahr`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.recommendationTitlesFor("movie", "42") } returns
+            TmdbResult.Data(
+                listOf(TmdbRecItem(id = 777, title = "Empfohlen", releaseDate = "2021-01-01"))
+            )
+        val recommendation = catalogMovie.copy(
+            streamId = 888,
+            name = "Empfohlen",
+            releaseDate = "2020-01-01",
+            tmdbId = null
+        )
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, recommendation))
+
+        val vm = viewModel()
+
+        assertEquals(listOf(888), vm.uiState.value.recommendations.map { it.streamId })
+    }
+
+    @Test
+    fun `Rec-Item ohne Titel wird beim Katalog-Match uebersprungen`() = runTest {
+        stubHappyPath()
+        coEvery { tmdbMetaRepository.recommendationTitlesFor("movie", "42") } returns
+            TmdbResult.Data(
+                listOf(
+                    TmdbRecItem(id = 777, title = null, releaseDate = "2020-01-01"),
+                    TmdbRecItem(id = 778, title = "  ", releaseDate = "2020-01-01")
+                )
+            )
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, catalogMovie.copy(streamId = 888, name = "Katalogtitel")))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.recommendations.isEmpty())
+    }
+
+    @Test
+    fun `load ohne Anchor-tmdbId liefert leere Empfehlungen`() = runTest {
+        stubHappyPath()
+        coEvery { repository.loadVodInfo("chris", "pw", vodId) } returns
+            Result.success(vodInfo.copy(tmdbId = null))
+        coEvery { tmdbMetaRepository.detailMeta("movie", any(), any(), any()) } returns null
+        coEvery { cacheService.loadCachedDataAsync() } returns
+            cachedData(movies = listOf(catalogMovie, catalogMovie.copy(streamId = 888, tmdbId = "777")))
+
+        val vm = viewModel()
+
+        assertTrue(vm.uiState.value.recommendations.isEmpty())
+        coVerify(exactly = 0) { tmdbMetaRepository.recommendationTitlesFor(any(), any()) }
+    }
+
 }

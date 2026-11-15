@@ -44,6 +44,7 @@ import com.flintr.tv.ui.components.PopupMenu
 import com.flintr.tv.ui.components.WatchedBadge
 import com.flintr.tv.ui.components.formatRemainingLabel
 import com.flintr.tv.ui.components.detail.formatDate
+import com.flintr.tv.ui.theme.CardTitleStyle
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.theme.focusRingColor
@@ -1224,8 +1225,9 @@ internal fun EpisodeCardContent(
 
         Text(
             text = episodeName ?: "Episode $episodeNum",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
+            // Einheitlich mit Movie/Series/Recommendation-Karten (siehe CardTitleStyle).
+            fontSize = CardTitleStyle.fontSize,
+            fontWeight = CardTitleStyle.fontWeight,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
             maxLines = 2,

@@ -1,0 +1,708 @@
+package com.flintr.tv.data.tmdb
+
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import javax.inject.Inject
+import javax.inject.Named
+import javax.inject.Singleton
+import kotlin.math.abs
+
+/** Karten-Zustand fuer [TmdbMetaRepository.cardMetaState]: UI unterscheidet negativ von noch-unterwegs. */
+sealed interface TmdbCardState {
+    data class Meta(val meta: TmdbMeta) : TmdbCardState
+    data object Negative : TmdbCardState
+    data object Transient : TmdbCardState
+}
+
+/**
+ * Reaktive Schicht ueber [TmdbMetaClient] und [TmdbMetaCache].
+ *
+ * [metaFlow] ist die UI-Quelle und enthaelt alle nicht-negativen Metas, auch
+ * abgelaufene (Stale-Fallback). [request] koalesziert Grid-Anfragen zu einer
+ * gemeinsamen Fetch-Welle; [detailMeta] arbeitet welle-frei und faellt bei
+ * fehlender ID auf die Titelsuche zurueck.
+ */
+@Singleton
+class TmdbMetaRepository @Inject constructor(
+    private val client: TmdbMetaClient,
+    private val discoverClient: TmdbDiscoverClient,
+    private val cache: TmdbMetaCache,
+    private val normalizer: TitleNormalizer,
+    @Named("IO") private val ioDispatcher: CoroutineDispatcher
+) {
+
+    private companion object {
+        const val COALESCE_MS = 100L
+        const val WAVE_AWAIT_TIMEOUT_MS = 15_000L
+        const val MAX_PARALLEL = 8
+        val NUMERIC_ID = Regex("\\d+")
+        val PREFIX_PLUS = Regex("^([A-Za-z]{1,3}\\+)\\s+")
+        val PREFIX_LANG_DASH = Regex("^([A-Z]{2})\\s*[-–—:]\\s+")
+    }
+
+    private val _metaFlow = MutableStateFlow<Map<String, TmdbMeta>>(emptyMap())
+    val metaFlow: StateFlow<Map<String, TmdbMeta>> = _metaFlow.asStateFlow()
+
+    private val ensureMutex = Mutex()
+
+    /** Schuetzt nur Cache-Read/Write der Suche; der HTTP-Call laeuft bewusst ohne Lock. */
+    private val searchMutex = Mutex()
+
+    /** Serialisiert [refreshFlow], damit aeltere Aufrufe keinen neueren Flow-Stand ueberschreiben. */
+    private val refreshMutex = Mutex()
+
+    @Volatile
+    private var loaded = false
+
+    private val pendingMutex = Mutex()
+    private val pending = mutableSetOf<String>()
+    private var waveCompletion: CompletableDeferred<Unit>? = null
+
+    /** Globales Request-Limit ueber alle Wellen hinweg. */
+    private val waveSemaphore = Semaphore(MAX_PARALLEL)
+
+    /** Laedt den Cache einmalig und fuellt [metaFlow]; idempotent und memoized. */
+    suspend fun ensureLoaded() {
+        if (loaded) return
+        ensureMutex.withLock {
+            if (loaded) return
+            refreshFlow()
+            loaded = true
+        }
+    }
+
+    /** Grid-Pfad: frischer/negativ-frischer Cache-Hit kehrt sofort zurueck, sonst koaleszierte Welle. */
+    suspend fun request(kind: String, tmdbId: String) {
+        if (!NUMERIC_ID.matches(tmdbId)) return
+        ensureLoaded()
+
+        val key = metaKey(kind, tmdbId)
+        val now = now()
+        val entry = cache.loadAll()[key]
+        if (entry != null) {
+            if (TmdbMetaCache.isFresh(entry, now)) return
+            if (isNegativeFresh(entry, now)) return
+        }
+        coalescedFetch(key)
+    }
+
+    /**
+     * Karten-Zustand fuer die UI: unterscheidet "kein Treffer" (negativ gecacht) von
+     * "noch unterwegs" (Netzwerk-Puffer), damit Chips nicht endlos pulsieren.
+     * Numerische tmdbId laeuft ueber [request]; sonst ueber [resolveCardMeta]s Titelsuche.
+     * Fehlen ID und Titel, gibt es nichts zu holen und das Ergebnis ist [TmdbCardState.Negative].
+     */
+    suspend fun cardMetaState(
+        kind: String,
+        tmdbId: String?,
+        title: String?,
+        year: Int?
+    ): TmdbCardState {
+        ensureLoaded()
+
+        if (tmdbId != null && NUMERIC_ID.matches(tmdbId)) {
+            val key = metaKey(kind, tmdbId)
+            request(kind, tmdbId)
+            val meta = metaFlow.value[key]
+            if (meta != null) return TmdbCardState.Meta(meta)
+            val entry = cache.loadAll()[key]
+            return if (entry != null && isNegativeFresh(entry, now())) {
+                TmdbCardState.Negative
+            } else {
+                TmdbCardState.Transient
+            }
+        }
+
+        if (title.isNullOrBlank()) return TmdbCardState.Negative
+
+        val meta = resolveCardMeta(kind, title, year, tmdbId)
+        if (meta != null) return TmdbCardState.Meta(meta)
+
+        val (clean, titleYear) = normalizer.normalize(stripCatalogPrefixes(title))
+        if (clean.isBlank()) return TmdbCardState.Negative
+        val queryYear = year ?: titleYear
+        val entry = cache.loadAll()[searchKey(kind, clean, queryYear)]
+        return if (entry != null && isNegativeFresh(entry, now())) {
+            TmdbCardState.Negative
+        } else {
+            TmdbCardState.Transient
+        }
+    }
+
+    /**
+     * Strippt Katalog-Praefixe von Release-Groups vor der Normalisierung, max. zwei Runden:
+     * "A+ Luck (2022)" -> "Luck (2022)", "D+ Loki (2021)" -> "Loki (2021)",
+     * "EN - The Handmaid's Tale (2017)" -> "The Handmaid's Tale (2017)".
+     * "E.T. (1982)" matcht nicht: der zweite Buchstabe ist ein Punkt, kein Buchstabe+Leerzeichen.
+     */
+    private fun stripCatalogPrefixes(title: String): String {
+        var text = title
+        repeat(2) {
+            val stripped = PREFIX_LANG_DASH.replace(PREFIX_PLUS.replace(text, ""), "")
+            if (stripped == text) return text
+            text = stripped
+        }
+        return text
+    }
+
+    /**
+     * Karten-Pfad: numerische tmdbId laeuft direkt, sonst strikter Title-Match ueber die Suche.
+     * Die Suche selbst laeuft nicht durch den Leader-Drain; [searchMutex] schuetzt nur den
+     * Cache-Zugriff. Der Netz-Call laeuft ohne Lock, damit unabhaengige Titel nicht serialisiert
+     * werden; ein Doppel-Fetch bei gleichen Titeln ist bewusst akzeptiert.
+     */
+    suspend fun resolveCardMeta(
+        kind: String,
+        title: String,
+        year: Int?,
+        tmdbId: String?
+    ): TmdbMeta? {
+        ensureLoaded()
+
+        if (tmdbId != null && NUMERIC_ID.matches(tmdbId)) {
+            return resolveCardMetaById(kind, tmdbId)
+        }
+
+        val (clean, titleYear) = normalizer.normalize(stripCatalogPrefixes(title))
+        if (clean.isBlank()) return null
+
+        // Wie im Detail-Pfad: explizites Jahr gewinnt, sonst das Jahr aus dem Titel.
+        val queryYear = year ?: titleYear
+        val key = searchKey(kind, clean, queryYear)
+
+        when (val cacheResult = freshSearchCacheResult(key, kind)) {
+            is SearchCacheResult.Done -> return cacheResult.meta
+            SearchCacheResult.NotCached -> Unit
+        }
+
+        val resolvedId = resolveSearchId(kind, clean, queryYear, key)
+        return resolvedId?.let { requestResolved(kind, it) }
+    }
+
+    private suspend fun resolveCardMetaById(kind: String, tmdbId: String): TmdbMeta? {
+        val key = metaKey(kind, tmdbId)
+        val now = now()
+        val entry = cache.loadAll()[key]
+        if (entry != null) {
+            if (TmdbMetaCache.isFresh(entry, now)) return entry.meta
+            if (isNegativeFresh(entry, now)) return null
+        }
+        request(kind, tmdbId)
+        return metaFlow.value[key]
+    }
+
+    /** Zwischenergebnis von [freshSearchCacheResult]: [Done] liefert direkt, [NotCached] faellt auf die Suche zurueck. */
+    private sealed class SearchCacheResult {
+        data class Done(val meta: TmdbMeta?) : SearchCacheResult()
+        data object NotCached : SearchCacheResult()
+    }
+
+    private suspend fun freshSearchCacheResult(key: String, kind: String): SearchCacheResult {
+        val now = now()
+        val cached = cache.loadAll()[key]
+        if (cached == null) return SearchCacheResult.NotCached
+        if (isNegativeFresh(cached, now)) return SearchCacheResult.Done(null)
+        if (TmdbMetaCache.isFresh(cached, now)) {
+            val resolvedId = cached.meta?.tmdbId ?: return SearchCacheResult.Done(null)
+            return SearchCacheResult.Done(requestResolved(kind, resolvedId))
+        }
+        return SearchCacheResult.NotCached
+    }
+
+    /** Zweiter Cache-Check unter Lock, sonst Netz-Suche; liefert die aufgeloeste tmdbId oder null. */
+    private suspend fun resolveSearchId(kind: String, clean: String, queryYear: Int?, key: String): Int? {
+        // Zweiter Cache-Check: nur der Read laeuft unter dem Lock, danach ist er sofort frei.
+        val (cacheHit, cachedId) = searchMutex.withLock {
+            val current = cache.loadAll()[key]
+            val lockNow = now()
+            when {
+                current != null && isNegativeFresh(current, lockNow) -> true to null
+                current != null && TmdbMetaCache.isFresh(current, lockNow) -> true to current.meta?.tmdbId
+                else -> false to null
+            }
+        }
+
+        if (cacheHit) return cachedId
+
+        // Netz-Call bewusst ohne searchMutex: unabhaengige Suchen laufen parallel.
+        return when (val result = client.searchCandidates(kind, clean, queryYear)) {
+            is FetchResult.Data -> resolveFromSearchCandidates(result.value, clean, queryYear, key)
+            FetchResult.Negative -> {
+                searchMutex.withLock {
+                    cache.putAll(mapOf(key to negativeSearchEntry()))
+                    refreshFlow()
+                }
+                null
+            }
+            FetchResult.Transient -> null
+        }
+    }
+
+    private suspend fun resolveFromSearchCandidates(
+        candidates: List<TmdbSearchCandidate>,
+        clean: String,
+        queryYear: Int?,
+        key: String
+    ): Int? {
+        val match = candidates.firstOrNull { candidate ->
+            normalizer.normalize(candidate.title).first == clean &&
+                yearMatches(queryYear, candidate.year)
+        }
+        if (match == null) {
+            searchMutex.withLock {
+                cache.putAll(mapOf(key to negativeSearchEntry()))
+                refreshFlow()
+            }
+            return null
+        }
+        val id = match.tmdbId.toInt()
+        // Positiver Search-Key haelt nur die aufgeloeste tmdbId, nicht die Details.
+        searchMutex.withLock {
+            cache.putAll(
+                mapOf(
+                    key to TmdbMetaCacheEntry(
+                        meta = resolvedMeta(id),
+                        fetchedAtMs = now(),
+                        negative = false
+                    )
+                )
+            )
+            refreshFlow()
+        }
+        return id
+    }
+
+    /** Detail-Fetch nach aufgeloester Suche; laeuft bewusst durch Koaleszenz/Semaphore. */
+    private suspend fun requestResolved(kind: String, tmdbId: Int): TmdbMeta? {
+        val id = tmdbId.toString()
+        request(kind, id)
+        return metaFlow.value[metaKey(kind, id)]
+    }
+
+    /**
+     * ±1 Jahr: TMDB fuehrt haeufig das Premieren-/Festivaljahr, der Katalog das Release-Jahr.
+     * Mehr Abweichung gilt als anderer Film; fehlendes Kandidaten-Jahr matcht nie.
+     */
+    private fun yearMatches(queryYear: Int?, candidateYear: Int?): Boolean {
+        if (queryYear == null) return true
+        if (candidateYear == null) return false
+        return abs(candidateYear - queryYear) <= 1
+    }
+
+    private fun resolvedMeta(tmdbId: Int): TmdbMeta =
+        TmdbMeta(tmdbId = tmdbId, rating = 0.0, voteCount = 0, genres = emptyList())
+
+    /** Erkennt den synthetischen Platzhalter aus [resolvedMeta], der kein echtes Detail-Meta ist. */
+    private fun isSyntheticMeta(meta: TmdbMeta?): Boolean =
+        meta != null && meta.rating == 0.0 && meta.voteCount == 0 && meta.genres.isEmpty()
+
+    private fun negativeSearchEntry(): TmdbMetaCacheEntry =
+        TmdbMetaCacheEntry(meta = null, fetchedAtMs = now(), negative = true)
+
+    /**
+     * Reverse-Index aus den Card-Search-Keys (T13); kein Netz, nur gecachte Resolves.
+     *
+     * Pro Item werden ID, Titel und Jahr ueber die Selektoren gelesen, der Search-Key wie im
+     * Karten-Pfad gebildet und gegen den Cache geprueft. Positive Treffer zaehlen auch, wenn sie
+     * stale sind; negative Eintraege werden ignoriert.
+     * Rueckgabe: streamId -> tmdbId ausschliesslich fuer aufgeloeste Items.
+     */
+    suspend fun <T> cachedResolvedIds(
+        kind: String,
+        items: List<T>,
+        idSelector: (T) -> Int,
+        titleSelector: (T) -> String,
+        yearSelector: (T) -> Int?
+    ): Map<Int, Int> {
+        ensureLoaded()
+        val snapshot = cache.loadAll()
+        val result = LinkedHashMap<Int, Int>()
+        for (item in items) {
+            val streamId = idSelector(item)
+            val title = titleSelector(item)
+            val year = yearSelector(item)
+            val (clean, titleYear) = normalizer.normalize(stripCatalogPrefixes(title))
+            if (clean.isBlank()) continue
+            val entry = snapshot[searchKey(kind, clean, year ?: titleYear)] ?: continue
+            if (entry.negative) continue
+            val tmdbId = entry.meta?.tmdbId ?: continue
+            result[streamId] = tmdbId
+        }
+        return result
+    }
+
+    /**
+     * Detail-Pfad. Mit numerischer ID wird direkt geladen, sonst ueber die Suche.
+     * Transiente Fehler liefern die stale Meta zurueck, sofern vorhanden.
+     */
+    suspend fun detailMeta(
+        kind: String,
+        tmdbId: String?,
+        title: String,
+        year: Int?
+    ): TmdbMeta? {
+        ensureLoaded()
+
+        if (tmdbId != null && NUMERIC_ID.matches(tmdbId)) {
+            val key = metaKey(kind, tmdbId)
+            val now = now()
+            val entry = cache.loadAll()[key]
+            if (entry != null) {
+                if (TmdbMetaCache.isFresh(entry, now)) return entry.meta
+                if (isNegativeFresh(entry, now)) return null
+            }
+            return fetchSingle(key, kind, tmdbId, stale = entry?.meta)
+        }
+
+        return searchDetail(kind, title, year)
+    }
+
+    private suspend fun searchDetail(kind: String, title: String, year: Int?): TmdbMeta? {
+        val (clean, titleYear) = normalizer.normalize(stripCatalogPrefixes(title))
+        if (clean.isBlank()) return null
+
+        val queryYear = year ?: titleYear
+        val searchKey = searchKey(kind, clean, queryYear)
+        val now = now()
+        val cached = cache.loadAll()[searchKey]
+        if (cached != null) {
+            // Synthetische Resolve-Marker (aus cardMetaState) sind kein Detail-Ergebnis:
+            // bei frischem, synthetischem Treffer wird regulaer nachgesucht/-gefetcht.
+            if (TmdbMetaCache.isFresh(cached, now) && !isSyntheticMeta(cached.meta)) {
+                return cached.meta
+            }
+            if (isNegativeFresh(cached, now)) return null
+        }
+
+        val result = if (kind == "movie") {
+            client.searchMovieId(clean, queryYear)
+        } else {
+            client.searchTvId(clean, queryYear)
+        }
+
+        return when (result) {
+            is TmdbResult.Data -> {
+                val id = result.value.toString()
+                val key = metaKey(kind, id)
+                val stale = cache.loadAll()[key]?.meta
+                val entry = fetchMetaEntry(kind, id)
+                    ?: return stale
+                val fetchedAt = now()
+                val writes = LinkedHashMap<String, TmdbMetaCacheEntry>()
+                writes[key] = entry.copy(fetchedAtMs = fetchedAt)
+                // Positives Suchergebnis auch am Search-Key ablegen: kuenftige Lookups treffen ohne Suche.
+                if (!entry.negative && entry.meta != null) {
+                    writes[searchKey] = entry.copy(fetchedAtMs = fetchedAt)
+                }
+                cache.putAll(writes)
+                refreshFlow()
+                entry.meta
+            }
+            TmdbResult.Negative -> {
+                cache.putAll(
+                    mapOf(
+                        searchKey to TmdbMetaCacheEntry(
+                            meta = null,
+                            fetchedAtMs = now(),
+                            negative = true
+                        )
+                    )
+                )
+                refreshFlow()
+                null
+            }
+            TmdbResult.Transient -> null
+        }
+    }
+
+    /** Einzel-Fetch ohne Koaleszenz; haelt bei Transient die vorhandene Stale-Meta unveraendert. */
+    private suspend fun fetchSingle(
+        key: String,
+        kind: String,
+        tmdbId: String,
+        stale: TmdbMeta?
+    ): TmdbMeta? {
+        val entry = fetchMetaEntry(kind, tmdbId) ?: return stale
+        cache.putAll(mapOf(key to entry.copy(fetchedAtMs = now())))
+        refreshFlow()
+        return entry.meta
+    }
+
+    /**
+     * Leader-Drain: der erste Caller wartet [COALESCE_MS], sammelt dann einmalig alle
+     * Pending-Keys und fetcht die gesammelten Keys. Drain und `waveCompletion = null`
+     * laufen unter derselben [pendingMutex], damit ein Caller nach dem Drain Leader
+     * einer neuen Welle wird statt Follower einer bereits abgeschlossenen. Die Welle
+     * wird erst NACH dem Fetch abgeschlossen, damit Followers erst resumen, wenn ihre
+     * Daten im Cache/Flow sind. Schlaegt Fetch oder Drain fehl, schliesst ausschliesslich
+     * das nach dem Drain gepackte Deferred exceptional ab - der Fehler einer Welle kann
+     * keine fremde (neue) Welle mehr treffen.
+     *
+     * Stirbt der Leader bereits im Delay-Fenster (Cancellation), wird die Welle unter
+     * [pendingMutex] geschlossen: `waveCompletion` wird genullt und `pending` geleert,
+     * das Deferred wird exceptional abgeschlossen, damit wartende Followers sauber
+     * canceln statt ewig zu haengen.
+     *
+     * Sicherheitsnetz: Selbst wenn ein Leader-Coroutine-Tod ein Fenster laesst, kehren
+     * Followers nach [WAVE_AWAIT_TIMEOUT_MS] zurueck (Skeleton wird resolved, Fallback
+     * greift). Die Fenster Delay-Abbruch und Fetch-Fehler sind bereits strukturell
+     * abgedeckt (R8/R7).
+     */
+    private suspend fun coalescedFetch(key: String) {
+        val completion: CompletableDeferred<Unit>
+        val isLeader: Boolean
+        pendingMutex.withLock {
+            val activeWave = waveCompletion
+            completion = activeWave ?: CompletableDeferred<Unit>().also { waveCompletion = it }
+            isLeader = activeWave == null
+            pending += key
+        }
+
+        if (!isLeader) {
+            withTimeoutOrNull(WAVE_AWAIT_TIMEOUT_MS) { completion.await() }
+            return
+        }
+
+        // Muss ausserhalb des try stehen, damit der catch-Zweig das gepackte Deferred sieht.
+        var done: CompletableDeferred<Unit>? = null
+        try {
+            delay(COALESCE_MS)
+        } catch (ce: CancellationException) {
+            pendingMutex.withLock {
+                val d = waveCompletion
+                waveCompletion = null
+                pending.clear()
+                d
+            }?.completeExceptionally(ce)
+            throw ce
+        }
+        try {
+            // Nach dem Drain gehoert das Deferred ausschliesslich dieser Welle; der Fehlerpfad
+            // darf waveCompletion nicht mehr lesen, sonst bricht er eine fremde Welle ab.
+            val (keys, packed) = pendingMutex.withLock {
+                val k = pending.toList().also { pending.clear() }
+                val d = waveCompletion
+                waveCompletion = null
+                k to d
+            }
+            done = packed
+            fetchWave(keys)
+            done?.complete(Unit)
+        } catch (e: Throwable) {
+            done?.completeExceptionally(e)
+            throw e
+        }
+    }
+
+    /** Baut die Update-Map der Welle in einem Zug und refresht den Flow danach einmal. */
+    private suspend fun fetchWave(keys: Collection<String>) = withContext(ioDispatcher) {
+        val updates = coroutineScope {
+            keys.distinct()
+                .map { key ->
+                    async {
+                        waveSemaphore.withPermit { fetchEntry(key) }
+                    }
+                }
+                .awaitAll()
+        }.filterNotNull().toMap()
+
+        if (updates.isNotEmpty()) {
+            cache.putAll(updates)
+            refreshFlow()
+        }
+    }
+
+    /** Prueft den Key erneut und liefert nur bei tatsaechlichem Fetch einen Cache-Eintrag. */
+    private suspend fun fetchEntry(key: String): Pair<String, TmdbMetaCacheEntry>? {
+        val now = now()
+        val existing = cache.loadAll()[key]
+        if (existing != null) {
+            if (TmdbMetaCache.isFresh(existing, now)) return null
+            if (isNegativeFresh(existing, now)) return null
+        }
+
+        val separator = key.indexOf(':')
+        if (separator <= 0 || separator == key.lastIndex) return null
+        val kind = key.substring(0, separator)
+        val tmdbId = key.substring(separator + 1)
+
+        return fetchMetaEntry(kind, tmdbId)?.let { key to it }
+    }
+
+    private suspend fun fetchMetaEntry(kind: String, tmdbId: String): TmdbMetaCacheEntry? {
+        val result = if (kind == "movie") {
+            client.movieMeta(tmdbId)
+        } else {
+            client.tvMeta(tmdbId)
+        }
+        val fetchedAt = now()
+        return when (result) {
+            is TmdbResult.Data -> TmdbMetaCacheEntry(meta = result.value, fetchedAtMs = fetchedAt)
+            TmdbResult.Negative ->
+                TmdbMetaCacheEntry(meta = null, fetchedAtMs = fetchedAt, negative = true)
+            TmdbResult.Transient -> null
+        }
+    }
+
+    /** Top-bewertete tmdbIds pro Genre-Set, 24h gecacht, stale-fallback bei Transient. */
+    suspend fun discoverMovieIds(genreIds: List<Int>, pages: Int = 2): List<Int> =
+        discoverIds("movie", genreIds, pages)
+
+    suspend fun discoverTvIds(genreIds: List<Int>, pages: Int = 2): List<Int> =
+        discoverIds("tv", genreIds, pages)
+
+    /** Recommendations eines Anchors, 24h gecacht. */
+    suspend fun recommendationsFor(kind: String, tmdbId: String): List<Int> {
+        val key = "discover:rec:$kind:$tmdbId"
+        val now = now()
+        val entry = cache.loadAll()[key]
+        if (entry != null) {
+            if (entry.discoverIds != null && TmdbMetaCache.isFresh(entry, now)) {
+                return entry.discoverIds
+            }
+            if (isNegativeFresh(entry, now)) return emptyList()
+        }
+
+        val result = if (kind == "movie") {
+            discoverClient.movieRecommendations(tmdbId)
+        } else {
+            discoverClient.tvRecommendations(tmdbId)
+        }
+        return when (result) {
+            is TmdbResult.Data -> {
+                cache.putAll(mapOf(key to discoverEntry(result.value)))
+                result.value
+            }
+            TmdbResult.Negative -> {
+                cache.putAll(mapOf(key to negativeDiscoverEntry()))
+                emptyList()
+            }
+            TmdbResult.Transient -> entry?.discoverIds ?: emptyList()
+        }
+    }
+
+    /**
+     * Movie-Recommendations mit Titel und Release-Datum fuer den direkten Katalog-Match.
+     *
+     * Eigener Key `discover:rect:$kind:$tmdbId`, weil [TmdbMetaCacheEntry] neben
+     * [TmdbMetaCacheEntry.discoverIds] auch [TmdbMetaCacheEntry.recItems] traegt: derselbe
+     * 24-h-/Negative-Vertrag wie [recommendationsFor], aber ohne die ID-Liste zu ueberschreiben.
+     * Nur der Movie-Pfad ist ausgepraegt; TV liefert eine leere Liste (Serien-Recs laufen
+     * weiterhin ueber [recommendationsFor] und den tmdbId-Index).
+     */
+    suspend fun recommendationTitlesFor(kind: String, tmdbId: String): TmdbResult<List<TmdbRecItem>> {
+        if (kind != "movie") return TmdbResult.Data(emptyList())
+
+        val key = "discover:rect:$kind:$tmdbId"
+        val now = now()
+        val entry = cache.loadAll()[key]
+        if (entry != null) {
+            if (entry.recItems != null && TmdbMetaCache.isFresh(entry, now)) {
+                return TmdbResult.Data(entry.recItems)
+            }
+            if (isNegativeFresh(entry, now)) return TmdbResult.Negative
+        }
+
+        return when (val result = discoverClient.movieRecommendationTitles(tmdbId)) {
+            is TmdbResult.Data -> {
+                cache.putAll(mapOf(key to recTitlesEntry(result.value)))
+                TmdbResult.Data(result.value)
+            }
+            TmdbResult.Negative -> {
+                cache.putAll(mapOf(key to negativeRecTitlesEntry()))
+                TmdbResult.Negative
+            }
+            TmdbResult.Transient -> entry?.recItems?.let { TmdbResult.Data(it) } ?: TmdbResult.Transient
+        }
+    }
+
+    /** Fetcht Pages sequenziell; Negative/leer bricht ab, Transient liefert stale IDs. */
+    private suspend fun discoverIds(kind: String, genreIds: List<Int>, pages: Int): List<Int> {
+        // Sortiert-distinct, damit ("28","18") und ("18","28") denselben Key treffen.
+        val genreKey = genreIds.distinct().sorted().joinToString("|")
+        val ids = mutableListOf<Int>()
+
+        for (page in 1..pages) {
+            val key = "discover:$kind:$genreKey:$page"
+            val now = now()
+            val entry = cache.loadAll()[key]
+            if (entry != null) {
+                if (entry.discoverIds != null && TmdbMetaCache.isFresh(entry, now)) {
+                    ids += entry.discoverIds
+                    continue
+                }
+                if (isNegativeFresh(entry, now)) break
+            }
+
+            val result = if (kind == "movie") {
+                discoverClient.discoverMovies(genreIds, page)
+            } else {
+                discoverClient.discoverTv(genreIds, page)
+            }
+            when (result) {
+                is TmdbResult.Data -> {
+                    cache.putAll(mapOf(key to discoverEntry(result.value)))
+                    ids += result.value
+                }
+                TmdbResult.Negative -> {
+                    cache.putAll(mapOf(key to negativeDiscoverEntry()))
+                    break
+                }
+                TmdbResult.Transient -> {
+                    entry?.discoverIds?.let { ids += it }
+                    return ids
+                }
+            }
+        }
+        return ids
+    }
+
+    private fun discoverEntry(ids: List<Int>): TmdbMetaCacheEntry =
+        TmdbMetaCacheEntry(discoverIds = ids, fetchedAtMs = now(), meta = null, negative = false)
+
+    private fun negativeDiscoverEntry(): TmdbMetaCacheEntry =
+        TmdbMetaCacheEntry(discoverIds = null, fetchedAtMs = now(), meta = null, negative = true)
+
+    private fun recTitlesEntry(items: List<TmdbRecItem>): TmdbMetaCacheEntry =
+        TmdbMetaCacheEntry(recItems = items, fetchedAtMs = now(), meta = null, negative = false)
+
+    private fun negativeRecTitlesEntry(): TmdbMetaCacheEntry =
+        TmdbMetaCacheEntry(recItems = null, fetchedAtMs = now(), meta = null, negative = true)
+
+    private suspend fun refreshFlow() {
+        refreshMutex.withLock {
+            _metaFlow.value = cache.loadAll()
+                .mapNotNull { (key, entry) ->
+                    val meta = entry.meta
+                    if (!entry.negative && meta != null) key to meta else null
+                }
+                .toMap()
+        }
+    }
+
+    private fun metaKey(kind: String, tmdbId: String): String = "$kind:$tmdbId"
+
+    // clean kann ein "|" enthalten (TitleNormalizer strippt nur \p{P}, "|" ist Sm) und wuerde
+    // sonst mit dem "$clean|$year"-Trennzeichen von makeKey kollidieren.
+    private fun searchKey(kind: String, clean: String, year: Int?): String =
+        "search:$kind:${normalizer.makeKey(clean.replace("|", " "), year)}"
+
+    private fun isNegativeFresh(entry: TmdbMetaCacheEntry, nowMs: Long): Boolean =
+        entry.negative && nowMs - entry.fetchedAtMs < TmdbMetaCache.TTL_MS
+
+    private fun now(): Long = System.currentTimeMillis()
+}

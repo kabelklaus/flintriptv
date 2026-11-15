@@ -3,7 +3,6 @@ package com.flintr.tv.data.local
 import android.content.Context
 import androidx.core.content.edit
 import androidx.test.core.app.ApplicationProvider
-import com.flintr.tv.data.local.imdb.ImdbEnrichmentService
 import com.flintr.tv.data.model.Category
 import com.flintr.tv.data.model.VodStream
 import com.flintr.tv.data.model.testLiveStream
@@ -14,7 +13,6 @@ import com.squareup.moshi.JsonReader
 import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
-import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
@@ -49,14 +47,9 @@ class DataCacheServicePersistenceTest {
     private val series = listOf(testSeries(name = "Serie", seriesId = 10))
     private val categories = listOf(Category(categoryId = "5", categoryName = "Kategorie"))
 
-    // relaxed mock -> isAvailable=false (Boolean default), ensureLoaded() ist ein No-Op:
-    // Enrichment ist fuer diese generischen Persistenz-Tests nicht der Testgegenstand,
-    // siehe DataCacheServiceEnrichmentTest fuer die Merge-Regeln.
-    private fun newImdbEnrichmentService(): ImdbEnrichmentService = mockk(relaxed = true)
-
     @Before
     fun setUp() {
-        service = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        service = DataCacheService(context, moshi, Dispatchers.Unconfined)
         service.clearCache()
     }
 
@@ -269,7 +262,6 @@ class DataCacheServicePersistenceTest {
             context,
             Moshi.Builder().add(probe).build(),
             Dispatchers.Unconfined,
-            newImdbEnrichmentService()
         )
 
         val first = reader.loadCachedDataAsync()
@@ -342,7 +334,7 @@ class DataCacheServicePersistenceTest {
             putString("iptv_cache_timestamp", "keep-me")
         }
 
-        DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        DataCacheService(context, moshi, Dispatchers.Unconfined)
 
         legacyJsonKeys.forEach { assertFalse("$it should be purged", prefs().contains(it)) }
         assertEquals("keep-me", prefs().getString("iptv_cache_timestamp", null))
@@ -362,7 +354,7 @@ class DataCacheServicePersistenceTest {
         assertTrue(saveDefaults())
         // Fresh instance: no memoized data, counts still in prefs, files gone
         cacheDir.deleteRecursively()
-        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined)
 
         assertNull(fresh.loadCachedData())
     }
@@ -370,7 +362,7 @@ class DataCacheServicePersistenceTest {
     @Test
     fun `loadCachedData liest Dateien in neuer Instanz`() {
         assertTrue(saveDefaults())
-        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined)
 
         val cached = fresh.loadCachedData()
 
@@ -411,7 +403,7 @@ class DataCacheServicePersistenceTest {
         )
         assertEquals(listAdapter.toJson(manyMovies), File(cacheDir, "movies.json").readText())
 
-        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined)
         assertEquals(manyMovies.map { it.streamId }, fresh.loadCachedData()?.movies?.map { it.streamId })
     }
 
@@ -429,7 +421,7 @@ class DataCacheServicePersistenceTest {
         assertTrue(saveDefaults())
         val orphan = File(cacheDir, "movies.json.tmp").apply { writeText("[") }
 
-        DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        DataCacheService(context, moshi, Dispatchers.Unconfined)
 
         assertFalse(orphan.exists())
         assertTrue(File(cacheDir, "movies.json").isFile)
@@ -441,7 +433,7 @@ class DataCacheServicePersistenceTest {
         assertEquals(DataCacheService.CACHE_VERSION, prefs().getInt(DataCacheService.KEY_CACHE_VERSION, -1))
         prefs().edit { putInt(DataCacheService.KEY_CACHE_VERSION, DataCacheService.CACHE_VERSION - 1) }
 
-        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined)
 
         assertFalse(cacheDir.exists())
         assertFalse(fresh.hasCacheData())
@@ -454,7 +446,7 @@ class DataCacheServicePersistenceTest {
         assertTrue(saveDefaults())
         prefs().edit { remove(DataCacheService.KEY_CACHE_VERSION) }
 
-        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined)
 
         assertEquals(listOf(1), fresh.loadCachedData()?.movies?.map { it.streamId })
     }
@@ -501,11 +493,11 @@ class DataCacheServicePersistenceTest {
         val callerThread = Thread.currentThread().name
         try {
             runBlocking {
-                val writer = DataCacheService(context, probedMoshi, io, newImdbEnrichmentService())
+                val writer = DataCacheService(context, probedMoshi, io)
                 assertTrue(
                     writer.saveCachedData(channels, movies, series, categories, emptyList(), emptyList())
                 )
-                val reader = DataCacheService(context, probedMoshi, io, newImdbEnrichmentService())
+                val reader = DataCacheService(context, probedMoshi, io)
                 assertEquals(listOf(1), reader.loadMoviesByIds(listOf(1))?.map { it.streamId })
                 assertEquals(listOf(1), reader.loadCachedDataAsync()?.movies?.map { it.streamId })
             }
@@ -523,10 +515,10 @@ class DataCacheServicePersistenceTest {
         val probe = VodStreamProbe()
         val probedMoshi = Moshi.Builder().add(probe).build()
         val manyMovies = (1..57_000).map { testVodStream(name = "Film $it", streamId = it) }
-        val writer = DataCacheService(context, probedMoshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        val writer = DataCacheService(context, probedMoshi, Dispatchers.Unconfined)
         assertTrue(writer.saveCachedData(channels, manyMovies, series, categories, emptyList(), emptyList()))
 
-        val reader = DataCacheService(context, probedMoshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        val reader = DataCacheService(context, probedMoshi, Dispatchers.Unconfined)
         val wanted = listOf(57_000, 1, 28_500, 99_999)
 
         // No memo yet: streamed from the file, only the matches are kept.
@@ -552,7 +544,7 @@ class DataCacheServicePersistenceTest {
         File(cacheDir, "movies.json").writeText("""[null,$first,null,$second]""")
 
         // Fresh instance so the memoized catalog cannot mask the file content.
-        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+        val fresh = DataCacheService(context, moshi, Dispatchers.Unconfined)
         val cached = fresh.loadCachedData()
 
         assertEquals(listOf(1, 2), cached?.movies?.map { it.streamId })
@@ -565,11 +557,11 @@ class DataCacheServicePersistenceTest {
         val probedMoshi = Moshi.Builder().add(probe).build()
         val manyMovies = (1..5_000).map { testVodStream(name = "Film $it", streamId = it) }
         runBlocking {
-            DataCacheService(context, probedMoshi, Dispatchers.Unconfined, newImdbEnrichmentService())
+            DataCacheService(context, probedMoshi, Dispatchers.Unconfined)
                 .saveCachedData(channels, manyMovies, series, categories, emptyList(), emptyList())
         }
         val executor = Executors.newFixedThreadPool(4)
-        val reader = DataCacheService(context, probedMoshi, executor.asCoroutineDispatcher(), newImdbEnrichmentService())
+        val reader = DataCacheService(context, probedMoshi, executor.asCoroutineDispatcher())
         probe.parsed.set(0)
         try {
             val results = runBlocking {

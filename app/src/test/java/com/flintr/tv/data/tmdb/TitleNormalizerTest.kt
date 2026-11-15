@@ -1,10 +1,10 @@
-package com.flintr.tv.data.local.imdb
+package com.flintr.tv.data.tmdb
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** Table-driven parity test mirroring `tools/imdb_enrichment/test_normalize.py`. */
-class ImdbKeyNormalizerTest {
+/** Table-driven test for [TitleNormalizer]. */
+class TitleNormalizerTest {
 
     data class Case(val raw: String, val expectedTitle: String, val expectedYear: Int?)
 
@@ -33,9 +33,9 @@ class ImdbKeyNormalizerTest {
     )
 
     @Test
-    fun `normalize matches python reference table`() {
+    fun `normalize matches reference table`() {
         cases.forEach { case ->
-            val (title, year) = ImdbKeyNormalizer.normalize(case.raw)
+            val (title, year) = TitleNormalizer.normalize(case.raw)
             assertEquals("title for '${case.raw}'", case.expectedTitle, title)
             assertEquals("year for '${case.raw}'", case.expectedYear, year)
         }
@@ -43,14 +43,14 @@ class ImdbKeyNormalizerTest {
 
     @Test
     fun `makeKey with year`() {
-        assertEquals("marley me|2008", ImdbKeyNormalizer.makeKey("marley me", 2008))
+        assertEquals("marley me|2008", TitleNormalizer.makeKey("marley me", 2008))
     }
 
     @Test
     fun `makeKey without year`() {
         assertEquals(
             "beverly hills cop axel f|",
-            ImdbKeyNormalizer.makeKey("beverly hills cop axel f", null)
+            TitleNormalizer.makeKey("beverly hills cop axel f", null)
         )
     }
 }

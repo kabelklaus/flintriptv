@@ -165,7 +165,7 @@ class PlaybackSettingsRepository @Inject constructor(
     }
 
     fun isAutoPlayNextEnabled(): Boolean =
-        prefs.getBoolean(KEY_AUTO_PLAY_NEXT, false)
+        prefs.getBoolean(KEY_AUTO_PLAY_NEXT, true)
 
     fun setAutoPlayNextEnabled(enabled: Boolean) {
         prefs.edit { putBoolean(KEY_AUTO_PLAY_NEXT, enabled) }

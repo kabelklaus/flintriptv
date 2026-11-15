@@ -1,16 +1,14 @@
 package com.flintr.tv.data.model
 
-import com.flintr.tv.data.local.imdb.ImdbEnrichment
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Detail-Mapping: Genre und Rating kommen EXKLUSIV aus dem IMDb-Enrichment
- * (Chris-Spec 30.10.). Ohne Match bleiben beide null — die Xtream-Werte aus
- * get_vod_info duerfen niemals in die Anzeige-Daten durchsickern.
+ * Detail-Mapping: Genre und Rating kommen EXKLUSIV aus TMDB und bleiben beim
+ * Basis-Mapping null — die Xtream-Werte aus get_vod_info duerfen niemals in die
+ * Anzeige-Daten durchsickern.
  */
 class DetailDisplayDataTest {
 
@@ -33,25 +31,8 @@ class DetailDisplayDataTest {
     )
 
     @Test
-    fun `with imdb match genres and rating are taken from enrichment`() {
-        val enrichment = ImdbEnrichment(
-            rating = 8.8,
-            numVotes = 2_500_000,
-            genres = listOf("Action", "Sci-Fi", "Thriller")
-        )
-
-        val detail = mapVodInfoToDetail(xtreamInfo, imdbLookup = { enrichment })
-
-        assertEquals(listOf("Action", "Sci-Fi", "Thriller"), detail?.genres)
-        assertEquals(8.8, detail?.rating ?: Double.NaN, 0.0)
-        // Xtream-Werte duerfen nicht durchschlagen.
-        assertFalse(detail?.genres?.contains("Science Fiction") == true)
-        assertFalse(detail?.rating == 9.9)
-    }
-
-    @Test
-    fun `without imdb match genre and rating stay null`() {
-        val detail = mapVodInfoToDetail(xtreamInfo, imdbLookup = { null })
+    fun `without tmdb meta genre and rating stay null`() {
+        val detail = mapVodInfoToDetail(xtreamInfo)
 
         assertNull(detail?.genres)
         assertNull(detail?.rating)
@@ -59,7 +40,7 @@ class DetailDisplayDataTest {
 
     @Test
     fun `xtream fields are mapped for display`() {
-        val detail = mapVodInfoToDetail(xtreamInfo, imdbLookup = { null })
+        val detail = mapVodInfoToDetail(xtreamInfo)
 
         assertEquals("Inception", detail?.title)
         assertEquals("Ein Dieb stiehlt Traeume.", detail?.plot)
@@ -78,66 +59,26 @@ class DetailDisplayDataTest {
 
     @Test
     fun `runtime falls back to duration when runtime is missing`() {
-        val detail = mapVodInfoToDetail(xtreamInfo.copy(runtime = null), imdbLookup = { null })
+        val detail = mapVodInfoToDetail(xtreamInfo.copy(runtime = null))
 
         assertEquals("02:28:00", detail?.runtime)
     }
 
     @Test
     fun `poster falls back to cover_big`() {
-        val detail = mapVodInfoToDetail(xtreamInfo.copy(movieImage = null), imdbLookup = { null })
+        val detail = mapVodInfoToDetail(xtreamInfo.copy(movieImage = null))
 
         assertEquals("https://img/cover_big.jpg", detail?.posterUrl)
     }
 
     @Test
-    fun `lookup uses title and release year`() {
-        var lookupKey: String? = null
-
-        mapVodInfoToDetail(xtreamInfo) { key ->
-            lookupKey = key
-            null
-        }
-
-        assertEquals("Inception (2010)", lookupKey)
-    }
-
-    @Test
-    fun `year is not taken from inside a longer digit run`() {
-        var lookupKey: String? = null
-
-        mapVodInfoToDetail(xtreamInfo.copy(name = "Inception 120131", releasedate = "12013")) { key ->
-            lookupKey = key
-            null
-        }
-
-        assertEquals("Inception 120131", lookupKey)
-    }
-
-    @Test
-    fun `blank title skips imdb lookup`() {
-        var called = false
-
-        val detail = mapVodInfoToDetail(
-            xtreamInfo.copy(name = "  ", releasedate = null)
-        ) {
-            called = true
-            null
-        }
-
-        assertFalse(called)
-        assertNull(detail?.genres)
-        assertNull(detail?.rating)
-    }
-
-    @Test
     fun `null info yields null detail`() {
-        assertNull(mapVodInfoToDetail(null, imdbLookup = { null }))
+        assertNull(mapVodInfoToDetail(null))
     }
 
     @Test
     fun `empty cast string yields empty list`() {
-        val detail = mapVodInfoToDetail(xtreamInfo.copy(cast = "  "), imdbLookup = { null })
+        val detail = mapVodInfoToDetail(xtreamInfo.copy(cast = "  "))
 
         assertTrue(detail?.cast?.isEmpty() == true)
     }

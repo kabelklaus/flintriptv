@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.flintr.tv.ui.components.SkeletonBar
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
 import com.flintr.tv.ui.theme.tvFocusRing
@@ -71,6 +72,8 @@ data class DetailHeaderData(
     val watchLabel: String = "Ansehen",
     /** Playback progress (0-100) of the concrete watch target; null/0 hides the in-button bar. */
     val watchProgress: Float? = null,
+    /** True while the TMDB meta nachlauf is still in flight - [rating]/[genres] skeleton instead of a gap. */
+    val isMetaLoading: Boolean = false,
     val onWatch: () -> Unit,
     val onTrailer: () -> Unit,
     val onToggleWatchlist: () -> Unit
@@ -94,9 +97,9 @@ fun DetailHeaderSection(
     watchFocusRequester: FocusRequester,
     trailerFocusRequester: FocusRequester,
     watchlistFocusRequester: FocusRequester,
+    modifier: Modifier = Modifier,
     onButtonRowDown: (() -> Boolean)? = null,
-    scrollState: ScrollState? = null,
-    modifier: Modifier = Modifier
+    scrollState: ScrollState? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
     val overviewToggleFocusRequester = remember { FocusRequester() }
@@ -157,16 +160,20 @@ fun DetailHeaderSection(
             )
 
             val formattedMeta = formatMetaLine(data.meta)?.takeIf { it.isNotBlank() }
-            if (data.rating != null || formattedMeta != null) {
+            val hasGenres = !data.genres.isNullOrEmpty()
+            if (data.rating != null || formattedMeta != null || data.isMetaLoading) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(top = 15.dp)
                 ) {
-                    data.rating?.let { rating ->
-                        DetailImdbRating(rating = rating, testTag = "$testTagPrefix-rating")
+                    when {
+                        data.rating != null ->
+                            DetailImdbRating(rating = data.rating, testTag = "$testTagPrefix-rating")
+                        data.isMetaLoading ->
+                            SkeletonBar(width = 70.dp, height = 22.dp, modifier = Modifier.testTag("$testTagPrefix-rating-skeleton"))
                     }
                     formattedMeta?.let { meta ->
-                        if (data.rating != null) {
+                        if (data.rating != null || data.isMetaLoading) {
                             Box(modifier = Modifier.width(25.dp))
                         }
                         Text(
@@ -179,9 +186,9 @@ fun DetailHeaderSection(
                 }
             }
 
-            if (!data.genres.isNullOrEmpty()) {
+            if (hasGenres) {
                 Text(
-                    text = data.genres.joinToString(", "),
+                    text = data.genres.orEmpty().joinToString(", "),
                     color = Color.White,
                     fontSize = 14.sp,
                     maxLines = 1,
@@ -189,6 +196,14 @@ fun DetailHeaderSection(
                     modifier = Modifier
                         .padding(top = 5.dp)
                         .testTag("$testTagPrefix-genres")
+                )
+            } else if (data.isMetaLoading) {
+                SkeletonBar(
+                    width = 180.dp,
+                    height = 16.dp,
+                    modifier = Modifier
+                        .padding(top = 5.dp)
+                        .testTag("$testTagPrefix-genres-skeleton")
                 )
             }
 

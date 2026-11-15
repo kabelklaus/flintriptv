@@ -1,7 +1,10 @@
 package com.flintr.tv.ui.components.detail
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,16 +23,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -38,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.flintr.tv.data.model.Series
 import com.flintr.tv.data.model.VodStream
+import com.flintr.tv.ui.theme.CardTitleStyle
 import com.flintr.tv.ui.theme.DarkColors
 import com.flintr.tv.ui.theme.Dimensions
 import com.flintr.tv.ui.theme.appColors
@@ -51,7 +61,7 @@ import java.text.Normalizer
  * member testTags derive from it as `$testTag-member-$index`.
  */
 @Composable
-fun DetailCastSection(cast: List<String>, testTag: String) {
+fun DetailCastSection(cast: List<String>, testTag: String, photos: Map<String, String> = emptyMap()) {
     val colors = appColors()
     Column(
         modifier = Modifier
@@ -83,12 +93,27 @@ fun DetailCastSection(cast: List<String>, testTag: String) {
                             .background(colors.bgCard),
                         contentAlignment = Alignment.Center
                     ) {
+                        // Briefmarke liegt als Unterlay immer da - ein Ladefehler blendet nur
+                        // das Foto aus, ohne dass die Initialen kurz aufblitzen oder fehlen.
                         Text(
                             text = name.trim().take(1).uppercase(),
                             color = colors.accentBright,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
+                        val photoUrl = photos[name]
+                        if (photoUrl != null) {
+                            var photoFailed by remember(photoUrl) { mutableStateOf(false) }
+                            if (!photoFailed) {
+                                AsyncImage(
+                                    model = photoUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    onError = { photoFailed = true },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
                     }
                     Text(
                         text = name,
@@ -145,7 +170,16 @@ fun <T> DetailRecommendationsSection(
         )
         LazyRow(
             state = listState,
-            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM)
+            horizontalArrangement = Arrangement.spacedBy(Dimensions.spacingSM),
+            // Wie DetailCastSection: ohne contentPadding klebt die fokussierte Randkarte am
+            // eigenen Clip-Rand der LazyRow und ihr Fokus-Ring/-Scale wird dort beschnitten.
+            // Vertikal: Raum fuer den Scale-UEberhang des Fokus-Rings (1.04).
+            contentPadding = PaddingValues(
+                start = Dimensions.spacingXS,
+                end = Dimensions.spacingXS,
+                top = Dimensions.spacingSM,
+                bottom = Dimensions.spacingSM
+            )
         ) {
             itemsIndexed(items = visibleRecommendations, key = { _, item -> key(item) }) { index, item ->
                 DetailRecommendationCard(
@@ -221,7 +255,21 @@ internal fun <T> deduplicateRecommendations(
     }
 }
 
+/**
+ * Unterer Puffer zwischen fokussierbaren Layout-Bounds und Inhalt: Der Ring wird NICHT um den
+ * Puffer gezeichnet (Padding sitzt in der Modifier-Kette NACH tvFocusRing), aber BringIntoView
+ * scrollt ihn mit rein — Fokus-Scale/-Ring bleiben am Viewport-Rand vollständig sichtbar.
+ *
+ * `scale()` ist ein graphicsLayer-Transform und vergrößert die Layout-Bounds nicht; das
+ * BringIntoView-Rect von `focusable()` basiert auf den LAYOUT-Bounds und kennt Scale/Ring nicht —
+ * deshalb dieser Layout-Puffer.
+ */
+internal val FocusBottomBuffer = Dimensions.spacingMD
+
+fun Modifier.focusBottomBuffer(): Modifier = padding(bottom = FocusBottomBuffer)
+
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun DetailRecommendationCard(
     posterUrl: String?,
     title: String,
@@ -234,12 +282,31 @@ private fun DetailRecommendationCard(
     var isFocused by remember { mutableStateOf(false) }
     val internalFocusRequester = remember { FocusRequester() }
     val actualFocusRequester = focusRequester ?: internalFocusRequester
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    var cardSize by remember { mutableStateOf(IntSize.Zero) }
 
     Column(
         modifier = Modifier
             .width(140.dp)
+            .onSizeChanged { cardSize = it }
+            .bringIntoViewRequester(bringIntoViewRequester)
             .focusRequester(actualFocusRequester)
-            .onFocusChanged { isFocused = it.isFocused }
+            .onFocusChanged {
+                isFocused = it.isFocused
+                // Fokus-Ring skaliert 1.04 und ragt unterhalb der Layout-Bounds —
+                // bringIntoView mit erweitertem Rect, damit der untere Rand nicht
+                // am Screen-Unterrand abgeschnitten wird.
+                if (it.isFocused && cardSize != IntSize.Zero) {
+                    val extra = with(density) { Dimensions.spacingLG.toPx() }
+                    scope.launch {
+                        bringIntoViewRequester.bringIntoView(
+                            Rect(0f, 0f, cardSize.width.toFloat(), cardSize.height + extra)
+                        )
+                    }
+                }
+            }
             .focusable()
             .onDpadDirection(onUp = { onUp(); true })
             .onClick(onClick = onClick)
@@ -248,6 +315,7 @@ private fun DetailRecommendationCard(
                 onArtwork = true,
                 shape = RoundedCornerShape(Dimensions.radiusMD)
             )
+            .focusBottomBuffer()
             .testTag(testTag)
     ) {
         Box(
@@ -268,8 +336,8 @@ private fun DetailRecommendationCard(
                 Text(
                     text = title,
                     color = DarkColors.textPrimary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = CardTitleStyle.fontSize,
+                    fontWeight = CardTitleStyle.fontWeight,
                     textAlign = TextAlign.Center,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
@@ -282,7 +350,8 @@ private fun DetailRecommendationCard(
         Text(
             text = title,
             color = DarkColors.textPrimary,
-            style = MaterialTheme.typography.bodyMedium,
+            fontSize = CardTitleStyle.fontSize,
+            fontWeight = CardTitleStyle.fontWeight,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = Dimensions.spacingXS)

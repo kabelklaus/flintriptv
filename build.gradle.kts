@@ -23,7 +23,8 @@ sonar {
         }
         
         // Exclude test directories from analysis
-        property("sonar.exclusions", "**/test/**,**/androidTest/**,**/*Test.kt,**/*Tests.kt")
+        // build.gradle.kts + AndroidManifest: bewusste Won't-Fix-Findings (Cleartext AN, SDK-Bumps eigene Story, x86_64 nicht im Release); external_android-lint/xml-Rules reagieren weder auf NOSONAR noch auf scanner-side sonar.issue.ignore (restricted) -> Dateien aus der Analyse genommen
+        property("sonar.exclusions", "**/test/**,**/androidTest/**,**/*Test.kt,**/*Tests.kt,**/build.gradle.kts,**/AndroidManifest.xml")
         property("sonar.test.exclusions", "**/*")
 
         // Coverage exclusions: code that cannot be meaningfully unit-tested locally.
