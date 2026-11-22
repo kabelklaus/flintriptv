@@ -63,15 +63,16 @@ class MovieDetailScreenHeaderTest {
     }
 
     @Test
-    fun zeigtImdbRatingWennVorhanden() {
+    fun zeigtTmdbRatingWennVorhanden() {
         setContent(MovieDetailUiState(isLoading = false, detail = detail(rating = 8.4)))
 
         composeTestRule.onNodeWithTag("movie-detail-rating").assertIsDisplayed()
         composeTestRule.onNodeWithText("8.4").assertExists()
+        composeTestRule.onNodeWithText("TMDB").assertExists()
     }
 
     @Test
-    fun blendetRatingUndGenresOhneImdbMatchAus() {
+    fun blendetRatingUndGenresOhneMetaMatchAus() {
         setContent(
             MovieDetailUiState(
                 isLoading = false,

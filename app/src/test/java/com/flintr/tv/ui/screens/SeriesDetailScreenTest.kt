@@ -132,7 +132,7 @@ class SeriesDetailScreenTest {
     }
 
     @Test
-    fun zeigtTitelMetaGenresUndImdbRating() {
+    fun zeigtTitelMetaGenresUndTmdbRating() {
         setContent(SeriesDetailUiState(isLoading = false, detail = detail()))
 
         composeTestRule.onNodeWithTag("series-detail-title")
@@ -140,13 +140,14 @@ class SeriesDetailScreenTest {
             .assertTextContains("Die Serie")
         composeTestRule.onNodeWithTag("series-detail-rating").assertIsDisplayed()
         composeTestRule.onNodeWithText("8.1").assertExists()
+        composeTestRule.onNodeWithText("TMDB").assertExists()
         composeTestRule.onNodeWithTag("series-detail-genres")
             .assertIsDisplayed()
             .assertTextContains("Drama, Mystery")
     }
 
     @Test
-    fun blendetRatingUndGenresOhneImdbMatchAus() {
+    fun blendetRatingUndGenresOhneMetaMatchAus() {
         setContent(
             SeriesDetailUiState(
                 isLoading = false,

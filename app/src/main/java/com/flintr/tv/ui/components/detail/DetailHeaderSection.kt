@@ -58,7 +58,7 @@ import kotlinx.coroutines.launch
 /**
  * Pure field holder for [DetailHeaderSection] - no business logic, no formatting decisions.
  * Callers (MovieDetailScreen/SeriesDetailScreen) compute [meta]/[genres]/[overview] from their
- * own IMDb/Xtream data before constructing this.
+ * own TMDB/Xtream data before constructing this.
  */
 data class DetailHeaderData(
     val posterUrl: String?,
@@ -168,7 +168,7 @@ fun DetailHeaderSection(
                 ) {
                     when {
                         data.rating != null ->
-                            DetailImdbRating(rating = data.rating, testTag = "$testTagPrefix-rating")
+                            DetailTmdbRating(rating = data.rating, testTag = "$testTagPrefix-rating")
                         data.isMetaLoading ->
                             SkeletonBar(width = 70.dp, height = 22.dp, modifier = Modifier.testTag("$testTagPrefix-rating-skeleton"))
                     }
@@ -438,7 +438,7 @@ private fun DetailHeaderPoster(posterUrl: String?, testTag: String) {
 }
 
 @Composable
-private fun DetailImdbRating(rating: Double, testTag: String) {
+private fun DetailTmdbRating(rating: Double, testTag: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.testTag(testTag)
@@ -446,13 +446,13 @@ private fun DetailImdbRating(rating: Double, testTag: String) {
         Box(
             modifier = Modifier
                 .background(
-                    color = Color(0xFFFFC107),
+                    color = Color(0xFF01B4E4),
                     shape = RoundedCornerShape(Dimensions.radiusSM)
                 )
                 .padding(horizontal = Dimensions.spacingXS, vertical = 2.dp)
         ) {
             Text(
-                text = "IMDb",
+                text = "TMDB",
                 color = Color.Black,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
